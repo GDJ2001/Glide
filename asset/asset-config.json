@@ -1,0 +1,1044 @@
+{
+  "schemaVersion": 1,
+  "sources": [
+    {
+      "id": "glide-logo-horizontal-color",
+      "path": "masters/glide-logo-horizontal-color.png",
+      "category": "logos-horizontal",
+      "variant": "color",
+      "square": false,
+      "alpha": "required",
+      "exports": [
+        {
+          "path": "logos/horizontal/glide-logo-horizontal-color-256.png",
+          "width": 256
+        },
+        {
+          "path": "logos/horizontal/glide-logo-horizontal-color-512.png",
+          "width": 512
+        },
+        {
+          "path": "logos/horizontal/glide-logo-horizontal-color-1024.png",
+          "width": 1024
+        }
+      ]
+    },
+    {
+      "id": "glide-logo-horizontal-inverse",
+      "path": "masters/glide-logo-horizontal-inverse.png",
+      "category": "logos-horizontal",
+      "variant": "inverse",
+      "square": false,
+      "alpha": "required",
+      "exports": [
+        {
+          "path": "logos/horizontal/glide-logo-horizontal-inverse-256.png",
+          "width": 256
+        },
+        {
+          "path": "logos/horizontal/glide-logo-horizontal-inverse-512.png",
+          "width": 512
+        },
+        {
+          "path": "logos/horizontal/glide-logo-horizontal-inverse-1024.png",
+          "width": 1024
+        }
+      ]
+    },
+    {
+      "id": "glide-logo-horizontal-black",
+      "path": "masters/glide-logo-horizontal-black.png",
+      "category": "logos-horizontal",
+      "variant": "black",
+      "square": false,
+      "alpha": "required",
+      "exports": [
+        {
+          "path": "logos/horizontal/glide-logo-horizontal-black-256.png",
+          "width": 256
+        },
+        {
+          "path": "logos/horizontal/glide-logo-horizontal-black-512.png",
+          "width": 512
+        },
+        {
+          "path": "logos/horizontal/glide-logo-horizontal-black-1024.png",
+          "width": 1024
+        }
+      ]
+    },
+    {
+      "id": "glide-logo-horizontal-white",
+      "path": "masters/glide-logo-horizontal-white.png",
+      "category": "logos-horizontal",
+      "variant": "white",
+      "square": false,
+      "alpha": "required",
+      "exports": [
+        {
+          "path": "logos/horizontal/glide-logo-horizontal-white-256.png",
+          "width": 256
+        },
+        {
+          "path": "logos/horizontal/glide-logo-horizontal-white-512.png",
+          "width": 512
+        },
+        {
+          "path": "logos/horizontal/glide-logo-horizontal-white-1024.png",
+          "width": 1024
+        }
+      ]
+    },
+    {
+      "id": "glide-logo-stacked-color",
+      "path": "masters/glide-logo-stacked-color.png",
+      "category": "logos-stacked",
+      "variant": "color",
+      "square": true,
+      "alpha": "required",
+      "exports": [
+        {
+          "path": "logos/stacked/glide-logo-stacked-color-256.png",
+          "width": 256
+        },
+        {
+          "path": "logos/stacked/glide-logo-stacked-color-512.png",
+          "width": 512
+        },
+        {
+          "path": "logos/stacked/glide-logo-stacked-color-1024.png",
+          "width": 1024
+        }
+      ]
+    },
+    {
+      "id": "glide-logo-stacked-inverse",
+      "path": "masters/glide-logo-stacked-inverse.png",
+      "category": "logos-stacked",
+      "variant": "inverse",
+      "square": true,
+      "alpha": "required",
+      "exports": [
+        {
+          "path": "logos/stacked/glide-logo-stacked-inverse-256.png",
+          "width": 256
+        },
+        {
+          "path": "logos/stacked/glide-logo-stacked-inverse-512.png",
+          "width": 512
+        },
+        {
+          "path": "logos/stacked/glide-logo-stacked-inverse-1024.png",
+          "width": 1024
+        }
+      ]
+    },
+    {
+      "id": "glide-logo-stacked-black",
+      "path": "masters/glide-logo-stacked-black.png",
+      "category": "logos-stacked",
+      "variant": "black",
+      "square": true,
+      "alpha": "required",
+      "exports": [
+        {
+          "path": "logos/stacked/glide-logo-stacked-black-256.png",
+          "width": 256
+        },
+        {
+          "path": "logos/stacked/glide-logo-stacked-black-512.png",
+          "width": 512
+        },
+        {
+          "path": "logos/stacked/glide-logo-stacked-black-1024.png",
+          "width": 1024
+        }
+      ]
+    },
+    {
+      "id": "glide-logo-stacked-white",
+      "path": "masters/glide-logo-stacked-white.png",
+      "category": "logos-stacked",
+      "variant": "white",
+      "square": true,
+      "alpha": "required",
+      "exports": [
+        {
+          "path": "logos/stacked/glide-logo-stacked-white-256.png",
+          "width": 256
+        },
+        {
+          "path": "logos/stacked/glide-logo-stacked-white-512.png",
+          "width": 512
+        },
+        {
+          "path": "logos/stacked/glide-logo-stacked-white-1024.png",
+          "width": 1024
+        }
+      ]
+    },
+    {
+      "id": "glide-symbol-gradient",
+      "path": "masters/glide-symbol-gradient.png",
+      "category": "symbols",
+      "variant": "gradient",
+      "square": true,
+      "alpha": "required",
+      "exports": [
+        {
+          "path": "icons/gradient/glide-symbol-gradient-16.png",
+          "width": 16,
+          "height": 16
+        },
+        {
+          "path": "icons/gradient/glide-symbol-gradient-24.png",
+          "width": 24,
+          "height": 24
+        },
+        {
+          "path": "icons/gradient/glide-symbol-gradient-32.png",
+          "width": 32,
+          "height": 32
+        },
+        {
+          "path": "icons/gradient/glide-symbol-gradient-48.png",
+          "width": 48,
+          "height": 48
+        },
+        {
+          "path": "icons/gradient/glide-symbol-gradient-64.png",
+          "width": 64,
+          "height": 64
+        },
+        {
+          "path": "icons/gradient/glide-symbol-gradient-96.png",
+          "width": 96,
+          "height": 96
+        },
+        {
+          "path": "icons/gradient/glide-symbol-gradient-128.png",
+          "width": 128,
+          "height": 128
+        },
+        {
+          "path": "icons/gradient/glide-symbol-gradient-192.png",
+          "width": 192,
+          "height": 192
+        },
+        {
+          "path": "icons/gradient/glide-symbol-gradient-256.png",
+          "width": 256,
+          "height": 256
+        },
+        {
+          "path": "icons/gradient/glide-symbol-gradient-512.png",
+          "width": 512,
+          "height": 512
+        },
+        {
+          "path": "icons/gradient/glide-symbol-gradient-1024.png",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "path": "platforms/web/favicon-16.png",
+          "width": 16,
+          "height": 16,
+          "category": "platform-web",
+          "variant": "favicon"
+        },
+        {
+          "path": "platforms/web/favicon-32.png",
+          "width": 32,
+          "height": 32,
+          "category": "platform-web",
+          "variant": "favicon"
+        },
+        {
+          "path": "platforms/web/favicon-48.png",
+          "width": 48,
+          "height": 48,
+          "category": "platform-web",
+          "variant": "favicon"
+        }
+      ]
+    },
+    {
+      "id": "glide-symbol-blue",
+      "path": "masters/glide-symbol-blue.png",
+      "category": "symbols",
+      "variant": "blue",
+      "square": true,
+      "alpha": "required",
+      "exports": [
+        {
+          "path": "icons/blue/glide-symbol-blue-16.png",
+          "width": 16,
+          "height": 16
+        },
+        {
+          "path": "icons/blue/glide-symbol-blue-24.png",
+          "width": 24,
+          "height": 24
+        },
+        {
+          "path": "icons/blue/glide-symbol-blue-32.png",
+          "width": 32,
+          "height": 32
+        },
+        {
+          "path": "icons/blue/glide-symbol-blue-48.png",
+          "width": 48,
+          "height": 48
+        },
+        {
+          "path": "icons/blue/glide-symbol-blue-64.png",
+          "width": 64,
+          "height": 64
+        },
+        {
+          "path": "icons/blue/glide-symbol-blue-96.png",
+          "width": 96,
+          "height": 96
+        },
+        {
+          "path": "icons/blue/glide-symbol-blue-128.png",
+          "width": 128,
+          "height": 128
+        },
+        {
+          "path": "icons/blue/glide-symbol-blue-192.png",
+          "width": 192,
+          "height": 192
+        },
+        {
+          "path": "icons/blue/glide-symbol-blue-256.png",
+          "width": 256,
+          "height": 256
+        },
+        {
+          "path": "icons/blue/glide-symbol-blue-512.png",
+          "width": 512,
+          "height": 512
+        },
+        {
+          "path": "icons/blue/glide-symbol-blue-1024.png",
+          "width": 1024,
+          "height": 1024
+        }
+      ]
+    },
+    {
+      "id": "glide-symbol-indigo",
+      "path": "masters/glide-symbol-indigo.png",
+      "category": "symbols",
+      "variant": "indigo",
+      "square": true,
+      "alpha": "required",
+      "exports": [
+        {
+          "path": "icons/indigo/glide-symbol-indigo-16.png",
+          "width": 16,
+          "height": 16
+        },
+        {
+          "path": "icons/indigo/glide-symbol-indigo-24.png",
+          "width": 24,
+          "height": 24
+        },
+        {
+          "path": "icons/indigo/glide-symbol-indigo-32.png",
+          "width": 32,
+          "height": 32
+        },
+        {
+          "path": "icons/indigo/glide-symbol-indigo-48.png",
+          "width": 48,
+          "height": 48
+        },
+        {
+          "path": "icons/indigo/glide-symbol-indigo-64.png",
+          "width": 64,
+          "height": 64
+        },
+        {
+          "path": "icons/indigo/glide-symbol-indigo-96.png",
+          "width": 96,
+          "height": 96
+        },
+        {
+          "path": "icons/indigo/glide-symbol-indigo-128.png",
+          "width": 128,
+          "height": 128
+        },
+        {
+          "path": "icons/indigo/glide-symbol-indigo-192.png",
+          "width": 192,
+          "height": 192
+        },
+        {
+          "path": "icons/indigo/glide-symbol-indigo-256.png",
+          "width": 256,
+          "height": 256
+        },
+        {
+          "path": "icons/indigo/glide-symbol-indigo-512.png",
+          "width": 512,
+          "height": 512
+        },
+        {
+          "path": "icons/indigo/glide-symbol-indigo-1024.png",
+          "width": 1024,
+          "height": 1024
+        }
+      ]
+    },
+    {
+      "id": "glide-symbol-black",
+      "path": "masters/glide-symbol-black.png",
+      "category": "symbols",
+      "variant": "black",
+      "square": true,
+      "alpha": "required",
+      "exports": [
+        {
+          "path": "icons/black/glide-symbol-black-16.png",
+          "width": 16,
+          "height": 16
+        },
+        {
+          "path": "icons/black/glide-symbol-black-24.png",
+          "width": 24,
+          "height": 24
+        },
+        {
+          "path": "icons/black/glide-symbol-black-32.png",
+          "width": 32,
+          "height": 32
+        },
+        {
+          "path": "icons/black/glide-symbol-black-48.png",
+          "width": 48,
+          "height": 48
+        },
+        {
+          "path": "icons/black/glide-symbol-black-64.png",
+          "width": 64,
+          "height": 64
+        },
+        {
+          "path": "icons/black/glide-symbol-black-96.png",
+          "width": 96,
+          "height": 96
+        },
+        {
+          "path": "icons/black/glide-symbol-black-128.png",
+          "width": 128,
+          "height": 128
+        },
+        {
+          "path": "icons/black/glide-symbol-black-192.png",
+          "width": 192,
+          "height": 192
+        },
+        {
+          "path": "icons/black/glide-symbol-black-256.png",
+          "width": 256,
+          "height": 256
+        },
+        {
+          "path": "icons/black/glide-symbol-black-512.png",
+          "width": 512,
+          "height": 512
+        },
+        {
+          "path": "icons/black/glide-symbol-black-1024.png",
+          "width": 1024,
+          "height": 1024
+        }
+      ]
+    },
+    {
+      "id": "glide-symbol-white",
+      "path": "masters/glide-symbol-white.png",
+      "category": "symbols",
+      "variant": "white",
+      "square": true,
+      "alpha": "required",
+      "exports": [
+        {
+          "path": "icons/white/glide-symbol-white-16.png",
+          "width": 16,
+          "height": 16
+        },
+        {
+          "path": "icons/white/glide-symbol-white-24.png",
+          "width": 24,
+          "height": 24
+        },
+        {
+          "path": "icons/white/glide-symbol-white-32.png",
+          "width": 32,
+          "height": 32
+        },
+        {
+          "path": "icons/white/glide-symbol-white-48.png",
+          "width": 48,
+          "height": 48
+        },
+        {
+          "path": "icons/white/glide-symbol-white-64.png",
+          "width": 64,
+          "height": 64
+        },
+        {
+          "path": "icons/white/glide-symbol-white-96.png",
+          "width": 96,
+          "height": 96
+        },
+        {
+          "path": "icons/white/glide-symbol-white-128.png",
+          "width": 128,
+          "height": 128
+        },
+        {
+          "path": "icons/white/glide-symbol-white-192.png",
+          "width": 192,
+          "height": 192
+        },
+        {
+          "path": "icons/white/glide-symbol-white-256.png",
+          "width": 256,
+          "height": 256
+        },
+        {
+          "path": "icons/white/glide-symbol-white-512.png",
+          "width": 512,
+          "height": 512
+        },
+        {
+          "path": "icons/white/glide-symbol-white-1024.png",
+          "width": 1024,
+          "height": 1024
+        }
+      ]
+    },
+    {
+      "id": "glide-wordmark-indigo",
+      "path": "masters/glide-wordmark-indigo.png",
+      "category": "wordmarks",
+      "variant": "indigo",
+      "square": false,
+      "alpha": "required",
+      "exports": [
+        {
+          "path": "wordmarks/glide-wordmark-indigo-256.png",
+          "width": 256
+        },
+        {
+          "path": "wordmarks/glide-wordmark-indigo-512.png",
+          "width": 512
+        },
+        {
+          "path": "wordmarks/glide-wordmark-indigo-1024.png",
+          "width": 1024
+        }
+      ]
+    },
+    {
+      "id": "glide-wordmark-black",
+      "path": "masters/glide-wordmark-black.png",
+      "category": "wordmarks",
+      "variant": "black",
+      "square": false,
+      "alpha": "required",
+      "exports": [
+        {
+          "path": "wordmarks/glide-wordmark-black-256.png",
+          "width": 256
+        },
+        {
+          "path": "wordmarks/glide-wordmark-black-512.png",
+          "width": 512
+        },
+        {
+          "path": "wordmarks/glide-wordmark-black-1024.png",
+          "width": 1024
+        }
+      ]
+    },
+    {
+      "id": "glide-wordmark-white",
+      "path": "masters/glide-wordmark-white.png",
+      "category": "wordmarks",
+      "variant": "white",
+      "square": false,
+      "alpha": "required",
+      "exports": [
+        {
+          "path": "wordmarks/glide-wordmark-white-256.png",
+          "width": 256
+        },
+        {
+          "path": "wordmarks/glide-wordmark-white-512.png",
+          "width": 512
+        },
+        {
+          "path": "wordmarks/glide-wordmark-white-1024.png",
+          "width": 1024
+        }
+      ]
+    },
+    {
+      "id": "glide-app-square-dark",
+      "path": "masters/glide-app-square-dark.png",
+      "category": "app-icons",
+      "variant": "square-dark",
+      "square": true,
+      "alpha": "opaque",
+      "exports": [
+        {
+          "path": "app-icons/square-dark/glide-app-square-dark-32.png",
+          "width": 32,
+          "height": 32
+        },
+        {
+          "path": "app-icons/square-dark/glide-app-square-dark-48.png",
+          "width": 48,
+          "height": 48
+        },
+        {
+          "path": "app-icons/square-dark/glide-app-square-dark-64.png",
+          "width": 64,
+          "height": 64
+        },
+        {
+          "path": "app-icons/square-dark/glide-app-square-dark-96.png",
+          "width": 96,
+          "height": 96
+        },
+        {
+          "path": "app-icons/square-dark/glide-app-square-dark-128.png",
+          "width": 128,
+          "height": 128
+        },
+        {
+          "path": "app-icons/square-dark/glide-app-square-dark-192.png",
+          "width": 192,
+          "height": 192
+        },
+        {
+          "path": "app-icons/square-dark/glide-app-square-dark-256.png",
+          "width": 256,
+          "height": 256
+        },
+        {
+          "path": "app-icons/square-dark/glide-app-square-dark-512.png",
+          "width": 512,
+          "height": 512
+        },
+        {
+          "path": "app-icons/square-dark/glide-app-square-dark-1024.png",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "path": "platforms/android/res/mipmap-mdpi/ic_launcher.png",
+          "width": 48,
+          "height": 48,
+          "category": "platform-android",
+          "variant": "launcher"
+        },
+        {
+          "path": "platforms/android/res/mipmap-hdpi/ic_launcher.png",
+          "width": 72,
+          "height": 72,
+          "category": "platform-android",
+          "variant": "launcher"
+        },
+        {
+          "path": "platforms/android/res/mipmap-xhdpi/ic_launcher.png",
+          "width": 96,
+          "height": 96,
+          "category": "platform-android",
+          "variant": "launcher"
+        },
+        {
+          "path": "platforms/android/res/mipmap-xxhdpi/ic_launcher.png",
+          "width": 144,
+          "height": 144,
+          "category": "platform-android",
+          "variant": "launcher"
+        },
+        {
+          "path": "platforms/android/res/mipmap-xxxhdpi/ic_launcher.png",
+          "width": 192,
+          "height": 192,
+          "category": "platform-android",
+          "variant": "launcher"
+        },
+        {
+          "path": "platforms/android/play-store-icon.png",
+          "width": 512,
+          "height": 512,
+          "category": "platform-android",
+          "variant": "store"
+        },
+        {
+          "path": "platforms/ios/AppIcon.appiconset/glide-20.png",
+          "width": 20,
+          "height": 20,
+          "category": "platform-ios",
+          "variant": "app-icon"
+        },
+        {
+          "path": "platforms/ios/AppIcon.appiconset/glide-29.png",
+          "width": 29,
+          "height": 29,
+          "category": "platform-ios",
+          "variant": "app-icon"
+        },
+        {
+          "path": "platforms/ios/AppIcon.appiconset/glide-40.png",
+          "width": 40,
+          "height": 40,
+          "category": "platform-ios",
+          "variant": "app-icon"
+        },
+        {
+          "path": "platforms/ios/AppIcon.appiconset/glide-58.png",
+          "width": 58,
+          "height": 58,
+          "category": "platform-ios",
+          "variant": "app-icon"
+        },
+        {
+          "path": "platforms/ios/AppIcon.appiconset/glide-60.png",
+          "width": 60,
+          "height": 60,
+          "category": "platform-ios",
+          "variant": "app-icon"
+        },
+        {
+          "path": "platforms/ios/AppIcon.appiconset/glide-76.png",
+          "width": 76,
+          "height": 76,
+          "category": "platform-ios",
+          "variant": "app-icon"
+        },
+        {
+          "path": "platforms/ios/AppIcon.appiconset/glide-80.png",
+          "width": 80,
+          "height": 80,
+          "category": "platform-ios",
+          "variant": "app-icon"
+        },
+        {
+          "path": "platforms/ios/AppIcon.appiconset/glide-87.png",
+          "width": 87,
+          "height": 87,
+          "category": "platform-ios",
+          "variant": "app-icon"
+        },
+        {
+          "path": "platforms/ios/AppIcon.appiconset/glide-120.png",
+          "width": 120,
+          "height": 120,
+          "category": "platform-ios",
+          "variant": "app-icon"
+        },
+        {
+          "path": "platforms/ios/AppIcon.appiconset/glide-152.png",
+          "width": 152,
+          "height": 152,
+          "category": "platform-ios",
+          "variant": "app-icon"
+        },
+        {
+          "path": "platforms/ios/AppIcon.appiconset/glide-167.png",
+          "width": 167,
+          "height": 167,
+          "category": "platform-ios",
+          "variant": "app-icon"
+        },
+        {
+          "path": "platforms/ios/AppIcon.appiconset/glide-180.png",
+          "width": 180,
+          "height": 180,
+          "category": "platform-ios",
+          "variant": "app-icon"
+        },
+        {
+          "path": "platforms/ios/AppIcon.appiconset/glide-1024.png",
+          "width": 1024,
+          "height": 1024,
+          "category": "platform-ios",
+          "variant": "app-icon"
+        },
+        {
+          "path": "platforms/web/icon-192.png",
+          "width": 192,
+          "height": 192,
+          "category": "platform-web",
+          "variant": "pwa-icon"
+        },
+        {
+          "path": "platforms/web/icon-512.png",
+          "width": 512,
+          "height": 512,
+          "category": "platform-web",
+          "variant": "pwa-icon"
+        },
+        {
+          "path": "platforms/web/apple-touch-icon.png",
+          "width": 180,
+          "height": 180,
+          "category": "platform-web",
+          "variant": "touch-icon"
+        },
+        {
+          "path": "platforms/desktop/glide-16.png",
+          "width": 16,
+          "height": 16,
+          "category": "platform-desktop",
+          "variant": "app-icon"
+        },
+        {
+          "path": "platforms/desktop/glide-32.png",
+          "width": 32,
+          "height": 32,
+          "category": "platform-desktop",
+          "variant": "app-icon"
+        },
+        {
+          "path": "platforms/desktop/glide-64.png",
+          "width": 64,
+          "height": 64,
+          "category": "platform-desktop",
+          "variant": "app-icon"
+        },
+        {
+          "path": "platforms/desktop/glide-128.png",
+          "width": 128,
+          "height": 128,
+          "category": "platform-desktop",
+          "variant": "app-icon"
+        },
+        {
+          "path": "platforms/desktop/glide-256.png",
+          "width": 256,
+          "height": 256,
+          "category": "platform-desktop",
+          "variant": "app-icon"
+        },
+        {
+          "path": "platforms/desktop/glide-512.png",
+          "width": 512,
+          "height": 512,
+          "category": "platform-desktop",
+          "variant": "app-icon"
+        },
+        {
+          "path": "platforms/desktop/glide-1024.png",
+          "width": 1024,
+          "height": 1024,
+          "category": "platform-desktop",
+          "variant": "app-icon"
+        }
+      ]
+    },
+    {
+      "id": "glide-app-rounded-dark",
+      "path": "masters/glide-app-rounded-dark.png",
+      "category": "app-icons",
+      "variant": "rounded-dark",
+      "square": true,
+      "alpha": "required",
+      "exports": [
+        {
+          "path": "app-icons/rounded-dark/glide-app-rounded-dark-32.png",
+          "width": 32,
+          "height": 32
+        },
+        {
+          "path": "app-icons/rounded-dark/glide-app-rounded-dark-48.png",
+          "width": 48,
+          "height": 48
+        },
+        {
+          "path": "app-icons/rounded-dark/glide-app-rounded-dark-64.png",
+          "width": 64,
+          "height": 64
+        },
+        {
+          "path": "app-icons/rounded-dark/glide-app-rounded-dark-96.png",
+          "width": 96,
+          "height": 96
+        },
+        {
+          "path": "app-icons/rounded-dark/glide-app-rounded-dark-128.png",
+          "width": 128,
+          "height": 128
+        },
+        {
+          "path": "app-icons/rounded-dark/glide-app-rounded-dark-192.png",
+          "width": 192,
+          "height": 192
+        },
+        {
+          "path": "app-icons/rounded-dark/glide-app-rounded-dark-256.png",
+          "width": 256,
+          "height": 256
+        },
+        {
+          "path": "app-icons/rounded-dark/glide-app-rounded-dark-512.png",
+          "width": 512,
+          "height": 512
+        },
+        {
+          "path": "app-icons/rounded-dark/glide-app-rounded-dark-1024.png",
+          "width": 1024,
+          "height": 1024
+        }
+      ]
+    },
+    {
+      "id": "glide-app-rounded-light",
+      "path": "masters/glide-app-rounded-light.png",
+      "category": "app-icons",
+      "variant": "rounded-light",
+      "square": true,
+      "alpha": "required",
+      "exports": [
+        {
+          "path": "app-icons/rounded-light/glide-app-rounded-light-32.png",
+          "width": 32,
+          "height": 32
+        },
+        {
+          "path": "app-icons/rounded-light/glide-app-rounded-light-48.png",
+          "width": 48,
+          "height": 48
+        },
+        {
+          "path": "app-icons/rounded-light/glide-app-rounded-light-64.png",
+          "width": 64,
+          "height": 64
+        },
+        {
+          "path": "app-icons/rounded-light/glide-app-rounded-light-96.png",
+          "width": 96,
+          "height": 96
+        },
+        {
+          "path": "app-icons/rounded-light/glide-app-rounded-light-128.png",
+          "width": 128,
+          "height": 128
+        },
+        {
+          "path": "app-icons/rounded-light/glide-app-rounded-light-192.png",
+          "width": 192,
+          "height": 192
+        },
+        {
+          "path": "app-icons/rounded-light/glide-app-rounded-light-256.png",
+          "width": 256,
+          "height": 256
+        },
+        {
+          "path": "app-icons/rounded-light/glide-app-rounded-light-512.png",
+          "width": 512,
+          "height": 512
+        },
+        {
+          "path": "app-icons/rounded-light/glide-app-rounded-light-1024.png",
+          "width": 1024,
+          "height": 1024
+        }
+      ]
+    },
+    {
+      "id": "glide-app-rounded-gradient",
+      "path": "masters/glide-app-rounded-gradient.png",
+      "category": "app-icons",
+      "variant": "rounded-gradient",
+      "square": true,
+      "alpha": "required",
+      "exports": [
+        {
+          "path": "app-icons/rounded-gradient/glide-app-rounded-gradient-32.png",
+          "width": 32,
+          "height": 32
+        },
+        {
+          "path": "app-icons/rounded-gradient/glide-app-rounded-gradient-48.png",
+          "width": 48,
+          "height": 48
+        },
+        {
+          "path": "app-icons/rounded-gradient/glide-app-rounded-gradient-64.png",
+          "width": 64,
+          "height": 64
+        },
+        {
+          "path": "app-icons/rounded-gradient/glide-app-rounded-gradient-96.png",
+          "width": 96,
+          "height": 96
+        },
+        {
+          "path": "app-icons/rounded-gradient/glide-app-rounded-gradient-128.png",
+          "width": 128,
+          "height": 128
+        },
+        {
+          "path": "app-icons/rounded-gradient/glide-app-rounded-gradient-192.png",
+          "width": 192,
+          "height": 192
+        },
+        {
+          "path": "app-icons/rounded-gradient/glide-app-rounded-gradient-256.png",
+          "width": 256,
+          "height": 256
+        },
+        {
+          "path": "app-icons/rounded-gradient/glide-app-rounded-gradient-512.png",
+          "width": 512,
+          "height": 512
+        },
+        {
+          "path": "app-icons/rounded-gradient/glide-app-rounded-gradient-1024.png",
+          "width": 1024,
+          "height": 1024
+        }
+      ]
+    }
+  ],
+  "ico": [
+    {
+      "path": "platforms/web/favicon.ico",
+      "sourceId": "glide-symbol-gradient",
+      "sizes": [
+        16,
+        32,
+        48
+      ],
+      "category": "platform-web",
+      "variant": "favicon"
+    },
+    {
+      "path": "platforms/windows/glide.ico",
+      "sourceId": "glide-app-rounded-dark",
+      "sizes": [
+        16,
+        24,
+        32,
+        48,
+        64,
+        128,
+        256
+      ],
+      "category": "platform-windows",
+      "variant": "app-icon"
+    }
+  ]
+}

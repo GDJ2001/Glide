@@ -1,0 +1,75 @@
+{
+  "mode": "built-in image generation",
+  "reference": "reference/glide-brand-identity-v1.png",
+  "generation": [
+    {
+      "id": "glide-logo-horizontal-black",
+      "prompt": "Create a single isolated horizontal logo: symbol to the left and Glide wordmark to the right. ALL artwork pure solid BLACK #000000. No gradient. Reference image is the exact Glide design: copy the two flowing shapes and exact bold geometric wordmark lettering. Text exactly \"Glide\". Do not redesign. Output high resolution wide 3:1 canvas, generous 10% outer margin. TRUE transparent RGBA PNG with alpha zero in background, channel and letter counters, fully opaque logo strokes. Flat smooth crisp edges. No checkerboard pattern, no background color, no shadows, glow, texture, outlines, labels or other logos. Only ONE logo lockup. Use case logo-brand.",
+      "reference": "D:\\GITHub\\Glide\\design\\brand\\glide-brand-identity-v1.png"
+    },
+    {
+      "id": "glide-logo-horizontal-white",
+      "prompt": "Create a single isolated horizontal logo: symbol to the left and Glide wordmark to the right. ALL artwork pure solid WHITE #FFFFFF. No gradient. Reference image is the exact Glide design: copy the two flowing shapes and exact bold geometric wordmark lettering. Text exactly \"Glide\". Do not redesign. Output high resolution wide 3:1 canvas, generous 10% outer margin. TRUE transparent RGBA PNG with alpha zero in background, channel and letter counters, fully opaque logo strokes. Flat smooth crisp edges. No checkerboard pattern, no background color, no shadows, glow, texture, outlines, labels or other logos. Only ONE logo lockup. Use case logo-brand.",
+      "reference": "D:\\GITHub\\Glide\\design\\brand\\glide-brand-identity-v1.png"
+    },
+    {
+      "id": "glide-logo-horizontal-inverse",
+      "prompt": "Create a single isolated horizontal logo: symbol to the left uses the blue-to-cyan gradient; Glide wordmark to the right is pure WHITE #FFFFFF. Reference image is the exact Glide design: copy the two flowing shapes and exact bold geometric wordmark lettering. Text exactly \"Glide\". Do not redesign. Output high resolution wide 3:1 canvas, generous 10% outer margin. TRUE transparent RGBA PNG with alpha zero in background, channel and letter counters, fully opaque logo strokes. Flat smooth crisp edges. No checkerboard pattern, no background color, no shadows, glow, texture, outlines, labels or other logos. Only ONE logo lockup. Use case logo-brand.",
+      "reference": "D:\\GITHub\\Glide\\design\\brand\\glide-brand-identity-v1.png"
+    },
+    {
+      "id": "glide-logo-stacked-color",
+      "prompt": "Create a single isolated stacked vertical logo: blue-to-cyan symbol above and deep indigo #151B38 Glide wordmark below, centered. Symbol about 50% canvas width, word about 64% width, generous vertical gap. Reference image is the exact Glide design: copy the two flowing shapes and exact bold geometric wordmark lettering. Text exactly \"Glide\". Do not redesign. Output high resolution square canvas, generous 10% outer margin. TRUE transparent RGBA PNG with alpha zero in background, channel and letter counters, fully opaque logo strokes. Flat smooth crisp edges. No checkerboard pattern, no background color, no shadows, glow, texture, outlines, labels or other logos. Only ONE logo lockup. Use case logo-brand.",
+      "reference": "D:\\GITHub\\Glide\\design\\brand\\glide-brand-identity-v1.png"
+    },
+    {
+      "id": "glide-logo-stacked-inverse",
+      "reference": "D:\\GITHub\\Glide\\asset\\masters\\glide-logo-stacked-color.png",
+      "prompt": "Use case precise-object-edit. Edit this exact stacked Glide logo. Preserve the precise canvas, lettering, geometry, size, spacing and layout. Keep the icon blue-to-cyan gradient and change only lettering to white. Text stays exactly \"Glide\". Return true RGBA transparent PNG, background alpha 0 including symbol gap and letter counters. Single logo only. Smooth clean flat edges, no labels, no shadow, glow, texture, border or checkerboard. Preserve geometry."
+    },
+    {
+      "id": "glide-logo-stacked-black",
+      "reference": "D:\\GITHub\\Glide\\asset\\masters\\glide-logo-stacked-color.png",
+      "prompt": "Use case precise-object-edit. Edit this exact stacked Glide logo. Preserve the precise canvas, lettering, geometry, size, spacing and layout. Change both icon and letters to solid black #000000, no gradient. Text stays exactly \"Glide\". Return true RGBA transparent PNG, background alpha 0 including symbol gap and letter counters. Single logo only. Smooth clean flat edges, no labels, no shadow, glow, texture, border or checkerboard. Preserve geometry."
+    },
+    {
+      "id": "glide-logo-stacked-white",
+      "reference": "D:\\GITHub\\Glide\\asset\\masters\\glide-logo-stacked-color.png",
+      "prompt": "Use case precise-object-edit. Edit this exact stacked Glide logo. Preserve the precise canvas, lettering, geometry, size, spacing and layout. Change both icon and letters to solid white #FFFFFF, no gradient. Text stays exactly \"Glide\". Return true RGBA transparent PNG, background alpha 0 including symbol gap and letter counters. Single logo only. Smooth clean flat edges, no labels, no shadow, glow, texture, border or checkerboard. Preserve geometry."
+    },
+    {
+      "id": "glide-app-rounded-dark",
+      "reference": "D:\\GITHub\\Glide\\design\\brand\\glide-brand-identity-v1.png",
+      "prompt": "Use case logo-brand. Create ONE isolated rounded-square Glide app icon matching exactly the app icon in the supplied reference board. Use solid deep indigo #151B38 tile and blue-to-cyan gradient symbol. Preserve exact two flowing shapes of Glide with open sweeping channel. Square high-resolution PNG, rounded tile centered occupying 90% canvas width with a narrow 5% transparent outer margin, generous inner symbol padding and symbol width 60% of tile. Tile perfectly flat and opaque inside with true transparent RGBA alpha0 only outside rounded square. No text or labels. Smooth premium corner radii, crisp edges, no shadow, glow, texture, border, bevel or mockup. Just the single app icon variant. Do not include any other elements from the board."
+    },
+    {
+      "id": "glide-app-rounded-light",
+      "reference": "D:\\GITHub\\Glide\\design\\brand\\glide-brand-identity-v1.png",
+      "prompt": "Use case logo-brand. Create ONE isolated rounded-square Glide app icon matching exactly the app icon in the supplied reference board. Use solid white tile and blue-to-cyan gradient symbol. Preserve exact two flowing shapes of Glide with open sweeping channel. Square high-resolution PNG, rounded tile centered occupying 90% canvas width with a narrow 5% transparent outer margin, generous inner symbol padding and symbol width 60% of tile. Tile perfectly flat and opaque inside with true transparent RGBA alpha0 only outside rounded square. No text or labels. Smooth premium corner radii, crisp edges, no shadow, glow, texture, border, bevel or mockup. Just the single app icon variant. Do not include any other elements from the board."
+    },
+    {
+      "id": "glide-app-rounded-gradient",
+      "reference": "D:\\GITHub\\Glide\\design\\brand\\glide-brand-identity-v1.png",
+      "prompt": "Use case logo-brand. Create ONE isolated rounded-square Glide app icon matching exactly the app icon in the supplied reference board. Use electric-blue-to-cyan gradient tile and solid white symbol. Preserve exact two flowing shapes of Glide with open sweeping channel. Square high-resolution PNG, rounded tile centered occupying 90% canvas width with a narrow 5% transparent outer margin, generous inner symbol padding and symbol width 60% of tile. Tile perfectly flat and opaque inside with true transparent RGBA alpha0 only outside rounded square. No text or labels. Smooth premium corner radii, crisp edges, no shadow, glow, texture, border, bevel or mockup. Just the single app icon variant. Do not include any other elements from the board."
+    }
+  ],
+  "corrections": [
+    {
+      "id": "glide-logo-stacked-inverse",
+      "reference": "C:\\Users\\GDJ\\.codex\\generated_images\\01a092be-24ea-72a2-bde3-401624a93300\\exec-960f4a5e-7ae8-4924-9e31-a6f046b6e2e4.png",
+      "prompt": "Background extraction: remove the entire gray checkerboard background from this logo, including the gap between the two symbol shapes and the counters in the letters. Return a PNG with REAL TRANSPARENT BACKGROUND (RGBA, alpha 0 in removed areas). Preserve all opaque logo artwork exactly: its colors, geometry, position and lettering \"Glide\". Keep the existing square dimensions. Do not redraw or alter the logo. Output an isolated logo cutout with genuine alpha transparency."
+    },
+    {
+      "id": "glide-logo-stacked-black",
+      "reference": "C:\\Users\\GDJ\\.codex\\generated_images\\01a092be-24ea-72a2-bde3-401624a93300\\exec-2dec448e-6e3d-4c15-93e8-ebe44db83af8.png",
+      "prompt": "Background extraction: remove the entire gray checkerboard background from this logo, including the gap between the two symbol shapes and the counters in the letters. Return a PNG with REAL TRANSPARENT BACKGROUND (RGBA, alpha 0 in removed areas). Preserve all opaque logo artwork exactly: its colors, geometry, position and lettering \"Glide\". Keep the existing square dimensions. Do not redraw or alter the logo. Output an isolated logo cutout with genuine alpha transparency."
+    },
+    {
+      "id": "glide-logo-stacked-white",
+      "reference": "C:\\Users\\GDJ\\.codex\\generated_images\\01a092be-24ea-72a2-bde3-401624a93300\\exec-e8b3c668-fde3-4d80-9748-5526098da8c7.png",
+      "prompt": "Background extraction: remove the entire gray checkerboard background from this logo, including the gap between the two symbol shapes and the counters in the letters. Return a PNG with REAL TRANSPARENT BACKGROUND (RGBA, alpha 0 in removed areas). Preserve all opaque logo artwork exactly: its colors, geometry, position and lettering \"Glide\". Keep the existing square dimensions. Do not redraw or alter the logo. Output an isolated logo cutout with genuine alpha transparency."
+    }
+  ],
+  "earlierPrompts": "reference/glide-generation-notes.md",
+  "note": "Earlier individual extraction prompts are in task history; this file preserves exact prompts from the continuation. PNG sizes/ICO packaging are mechanical exports, not model generations."
+}

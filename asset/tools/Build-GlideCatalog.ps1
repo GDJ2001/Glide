@@ -17,6 +17,8 @@ if (-not (Test-Path -LiteralPath $ManifestPath -PathType Leaf)) {
 $manifest = Get-Content -LiteralPath $ManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
 if ($null -ne $manifest -and $null -ne $manifest.PSObject.Properties['files']) {
     $sourceEntries = @($manifest.files)
+} elseif ($null -ne $manifest -and $null -ne $manifest.PSObject.Properties['assets']) {
+    $sourceEntries = @($manifest.assets)
 } else {
     $sourceEntries = @($manifest)
 }
