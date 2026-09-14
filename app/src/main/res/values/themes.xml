@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Glide" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">@color/ic_launcher_splash_background</item>
+        <item name="android:navigationBarColor">@color/ic_launcher_splash_background</item>
+    </style>
+</resources>

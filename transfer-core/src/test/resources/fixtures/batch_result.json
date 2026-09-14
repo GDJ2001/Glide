@@ -1,0 +1,13 @@
+{
+  "v": 1,
+  "type": "BATCH_RESULT",
+  "sessionId": "a0000000-0000-4000-8000-000000000001",
+  "messageId": "b0000000-0000-4000-8000-000000000014",
+  "seq": 6,
+  "body": {
+    "batchId": "d0000000-0000-4000-8000-000000000001",
+    "status": "completed",
+    "verifiedCount": 2,
+    "totalVerifiedBytes": "153600"
+  }
+}

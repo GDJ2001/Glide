@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "type": "HELLO",
+  "sessionId": "a0000000-0000-4000-8000-000000000001",
+  "messageId": "b0000000-0000-4000-8000-000000000001",
+  "seq": 1,
+  "body": {
+    "supportedMajors": [1],
+    "requiredCapabilities": ["stream-v1", "sha256"],
+    "optionalCapabilities": [],
+    "role": "sender",
+    "ephemeralPeerId": "c0000000-0000-4000-8000-000000000001",
+    "displayName": "Pixel Sender"
+  }
+}

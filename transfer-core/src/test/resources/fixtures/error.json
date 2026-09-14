@@ -1,0 +1,13 @@
+{
+  "v": 1,
+  "type": "ERROR",
+  "sessionId": "a0000000-0000-4000-8000-000000000001",
+  "messageId": "b0000000-0000-4000-8000-000000000017",
+  "seq": 10,
+  "body": {
+    "code": "TRANSFER_INTERRUPTED",
+    "batchId": "d0000000-0000-4000-8000-000000000001",
+    "itemId": "e0000000-0000-4000-8000-000000000001",
+    "detail": "Nearby link was severed by OS during streaming"
+  }
+}

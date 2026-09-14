@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "type": "HELLO_ACK",
+  "sessionId": "a0000000-0000-4000-8000-000000000001",
+  "messageId": "b0000000-0000-4000-8000-000000000002",
+  "seq": 1,
+  "body": {
+    "selectedMajor": 1,
+    "capabilities": ["stream-v1", "sha256"],
+    "ephemeralPeerId": "c0000000-0000-4000-8000-000000000002",
+    "displayName": "Pixel Receiver",
+    "limits": {
+      "maxItems": 1000,
+      "maxItemBytes": "68719476736",
+      "maxBatchBytes": "274877906944",
+      "maxControlBytes": 16384
+    }
+  }
+}

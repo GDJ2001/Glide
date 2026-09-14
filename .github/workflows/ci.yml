@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Build, Lint & Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Validate Gradle wrapper checksum
+        uses: gradle/actions/wrapper-validation@03875323d40f1a9a5f7823f64c679a8360d0e653 # v4.4.2
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@3a4f6e1af504cf6a31855fa899c6aa5355ba6c12 # v4.7.0
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@03875323d40f1a9a5f7823f64c679a8360d0e653 # v4.4.2
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+
+      - name: Enforce Architecture and Static Analysis
+        run: ./gradlew checkArchitecture
+
+      - name: Assemble Debug APK
+        run: ./gradlew :app:assembleDebug
+
+      - name: Run Unit Tests
+        run: ./gradlew test
+
+      - name: Run Android Lint
+        run: ./gradlew :app:lintDebug
+
+      - name: Upload Debug APK
+        if: always()
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb99baeddf # v4.6.1
+        with:
+          name: app-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload Lint & Test Reports
+        if: always()
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb99baeddf # v4.6.1
+        with:
+          name: verification-reports
+          path: |
+            app/build/reports/
+            transfer-core/build/reports/
+            designsystem/build/reports/
+            transport-nearby/build/reports/
+            data/build/reports/
+          if-no-files-found: ignore
+          retention-days: 14

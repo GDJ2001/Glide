@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Launcher adaptive background matching canonical dark master surface -->
+    <color name="ic_launcher_background">#141A38</color>
+    <!-- System splash screen background matching Glide dark theme surface -->
+    <color name="ic_launcher_splash_background">#111629</color>
+</resources>

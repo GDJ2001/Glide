@@ -1,0 +1,95 @@
+# Baseline Profile for Glide (Android V1)
+# Optimizes Cold Startup, Warm Startup, Adaptive Navigation, and Streaming Hot Paths
+# Generated and maintained for Milestone M9 (GLIDE-052 / GLIDE-053)
+
+# --- Application Startup & Entry Points ---
+Ldev/glide/app/GlideApplication;
+HSPLdev/glide/app/GlideApplication;->onCreate()V
+Ldev/glide/app/MainActivity;
+HSPLdev/glide/app/MainActivity;->onCreate(Landroid/os/Bundle;)V
+Ldev/glide/app/MainActivityKt;
+HSPLdev/glide/app/MainActivityKt;->GlideApp(Ldev/glide/app/ui/home/HomeViewModel;Ldev/glide/app/ui/transfer/TransferViewModel;Ldev/glide/app/ui/history/HistoryViewModel;Ldev/glide/app/ui/settings/SettingsViewModel;Landroidx/compose/runtime/Composer;I)V
+
+# --- Hilt DI Dependency Injection Hot Paths ---
+Ldev/glide/app/GlideApplication_HiltComponents;
+Ldev/glide/app/Hilt_MainActivity;
+HSPLdev/glide/app/Hilt_MainActivity;->onCreate(Landroid/os/Bundle;)V
+Ldev/glide/app/di/CoroutinesModule;
+Ldev/glide/app/di/DatabaseModule;
+Ldev/glide/app/di/StorageModule;
+Ldev/glide/app/di/TransportModule;
+
+# --- Navigation 3 & Adaptive Scaffold ---
+Ldev/glide/app/navigation/GlideRoute;
+Ldev/glide/app/navigation/GlideRoute$Home;
+Ldev/glide/app/navigation/GlideRoute$History;
+Ldev/glide/app/navigation/GlideRoute$Settings;
+Ldev/glide/app/navigation/GlideRoute$Discovery;
+Ldev/glide/app/navigation/GlideRoute$Receive;
+Ldev/glide/app/navigation/GlideRoute$Transfer;
+
+# --- Home & Discovery Journey ---
+Ldev/glide/app/ui/HomeScreenKt;
+HSPLdev/glide/app/ui/HomeScreenKt;->HomeScreen(Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Landroidx/compose/ui/Modifier;Landroidx/compose/runtime/Composer;II)V
+Ldev/glide/app/ui/discovery/DiscoveryScreenKt;
+Ldev/glide/app/ui/discovery/DiscoveryViewModel;
+HSPLdev/glide/app/ui/discovery/DiscoveryViewModel;->getUiState()Lkotlinx/coroutines/flow/StateFlow;
+HSPLdev/glide/app/ui/discovery/DiscoveryViewModel;->startDiscoveryTimer()V
+Ldev/glide/app/ui/discovery/ReceiveReadinessScreenKt;
+Ldev/glide/app/ui/discovery/ReceiveReadinessViewModel;
+Ldev/glide/app/ui/motion/TonalBreathingKt;
+HSPLdev/glide/app/ui/motion/TonalBreathingKt;->rememberTonalBreathingAlpha(FFIZLandroidx/compose/runtime/Composer;II)Landroidx/compose/runtime/State;
+
+# --- History & Settings Journeys ---
+Ldev/glide/app/ui/history/HistoryScreenKt;
+Ldev/glide/app/ui/history/HistoryViewModel;
+Ldev/glide/app/ui/settings/SettingsScreenKt;
+Ldev/glide/app/ui/settings/SettingsViewModel;
+
+# --- Transfer Display & Interaction Journey ---
+Ldev/glide/app/ui/transfer/TransferProgressCardKt;
+HSPLdev/glide/app/ui/transfer/TransferProgressCardKt;->TransferProgressCard(Ldev/glide/app/ui/transfer/TransferUiState;Lkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;I)V
+Ldev/glide/app/ui/transfer/TransferResultDialogKt;
+Ldev/glide/app/ui/transfer/TransferViewModel;
+HSPLdev/glide/app/ui/transfer/TransferViewModel;->getUiState()Lkotlinx/coroutines/flow/StateFlow;
+HSPLdev/glide/app/ui/transfer/TransferViewModel;->cancelTransfer()V
+Ldev/glide/app/service/TransferSessionManager;
+HSPLdev/glide/app/service/TransferSessionManager;->observeActiveSession()Lkotlinx/coroutines/flow/StateFlow;
+
+# --- Design System & Accessible Components ---
+Ldev/glide/designsystem/GlideThemeKt;
+HSPLdev/glide/designsystem/GlideThemeKt;->GlideTheme(ZZLkotlin/jvm/functions/Function2;Landroidx/compose/runtime/Composer;II)V
+Ldev/glide/designsystem/theme/ColorTokens;
+Ldev/glide/designsystem/theme/ShapeTokens;
+Ldev/glide/designsystem/theme/TypographyTokens;
+Ldev/glide/designsystem/BidiIsolationKt;
+HSPLdev/glide/designsystem/BidiIsolationKt;->isolateBidi(Ljava/lang/String;)Ljava/lang/String;
+HSPLdev/glide/designsystem/BidiIsolationKt;->isolateBidiCode(Ljava/lang/String;)Ljava/lang/String;
+Ldev/glide/designsystem/AccessibilityProgressThrottler;
+HSPLdev/glide/designsystem/AccessibilityProgressThrottler;->checkAnnouncement(ILjava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+HSPLdev/glide/designsystem/AccessibilityProgressThrottler;->reset()V
+
+# --- Transfer Core Engine & Streaming Hot Paths ---
+Ldev/glide/core/coordinator/TransferCoordinator;
+HSPLdev/glide/core/coordinator/TransferCoordinator;->getState()Lkotlinx/coroutines/flow/StateFlow;
+HSPLdev/glide/core/coordinator/TransferCoordinator;->dispatch(Ldev/glide/core/coordinator/ReducerEvent;)V
+Ldev/glide/core/coordinator/TransferReducer;
+HSPLdev/glide/core/coordinator/TransferReducer;->reduce(Ldev/glide/core/coordinator/TransferSessionState;Ldev/glide/core/coordinator/ReducerEvent;)Ldev/glide/core/coordinator/ReductionResult;
+Ldev/glide/core/stream/StreamHasher;
+HSPLdev/glide/core/stream/StreamHasher;->copyAndHash(Ljava/io/InputStream;Ljava/io/OutputStream;Ljava/lang/Long;ILkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+HSPLdev/glide/core/stream/StreamHasher;->hashStream(Ljava/io/InputStream;Ljava/lang/Long;ILkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+Ldev/glide/core/stream/StreamProgressSampler;
+HSPLdev/glide/core/stream/StreamProgressSampler;->onBytesRead(J)V
+HSPLdev/glide/core/stream/StreamProgressSampler;->onComplete(J)V
+Ldev/glide/core/domain/Sha256Digest;
+HSPLdev/glide/core/domain/Sha256Digest;->fromByteArray([B)Ldev/glide/core/domain/Sha256Digest;
+
+# --- Data, Storage & Bounded Media Hot Paths ---
+Ldev/glide/data/store/AndroidReceiveStore;
+HSPLdev/glide/data/store/AndroidReceiveStore;->prepareStaging(Ldev/glide/core/domain/SessionId;Ldev/glide/core/domain/ItemId;JLjava/lang/String;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+HSPLdev/glide/data/store/AndroidReceiveStore;->commitVerified(Ldev/glide/core/domain/StagingHandle;Ldev/glide/core/domain/Sha256Digest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+Ldev/glide/data/store/RoomHistoryStore;
+Ldev/glide/data/db/GlideDatabase;
+Ldev/glide/data/media/BoundedThumbnailDecoder;
+HSPLdev/glide/data/media/BoundedThumbnailDecoder;->calculateInSampleSize(IIIIJ)I
+Ldev/glide/data/settings/GlideSettingsRepository;

@@ -1,0 +1,1128 @@
+package dev.glide.app.ui.settings
+
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.WifiTethering
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.glide.core.ports.GlideSettings
+import dev.glide.core.ports.ReducedMotionPreference
+import dev.glide.core.ports.ThemePreference
+import java.util.Locale
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SettingsScreen(
+    viewModel: SettingsViewModel,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val scrollState = rememberScrollState()
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(uiState.feedbackMessage) {
+        val message = uiState.feedbackMessage
+        if (message != null) {
+            snackbarHostState.showSnackbar(message)
+            viewModel.clearFeedbackMessage()
+        }
+    }
+
+    Scaffold(
+        modifier = modifier.fillMaxSize(),
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(
+                        text = "Settings",
+                        style = MaterialTheme.typography.titleLarge
+                    )
+                },
+                navigationIcon = {
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier.semantics {
+                            contentDescription = "Navigate back from settings"
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = null
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background
+                )
+            )
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) }
+    ) { innerPadding ->
+        val windowSizeClass = dev.glide.designsystem.LocalWindowSizeClass.current
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .verticalScroll(scrollState)
+                .widthIn(max = dev.glide.designsystem.AdaptiveLayoutTokens.MaxContentWidth)
+                .padding(horizontal = windowSizeClass.pageHorizontalPadding, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp)
+        ) {
+            val haptics = dev.glide.designsystem.GlideTheme.haptics
+
+            // 1. Device Section
+            DeviceNameSection(
+                deviceName = uiState.settings.deviceName,
+                onEditClick = {
+                    haptics.performSelection()
+                    viewModel.startEditDeviceName()
+                }
+            )
+
+            // 2. Appearance Section
+            AppearanceSection(
+                selectedTheme = uiState.settings.theme,
+                onThemeSelected = {
+                    haptics.performSelection()
+                    viewModel.setTheme(it)
+                },
+                dynamicColor = uiState.settings.dynamicColor,
+                onDynamicColorChanged = {
+                    haptics.performSelection()
+                    viewModel.setDynamicColor(it)
+                },
+                reducedMotion = uiState.settings.reducedMotion,
+                onReducedMotionChanged = {
+                    haptics.performSelection()
+                    viewModel.setReducedMotion(it)
+                }
+            )
+
+            // 3. Privacy & Transfer Behavior Section
+            PrivacyAndBehaviorSection(
+                notificationDetails = uiState.settings.notificationDetails,
+                onNotificationDetailsChanged = {
+                    haptics.performSelection()
+                    viewModel.setNotificationDetails(it)
+                },
+                keepScreenAwake = uiState.settings.keepScreenAwake,
+                onKeepScreenAwakeChanged = {
+                    haptics.performSelection()
+                    viewModel.setKeepScreenAwake(it)
+                }
+            )
+
+            // 4. Private Storage & File Management Section
+            PrivateStorageSection(
+                totalFiles = uiState.storageSummary.totalFiles,
+                totalBytes = uiState.storageSummary.totalBytes,
+                activeFiles = uiState.storageSummary.activeFiles,
+                isDeleting = uiState.isDeleting,
+                onDeleteAllClick = {
+                    haptics.performSelection()
+                    viewModel.requestDeleteAllFiles()
+                }
+            )
+
+            // 5. Nearby & Local Privacy Section
+            NearbyPrivacySection(
+                onViewDiagnosticsClick = {
+                    haptics.performSelection()
+                    viewModel.showNearbyDiagnostics()
+                }
+            )
+
+            // 6. About Glide Section
+            AboutSection(
+                versionName = uiState.appVersionName,
+                buildNumber = uiState.appBuildNumber,
+                onLicensesClick = {
+                    haptics.performSelection()
+                    viewModel.showLicensesDialog()
+                }
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+    }
+
+    // Edit Device Name Dialog
+    if (uiState.isEditingDeviceName) {
+        AlertDialog(
+            onDismissRequest = { viewModel.cancelEditDeviceName() },
+            title = { Text("Device name") },
+            text = {
+                Column {
+                    Text(
+                        text = "This name is visible to nearby devices when discovering and connecting.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    OutlinedTextField(
+                        value = uiState.deviceNameInput,
+                        onValueChange = { viewModel.onDeviceNameInputChange(it) },
+                        label = { Text("Name") },
+                        isError = uiState.deviceNameError != null,
+                        supportingText = {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = uiState.deviceNameError ?: "",
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                                Text(
+                                    text = "${uiState.deviceNameInput.length}/${GlideSettings.MAX_DEVICE_NAME_LENGTH}",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { viewModel.saveDeviceName() },
+                    enabled = uiState.deviceNameError == null && uiState.deviceNameInput.isNotBlank()
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.cancelEditDeviceName() }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // Delete All Files Confirmation Dialog
+    if (uiState.isDeleteAllConfirmOpen) {
+        val count = uiState.storageSummary.totalFiles
+        val sizeFormatted = formatBytes(uiState.storageSummary.totalBytes)
+        val activeCount = uiState.storageSummary.activeFiles
+
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissDeleteAllFilesDialog() },
+            title = { Text("Delete received files?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Permanently delete $count received files ($sizeFormatted) from Glide's private storage? This action cannot be undone.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        text = "Files previously exported to Downloads or custom locations will not be affected.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (activeCount > 0) {
+                        Text(
+                            text = "Note: $activeCount file(s) in active transfers will be protected and preserved.",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { viewModel.confirmDeleteAllFiles() },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError
+                    )
+                ) {
+                    Text("Delete files")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { viewModel.dismissDeleteAllFilesDialog() }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // Nearby Diagnostics Dialog
+    if (uiState.isNearbyDiagnosticsOpen) {
+        NearbyDiagnosticsDialog(
+            diagnostics = uiState.nearbyDiagnostics,
+            onDismiss = { viewModel.dismissNearbyDiagnostics() }
+        )
+    }
+
+    // Open Source Licenses Dialog
+    if (uiState.isLicensesDialogOpen) {
+        LicensesDialog(
+            onDismiss = { viewModel.dismissLicensesDialog() }
+        )
+    }
+}
+
+@Composable
+private fun DeviceNameSection(
+    deviceName: String,
+    onEditClick: () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = "Device",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.primary
+        )
+
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            ),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = deviceName,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Visible to nearby devices",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                OutlinedButton(
+                    onClick = onEditClick,
+                    modifier = Modifier.semantics {
+                        contentDescription = "Edit device name"
+                    }
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Edit,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Edit")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AppearanceSection(
+    selectedTheme: ThemePreference,
+    onThemeSelected: (ThemePreference) -> Unit,
+    dynamicColor: Boolean,
+    onDynamicColorChanged: (Boolean) -> Unit,
+    reducedMotion: ReducedMotionPreference,
+    onReducedMotionChanged: (ReducedMotionPreference) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(
+            text = "Appearance",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.primary
+        )
+
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            ),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = "Theme mode",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Column(modifier = Modifier.selectableGroup()) {
+                    ThemeOption(
+                        label = "System default",
+                        selected = selectedTheme == ThemePreference.SYSTEM,
+                        onClick = { onThemeSelected(ThemePreference.SYSTEM) }
+                    )
+                    ThemeOption(
+                        label = "Light",
+                        selected = selectedTheme == ThemePreference.LIGHT,
+                        onClick = { onThemeSelected(ThemePreference.LIGHT) }
+                    )
+                    ThemeOption(
+                        label = "Dark",
+                        selected = selectedTheme == ThemePreference.DARK,
+                        onClick = { onThemeSelected(ThemePreference.DARK) }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Dynamic color",
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = "Use system wallpaper accent colors",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = dynamicColor,
+                        onCheckedChange = onDynamicColorChanged,
+                        modifier = Modifier.semantics {
+                            contentDescription = "Toggle dynamic color"
+                        }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    text = "Reduced motion",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = "Reduce or disable animations and transitions throughout Glide",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Column(modifier = Modifier.selectableGroup()) {
+                    ThemeOption(
+                        label = "System default",
+                        selected = reducedMotion == ReducedMotionPreference.SYSTEM,
+                        onClick = { onReducedMotionChanged(ReducedMotionPreference.SYSTEM) }
+                    )
+                    ThemeOption(
+                        label = "On",
+                        selected = reducedMotion == ReducedMotionPreference.ON,
+                        onClick = { onReducedMotionChanged(ReducedMotionPreference.ON) }
+                    )
+                    ThemeOption(
+                        label = "Off",
+                        selected = reducedMotion == ReducedMotionPreference.OFF,
+                        onClick = { onReducedMotionChanged(ReducedMotionPreference.OFF) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThemeOption(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .selectable(
+                selected = selected,
+                onClick = onClick,
+                role = Role.RadioButton
+            )
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RadioButton(
+            selected = selected,
+            onClick = null
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium
+        )
+    }
+}
+
+@Composable
+private fun PrivacyAndBehaviorSection(
+    notificationDetails: Boolean,
+    onNotificationDetailsChanged: (Boolean) -> Unit,
+    keepScreenAwake: Boolean,
+    onKeepScreenAwakeChanged: (Boolean) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(
+            text = "Privacy & behavior",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.primary
+        )
+
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            ),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Notification details",
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = "Show file and peer names in system notifications",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = notificationDetails,
+                        onCheckedChange = onNotificationDetailsChanged,
+                        modifier = Modifier.semantics {
+                            contentDescription = "Toggle notification details"
+                        }
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Keep screen awake",
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = "Prevent display sleep during active file transfers",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = keepScreenAwake,
+                        onCheckedChange = onKeepScreenAwakeChanged,
+                        modifier = Modifier.semantics {
+                            contentDescription = "Toggle keep screen awake"
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PrivateStorageSection(
+    totalFiles: Int,
+    totalBytes: Long,
+    activeFiles: Int,
+    isDeleting: Boolean,
+    onDeleteAllClick: () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(
+            text = "Private storage & files",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.primary
+        )
+
+        // Storage explanation banner
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.secondaryContainer
+            ),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier.padding(14.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Info,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Column {
+                    Text(
+                        text = "App-private received library",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "Files received via Glide are kept in Glide's private library, not public Downloads. Export files to keep them outside the app. Uninstalling Glide removes these files.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                }
+            }
+        }
+
+        // Storage usage and action
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            ),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "Storage used",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = if (totalFiles == 0) "No received files" else "$totalFiles files · ${formatBytes(totalBytes)}",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        if (activeFiles > 0) {
+                            Text(
+                                text = "($activeFiles files in active transfer)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+
+                    if (isDeleting) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                    } else {
+                        Button(
+                            onClick = onDeleteAllClick,
+                            enabled = totalFiles > 0,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.error,
+                                contentColor = MaterialTheme.colorScheme.onError
+                            ),
+                            modifier = Modifier.semantics {
+                                contentDescription = "Delete all received files from private storage"
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.DeleteOutline,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Delete all")
+                        }
+                    }
+                }
+
+                Text(
+                    text = "Clearing history in Transfer History removes transfer records only. Deleting files here frees up private storage on this device.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        // Uninstall warning card
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.25f)
+            ),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier.padding(14.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Warning,
+                    contentDescription = "Uninstall warning",
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Column {
+                    Text(
+                        text = "Uninstall storage warning",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "Android deletes private app storage upon uninstall. To keep received files permanently across reinstalls or app removals, export files to Downloads before uninstalling Glide.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NearbyPrivacySection(
+    onViewDiagnosticsClick: () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(
+            text = "Nearby & Local Privacy",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.primary
+        )
+
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            ),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Security,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Direct Peer-to-Peer Data Plane",
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = "Zero cloud transit · Local Wi-Fi & Bluetooth only",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Text(
+                    text = "Glide transfers files directly between devices over local Wi-Fi Direct or Bluetooth. No files, content, or metadata ever pass through Google servers or external cloud relays.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Text(
+                    text = "Google Play services Nearby Connections is used solely for secure local device discovery, radio arbitration, and cryptographic connection handshake.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                OutlinedButton(
+                    onClick = onViewDiagnosticsClick,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .semantics {
+                            contentDescription = "View Nearby diagnostics and privacy disclosures"
+                        }
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Nearby diagnostics & disclosures")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AboutSection(
+    versionName: String,
+    buildNumber: String,
+    onLicensesClick: () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(
+            text = "About Glide",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.primary
+        )
+
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            ),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Share,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(28.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            text = "Glide",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Version $versionName (Build $buildNumber)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Text(
+                    text = "A private, zero-cloud peer-to-peer file transfer application for Android. Fast, verified, and direct transfers across local Wi-Fi and Bluetooth.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Text(
+                    text = "Apache 2.0 License · © 2026 Glide Contributors",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                OutlinedButton(
+                    onClick = onLicensesClick,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .semantics {
+                            contentDescription = "Open source licenses"
+                        }
+                ) {
+                    Text("Open source licenses")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NearbyDiagnosticsDialog(
+    diagnostics: NearbyDiagnosticsState,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.WifiTethering,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Nearby Diagnostics")
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Text(
+                    text = "Privacy Architecture",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = "• Control Plane: Google Play services Nearby Connections manages local device discovery, BLE advertising, and connection handshakes.\n" +
+                        "• Data Plane: 100% direct high-speed socket between devices (Wi-Fi Direct / Local Hotspot). Payload bytes never transit Google infrastructure.\n" +
+                        "• Verification: SHA-256 end-to-end checksum verification with 4-digit pairing auth codes.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                HorizontalDivider()
+
+                Text(
+                    text = "Radio & Service Status",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                DiagnosticRow(
+                    label = "Bluetooth LE",
+                    value = if (diagnostics.bluetoothEnabled) "Active / Ready" else "Disabled",
+                    isGood = diagnostics.bluetoothEnabled
+                )
+                DiagnosticRow(
+                    label = "Local Wi-Fi",
+                    value = if (diagnostics.wifiEnabled) "Active / Ready" else "Disabled",
+                    isGood = diagnostics.wifiEnabled
+                )
+                DiagnosticRow(
+                    label = "Nearby Permissions",
+                    value = if (diagnostics.permissionsGranted) "Granted" else "Missing permissions",
+                    isGood = diagnostics.permissionsGranted
+                )
+                DiagnosticRow(
+                    label = "Radio Link Mode",
+                    value = diagnostics.radioBand,
+                    isGood = true
+                )
+                DiagnosticRow(
+                    label = "GMS Nearby API",
+                    value = diagnostics.gmsVersion,
+                    isGood = true
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onDismiss,
+                modifier = Modifier.heightIn(min = 48.dp)
+            ) {
+                Text("Close")
+            }
+        }
+    )
+}
+
+@Composable
+private fun DiagnosticRow(
+    label: String,
+    value: String,
+    isGood: Boolean
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.SemiBold,
+            color = if (isGood) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+        )
+    }
+}
+
+@Composable
+private fun LicensesDialog(
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Open Source Licenses") },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                LicenseItem(
+                    name = "Glide",
+                    license = "Apache License 2.0",
+                    description = "Copyright (c) 2026 Glide Contributors\nLicensed under the Apache License, Version 2.0."
+                )
+                HorizontalDivider()
+                LicenseItem(
+                    name = "Android Jetpack & Compose",
+                    license = "Apache License 2.0",
+                    description = "Copyright (c) The Android Open Source Project\nLicensed under the Apache License, Version 2.0."
+                )
+                HorizontalDivider()
+                LicenseItem(
+                    name = "Google Play services Nearby Connections",
+                    license = "Google Play Services Terms",
+                    description = "Copyright (c) Google LLC\nProvided under the Google APIs Terms of Service."
+                )
+                HorizontalDivider()
+                LicenseItem(
+                    name = "Kotlin & Kotlinx Coroutines",
+                    license = "Apache License 2.0",
+                    description = "Copyright (c) JetBrains s.r.o. and Kotlin Programming Language contributors."
+                )
+                HorizontalDivider()
+                LicenseItem(
+                    name = "Dagger Hilt",
+                    license = "Apache License 2.0",
+                    description = "Copyright (c) 2020 The Dagger Authors\nLicensed under the Apache License, Version 2.0."
+                )
+                HorizontalDivider()
+                LicenseItem(
+                    name = "Protocol Buffers",
+                    license = "BSD 3-Clause License",
+                    description = "Copyright (c) 2008 Google Inc. All rights reserved."
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onDismiss,
+                modifier = Modifier.heightIn(min = 48.dp)
+            ) {
+                Text("Close")
+            }
+        }
+    )
+}
+
+@Composable
+private fun LicenseItem(
+    name: String,
+    license: String,
+    description: String
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            text = name,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold
+        )
+        Text(
+            text = license,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.primary
+        )
+        Text(
+            text = description,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+private fun formatBytes(bytes: Long): String {
+    if (bytes < 1024) return "$bytes B"
+    val exp = (Math.log(bytes.toDouble()) / Math.log(1024.0)).toInt()
+    val pre = "KMGTPE"[exp - 1]
+    return String.format(Locale.US, "%.1f %sB", bytes / Math.pow(1024.0, exp.toDouble()), pre)
+}
