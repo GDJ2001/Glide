@@ -37,6 +37,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.Collections
@@ -50,10 +51,10 @@ import java.util.UUID
  * executes reducer effects, records history in [HistoryStore], and exposes immutable [SessionState] for the UI.
  */
 class TransferCoordinator(
-    val sessionId: SessionId,
+    sessionId: SessionId? = null,
     val role: DeviceRole,
     val peerId: PeerId,
-    val localDisplayName: String,
+    val localDisplayName: String = "Glide Device",
     val transport: TransferTransport,
     val sourceAccess: SourceAccess,
     val receiveStore: ReceiveStore,
@@ -66,8 +67,25 @@ class TransferCoordinator(
     val rateLimiter: ProtocolRateLimiter? = ProtocolRateLimiter(clock = clock),
     val sequencer: ProtocolSequencer = ProtocolSequencer(clock = clock)
 ) {
+    @Volatile
+    private var boundSessionId: SessionId? = sessionId
+
+    val sessionId: SessionId
+        get() = boundSessionId ?: _state.value.sessionId
+
+    init {
+        if (role == DeviceRole.Sender) {
+            requireNotNull(sessionId) { "Sender must specify an explicit non-null sessionId" }
+        }
+    }
+
     private val mutex = Mutex()
-    private val _state = MutableStateFlow(SessionState(sessionId = sessionId, role = role))
+    private val _state = MutableStateFlow(
+        SessionState(
+            sessionId = sessionId ?: SessionId(UUID.randomUUID().toString()),
+            role = role
+        )
+    )
     val state: StateFlow<SessionState> = _state.asStateFlow()
 
     private val stagingHandles: MutableMap<ItemId, StagingHandle> = Collections.synchronizedMap(mutableMapOf())
@@ -197,12 +215,53 @@ class TransferCoordinator(
         }
     }
 
+    private data class PreparedSource(
+        val itemId: ItemId,
+        val stream: HashingInputStream
+    )
+
+    private val preparedSources = mutableMapOf<BulkRef, PreparedSource>()
+    private val preparedSourcesLock = Any()
+
+    private suspend fun prepareSourceItem(item: dev.glide.core.domain.TransferItem): BulkRef? {
+        val handle = sourceMap[item.id] ?: return null
+        return withContext(ioDispatcher) {
+            try {
+                val rawStream = sourceAccess.openSource(handle)
+                val hashingStream = HashingInputStream(rawStream, expectedBytes = item.sizeBytes)
+                val bulkRef = transport.prepareStream { hashingStream }
+                if (bulkRef != null) {
+                    synchronized(preparedSourcesLock) {
+                        preparedSources[bulkRef] = PreparedSource(item.id, hashingStream)
+                    }
+                } else {
+                    try { hashingStream.close() } catch (_: Exception) {}
+                }
+                bulkRef
+            } catch (e: Exception) {
+                null
+            }
+        }
+    }
+
+    private fun closePreparedSources() {
+        val toClose = synchronized(preparedSourcesLock) {
+            val list = preparedSources.values.map { it.stream }
+            preparedSources.clear()
+            list
+        }
+        toClose.forEach { s ->
+            try { s.close() } catch (_: Exception) {}
+        }
+    }
+
     /**
      * Cleanly stops all background jobs and releases coordinator resources.
      */
     fun stop() {
         activeJobs.forEach { it.cancel() }
         activeJobs.clear()
+        closePreparedSources()
     }
 
     suspend fun dispatch(event: ReducerEvent) {
@@ -214,6 +273,10 @@ class TransferCoordinator(
             effectsToRun = result.effects
         }
         executeEffects(effectsToRun)
+
+        if (_state.value.isTerminal) {
+            closePreparedSources()
+        }
 
         // Automatic offer submission when sender reaches Offering phase
         if (_state.value.role == DeviceRole.Sender &&
@@ -243,7 +306,10 @@ class TransferCoordinator(
                 }
 
                 is ReducerEffect.PrepareDestinationStorage -> {
-                    prepareDestination(effect.itemId, effect.sizeBytes)
+                    val ok = prepareDestination(effect.itemId, effect.sizeBytes)
+                    if (!ok) {
+                        break
+                    }
                 }
 
                 is ReducerEffect.CommitDestinationFile -> {
@@ -295,11 +361,24 @@ class TransferCoordinator(
     }
 
     private fun startSendingStream(itemId: ItemId, bulkRef: BulkRef) {
-        val sourceHandle = sourceMap[itemId] ?: return
         scope.launch(ioDispatcher) {
-            var streamToClose: HashingInputStream? = null
+            val prepared = synchronized(preparedSourcesLock) {
+                preparedSources.remove(bulkRef)
+            }
+            if (prepared == null) {
+                if (!_state.value.isTerminal) {
+                    dispatch(
+                        ReducerEvent.TransportFailure(
+                            TransferFailure.TransferInterrupted("No prepared stream found for bulkRef ${bulkRef.value}"),
+                            clock()
+                        )
+                    )
+                }
+                return@launch
+            }
+
+            val hashingStream = prepared.stream
             try {
-                val rawStream = sourceAccess.openSource(sourceHandle)
                 val sampler = StreamProgressSampler(
                     clock = clock,
                     onSample = { bytesRead ->
@@ -308,34 +387,40 @@ class TransferCoordinator(
                         }
                     }
                 )
-                val hashingStream = HashingInputStream(rawStream) { bytesRead ->
+                hashingStream.setProgressCallback { bytesRead ->
                     sampler.onBytesRead(bytesRead)
                 }
-                streamToClose = hashingStream
 
-                transport.sendStream(peerId, bulkRef) { hashingStream }.collect { progress ->
+                transport.sendStream(peerId, bulkRef).collect { progress ->
                     sampler.onBytesRead(progress.bytesTransferred)
                     if (progress.isComplete) {
                         dispatch(ReducerEvent.TransportPayloadSuccess(itemId, bulkRef, clock()))
                     }
                 }
 
+                hashingStream.proveEof()
                 val actualBytes = hashingStream.bytesRead
                 val digest = hashingStream.sha256Digest
                 sampler.onComplete(actualBytes)
                 dispatch(ReducerEvent.StreamEof(itemId, actualBytes, digest, clock()))
             } catch (e: Exception) {
                 if (!_state.value.isTerminal) {
-                    dispatch(ReducerEvent.TransportFailure(TransferFailure.TransferInterrupted("Stream transfer failed: ${e.message}"), clock()))
+                    val failure = when (e) {
+                        is java.io.EOFException, is java.io.IOException, is IllegalStateException ->
+                            TransferFailure.ReadFailure("Stream read failed: ${e.message}")
+                        else ->
+                            TransferFailure.TransferInterrupted("Stream transfer failed: ${e.message}")
+                    }
+                    dispatch(ReducerEvent.TransportFailure(failure, clock()))
                 }
             } finally {
-                try { streamToClose?.close() } catch (_: Exception) {}
+                try { hashingStream.close() } catch (_: Exception) {}
             }
         }
     }
 
-    private fun prepareDestination(itemId: ItemId, sizeBytes: Long) {
-        scope.launch(ioDispatcher) {
+    private suspend fun prepareDestination(itemId: ItemId, sizeBytes: Long): Boolean {
+        return withContext(ioDispatcher) {
             try {
                 val item = _state.value.itemStates[itemId]?.item
                 val displayName = item?.name ?: "received_file"
@@ -349,8 +434,16 @@ class TransferCoordinator(
                 )
                 stagingHandles[itemId] = stagingHandle
                 currentStagingHandle = stagingHandle
+
+                // LAN-002: Only register expected stream after staging preparation succeeds
+                val bulkRef = _state.value.itemStates[itemId]?.bulkRef
+                if (bulkRef != null) {
+                    transport.registerExpectedStream(bulkRef)
+                }
+                true
             } catch (e: Exception) {
                 dispatch(ReducerEvent.TransportFailure(TransferFailure.InsufficientStorage(sizeBytes, 0), clock()))
+                false
             }
         }
     }
@@ -401,6 +494,26 @@ class TransferCoordinator(
                 dispatch(
                     ReducerEvent.TransportFailure(
                         TransferFailure.MalformedMessage("Failed to decode envelope: ${e.message}"),
+                        now
+                    )
+                )
+                return@collect
+            }
+
+            // LAN-003: For receiver without predetermined session ID, bind first authenticated HELLO once
+            val currentSessionId = boundSessionId
+            if (currentSessionId == null) {
+                if (role == DeviceRole.Receiver && envelope.type == MessageTypes.HELLO) {
+                    boundSessionId = envelope.sessionId
+                    _state.value = _state.value.copy(sessionId = envelope.sessionId)
+                } else {
+                    return@collect
+                }
+            } else if (envelope.sessionId != currentSessionId) {
+                // LAN-001: Enforce exact session ownership before sequencer or dispatch
+                dispatch(
+                    ReducerEvent.TransportFailure(
+                        TransferFailure.ProtocolOrder("Envelope sessionId ${envelope.sessionId.value} does not match active sessionId ${currentSessionId.value}"),
                         now
                     )
                 )
@@ -463,19 +576,23 @@ class TransferCoordinator(
                 }
                 MessageTypes.OFFER_DECISION -> {
                     val decision = ProtocolCodec.decodeBody<dev.glide.core.protocol.OfferDecisionBody>(envelope)
-                    val bulkRef = if (role == DeviceRole.Sender && decision.accepted) {
+                    val canPrepare = role == DeviceRole.Sender &&
+                        decision.accepted &&
+                        _state.value.phase == SessionPhase.AwaitingConsent &&
+                        _state.value.batch != null &&
+                        _state.value.batch?.id == decision.batchId
+
+                    val bulkRef = if (canPrepare) {
                         val firstItem = _state.value.batch?.items?.firstOrNull()
-                        val handle = firstItem?.let { sourceMap[it.id] }
-                        if (handle != null) {
-                            val stream = sourceAccess.openSource(handle)
-                            transport.prepareStream { stream }
-                        } else null
+                        if (firstItem != null) prepareSourceItem(firstItem) else null
                     } else null
+
                     dispatch(ReducerEvent.OfferDecisionReceived(decision, envelope.messageId, envelope.seq, now, bulkRef))
                 }
                 MessageTypes.ITEM_START -> {
                     val start = ProtocolCodec.decodeBody<dev.glide.core.protocol.ItemStartBody>(envelope)
-                    transport.registerExpectedStream(start.bulkRef)
+                    // LAN-002: Do NOT call transport.registerExpectedStream on unvalidated DTO receipt!
+                    // Expected stream registration is deferred until after reducer validation and destination staging creation.
                     dispatch(ReducerEvent.ItemStartReceived(start, envelope.messageId, envelope.seq, now))
                 }
                 MessageTypes.ITEM_READY -> {
@@ -494,14 +611,15 @@ class TransferCoordinator(
                     val outcome = if (result.status == "verified") "Verified" else "Failed"
                     historyStore?.updateItemOutcome(result.itemId, outcome, curItem?.transferredBytes, curItem?.actualDigest)
 
-                    val nextBulkRef = if (role == DeviceRole.Sender && result.status == "verified") {
-                        val nextIdx = _state.value.currentItemIndex + 1
-                        val nextItem = _state.value.batch?.items?.getOrNull(nextIdx)
-                        val handle = nextItem?.let { sourceMap[it.id] }
-                        if (handle != null) {
-                            val stream = sourceAccess.openSource(handle)
-                            transport.prepareStream { stream }
-                        } else null
+                    val nextIdx = _state.value.currentItemIndex + 1
+                    val nextItem = _state.value.batch?.items?.getOrNull(nextIdx)
+                    val canPrepareNext = role == DeviceRole.Sender &&
+                        result.status == "verified" &&
+                        (_state.value.phase == SessionPhase.VerifyingItem || _state.value.phase == SessionPhase.TransferringItem) &&
+                        nextItem != null
+
+                    val nextBulkRef = if (canPrepareNext) {
+                        prepareSourceItem(nextItem)
                     } else null
 
                     dispatch(ReducerEvent.ItemResultReceived(result, envelope.messageId, envelope.seq, now, nextBulkRef))
@@ -535,7 +653,6 @@ class TransferCoordinator(
     private suspend fun observeBulkProgress() {
         transport.observeBulkProgress().collect { progress ->
             val curItem = _state.value.itemStates.values.firstOrNull { it.bulkRef == progress.bulkRef }
-                ?: _state.value.currentItemState
                 ?: return@collect
             if (curItem.bulkRef == progress.bulkRef) {
                 dispatch(ReducerEvent.StreamProgress(curItem.item.id, progress.bytesTransferred, clock()))
@@ -548,12 +665,22 @@ class TransferCoordinator(
 
     private suspend fun observeIncomingStreams() {
         transport.observeIncomingStream().collect { incoming ->
-            if (incoming.peerId != peerId) return@collect
+            if (incoming.peerId != peerId) {
+                try { incoming.stream.close() } catch (_: Exception) {}
+                return@collect
+            }
 
             scope.launch(ioDispatcher) {
+                // If coordinator is already terminal, close stream immediately (LAN-001)
+                if (_state.value.isTerminal) {
+                    try { incoming.stream.close() } catch (_: Exception) {}
+                    return@launch
+                }
+
                 // Security check T04/T07/T17: Strict consent ordering
                 val curPhase = _state.value.phase
                 if (curPhase != SessionPhase.PreparingItem && curPhase != SessionPhase.TransferringItem) {
+                    try { incoming.stream.close() } catch (_: Exception) {}
                     dispatch(
                         ReducerEvent.TransportFailure(
                             TransferFailure.ProtocolOrder("Stream packet received before explicit offer acceptance (phase: $curPhase)"),
@@ -563,19 +690,36 @@ class TransferCoordinator(
                     return@launch
                 }
 
+                // LAN-001: Exact bulkRef match required; never fall back to currentItemState
                 val curItem = _state.value.itemStates.values.firstOrNull { it.bulkRef == incoming.bulkRef }
-                    ?: _state.value.currentItemState
-                    ?: return@launch
-
-                var staging = stagingHandles[curItem.item.id] ?: currentStagingHandle
-                var attempts = 0
-                while (staging == null && attempts < 50) {
-                    kotlinx.coroutines.delay(10)
-                    staging = stagingHandles[curItem.item.id] ?: currentStagingHandle
-                    attempts++
+                if (curItem == null) {
+                    try { incoming.stream.close() } catch (_: Exception) {}
+                    dispatch(
+                        ReducerEvent.TransportFailure(
+                            TransferFailure.ProtocolOrder("Unknown incoming stream bulkRef ${incoming.bulkRef.value}"),
+                            clock()
+                        )
+                    )
+                    return@launch
                 }
 
+                // LAN-001: Check for stale or inactive bulkRef
+                val activeItem = _state.value.currentItemState
+                if (curItem.phase.isTerminal || activeItem?.item?.id != curItem.item.id) {
+                    try { incoming.stream.close() } catch (_: Exception) {}
+                    dispatch(
+                        ReducerEvent.TransportFailure(
+                            TransferFailure.ProtocolOrder("Stale or inactive bulkRef ${incoming.bulkRef.value} for item ${curItem.item.id.value}"),
+                            clock()
+                        )
+                    )
+                    return@launch
+                }
+
+                val staging = stagingHandles[curItem.item.id] ?: currentStagingHandle
+
                 if (staging == null) {
+                    try { incoming.stream.close() } catch (_: Exception) {}
                     dispatch(
                         ReducerEvent.TransportFailure(
                             TransferFailure.DestinationUnavailable("Staging storage unavailable for item ${curItem.item.id}"),
@@ -610,6 +754,8 @@ class TransferCoordinator(
                     dispatch(ReducerEvent.TransportFailure(TransferFailure.LimitExceeded("Receive stream limit exceeded: ${e.message}"), clock()))
                 } catch (e: Exception) {
                     dispatch(ReducerEvent.TransportFailure(TransferFailure.WriteFailure("Receive stream failed: ${e.message}"), clock()))
+                } finally {
+                    try { incoming.stream.close() } catch (_: Exception) {}
                 }
             }
         }

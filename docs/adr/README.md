@@ -1,6 +1,6 @@
 # Architecture decision records
 
-All records are **Accepted (planning)** on2026-09-12, not implementation-validated. Evidence gates in tasks remain unmet. Change via [CHANGE_CONTROL](../development/CHANGE_CONTROL.md); canonical versions live in [technology research](../planning/TECHNOLOGY_RESEARCH.md).
+Read each record's date and status; a planning acceptance does not prove implementation or runtime validation. Change via [CHANGE_CONTROL](../development/CHANGE_CONTROL.md); original version research lives in [technology research](../planning/TECHNOLOGY_RESEARCH.md). For the Android LAN/QR next cycle, ADR-0018 and the current source audit supersede the specifically identified assumptions in ADR-0017.
 
 - [ADR-0001 — Android application architecture](ADR-0001-android-architecture.md)
 - [ADR-0002 — Android SDK strategy](ADR-0002-sdk-strategy.md)
@@ -19,4 +19,4 @@ All records are **Accepted (planning)** on2026-09-12, not implementation-validat
 - [ADR-0015 — Persistent identity and true resume](ADR-0015-persistent-identity-and-true-resume.md)
 - [ADR-0016 — Advanced Android transports evaluation](ADR-0016-advanced-android-transports.md)
 - [ADR-0017 — Android-to-Windows interoperable LAN slice](ADR-0017-android-windows-interoperable-lan-slice.md)
-
+- [ADR-0018 — Local LAN authentication, QR bootstrap and unified routing](ADR-0018-lan-qr-authentication-and-routing.md)

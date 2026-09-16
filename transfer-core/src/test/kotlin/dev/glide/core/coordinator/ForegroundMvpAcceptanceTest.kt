@@ -36,6 +36,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayInputStream
+import java.io.InputStream
 import java.util.UUID
 
 /**
@@ -74,9 +75,13 @@ class ForegroundMvpAcceptanceTest {
 
         override fun observeControl(): Flow<ControlMessage> = controlChannel.receiveAsFlow()
 
+        val preparedStreams = mutableMapOf<BulkRef, InputStream>()
+
         override suspend fun prepareStream(streamSource: InputStreamProvider): BulkRef {
             streamCounter++
-            return BulkRef("acceptance-bulk-$streamCounter")
+            val bulkRef = BulkRef("acceptance-bulk-$streamCounter")
+            preparedStreams[bulkRef] = streamSource.openStream()
+            return bulkRef
         }
 
         override suspend fun markItemReady(bulkRef: BulkRef) {}
@@ -84,10 +89,10 @@ class ForegroundMvpAcceptanceTest {
 
         override suspend fun sendStream(
             peerId: PeerId,
-            bulkRef: BulkRef,
-            streamSource: InputStreamProvider
+            bulkRef: BulkRef
         ): Flow<BulkProgress> = flow {
-            val stream = streamSource.openStream()
+            val stream = preparedStreams.remove(bulkRef)
+                ?: throw IllegalStateException("No prepared stream for bulkRef ${bulkRef.value}")
             val rawBytes = stream.readAllBytes()
 
             remote.incomingStreamChannel.send(IncomingStream(localPeerId, bulkRef, ByteArrayInputStream(rawBytes)))
@@ -98,6 +103,15 @@ class ForegroundMvpAcceptanceTest {
 
             emit(BulkProgress(bulkRef, total, true))
             remote.bulkProgressChannel.send(BulkProgress(bulkRef, total, true))
+        }
+
+        override suspend fun sendStream(
+            peerId: PeerId,
+            bulkRef: BulkRef,
+            streamSource: InputStreamProvider
+        ): Flow<BulkProgress> {
+            preparedStreams.getOrPut(bulkRef) { streamSource.openStream() }
+            return sendStream(peerId, bulkRef)
         }
 
         override fun observeIncomingStream(): Flow<IncomingStream> = incomingStreamChannel.receiveAsFlow()

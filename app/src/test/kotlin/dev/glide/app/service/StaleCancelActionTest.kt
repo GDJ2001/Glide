@@ -2,6 +2,11 @@ package dev.glide.app.service
 
 import dev.glide.app.ui.transfer.TransferUiState
 import dev.glide.core.domain.DeviceRole
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -14,12 +19,15 @@ import org.junit.Test
  * Unit tests verifying that [TransferService] strictly rejects stale or mismatched
  * cancel intents and only cancels when the exact active session ID matches (GLIDE-029).
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 class StaleCancelActionTest {
 
+    private val testDispatcher = StandardTestDispatcher()
     private lateinit var service: TransferService
 
     @Before
     fun setUp() {
+        Dispatchers.setMain(testDispatcher)
         TransferSessionManager.resetForTesting()
         service = TransferService()
     }
@@ -27,6 +35,7 @@ class StaleCancelActionTest {
     @After
     fun tearDown() {
         TransferSessionManager.resetForTesting()
+        Dispatchers.resetMain()
     }
 
     @Test

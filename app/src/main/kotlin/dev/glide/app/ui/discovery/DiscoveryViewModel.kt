@@ -3,8 +3,10 @@ package dev.glide.app.ui.discovery
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.glide.core.domain.PeerId
+import dev.glide.core.ports.DiscoveryEvent
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -12,14 +14,18 @@ import kotlinx.coroutines.launch
 
 /**
  * ViewModel governing the Discovery route UI state, 120-second timeout,
- * and stable non-jumping peer cards.
+ * stable non-jumping peer cards, and live discovery observations (LAN-004).
  */
-class DiscoveryViewModel : ViewModel() {
+class DiscoveryViewModel(
+    private val discoveryFlowProvider: (() -> Flow<DiscoveryEvent>)? = null,
+    private val onStopDiscoveryCallback: (() -> Unit)? = null
+) : ViewModel() {
 
     private val _uiState = MutableStateFlow<DiscoveryUiState>(DiscoveryUiState.Searching())
     val uiState: StateFlow<DiscoveryUiState> = _uiState.asStateFlow()
 
     private var timerJob: Job? = null
+    private var discoveryJob: Job? = null
 
     init {
         startDiscoveryTimer()
@@ -27,6 +33,8 @@ class DiscoveryViewModel : ViewModel() {
 
     fun startDiscoveryTimer() {
         timerJob?.cancel()
+        discoveryJob?.cancel()
+
         _uiState.value = DiscoveryUiState.Searching(
             peers = (_uiState.value as? DiscoveryUiState.Searching)?.peers ?: emptyList(),
             secondsElapsed = 0,
@@ -40,12 +48,38 @@ class DiscoveryViewModel : ViewModel() {
                 if (current is DiscoveryUiState.Searching) {
                     if (sec >= 120) {
                         _uiState.value = DiscoveryUiState.TimedOut(peers = current.peers)
+                        stopDiscovery()
                         break
                     } else {
                         _uiState.value = current.copy(secondsElapsed = sec)
                     }
                 } else {
                     break
+                }
+            }
+        }
+
+        if (discoveryFlowProvider != null) {
+            discoveryJob = viewModelScope.launch {
+                try {
+                    discoveryFlowProvider.invoke().collect { event ->
+                        when (event) {
+                            is DiscoveryEvent.PeerAppeared -> {
+                                onPeerDiscovered(
+                                    DiscoveredPeer(
+                                        id = event.peer.id,
+                                        displayName = event.peer.displayName,
+                                        deviceType = DeviceType.fromDeviceName(event.peer.displayName)
+                                    )
+                                )
+                            }
+                            is DiscoveryEvent.PeerLost -> {
+                                onPeerLost(event.peerId)
+                            }
+                        }
+                    }
+                } catch (_: Exception) {
+                    // Cancelled or stopped cleanly
                 }
             }
         }
@@ -110,8 +144,15 @@ class DiscoveryViewModel : ViewModel() {
         }
     }
 
+    fun stopDiscovery() {
+        discoveryJob?.cancel()
+        discoveryJob = null
+        onStopDiscoveryCallback?.invoke()
+    }
+
     fun setBlocked(reason: BlockedReason) {
         timerJob?.cancel()
+        discoveryJob?.cancel()
         _uiState.value = DiscoveryUiState.Blocked(reason)
     }
 
@@ -121,6 +162,12 @@ class DiscoveryViewModel : ViewModel() {
 
     fun setUiStateForTesting(state: DiscoveryUiState) {
         timerJob?.cancel()
+        discoveryJob?.cancel()
         _uiState.value = state
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        stopDiscovery()
     }
 }

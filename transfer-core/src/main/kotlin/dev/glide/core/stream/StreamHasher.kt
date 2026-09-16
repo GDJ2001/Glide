@@ -131,42 +131,129 @@ object StreamHasher {
 
 /**
  * An [InputStream] wrapper that calculates SHA-256 and counts bytes on-the-fly as bytes are consumed.
- * Used by sender to hash exactly what is sent to the transport.
+ * Enforces expected byte counts, early EOF detection, extra-byte detection, idempotent single close,
+ * and caches the final SHA-256 digest once actual EOF is verified.
  */
 class HashingInputStream(
     private val delegate: InputStream,
-    private val onProgress: ((bytesRead: Long) -> Unit)? = null
+    val expectedBytes: Long? = null,
+    private var onProgress: ((bytesRead: Long) -> Unit)? = null
 ) : InputStream() {
     private val digest: MessageDigest = MessageDigest.getInstance("SHA-256")
     private var totalRead: Long = 0L
+    private val isClosed = java.util.concurrent.atomic.AtomicBoolean(false)
+    @Volatile private var isEofReached: Boolean = false
+    @Volatile private var cachedDigest: Sha256Digest? = null
 
     val bytesRead: Long get() = totalRead
+    val isEof: Boolean get() = isEofReached
+
+    fun setProgressCallback(callback: ((bytesRead: Long) -> Unit)?) {
+        this.onProgress = callback
+    }
+
     val sha256Digest: Sha256Digest
-        get() = Sha256Digest.fromByteArray(digest.digest())
+        get() {
+            cachedDigest?.let { return it }
+            proveEof()
+            check(isEofReached) {
+                "Digest only available after actual EOF reached (read $totalRead of expected $expectedBytes bytes)"
+            }
+            val d = Sha256Digest.fromByteArray(digest.digest())
+            cachedDigest = d
+            return d
+        }
+
+    fun proveEof(): Boolean {
+        if (isEofReached) return true
+        if (expectedBytes != null && totalRead == expectedBytes) {
+            val extra = delegate.read()
+            if (extra == -1) {
+                isEofReached = true
+                return true
+            } else {
+                throw IllegalStateException("Stream exceeded expected size of $expectedBytes bytes (extra byte detected: $extra)")
+            }
+        }
+        return isEofReached
+    }
 
     override fun read(): Int {
+        checkNotClosed()
+        if (expectedBytes != null && totalRead >= expectedBytes) {
+            val extra = delegate.read()
+            if (extra != -1) {
+                throw IllegalStateException("Stream exceeded expected size of $expectedBytes bytes (extra byte detected: $extra)")
+            }
+            isEofReached = true
+            return -1
+        }
+
         val b = delegate.read()
         if (b != -1) {
             digest.update(b.toByte())
             totalRead++
             onProgress?.invoke(totalRead)
+            if (expectedBytes != null && totalRead == expectedBytes) {
+                proveEof()
+            }
+        } else {
+            if (expectedBytes != null && totalRead < expectedBytes) {
+                throw EOFException("Early EOF: expected $expectedBytes bytes, but stream ended after $totalRead bytes")
+            }
+            isEofReached = true
         }
         return b
     }
 
     override fun read(b: ByteArray, off: Int, len: Int): Int {
-        val count = delegate.read(b, off, len)
+        checkNotClosed()
+        if (len == 0) return 0
+        if (expectedBytes != null && totalRead >= expectedBytes) {
+            val extra = delegate.read()
+            if (extra != -1) {
+                throw IllegalStateException("Stream exceeded expected size of $expectedBytes bytes (extra byte detected: $extra)")
+            }
+            isEofReached = true
+            return -1
+        }
+
+        val maxToRead = if (expectedBytes != null) {
+            val remaining = expectedBytes - totalRead
+            minOf(len.toLong(), remaining).toInt()
+        } else {
+            len
+        }
+
+        val count = delegate.read(b, off, maxToRead)
         if (count > 0) {
             digest.update(b, off, count)
             totalRead += count
             onProgress?.invoke(totalRead)
+            if (expectedBytes != null && totalRead == expectedBytes) {
+                proveEof()
+            }
+        } else if (count == -1) {
+            if (expectedBytes != null && totalRead < expectedBytes) {
+                throw EOFException("Early EOF: expected $expectedBytes bytes, but stream ended after $totalRead bytes")
+            }
+            isEofReached = true
         }
         return count
     }
 
-    override fun available(): Int = delegate.available()
+    override fun available(): Int {
+        checkNotClosed()
+        return delegate.available()
+    }
 
     override fun close() {
-        delegate.close()
+        if (isClosed.compareAndSet(false, true)) {
+            delegate.close()
+        }
+    }
+
+    private fun checkNotClosed() {
+        check(!isClosed.get()) { "Stream is closed" }
     }
 }

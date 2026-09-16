@@ -2,6 +2,7 @@ package dev.glide.app.service
 
 import dev.glide.app.permission.PermissionPolicy
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -113,5 +114,23 @@ class TransferServicePolicyTest {
 
         val perms28 = TransferServicePolicy.requiredConnectedDevicePermissions(28)
         assertTrue(perms28.isEmpty())
+    }
+
+    @Test
+    fun shouldAcceptSessionAction_validatesExactMatchingSessionId() {
+        // Matching IDs accepted
+        assertTrue(TransferServicePolicy.shouldAcceptSessionAction("session-123", "session-123"))
+        assertTrue(TransferServicePolicy.shouldAcceptCancelAction("session-123", "session-123"))
+
+        // Mismatched IDs rejected
+        assertFalse(TransferServicePolicy.shouldAcceptSessionAction("session-wrong", "session-123"))
+        assertFalse(TransferServicePolicy.shouldAcceptCancelAction("session-wrong", "session-123"))
+
+        // Null / empty rejected
+        assertFalse(TransferServicePolicy.shouldAcceptSessionAction(null, "session-123"))
+        assertFalse(TransferServicePolicy.shouldAcceptSessionAction("session-123", null))
+        assertFalse(TransferServicePolicy.shouldAcceptSessionAction("", "session-123"))
+        assertFalse(TransferServicePolicy.shouldAcceptSessionAction("session-123", ""))
+        assertFalse(TransferServicePolicy.shouldAcceptSessionAction(null, null))
     }
 }

@@ -18,6 +18,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
+
 /**
  * Android Foreground Service holding active connected-device transfer execution lifetime (GLIDE-028).
  *
@@ -27,7 +30,11 @@ import kotlinx.coroutines.launch
  * - Non-sticky: Returns START_NOT_STICKY; never automatically reconnects with stale state after process death.
  * - Terminal teardown: Automatically stops foreground and calls stopSelf() when the active session completes, fails, or cancels.
  */
+@AndroidEntryPoint
 class TransferService : Service() {
+
+    @Inject
+    lateinit var sessionFactory: TransferSessionFactory
 
     private val serviceJob = SupervisorJob()
     val serviceScope = CoroutineScope(serviceJob + Dispatchers.Default)
@@ -76,15 +83,41 @@ class TransferService : Service() {
             }
 
             ACTION_ACCEPT -> {
-                TransferSessionManager.acceptConsent()
+                val targetSessionId = intent?.getStringExtra(EXTRA_SESSION_ID)
+                handleAcceptAction(targetSessionId)
             }
 
             ACTION_REJECT -> {
-                TransferSessionManager.rejectConsent()
+                val targetSessionId = intent?.getStringExtra(EXTRA_SESSION_ID)
+                handleRejectAction(targetSessionId)
             }
         }
 
         return START_NOT_STICKY
+    }
+
+    /**
+     * Processes an accept action request with exact-session validation.
+     */
+    internal fun handleAcceptAction(targetSessionId: String?): Boolean {
+        val activeSessionId = TransferSessionManager.getActiveSessionId()
+        val shouldAccept = TransferServicePolicy.shouldAcceptSessionAction(targetSessionId, activeSessionId)
+        if (shouldAccept) {
+            TransferSessionManager.acceptConsent(sessionId = targetSessionId)
+        }
+        return shouldAccept
+    }
+
+    /**
+     * Processes a reject action request with exact-session validation.
+     */
+    internal fun handleRejectAction(targetSessionId: String?, reason: String = "USER_REJECTED"): Boolean {
+        val activeSessionId = TransferSessionManager.getActiveSessionId()
+        val shouldReject = TransferServicePolicy.shouldAcceptSessionAction(targetSessionId, activeSessionId)
+        if (shouldReject) {
+            TransferSessionManager.rejectConsent(sessionId = targetSessionId, reason = reason)
+        }
+        return shouldReject
     }
 
     /**
@@ -95,7 +128,7 @@ class TransferService : Service() {
         val activeSessionId = TransferSessionManager.getActiveSessionId()
         val shouldCancel = TransferServicePolicy.shouldAcceptCancelAction(targetSessionId, activeSessionId)
         if (shouldCancel) {
-            TransferSessionManager.cancelTransfer()
+            TransferSessionManager.cancelTransfer(sessionId = targetSessionId)
             handleTerminalTeardown()
         }
         return shouldCancel

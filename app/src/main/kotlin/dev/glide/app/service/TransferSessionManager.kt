@@ -27,8 +27,8 @@ object TransferSessionManager {
     private var activeCoordinator: TransferCoordinator? = null
     private var activeJob: Job? = null
 
-    private val _uiState = MutableStateFlow<TransferUiState>(TransferUiState.Idle)
-    val uiState: StateFlow<TransferUiState> = _uiState.asStateFlow()
+    private var _uiState = MutableStateFlow<TransferUiState>(TransferUiState.Idle)
+    val uiState: StateFlow<TransferUiState> get() = _uiState.asStateFlow()
 
     /**
      * Callback invoked when the active session reaches a terminal state, allowing
@@ -110,6 +110,7 @@ object TransferSessionManager {
                 ActiveSessionTracker.setSessionActive(coordinator.sessionId.value, isActive)
 
                 if (sessionState.phase.isTerminal) {
+                    coordinator.stop()
                     onTerminalCallback?.invoke()
                 }
             }
@@ -122,22 +123,39 @@ object TransferSessionManager {
 
     /**
      * Accepts offer consent on behalf of the receiver.
+     * Rejects action if [sessionId] is provided and does not match the active session.
      */
-    fun acceptConsent() {
+    fun acceptConsent(sessionId: String? = null): Boolean {
+        val activeId = getActiveSessionId()
+        if (sessionId != null && !TransferServicePolicy.shouldAcceptSessionAction(sessionId, activeId)) {
+            return false
+        }
         activeCoordinator?.acceptOffer()
+        return true
     }
 
     /**
      * Rejects offer consent on behalf of the receiver.
+     * Rejects action if [sessionId] is provided and does not match the active session.
      */
-    fun rejectConsent(reason: String = "USER_REJECTED") {
+    fun rejectConsent(sessionId: String? = null, reason: String = "USER_REJECTED"): Boolean {
+        val activeId = getActiveSessionId()
+        if (sessionId != null && !TransferServicePolicy.shouldAcceptSessionAction(sessionId, activeId)) {
+            return false
+        }
         activeCoordinator?.rejectOffer(reason)
+        return true
     }
 
     /**
      * Cancels the active transfer and cleans up unverified artifacts.
+     * Rejects action if [sessionId] is provided and does not match the active session.
      */
-    fun cancelTransfer(reason: String = "USER_CANCELLED") {
+    fun cancelTransfer(reason: String = "USER_CANCELLED", sessionId: String? = null): Boolean {
+        val activeId = getActiveSessionId()
+        if (sessionId != null && !TransferServicePolicy.shouldAcceptSessionAction(sessionId, activeId)) {
+            return false
+        }
         val coordinator = activeCoordinator
         if (coordinator != null) {
             coordinator.cancel(reason)
@@ -151,6 +169,7 @@ object TransferSessionManager {
             ActiveSessionTracker.reset()
             onTerminalCallback?.invoke()
         }
+        return true
     }
 
     /**
@@ -196,7 +215,7 @@ object TransferSessionManager {
         activeJob?.cancel()
         activeJob = null
         activeCoordinator = null
-        _uiState.value = TransferUiState.Idle
+        _uiState = MutableStateFlow(TransferUiState.Idle)
         onTerminalCallback = null
         ActiveSessionTracker.reset()
     }

@@ -1,5 +1,7 @@
 # ADR-0017 — Android-to-Windows interoperable LAN slice
 
+> 2026-09-16 precedence notice: for the Android LAN/QR release, [ADR-0018](ADR-0018-lan-qr-authentication-and-routing.md) and the [current master development plan](../planning/LAN_QR_QUICK_SHARE_MASTER_PLAN.md) supersede this record's custom SAS, mutual-certificate assumption, incomplete framing, unsupported automatic fallback and unmeasured performance claims. This historical future proposal is not implementation evidence. Persistent identity and Windows implementation remain future scope.
+
 - Status: Accepted (future specification); validation pending implementation evidence.
 - Date: 2026-09-14.
 - Authority: [Android-to-Windows LAN specification](../future/ANDROID_WINDOWS_LAN_SPECIFICATION.md); [decision index](README.md); [advanced transports evaluation](ADR-0016-advanced-android-transports.md); [future path](../future/CROSS_PLATFORM_PATH.md); [threat model](../security/GLIDE_THREAT_MODEL.md).

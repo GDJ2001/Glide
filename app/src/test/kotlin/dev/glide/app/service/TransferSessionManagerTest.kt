@@ -250,4 +250,61 @@ class TransferSessionManagerTest {
         assertTrue(terminalCalled)
         assertFalse(ActiveSessionTracker.isSessionActive.value)
     }
+
+    @Test
+    fun sessionBoundActions_withMismatchedSessionId_areRejected() = runTest(testDispatcher) {
+        val coordinator = createCoordinator()
+        val sid = coordinator.sessionId.value
+        TransferSessionManager.startSession(
+            coordinator = coordinator,
+            peerDisplayName = "Sender Device",
+            scope = backgroundScope
+        )
+        testScheduler.advanceUntilIdle()
+
+        // Mismatched session ID actions are rejected
+        val acceptedWithWrong = TransferSessionManager.acceptConsent("wrong-session-id")
+        assertFalse(acceptedWithWrong)
+
+        val rejectedWithWrong = TransferSessionManager.rejectConsent("wrong-session-id")
+        assertFalse(rejectedWithWrong)
+
+        val cancelledWithWrong = TransferSessionManager.cancelTransfer("USER_CANCELLED", "wrong-session-id")
+        assertFalse(cancelledWithWrong)
+
+        // Session must remain active and not cancelled
+        assertTrue(TransferSessionManager.uiState.value is TransferUiState.Connecting)
+        assertTrue(ActiveSessionTracker.isSessionActive.value)
+
+        // Valid matching session ID action succeeds
+        val acceptedWithRight = TransferSessionManager.acceptConsent(sid)
+        assertTrue(acceptedWithRight)
+
+        val cancelledWithRight = TransferSessionManager.cancelTransfer("USER_CANCELLED", sid)
+        assertTrue(cancelledWithRight)
+        testScheduler.advanceUntilIdle()
+
+        assertTrue(TransferSessionManager.uiState.value is TransferUiState.Cancelled)
+        assertFalse(ActiveSessionTracker.isSessionActive.value)
+    }
+
+    @Test
+    fun sessionBoundActions_withoutSessionId_areAcceptedForBackwardCompatibility() = runTest(testDispatcher) {
+        val coordinator = createCoordinator()
+        TransferSessionManager.startSession(
+            coordinator = coordinator,
+            peerDisplayName = "Sender Device",
+            scope = backgroundScope
+        )
+        testScheduler.advanceUntilIdle()
+
+        val accepted = TransferSessionManager.acceptConsent(null)
+        assertTrue(accepted)
+
+        val cancelled = TransferSessionManager.cancelTransfer("USER_CANCELLED", null)
+        assertTrue(cancelled)
+        testScheduler.advanceUntilIdle()
+
+        assertTrue(TransferSessionManager.uiState.value is TransferUiState.Cancelled)
+    }
 }

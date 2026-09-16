@@ -111,10 +111,17 @@ class NearbyTransferTransport(
 
     override suspend fun sendStream(
         peerId: PeerId,
+        bulkRef: BulkRef
+    ): Flow<BulkProgress> {
+        return payloadBridge.sendStream(peerId, bulkRef)
+    }
+
+    override suspend fun sendStream(
+        peerId: PeerId,
         bulkRef: BulkRef,
         streamSource: InputStreamProvider
     ): Flow<BulkProgress> {
-        return payloadBridge.sendStream(peerId, bulkRef, streamSource)
+        return payloadBridge.sendStream(peerId, bulkRef)
     }
 
     override fun observeIncomingStream(): Flow<IncomingStream> {

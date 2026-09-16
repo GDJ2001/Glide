@@ -100,10 +100,11 @@ class FakeTransferTransport : TransferTransport {
 
     override suspend fun sendStream(
         peerId: PeerId,
-        bulkRef: BulkRef,
-        streamSource: InputStreamProvider
+        bulkRef: BulkRef
     ): Flow<BulkProgress> = flow {
-        val stream = streamSource.openStream()
+        val provider = preparedStreams.remove(bulkRef)
+            ?: throw IllegalStateException("No prepared stream for bulkRef ${bulkRef.value}")
+        val stream = provider.openStream()
         val buffer = ByteArray(8192)
         var totalBytes = 0L
         var read: Int
@@ -112,6 +113,15 @@ class FakeTransferTransport : TransferTransport {
             emit(BulkProgress(bulkRef, totalBytes, false))
         }
         emit(BulkProgress(bulkRef, totalBytes, true))
+    }
+
+    override suspend fun sendStream(
+        peerId: PeerId,
+        bulkRef: BulkRef,
+        streamSource: InputStreamProvider
+    ): Flow<BulkProgress> {
+        preparedStreams.getOrPut(bulkRef) { streamSource }
+        return sendStream(peerId, bulkRef)
     }
 
     override fun observeIncomingStream(): Flow<IncomingStream> {
@@ -147,6 +157,7 @@ class FakeTransferTransport : TransferTransport {
 
 class FakeSourceAccess : SourceAccess {
     private val sources = mutableMapOf<SourceHandle, Pair<SourceMetadata, ByteArray>>()
+    val openCounts = mutableMapOf<SourceHandle, Int>()
 
     fun registerSource(handle: SourceHandle, metadata: SourceMetadata, content: ByteArray) {
         sources[handle] = metadata to content
@@ -157,6 +168,7 @@ class FakeSourceAccess : SourceAccess {
     }
 
     override suspend fun openSource(handle: SourceHandle): InputStream {
+        openCounts[handle] = (openCounts[handle] ?: 0) + 1
         val content = sources[handle]?.second ?: throw IllegalArgumentException("Source handle not found: $handle")
         return ByteArrayInputStream(content)
     }
@@ -168,6 +180,7 @@ class FakeReceiveStore(
     private val stagingOutputs = mutableMapOf<StagingHandle, ByteArrayOutputStream>()
     val committedFiles = mutableMapOf<CommittedFileHandle, Pair<ByteArray, Sha256Digest>>()
     val discardedHandles = mutableListOf<StagingHandle>()
+    val preparedStaging = mutableListOf<StagingHandle>()
 
     override suspend fun hasAvailableSpace(requiredBytes: Long): Boolean {
         return requiredBytes <= availableSpaceBytes
@@ -182,6 +195,7 @@ class FakeReceiveStore(
     ): StagingHandle {
         val handle = StagingHandle("staging-${sessionId.value}-${itemId.value}")
         stagingOutputs[handle] = ByteArrayOutputStream()
+        preparedStaging.add(handle)
         return handle
     }
 

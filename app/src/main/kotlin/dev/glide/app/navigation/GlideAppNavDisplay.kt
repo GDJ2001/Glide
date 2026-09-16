@@ -140,6 +140,10 @@ fun GlideAppNavDisplay(
                     },
                     onProceedToSend = { handle ->
                         backStack.add(GlideRoute.Discovery(sourceHandles = listOf(handle.value)))
+                    },
+                    onProceedToSendBatch = { batch ->
+                        val sourceHandles = dev.glide.app.ui.selection.SelectedTransferStore.getSourceMap(batch.id).values.map { it.value }
+                        backStack.add(GlideRoute.Discovery(batchId = batch.id.value, sourceHandles = sourceHandles))
                     }
                 )
             }
@@ -196,19 +200,27 @@ fun GlideAppNavDisplay(
                         viewModel.setUiStateForTesting(initialUiState)
                     }
                 }
+                androidx.compose.runtime.LaunchedEffect(initialPairingState) {
+                    if (initialPairingState != null) {
+                        viewModel.setPairingStateForTesting(initialPairingState)
+                    }
+                }
                 val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+                val pairingState by viewModel.pairingState.collectAsStateWithLifecycle()
                 val openFileFeedback by viewModel.openFileFeedback.collectAsStateWithLifecycle()
                 val exportStatus by viewModel.exportStatus.collectAsStateWithLifecycle()
                 val context = androidx.compose.ui.platform.LocalContext.current
                 TransferScreen(
                     route = route,
                     uiState = uiState,
-                    pairingState = initialPairingState ?: dev.glide.app.ui.pairing.PairingUiState.Idle,
+                    pairingState = pairingState,
                     openFileFeedback = openFileFeedback,
                     exportStatus = exportStatus,
                     onAcceptConsent = { viewModel.acceptConsent() },
                     onRejectConsent = { viewModel.rejectConsent() },
                     onCancelTransfer = { viewModel.cancelTransfer() },
+                    onConfirmMatch = { peerId -> viewModel.confirmPairing(peerId) },
+                    onRejectMatch = { peerId -> viewModel.rejectPairing(peerId) },
                     onOpenFile = { viewModel.openReceivedFile(context) },
                     onExportFile = { viewModel.exportReceivedFile(context) },
                     onRetryTransfer = {

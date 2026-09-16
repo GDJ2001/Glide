@@ -1,15 +1,18 @@
 # Glide documentation portal
-Engineering blueprint and Gemini handoff, researched2026-09-12. Application implementation has not started. Existing Glide branding is preserved.
+Engineering blueprint and Gemini handoff. The original planning baseline was researched on 2026-09-12; application components have since been added. Read the current source audit in the next-cycle plan before relying on historical completion labels. Existing Glide branding is preserved.
 
 ## Start here
+- [Current next cycle: LAN, QR pairing and Quick Share — first READY: LAN-001](planning/LAN_QR_QUICK_SHARE_MASTER_PLAN.md)
+- [LAN authentication, framing and routing decision — ADR-0018](adr/ADR-0018-lan-qr-authentication-and-routing.md)
 - [Master plan](GLIDE_MASTER_PLAN.md)
 - [Roadmap](ROADMAP.md)
-- [Master tasks — first READY: GLIDE-001](TODO_MASTER.md)
+- [Original GLIDE task ledger](TODO_MASTER.md)
 - [Task dependency graph](TASK_DEPENDENCY_GRAPH.md)
 - [End-to-end workflow](GLIDE_END_TO_END_WORKFLOW.md)
 - [Definition of done / quality gates](DEFINITION_OF_DONE.md)
 
 ## For Gemini developers
+- [Antigravity / Gemini prompt for the current LAN/QR/Quick Share release](development/ANTIGRAVITY_GEMINI_LAN_IMPLEMENTATION_PROMPT.md)
 - [Complete end-to-end development prompt](development/GEMINI_END_TO_END_DEVELOPMENT_PROMPT.md)
 - [Implementation guide](development/GEMINI_IMPLEMENTATION_GUIDE.md)
 - [Engineering rules](development/GEMINI_ENGINEERING_RULES.md)
@@ -30,7 +33,7 @@ Engineering blueprint and Gemini handoff, researched2026-09-12. Application impl
 - [Architecture and modules](architecture/GLIDE_ARCHITECTURE.md)
 - [State and data models](architecture/STATE_AND_DATA_MODEL.md)
 - [Failure model](architecture/GLIDE_FAILURE_MODEL.md)
-- [ADRs —13 decisions](adr/README.md)
+- [Architecture decision records](adr/README.md)
 
 ## Protocol and Android
 - [Glide Protocol V1](protocol/GLIDE_PROTOCOL_V1.md)
@@ -58,4 +61,4 @@ Engineering blueprint and Gemini handoff, researched2026-09-12. Application impl
 - [Release plan](release/GLIDE_RELEASE_PLAN.md)
 - [Cross-platform path](future/CROSS_PLATFORM_PATH.md)
 
-Status is authoritative only in TODO_MASTER; protocol in its specification; tokens in design system; rationale in ADRs. Follow links instead of inventing replacements.
+Original GLIDE task status lives in TODO_MASTER. Next-cycle LAN-001–033 status lives in section 26 of the LAN/QR/Quick Share plan. Protocol semantics live in their specification, design tokens in the design system, and rationale in ADRs. Read ADR-0018's precedence over the earlier LAN proposal. Follow links instead of inventing replacements.

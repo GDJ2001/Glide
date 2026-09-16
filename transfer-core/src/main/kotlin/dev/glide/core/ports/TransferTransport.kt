@@ -73,7 +73,8 @@ interface TransferTransport {
     suspend fun sendControl(peerId: PeerId, payload: ByteArray)
     fun observeControl(): Flow<ControlMessage>
 
-    suspend fun sendStream(peerId: PeerId, bulkRef: BulkRef, streamSource: InputStreamProvider): Flow<BulkProgress>
+    suspend fun sendStream(peerId: PeerId, bulkRef: BulkRef): Flow<BulkProgress> = kotlinx.coroutines.flow.emptyFlow()
+    suspend fun sendStream(peerId: PeerId, bulkRef: BulkRef, streamSource: InputStreamProvider): Flow<BulkProgress> = sendStream(peerId, bulkRef)
     fun observeIncomingStream(): Flow<IncomingStream>
     fun observeBulkProgress(): Flow<BulkProgress> = kotlinx.coroutines.flow.emptyFlow()
 

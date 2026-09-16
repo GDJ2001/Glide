@@ -595,6 +595,8 @@ fun SelectionScreen(
                         onClick = {
                             if (state.canProceed) {
                                 val batch = state.toTransferBatch()
+                                val sourceMap = state.validItems.associate { it.id to it.handle }
+                                SelectedTransferStore.store(batch, sourceMap)
                                 if (onProceedToSendBatch != null) {
                                     onProceedToSendBatch(batch)
                                 } else {

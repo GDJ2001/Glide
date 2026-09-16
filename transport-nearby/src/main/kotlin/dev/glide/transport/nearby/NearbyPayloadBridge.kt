@@ -190,11 +190,11 @@ class NearbyPayloadBridge(
     /**
      * Sends a bulk stream payload to the remote peer.
      * Enforces connection verification, READY handshake, one stream maximum, and cancellation safety.
+     * Requires prior stream preparation via [prepareStream]; fallback provider is not permitted.
      */
     suspend fun sendStream(
         peerId: PeerId,
-        bulkRef: BulkRef,
-        streamSource: InputStreamProvider
+        bulkRef: BulkRef
     ): Flow<BulkProgress> = callbackFlow {
         if (!isPeerConnected(peerId)) {
             throw IllegalStateException("Cannot send stream: peer $peerId is not connected")
@@ -206,13 +206,8 @@ class NearbyPayloadBridge(
             }
 
             val prepared = preparedSendStreams.remove(bulkRef)
-            if (prepared != null) {
-                prepared.payload to prepared.stream
-            } else {
-                val s = streamSource.openStream()
-                val p = Payload.fromStream(s)
-                p to s
-            }
+                ?: throw IllegalStateException("No prepared stream found for bulkRef ${bulkRef.value}; prepareStream must be called first")
+            prepared.payload to prepared.stream
         }
 
         val payloadId = nearbyPayload.id
@@ -278,6 +273,12 @@ class NearbyPayloadBridge(
             try { stream.close() } catch (_: Exception) {}
         }
     }
+
+    suspend fun sendStream(
+        peerId: PeerId,
+        bulkRef: BulkRef,
+        streamSource: InputStreamProvider
+    ): Flow<BulkProgress> = sendStream(peerId, bulkRef)
 
     /**
      * Observes incoming verified and mapped streams.

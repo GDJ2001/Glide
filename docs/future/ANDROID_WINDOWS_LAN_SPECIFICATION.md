@@ -1,5 +1,7 @@
 # Android-to-Windows Interoperable LAN Transport Specification
 
+> 2026-09-16 precedence notice: do not implement the custom SAS or infer working LAN functionality from this future proposal. The [LAN/QR/Quick Share master development plan](../planning/LAN_QR_QUICK_SHARE_MASTER_PLAN.md) and [ADR-0018](../adr/ADR-0018-lan-qr-authentication-and-routing.md) define the current Android LAN scope, QR-pinned TLS authentication, explicit transport framing, API gates and verified source gaps. The actual existing port is TransferTransport. Windows implementation, persistent identity and true resume are outside this release.
+
 - **Document Version:** 1.0.0
 - **Status:** Approved Future Specification
 - **Milestone:** M13 — Future work (outside V1)

@@ -1,23 +1,40 @@
 package dev.glide.app.ui.discovery
 
 import dev.glide.core.domain.PeerId
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DiscoveryScreenAcceptanceTest {
 
+    private val testDispatcher = StandardTestDispatcher()
+
+    @Before
+    fun setUp() {
+        kotlinx.coroutines.Dispatchers.setMain(testDispatcher)
+    }
+
+    @After
+    fun tearDown() {
+        kotlinx.coroutines.Dispatchers.resetMain()
+    }
+
     @Test
-    fun discoveryViewModel_initialSearchingState_isSearching() = runTest {
+    fun discoveryViewModel_initialSearchingState_isSearching() = runTest(testDispatcher) {
         val viewModel = DiscoveryViewModel()
         val state = viewModel.uiState.value
         assertTrue("Initial state should be Searching", state is DiscoveryUiState.Searching)
@@ -27,7 +44,7 @@ class DiscoveryScreenAcceptanceTest {
     }
 
     @Test
-    fun rapidPeerAppearAndLoss_maintainsStableIndicesWithoutListJumps() = runTest {
+    fun rapidPeerAppearAndLoss_maintainsStableIndicesWithoutListJumps() = runTest(testDispatcher) {
         val viewModel = DiscoveryViewModel()
 
         val peerA = DiscoveredPeer(
@@ -81,7 +98,7 @@ class DiscoveryScreenAcceptanceTest {
     }
 
     @Test
-    fun peerSelection_locksSingleConnection_andDisablesDuplicateConnectAttempts() = runTest {
+    fun peerSelection_locksSingleConnection_andDisablesDuplicateConnectAttempts() = runTest(testDispatcher) {
         val viewModel = DiscoveryViewModel()
 
         val peerA = DiscoveredPeer(id = PeerId("peer-a"), displayName = "Pixel 9")
@@ -120,7 +137,7 @@ class DiscoveryScreenAcceptanceTest {
     }
 
     @Test
-    fun blockedStates_correctlyReflectReasons() = runTest {
+    fun blockedStates_correctlyReflectReasons() = runTest(testDispatcher) {
         val viewModel = DiscoveryViewModel()
 
         viewModel.setBlocked(BlockedReason.BluetoothDisabled)
@@ -152,7 +169,7 @@ class DiscoveryScreenAcceptanceTest {
     }
 
     @Test
-    fun receiveReadinessViewModel_managesAdvertisingAndTimeout() = runTest {
+    fun receiveReadinessViewModel_managesAdvertisingAndTimeout() = runTest(testDispatcher) {
         val viewModel = ReceiveReadinessViewModel()
 
         viewModel.startAdvertising("Test Pixel")
@@ -171,6 +188,7 @@ class DiscoveryScreenAcceptanceTest {
         val incoming = incomingState as ReceiveReadinessUiState.IncomingConnection
         assertEquals("sender-1", incoming.peer.id.value)
         assertEquals("482910", incoming.authDigits)
+        viewModel.stopAdvertising()
     }
 
     @Test
@@ -183,5 +201,61 @@ class DiscoveryScreenAcceptanceTest {
         assertEquals(DeviceType.Computer, DeviceType.fromDeviceName("MacBook Pro"))
         assertEquals(DeviceType.Computer, DeviceType.fromDeviceName("Windows PC Laptop"))
         assertEquals(DeviceType.Computer, DeviceType.fromDeviceName("Desktop Workstation"))
+    }
+
+    @Test
+    fun liveDiscoveryObservations_updatesUiStateDeterministically() = runTest(testDispatcher) {
+        val discoveryFlow = kotlinx.coroutines.flow.MutableSharedFlow<dev.glide.core.ports.DiscoveryEvent>(replay = 1)
+        var stopCount = 0
+
+        val viewModel = DiscoveryViewModel(
+            discoveryFlowProvider = { discoveryFlow },
+            onStopDiscoveryCallback = { stopCount++ }
+        )
+        testScheduler.runCurrent()
+
+        val peerDevice = dev.glide.core.domain.PeerDevice(PeerId("peer-live-1"), "Galaxy Tab S9")
+        discoveryFlow.emit(dev.glide.core.ports.DiscoveryEvent.PeerAppeared(peerDevice))
+        testScheduler.runCurrent()
+
+        var state = viewModel.uiState.value as DiscoveryUiState.Searching
+        assertEquals(1, state.peers.size)
+        assertEquals("peer-live-1", state.peers[0].id.value)
+        assertEquals(DeviceType.Tablet, state.peers[0].deviceType)
+        assertTrue(state.peers[0].isAvailable)
+
+        // Peer lost event marks unavailable without changing index
+        discoveryFlow.emit(dev.glide.core.ports.DiscoveryEvent.PeerLost(PeerId("peer-live-1")))
+        testScheduler.runCurrent()
+
+        state = viewModel.uiState.value as DiscoveryUiState.Searching
+        assertEquals(1, state.peers.size)
+        assertFalse(state.peers[0].isAvailable)
+
+        viewModel.stopDiscovery()
+        assertEquals(1, stopCount)
+    }
+
+    @Test
+    fun selectPeer_rejectsDuplicateTaps_whenAlreadyInitiatingConnection() = runTest(testDispatcher) {
+        val viewModel = DiscoveryViewModel()
+        val peer = DiscoveredPeer(PeerId("target-peer"), "Target Phone")
+        viewModel.onPeerDiscovered(peer)
+
+        var initiateCount = 0
+        // First tap initiates connection
+        viewModel.selectPeer(PeerId("target-peer")) { initiateCount++ }
+        assertEquals(1, initiateCount)
+
+        val state = viewModel.uiState.value as DiscoveryUiState.Searching
+        assertEquals(PeerId("target-peer"), state.selectedPeerId)
+        assertTrue(state.peers[0].isConnecting)
+
+        // Second tap on the same or another peer is strictly ignored
+        viewModel.selectPeer(PeerId("target-peer")) { initiateCount++ }
+        assertEquals(1, initiateCount)
+
+        viewModel.selectPeer(PeerId("another-peer")) { initiateCount++ }
+        assertEquals(1, initiateCount)
     }
 }

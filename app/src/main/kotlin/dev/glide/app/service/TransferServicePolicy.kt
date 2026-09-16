@@ -92,6 +92,24 @@ object TransferServicePolicy {
     }
 
     /**
+     * Evaluates whether an incoming session-bound action request (accept, reject, cancel)
+     * should be accepted or rejected as stale.
+     *
+     * @param targetSessionId The session ID passed in the intent extra or action caller.
+     * @param activeSessionId The currently active session ID in TransferSessionManager.
+     * @return True if targetSessionId is non-null and exactly matches activeSessionId.
+     */
+    fun shouldAcceptSessionAction(
+        targetSessionId: String?,
+        activeSessionId: String?
+    ): Boolean {
+        if (targetSessionId.isNullOrEmpty() || activeSessionId.isNullOrEmpty()) {
+            return false
+        }
+        return targetSessionId == activeSessionId
+    }
+
+    /**
      * Evaluates whether an incoming cancel request should be accepted or rejected as stale.
      *
      * @param targetSessionId The session ID passed in the cancel intent extra.
@@ -101,10 +119,5 @@ object TransferServicePolicy {
     fun shouldAcceptCancelAction(
         targetSessionId: String?,
         activeSessionId: String?
-    ): Boolean {
-        if (targetSessionId.isNullOrEmpty() || activeSessionId.isNullOrEmpty()) {
-            return false
-        }
-        return targetSessionId == activeSessionId
-    }
+    ): Boolean = shouldAcceptSessionAction(targetSessionId, activeSessionId)
 }
