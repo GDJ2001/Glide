@@ -6,7 +6,7 @@ This is the current top-level engineering plan for Glide. The original September
 - **Current task authority:** [TODO_MASTER — HARD-001–043](TODO_MASTER.md)
 - **Latest source/status reconciliation:** [HARD-002](planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md)
 - **Historical GLIDE-001–072 ledger:** immutable pre-HARD commit [`b07f15b`](https://github.com/GDJ2001/Glide/blob/b07f15bdde60bb5bfa9b20fdaba093b7a6a93785/docs/TODO_MASTER.md)
-- **Next READY task:** [HARD-003](TODO_MASTER.md#hard-003)
+- **Current active task:** [HARD-005](TODO_MASTER.md#hard-005) — service-owned Android TransferRuntime. M0 (HARD-001–004) is complete.
 
 ## 1. Product direction
 
