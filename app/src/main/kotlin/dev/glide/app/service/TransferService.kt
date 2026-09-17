@@ -34,7 +34,11 @@ import javax.inject.Inject
 class TransferService : Service() {
 
     @Inject
-    lateinit var sessionFactory: TransferSessionFactory
+    lateinit var transferRuntime: TransferRuntime
+
+    internal var runtimeOverride: TransferRuntime? = null
+
+    private fun runtime(): TransferRuntime = runtimeOverride ?: transferRuntime
 
     private val serviceJob = SupervisorJob()
     val serviceScope = CoroutineScope(serviceJob + Dispatchers.Default)
@@ -49,7 +53,7 @@ class TransferService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        TransferSessionManager.onTerminalCallback = {
+        runtime().attachServiceScope(serviceScope) {
             handleTerminalTeardown()
         }
     }
@@ -61,15 +65,7 @@ class TransferService : Service() {
             ACTION_START -> {
                 startForegroundWithNotification()
                 startNotificationUpdates()
-                val coordinator = TransferSessionManager.getActiveCoordinator()
-                if (coordinator != null) {
-                    val peerName = intent?.getStringExtra(EXTRA_PEER_NAME) ?: "Nearby device"
-                    TransferSessionManager.startSession(
-                        coordinator = coordinator,
-                        peerDisplayName = peerName,
-                        scope = serviceScope
-                    )
-                }
+                // Active transfer execution is already owned by the runtime attached in onCreate().
             }
 
             ACTION_CANCEL -> {
@@ -78,7 +74,7 @@ class TransferService : Service() {
             }
 
             ACTION_STOP -> {
-                TransferSessionManager.stopSession()
+                runtime().stopActiveSession()
                 handleTerminalTeardown()
             }
 
@@ -100,10 +96,10 @@ class TransferService : Service() {
      * Processes an accept action request with exact-session validation.
      */
     internal fun handleAcceptAction(targetSessionId: String?): Boolean {
-        val activeSessionId = TransferSessionManager.getActiveSessionId()
+        val activeSessionId = runtime().getActiveSessionId()
         val shouldAccept = TransferServicePolicy.shouldAcceptSessionAction(targetSessionId, activeSessionId)
         if (shouldAccept) {
-            TransferSessionManager.acceptConsent(sessionId = targetSessionId)
+            runtime().dispatch(TransferRuntimeCommand.AcceptOffer(targetSessionId!!))
         }
         return shouldAccept
     }
@@ -112,10 +108,10 @@ class TransferService : Service() {
      * Processes a reject action request with exact-session validation.
      */
     internal fun handleRejectAction(targetSessionId: String?, reason: String = "USER_REJECTED"): Boolean {
-        val activeSessionId = TransferSessionManager.getActiveSessionId()
+        val activeSessionId = runtime().getActiveSessionId()
         val shouldReject = TransferServicePolicy.shouldAcceptSessionAction(targetSessionId, activeSessionId)
         if (shouldReject) {
-            TransferSessionManager.rejectConsent(sessionId = targetSessionId, reason = reason)
+            runtime().dispatch(TransferRuntimeCommand.RejectOffer(targetSessionId!!, reason))
         }
         return shouldReject
     }
@@ -125,10 +121,10 @@ class TransferService : Service() {
      * Rejects stale, null, or mismatched session IDs to safeguard active transfers.
      */
     internal fun handleCancelAction(targetSessionId: String?): Boolean {
-        val activeSessionId = TransferSessionManager.getActiveSessionId()
+        val activeSessionId = runtime().getActiveSessionId()
         val shouldCancel = TransferServicePolicy.shouldAcceptCancelAction(targetSessionId, activeSessionId)
         if (shouldCancel) {
-            TransferSessionManager.cancelTransfer(sessionId = targetSessionId)
+            runtime().dispatch(TransferRuntimeCommand.Cancel(targetSessionId!!))
             handleTerminalTeardown()
         }
         return shouldCancel
@@ -139,7 +135,7 @@ class TransferService : Service() {
         notificationObserverJob?.cancel()
         notificationObserverJob = serviceScope.launch {
             kotlinx.coroutines.flow.combine(
-                TransferSessionManager.uiState,
+                runtime().transferState,
                 settingsStore.settingsFlow
             ) { state, settings ->
                 state to settings
@@ -166,10 +162,10 @@ class TransferService : Service() {
             }
         } catch (e: SecurityException) {
             // API 34+ throws SecurityException if prerequisite connected device permissions are denied
-            TransferSessionManager.setUiStateForTesting(
+            runtime().setTransferStateForTesting(
                 TransferUiState.Failed(
-                    sessionId = TransferSessionManager.getActiveCoordinator()?.sessionId?.value ?: "",
-                    role = TransferSessionManager.getActiveCoordinator()?.role ?: dev.glide.core.domain.DeviceRole.Sender,
+                    sessionId = runtime().transferState.value.sessionId,
+                    role = runtime().transferState.value.role,
                     message = "Missing nearby device permission to maintain background transfer.",
                     code = "MISSING_PERMISSION",
                     isRecoverable = false
@@ -178,10 +174,10 @@ class TransferService : Service() {
             handleTerminalTeardown()
         } catch (e: IllegalStateException) {
             // API 31+ ForegroundServiceStartNotAllowedException is a subclass of IllegalStateException
-            TransferSessionManager.setUiStateForTesting(
+            runtime().setTransferStateForTesting(
                 TransferUiState.Failed(
-                    sessionId = TransferSessionManager.getActiveCoordinator()?.sessionId?.value ?: "",
-                    role = TransferSessionManager.getActiveCoordinator()?.role ?: dev.glide.core.domain.DeviceRole.Sender,
+                    sessionId = runtime().transferState.value.sessionId,
+                    role = runtime().transferState.value.role,
                     message = "Cannot maintain background transfer while Glide is in the background.",
                     code = "FOREGROUND_START_NOT_ALLOWED",
                     isRecoverable = false
@@ -189,10 +185,10 @@ class TransferService : Service() {
             )
             handleTerminalTeardown()
         } catch (e: Exception) {
-            TransferSessionManager.setUiStateForTesting(
+            runtime().setTransferStateForTesting(
                 TransferUiState.Failed(
-                    sessionId = TransferSessionManager.getActiveCoordinator()?.sessionId?.value ?: "",
-                    role = TransferSessionManager.getActiveCoordinator()?.role ?: dev.glide.core.domain.DeviceRole.Sender,
+                    sessionId = runtime().transferState.value.sessionId,
+                    role = runtime().transferState.value.role,
                     message = "Failed to start transfer foreground service: ${e.message}",
                     code = "SERVICE_START_FAILED",
                     isRecoverable = false
@@ -203,17 +199,16 @@ class TransferService : Service() {
     }
 
     private fun buildInitialNotification(): Notification {
-        val currentUiState = TransferSessionManager.uiState.value
+        val currentUiState = runtime().transferState.value
         val initialSettings = dev.glide.core.ports.GlideSettings()
         return if (currentUiState !is TransferUiState.Idle) {
             transferNotificationManager.buildNotification(this, currentUiState, initialSettings)
         } else {
-            val activeCoordinator = TransferSessionManager.getActiveCoordinator()
             transferNotificationManager.buildNotification(
                 this,
                 TransferUiState.Connecting(
-                    sessionId = activeCoordinator?.sessionId?.value ?: "",
-                    role = activeCoordinator?.role ?: dev.glide.core.domain.DeviceRole.Sender,
+                    sessionId = runtime().getActiveSessionId().orEmpty(),
+                    role = currentUiState.role,
                     peerName = "Nearby device"
                 ),
                 initialSettings
@@ -256,7 +251,7 @@ class TransferService : Service() {
         notificationObserverJob?.cancel()
         notificationObserverJob = null
         transferNotificationManager.reset()
-        TransferSessionManager.onTerminalCallback = null
+        runtime().detachServiceScope()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -304,7 +299,7 @@ class TransferService : Service() {
         fun cancelTransfer(context: Context, sessionId: String? = null) {
             val intent = Intent(context, TransferService::class.java).apply {
                 action = ACTION_CANCEL
-                val sid = sessionId ?: TransferSessionManager.getActiveSessionId()
+                val sid = sessionId ?: runtime().getActiveSessionId()
                 if (sid != null) {
                     putExtra(EXTRA_SESSION_ID, sid)
                 }
