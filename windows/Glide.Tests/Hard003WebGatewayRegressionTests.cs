@@ -11,6 +11,7 @@ namespace Glide.Tests;
 /// Desired-security regressions for the transitional local web gateway.
 /// They are intentionally red until HARD-025..030 replaces/hardens the release browser path.
 /// </summary>
+[Trait("HARD", "003-red")]
 public sealed class Hard003WebGatewayRegressionTests : IDisposable
 {
     private readonly string _root;
@@ -140,10 +141,10 @@ public sealed class Hard003WebGatewayRegressionTests : IDisposable
         string sha = Convert.ToHexStringLower(SHA256.HashData(payload));
         string uploadId = await CreateProposalAsync(client, gateway, "single-use.txt", payload, sha);
 
-        HttpResponseMessage first = await SendUploadAsync(client, gateway, uploadId, "single-use.txt", payload, sha);
+        using HttpResponseMessage first = await SendUploadAsync(client, gateway, uploadId, "single-use.txt", payload, sha);
         Assert.Equal(HttpStatusCode.OK, first.StatusCode);
 
-        HttpResponseMessage replay = await SendUploadAsync(client, gateway, uploadId, "single-use.txt", payload, sha);
+        using HttpResponseMessage replay = await SendUploadAsync(client, gateway, uploadId, "single-use.txt", payload, sha);
         Assert.NotEqual(HttpStatusCode.OK, replay.StatusCode);
     }
 
@@ -189,7 +190,7 @@ public sealed class Hard003WebGatewayRegressionTests : IDisposable
         byte[] payload,
         string sha)
     {
-        var request = new HttpRequestMessage(
+        using var request = new HttpRequestMessage(
             HttpMethod.Post,
             $"http://127.0.0.1:{gateway.Port}/api/v1/upload");
         request.Headers.Add("X-Upload-Id", uploadId);
