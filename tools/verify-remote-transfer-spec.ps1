@@ -200,15 +200,26 @@ if ($MeteredContent -notmatch "IMeteredNetworkDetector" -or $MeteredContent -not
 }
 Write-Host "  PASS: OS metered network detection, user warning prompt, and policy engine verified." -ForegroundColor Green
 
-# --- Check 10: Remote Threat Model Additions (Threats R01 to R08) ---
-Write-Host "`n[Check 10/10] Auditing Remote Threat Model Additions (R01-R08)..." -ForegroundColor Yellow
+# --- Check 10: Remote Threat Model Additions (Threats R01 to R08) & Phase R5 Conformance Engine ---
+Write-Host "`n[Check 10/10] Auditing Remote Threat Model (R01-R08) & Phase R5 Conformance Engine..." -ForegroundColor Yellow
 $ThreatIds = @("R01", "R02", "R03", "R04", "R05", "R06", "R07", "R08")
 foreach ($tid in $ThreatIds) {
     if ($SpecContent -notmatch "\b$tid\b" -or $AdrContent -notmatch "\b$tid\b") {
         Write-Error "FAIL: Threat ID $tid missing from specification or ADR-0022 threat catalog."
     }
 }
-Write-Host "  PASS: Threat IDs R01 through R08 verified in ADR-0022 and technical specification." -ForegroundColor Green
+$OrchestratorPath = Join-Path $ProjectRoot "windows\Glide.Core\Remote\RemoteTransferSession.cs"
+$OrchestratorTestPath = Join-Path $ProjectRoot "windows\Glide.Tests\RemoteTransferSessionTests.cs"
+foreach ($f in @($OrchestratorPath, $OrchestratorTestPath)) {
+    if (-not (Test-Path $f)) {
+        Write-Error "FAIL: Missing Phase R5 conformance component: $f"
+    }
+}
+$OrchContent = Get-Content $OrchestratorPath -Raw
+if ($OrchContent -notmatch "SelectCandidatePair" -or $OrchContent -notmatch "EvaluateMeteredPolicy" -or $OrchContent -notmatch "RemoteSessionState") {
+    Write-Error "FAIL: RemoteTransferSession missing candidate selection or metered policy methods."
+}
+Write-Host "  PASS: Threat IDs R01 through R08 and Phase R5 RemoteTransferSession orchestrator verified." -ForegroundColor Green
 
 Write-Host "`n=================================================================" -ForegroundColor Cyan
 Write-Host "  ALL 10 CHECKS PASSED: Remote Internet Spec Conformance Certified " -ForegroundColor Green
