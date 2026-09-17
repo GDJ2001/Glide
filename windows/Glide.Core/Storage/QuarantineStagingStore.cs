@@ -141,6 +141,27 @@ public sealed class QuarantineStagingStore
         }
     }
 
+    public string CommitQuarantineFile(SessionId sessionId, ItemId itemId, string sanitizedRelativePath)
+    {
+        string quarantinePath = GetQuarantinePath(sessionId, itemId);
+        if (!File.Exists(quarantinePath))
+        {
+            throw new FileNotFoundException($"Quarantine file not found: {quarantinePath}");
+        }
+
+        string targetPath = Path.Combine(_destinationRoot, sanitizedRelativePath.Replace('/', Path.DirectorySeparatorChar));
+        string finalPath = ResolveCollision(targetPath);
+
+        string? targetDir = Path.GetDirectoryName(finalPath);
+        if (targetDir != null && !Directory.Exists(targetDir))
+        {
+            Directory.CreateDirectory(targetDir);
+        }
+
+        File.Move(quarantinePath, finalPath, overwrite: false);
+        return finalPath;
+    }
+
     public static string ResolveCollision(string targetPath)
     {
         if (!File.Exists(targetPath))

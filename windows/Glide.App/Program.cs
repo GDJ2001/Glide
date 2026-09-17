@@ -10,6 +10,7 @@ using Glide.Core.Transport.Lan;
 using Glide.Transport.Discovery;
 using Glide.Transport.Framing;
 using Glide.Transport.Sockets;
+using Glide.Transport.Web;
 using ProtocolViolationException = Glide.Core.Models.ProtocolViolationException;
 
 namespace Glide.App;
@@ -34,6 +35,7 @@ public static class Program
             {
                 "receive" => await RunReceiveAsync(args[1..]),
                 "send" => await RunSendAsync(args[1..]),
+                "web" => await RunWebAsync(args[1..]),
                 _ => HandleUnknownCommand(command)
             };
         }
@@ -66,10 +68,13 @@ public static class Program
         Console.WriteLine("  glide send <peer-host> <peer-port> <file-paths...>");
         Console.WriteLine("  glide send --pair <pairing-invitation-uri> <file-paths...>");
         Console.WriteLine("      Connect to a Glide peer and send files over authenticated TLS 1.3.\n");
+        Console.WriteLine("  glide web [--port <port>] <file-paths...>");
+        Console.WriteLine("      Start zero-install web gateway to share files with any browser (iOS, Mac, Linux).\n");
         Console.WriteLine("Examples:");
         Console.WriteLine("  glide receive");
         Console.WriteLine("  glide send 192.168.1.50 42424 \"C:\\Photos\\vacation.jpg\"");
-        Console.WriteLine("  glide send --pair glide://pair/v1#... \"C:\\Photos\\vacation.jpg\"\n");
+        Console.WriteLine("  glide send --pair glide://pair/v1#... \"C:\\Photos\\vacation.jpg\"");
+        Console.WriteLine("  glide web \"C:\\Photos\\vacation.jpg\"\n");
     }
 
     private static int HandleUnknownCommand(string command)
@@ -79,6 +84,79 @@ public static class Program
         Console.ResetColor();
         PrintUsage();
         return 1;
+    }
+
+    private static async Task<int> RunWebAsync(string[] args)
+    {
+        int port = 0;
+        var filePaths = new List<string>();
+
+        for (int i = 0; i < args.Length; i++)
+        {
+            if (args[i] is "--port" or "-p" && i + 1 < args.Length && int.TryParse(args[i + 1], out int p))
+            {
+                port = p;
+                i++;
+            }
+            else
+            {
+                filePaths.Add(args[i]);
+            }
+        }
+
+        var offeredItems = new List<OfferedWebItem>();
+        foreach (var path in filePaths)
+        {
+            if (!File.Exists(path))
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine($"[WARN] File not found: '{path}' (skipping)");
+                Console.ResetColor();
+                continue;
+            }
+            offeredItems.Add(new OfferedWebItem(path));
+        }
+
+        string hostName = Dns.GetHostName();
+        var localIp = Dns.GetHostAddresses(hostName)
+            .FirstOrDefault(ip => ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork && !IPAddress.IsLoopback(ip))?
+            .ToString() ?? "127.0.0.1";
+
+        await using var gateway = new GlideWebGateway(
+            host: localIp,
+            port: port,
+            offeredItems: offeredItems,
+            deviceName: Environment.MachineName);
+
+        await gateway.StartAsync();
+
+        Console.ForegroundColor = ConsoleColor.Green;
+        Console.WriteLine($"\n[READY] Web Transfer Gateway active on port {gateway.Port}");
+        Console.ResetColor();
+        Console.WriteLine($"Offered files: {offeredItems.Count} item(s)");
+        foreach (var item in offeredItems)
+        {
+            Console.WriteLine($"  - {item.FileName} ({item.FileSize:N0} bytes)");
+        }
+
+        Console.ForegroundColor = ConsoleColor.Cyan;
+        Console.WriteLine($"\nWeb Share Link: {gateway.OnboardingUrl}");
+        Console.ResetColor();
+        Console.WriteLine("Open this link on any device's browser (iPhone, Mac, Linux, ChromeOS) on the same Wi-Fi.");
+        Console.WriteLine("Press [Ctrl+C] to stop.\n");
+
+        var tcs = new TaskCompletionSource();
+        Console.CancelKeyPress += (_, e) =>
+        {
+            e.Cancel = true;
+            tcs.TrySetResult();
+        };
+
+        await tcs.Task;
+        Console.WriteLine("\nStopping Web Gateway...");
+        await gateway.StopAsync();
+        Console.WriteLine("[STOPPED] Web Gateway closed.");
+        return 0;
     }
 
     private static async Task<int> RunReceiveAsync(string[] args)

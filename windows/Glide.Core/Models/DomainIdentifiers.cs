@@ -34,6 +34,7 @@ public readonly record struct SessionId
 
     public override string ToString() => Value;
     public static implicit operator string(SessionId id) => id.Value;
+    public static SessionId NewRandom() => new(Guid.NewGuid().ToString());
 }
 
 public readonly record struct ItemId
@@ -51,6 +52,7 @@ public readonly record struct ItemId
 
     public override string ToString() => Value;
     public static implicit operator string(ItemId id) => id.Value;
+    public static ItemId NewRandom() => new(Guid.NewGuid().ToString());
 }
 
 public readonly record struct BatchId
@@ -68,7 +70,9 @@ public readonly record struct BatchId
 
     public override string ToString() => Value;
     public static implicit operator string(BatchId id) => id.Value;
+    public static BatchId NewRandom() => new(Guid.NewGuid().ToString());
 }
+
 
 public readonly record struct MessageId
 {

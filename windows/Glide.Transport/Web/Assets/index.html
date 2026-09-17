@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Glide Web Share</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="app-container">
+    <header class="app-header">
+      <div class="brand">
+        <svg class="brand-icon" viewBox="0 0 48 48" width="36" height="36" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect width="48" height="48" rx="12" fill="#0066FF"/>
+          <path d="M12 24L24 12L36 24L24 36L12 24Z" fill="white" fill-opacity="0.9"/>
+          <path d="M24 18L30 24L24 30L18 24L24 18Z" fill="#00D2FF"/>
+        </svg>
+        <div class="brand-text">
+          <span class="brand-title">Glide</span>
+          <span class="brand-subtitle">Web Share</span>
+        </div>
+      </div>
+      <div class="device-status">
+        <span class="status-dot"></span>
+        <span id="device-name">Connected Device</span>
+      </div>
+    </header>
+
+    <main class="app-content">
+      <!-- Inbound/Download Section -->
+      <section id="download-section" class="card">
+        <div class="card-header">
+          <h2>Offered Files</h2>
+          <button id="btn-download-all" class="btn btn-secondary" style="display: none;">Download All</button>
+        </div>
+        <div id="file-list" class="file-list">
+          <div class="loading-spinner">Loading manifest...</div>
+        </div>
+      </section>
+
+      <!-- Outbound/Upload Section -->
+      <section id="upload-section" class="card">
+        <div class="card-header">
+          <h2>Send Files Back to Device</h2>
+        </div>
+        <div id="drop-zone" class="drop-zone">
+          <svg class="upload-icon" viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          <p class="drop-text">Drag and drop files here, or <span class="browse-link">browse</span></p>
+          <input type="file" id="file-input" class="file-input" multiple>
+        </div>
+        <div id="upload-progress-container" class="progress-container" style="display: none;">
+          <div class="progress-info">
+            <span id="upload-filename">Uploading...</span>
+            <span id="upload-percentage">0%</span>
+          </div>
+          <div class="progress-bar-track">
+            <div id="upload-progress-fill" class="progress-bar-fill"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="app-footer">
+      <p>Zero Cloud • 100% Offline Local Network Transfer • Private & End-to-End Verified</p>
+    </footer>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
