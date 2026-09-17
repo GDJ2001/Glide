@@ -6,7 +6,7 @@ Strategic only. [Protocol](../protocol/GLIDE_PROTOCOL_V1.md) · [architecture](.
 3. Android↔Browser: zero-install local web transfer gateway; embedded offline HTTP/1.1 and WebSocket server, one-use QR onboarding, zero-CDN SPA, and chunked streaming (Approved: [ADR-0019](../adr/ADR-0019-browser-web-local-transfer.md) · [Specification](ANDROID_BROWSER_WEB_SPECIFICATION.md)).
 4. iOS/iPadOS and macOS: native lifecycle/background/sandbox/permissions and authentication UX; evaluate official platform transport support (Approved: [ADR-0020](../adr/ADR-0020-apple-platforms-architecture.md) · [Specification](APPLE_PLATFORMS_SPECIFICATION.md)).
 5. Linux: LAN adapter and desktop integration using same conformance suite (`Glide.Core` and `Glide.App` .NET 10 cross-platform runtime) (Approved: [ADR-0021](../adr/ADR-0021-linux-platform-architecture.md) · [Specification](LINUX_PLATFORM_SPECIFICATION.md)).
-6. Remote/internet: separate consent, identity, NAT traversal, signaling/relay abuse, privacy, cost and backend threat model. Local V1 needs no server.
+6. Remote/internet: separate consent, identity, NAT traversal, signaling/relay abuse, privacy, cost and backend threat model. Local V1 needs no server (Approved: [ADR-0022](../adr/ADR-0022-remote-internet-transfer.md) · [Specification](REMOTE_INTERNET_TRANSFER_SPECIFICATION.md)).
 
 
 Portable contracts: envelope/major negotiation, UUID format, decimal byte counts, capability limits, SHA256 raw-byte digest, metadata validation, session/item outcomes, wire errors, receipts, cancel semantics and golden fixtures. Portable conceptual domain is not a commitment to share Kotlin binaries.
