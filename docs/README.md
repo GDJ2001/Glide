@@ -1,64 +1,60 @@
 # Glide documentation portal
-Engineering blueprint and Gemini handoff. The original planning baseline was researched on 2026-09-12; application components have since been added. Read the current source audit in the next-cycle plan before relying on historical completion labels. Existing Glide branding is preserved.
+
+Glide is in an evidence-backed **code review, improvement, hardening and development-completion cycle**. Historical Android V1 and later cross-platform session records remain valuable evidence, but historical `COMPLETE`, release, or certification labels do not by themselves certify the current multi-platform checkout.
+
+**Current development authority:** [Code Review, Improvement, Hardening & Development Completion Plan](planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md)  
+**Current task authority:** [HARD-001–043 master task ledger](TODO_MASTER.md)  
+**Next READY task:** [HARD-002 — reconcile source, docs, claims and post-review commits](TODO_MASTER.md#hard-002)
+
+The hardening review baseline is `ea2e811a7f2d8aaddc552e894fe04782cd08a499`. HARD-001 is published from a repository state whose pre-publication head was `b07f15bdde60bb5bfa9b20fdaba093b7a6a93785`, four commits later. Those commits contain additional Apple and remote/Internet work and therefore require HARD-002 revalidation before they can inherit review conclusions.
 
 ## Start here
-- [Current next cycle: LAN, QR pairing and Quick Share — first READY: LAN-001](planning/LAN_QR_QUICK_SHARE_MASTER_PLAN.md)
-- [LAN authentication, framing and routing decision — ADR-0018](adr/ADR-0018-lan-qr-authentication-and-routing.md)
-- [Master plan](GLIDE_MASTER_PLAN.md)
-- [Roadmap](ROADMAP.md)
-- [Original GLIDE task ledger](TODO_MASTER.md)
-- [Task dependency graph](TASK_DEPENDENCY_GRAPH.md)
-- [End-to-end workflow](GLIDE_END_TO_END_WORKFLOW.md)
-- [Definition of done / quality gates](DEFINITION_OF_DONE.md)
 
-## For Gemini developers
-- [Antigravity / Gemini prompt for the current LAN/QR/Quick Share release](development/ANTIGRAVITY_GEMINI_LAN_IMPLEMENTATION_PROMPT.md)
-- [Complete end-to-end development prompt](development/GEMINI_END_TO_END_DEVELOPMENT_PROMPT.md)
-- [Implementation guide](development/GEMINI_IMPLEMENTATION_GUIDE.md)
-- [Engineering rules](development/GEMINI_ENGINEERING_RULES.md)
-- [Prompt templates](development/GEMINI_PROMPT_TEMPLATES.md)
-- [Session handoff template](development/SESSION_HANDOFF_TEMPLATE.md)
-- [Change control](development/CHANGE_CONTROL.md)
-- [CI/CD plan](development/CI_CD_PLAN.md)
+1. [Current completion/hardening plan](planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md)
+2. [Current HARD task ledger](TODO_MASTER.md)
+3. [Current master plan](GLIDE_MASTER_PLAN.md)
+4. [Current roadmap](ROADMAP.md)
+5. [AI/Gemini implementation guide](development/GEMINI_IMPLEMENTATION_GUIDE.md)
+6. [Definition of done / quality gates](DEFINITION_OF_DONE.md)
+7. [Change control](development/CHANGE_CONTROL.md)
 
-## Planning and evidence
-- [Repository audit](planning/REPOSITORY_AUDIT.md)
-- [Technology/version research](planning/TECHNOLOGY_RESEARCH.md)
-- [Transport comparison](planning/TRANSPORT_RESEARCH.md)
-- [Primary sources](planning/SOURCES.md)
-- [Completeness/Gemini readiness audit](planning/PLANNING_COMPLETENESS_AUDIT.md)
-- [Risks](RISK_REGISTER.md), [assumptions](ASSUMPTIONS.md), [open questions](OPEN_QUESTIONS.md)
+## Architecture and protocol
 
-## Architecture
-- [Architecture and modules](architecture/GLIDE_ARCHITECTURE.md)
+- [Android architecture and module boundaries](architecture/GLIDE_ARCHITECTURE.md)
 - [State and data models](architecture/STATE_AND_DATA_MODEL.md)
 - [Failure model](architecture/GLIDE_FAILURE_MODEL.md)
 - [Architecture decision records](adr/README.md)
-
-## Protocol and Android
 - [Glide Protocol V1](protocol/GLIDE_PROTOCOL_V1.md)
-- [Permission matrix](android/PERMISSION_MATRIX.md)
-- [Storage and background execution](android/STORAGE_AND_BACKGROUND.md)
-
-## Design
-- [Design system, motion, adaptive and accessibility](design/GLIDE_DESIGN_SYSTEM.md)
-- [Screen inventory/user flows](design/GLIDE_USER_FLOWS.md)
-- [Per-file brand inventory](design/BRAND_ASSET_INVENTORY.md)
-- [Brand gaps/checklist](design/BRAND_ASSET_CHECKLIST.md)
-- [UI quality checklist](design/UI_QUALITY_CHECKLIST.md)
-- [Existing asset catalog](../asset/index.html)
-
-## Security
-- [Threat/privacy model](security/GLIDE_THREAT_MODEL.md)
-- [Security checklist](security/SECURITY_CHECKLIST.md)
-
-## Testing and performance
-- [Test strategy](testing/GLIDE_TEST_STRATEGY.md)
-- [Performance/transfer benchmarking plan](performance/GLIDE_PERFORMANCE_PLAN.md)
-- [Performance checklist](performance/PERFORMANCE_CHECKLIST.md)
-
-## Release and future
-- [Release plan](release/GLIDE_RELEASE_PLAN.md)
 - [Cross-platform path](future/CROSS_PLATFORM_PATH.md)
 
-Original GLIDE task status lives in TODO_MASTER. Next-cycle LAN-001–033 status lives in section 26 of the LAN/QR/Quick Share plan. Protocol semantics live in their specification, design tokens in the design system, and rationale in ADRs. Read ADR-0018's precedence over the earlier LAN proposal. Follow links instead of inventing replacements.
+## Security, testing and performance
+
+- [Threat/privacy model](security/GLIDE_THREAT_MODEL.md)
+- [Security checklist](security/SECURITY_CHECKLIST.md)
+- [Test strategy](testing/GLIDE_TEST_STRATEGY.md)
+- [Performance plan](performance/GLIDE_PERFORMANCE_PLAN.md)
+- [Performance checklist](performance/PERFORMANCE_CHECKLIST.md)
+
+## Platform and product references
+
+- [Android permissions](android/PERMISSION_MATRIX.md)
+- [Android storage/background execution](android/STORAGE_AND_BACKGROUND.md)
+- [Design system](design/GLIDE_DESIGN_SYSTEM.md)
+- [User flows](design/GLIDE_USER_FLOWS.md)
+- [Release plan](release/GLIDE_RELEASE_PLAN.md)
+
+## Historical planning and evidence
+
+The original GLIDE-001–072 task ledger is preserved in Git history at pre-HARD commit [`b07f15b`](https://github.com/GDJ2001/Glide/blob/b07f15bdde60bb5bfa9b20fdaba093b7a6a93785/docs/TODO_MASTER.md). Historical V1 release reports, LAN/QR plans, session reports and evidence remain useful for provenance, but the current checkout must satisfy the HARD ledger before present-day completion/release claims are made.
+
+Useful historical sources include:
+
+- [Original LAN/QR/Quick Share plan](planning/LAN_QR_QUICK_SHARE_MASTER_PLAN.md)
+- [V1 closure and next-cycle handoff](release/V1_CLOSURE_AND_NEXT_CYCLE_HANDOFF.md)
+- [Repository audit](planning/REPOSITORY_AUDIT.md)
+- [Planning completeness audit](planning/PLANNING_COMPLETENESS_AUDIT.md)
+- [Development session records](development/sessions/)
+
+## Authority rule
+
+For current development status, follow this order: **HARD task ledger → current hardening plan → current source/configuration/tests → relevant protocol/ADR/specification → historical evidence**. Never infer current completion from an old task label or planning document when the executable source disagrees.
