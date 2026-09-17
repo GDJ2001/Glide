@@ -1,197 +1,193 @@
 # Remote and Internet Transfer (WAN, NAT Traversal & Blind Relays) Specification
 
-- **Document Version:** 1.0.0
-- **Status:** Approved Technical Specification
-- **Milestone:** M21 — Remote & Internet Transfer Architecture & Conformance Specification
-- **Task Authority:** [CROSS_PLATFORM_PATH.md](CROSS_PLATFORM_PATH.md) Step 6
+- **Document Version:** 1.1.0 (HARD-002 reconciliation)
+- **Design Status:** Approved technical target
+- **Implementation Status:** **PARTIAL / DEFERRED from the current HARD release scope**
+- **Original Milestone:** M21 — Remote & Internet Transfer Architecture & Conformance Specification
+- **Current Task Authority:** [HARD program](../TODO_MASTER.md)
 - **Architectural Decision:** [ADR-0022](../adr/ADR-0022-remote-internet-transfer.md)
-- **Related Documents:** [GLIDE_PROTOCOL_V1.md](../protocol/GLIDE_PROTOCOL_V1.md), [ANDROID_WINDOWS_LAN_SPECIFICATION.md](ANDROID_WINDOWS_LAN_SPECIFICATION.md), [ANDROID_BROWSER_WEB_SPECIFICATION.md](ANDROID_BROWSER_WEB_SPECIFICATION.md), [APPLE_PLATFORMS_SPECIFICATION.md](APPLE_PLATFORMS_SPECIFICATION.md), [LINUX_PLATFORM_SPECIFICATION.md](LINUX_PLATFORM_SPECIFICATION.md), [GLIDE_THREAT_MODEL.md](../security/GLIDE_THREAT_MODEL.md).
+- **Related Documents:** [GLIDE_PROTOCOL_V1.md](../protocol/GLIDE_PROTOCOL_V1.md), [GLIDE_THREAT_MODEL.md](../security/GLIDE_THREAT_MODEL.md), [current hardening plan](../planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md).
+
+> **HARD-002 evidence note:** post-review commits added C# remote invitation/STUN work, WebSocket signaling helpers, ICE candidate models/gathering, TURN packet helpers, relay quota/metered-network policy, and a `RemoteTransferSession` state/orchestration model with unit tests. That is **not a live end-to-end remote transfer system**. The reviewed delta does not demonstrate a deployed signaling broker, real connectivity checks/ICE nomination, authenticated end-to-end encryption carrying Glide records, a live TURN service/allocation path integrated into the app, or a production UI/runtime path. Historical session files that called Step 6 `100% complete` are preserved as component-delivery records, not current interoperability or release certification.
 
 ---
 
-## 1. Executive Summary & Architectural Invariants
+## 1. Purpose and invariants
 
-### 1.1 Purpose
-This specification defines the complete network protocol, signaling architecture, NAT traversal pipeline, end-to-end cryptographic encryption, and relay anti-abuse controls for **Glide Remote & Internet Transfers**, enabling secure peer-to-peer file sharing across heterogeneous networks, cellular data connections, and firewalled subnets without centralized cloud file storage.
+This specification defines the **target** architecture for optional remote/WAN transfer. Local Nearby/LAN operation must remain independent of this feature.
 
-### 1.2 Core Invariants
-1. **Zero Cloud File Storage:**
-   No file payloads, thumbnails, or temporary chunks are ever stored on cloud servers or third-party buckets (AWS S3, Google Cloud, etc.). All transfers are direct peer-to-peer or transiently forwarded through blind relays.
-2. **Zero-Knowledge Signaling & Blind Relays:**
-   Signaling servers and relays act strictly as blind bit couriers. All control messages, SDP attributes, and payload streams are End-to-End Encrypted (E2EE) using ephemeral keys. Relays possess zero cryptographic keys and cannot inspect filenames, file sizes, or plaintexts.
-3. **Canonical Protocol Parity:**
-   Remote transfers adhere strictly to **Glide Protocol V1** envelopes, `LanRecord` framing, offer negotiation, single-pass SHA-256 validation, and verified item receipts.
-4. **Strict Local Isolation:**
-   Local Area Network (LAN) and Nearby Connections P2P transfers remain 100% offline. They never initiate connections to, or depend on, remote signaling or relay infrastructure.
-5. **Metered Cellular Protection:**
-   The client automatically detects metered cellular networks and requires explicit user confirmation before initiating remote transfers.
+Target invariants:
+
+1. **No cloud file storage.** Payloads are direct peer-to-peer or transiently forwarded through blind relays; no object-store upload is required.
+2. **End-to-end confidentiality/authentication.** Signaling and relayed payloads must be encrypted so broker/relay infrastructure cannot inspect file content or trusted control data.
+3. **Canonical Glide semantics.** Remote transport carries the same bounded Protocol V1/LAN-record/session semantics rather than inventing a second transfer protocol.
+4. **Strict local isolation.** Local LAN/Nearby transfers must not depend on signaling/relay availability.
+5. **Explicit remote consent and metered-network protection.** Remote/WAN transfer cannot start silently or consume metered data without the required user decision.
+6. **No completion by helper classes.** ICE/STUN/TURN codecs, state models, or source-presence auditors are insufficient without a real network path and security proof.
 
 ---
 
-## 2. Remote Signaling Architecture & Out-of-Band Invitation Schema
+## 2. Target remote architecture
 
-```
-+-----------------------------------------------------------------------------------+
-|                              Signaling Architecture                               |
-|                                                                                   |
-|  [Sender Device]  --- (1) Out-of-Band Invitation Link --->  [Receiver Device]     |
-|         |             (Signal, WhatsApp, Email, QR)                 |             |
-|         |                                                           |             |
-|         +------------ (2) E2EE Rendezvous Signaling --------------+             |
-|                                     |                                             |
-|                                     v                                             |
-|                    +---------------------------------+                            |
-|                    |     Ephemeral Signaling Broker  |                            |
-|                    |     (Stateless WebSocket Relay) |                            |
-|                    +---------------------------------+                            |
-|                                     |                                             |
-|          +--------------------------+--------------------------+                  |
-|          |                                                     |                  |
-|          v                                                     v                  |
-|  [Direct P2P UDP] (75-85% success)               [Blind TURN Relay] (Fallback)    |
-|  (STUN Hole Punching / RFC 8489)                 (E2EE Encrypted / RFC 8656)      |
-|          |                                                     |                  |
-|          +--------------------------+--------------------------+                  |
-|                                     v                                             |
-|                     Glide Protocol V1 + LanRecord Framing                         |
-+-----------------------------------------------------------------------------------+
+```text
+Out-of-band invitation
+        |
+        v
+Authenticated encrypted signaling rendezvous
+        |
+        +--> ICE candidate gathering / connectivity checks / nomination
+                    |
+          +---------+---------+
+          |                   |
+      direct path          TURN relay
+          |                   |
+          +---------+---------+
+                    |
+      authenticated encrypted Glide record stream
+                    |
+      normal offer/consent/integrity/receipt semantics
 ```
 
-### 2.1 Out-of-Band Remote Invitation URI
-Remote transfers are initiated out-of-band by generating an ephemeral pairing URI:
-```
-glide://remote/v1#id=<RendezvousUUID>&key=<EphemeralPublicKeyHex>&sig=<SignalingEndpoint>&token=<RelayBlindToken>&exp=<UnixTimestamp>
-```
-- **`RendezvousUUID`:** Random 128-bit UUIDv4 used solely as a temporary lookup key on the signaling broker.
-- **`EphemeralPublicKeyHex`:** 32-byte X25519 public key in lowercase hex for authenticated key exchange.
-- **`SignalingEndpoint`:** Ephemeral WebSocket endpoint (e.g. `wss://relay.glide.app/v1/signal`).
-- **`RelayBlindToken`:** Base64url cryptographic authorization token granting bounded relay bandwidth.
-- **`UnixTimestamp`:** Expiration timestamp (strictly bounded to 120 seconds from creation).
+### HARD-002 implementation mapping
 
-### 2.2 Signaling Protocol (JSON-RPC over Secure WebSocket)
-1. **Host Listening:**
-   ```json
-   { "action": "listen", "rendezvousId": "8a32a67e-071a-4d23-92b4-3ec9fef39db3" }
-   ```
-2. **Client Rendezvous & Encrypted Key Exchange:**
-   ```json
-   {
-     "action": "rendezvous",
-     "rendezvousId": "8a32a67e-071a-4d23-92b4-3ec9fef39db3",
-     "clientPublicKey": "4b6f12...e8",
-     "encryptedPayload": "<ChaCha20-Poly1305 ciphertext of ICE candidates>"
-   }
-   ```
-3. **Broker State Purge:**
-   Upon matching two endpoints, the broker routes the encrypted handshake messages and immediately destroys the rendezvous ID.
+| Target component | Source evidence at snapshot | Current classification |
+| --- | --- | --- |
+| Remote invitation/STUN | pre/post-review C# codecs/clients | Implemented components; historical unit-test evidence |
+| Signaling client/messages | `RemoteSignalingClient`, `SignalingMessages` | Implemented client/message helpers; no deployed broker proof |
+| ICE candidates/gathering | `IceCandidate`, `IceCandidateGatherer` | Implemented gathering/model helpers; no real ICE checklist/nomination proof |
+| TURN | `TurnClient` packet/allocation helpers | Implemented component; no live relay integration proof |
+| Relay quota/rate policy | `RelayQuotaTracker` | Implemented policy helper |
+| Metered protection | `MeteredNetworkProtection` | Implemented policy/prompt abstraction; native platform detectors not integrated here |
+| Remote session | `RemoteTransferSession` | In-memory orchestration/state model; does not itself execute live signaling/ICE/TURN/E2EE transfer |
+| E2EE payload channel | Design text only in reviewed delta | Not evidenced as production remote data path |
+| End-to-end WAN interoperability | Historical unit/conformance tests only | Not physically/network verified |
+| Release/deployment | No current HARD evidence; no GitHub release objects | Not verified/released by HARD program |
 
 ---
 
-## 3. NAT Traversal Pipeline & Candidate Gathering
+## 3. Out-of-band invitation target
 
-The client implements the Interactive Connectivity Establishment (ICE / RFC 8445) state machine:
+A remote session may be bootstrapped with a short-lived out-of-band invitation containing bounded rendezvous correlation, expected peer key/identity material, signaling endpoint information, authorization token material, and expiry.
 
-### 3.1 Candidate Priorities
-1. **Host Candidates (Priority 1):** Direct interface IP addresses (used if peers happen to share an un-isolated WAN subnet or VPN).
-2. **Server-Reflexive Candidates (Priority 2 - STUN / RFC 8489):** Public IP/port bindings discovered via STUN queries (`stun:stun.glide.app:3478` or public STUN infrastructure). Direct UDP hole punching succeeds in 75–85% of consumer NAT deployments (Full-Cone, Restricted-Cone, and Port-Restricted Cone NATs).
-3. **Relay Candidates (Priority 3 - TURN / RFC 8656):** Blind TURN packet forwarding over UDP/TCP port 443 used only when Symmetric NAT prevents direct hole punching.
+Security requirements:
 
----
+- cryptographically random one-use rendezvous identifier/token;
+- strict expiry and replay prevention;
+- endpoint/host allow-list or policy appropriate to the deployment model;
+- no plaintext long-lived credentials in shared invitation links;
+- receiver must still present explicit transfer consent separately from connection establishment.
 
-## 4. End-to-End Cryptographic Wire Framing
-
-All data traversing the remote connection is encrypted end-to-end between the two devices:
-
-### 4.1 Cryptographic Handshake
-- **Handshake Pattern:** `Noise_IK_25519_ChaChaPoly_BLAKE2s` or mutual TLS 1.3 with SPKI public key pinning.
-- **Forward Secrecy:** Ephemeral Diffie-Hellman keys are generated per transfer batch and erased immediately upon session teardown.
-- **Authentication:** Both peers verify that the remote public key matches the public key specified in the out-of-band invitation link.
-
-### 4.2 Wire Framing
-Inside the encrypted session, records adhere to standard Glide LAN Profile 1 framing:
-- Control envelopes (`LanRecord.Control`, 16 KiB maximum).
-- Bulk data chunks (`LanRecord.Data`, 64 KiB bounded chunks).
-- Stream termination (`LanRecord.StreamEnd`).
+Existing invitation codecs are reusable inputs, not proof that a broker or live remote session exists.
 
 ---
 
-## 5. Blind Relay Architecture & Anti-Abuse Controls
+## 4. Signaling target
 
-When relay fallback is required, the relay server operates under strict constraints:
+A production signaling channel must use authenticated TLS (`wss://`) and carry only the minimum rendezvous data needed to establish the peer path. Sensitive peer/session material should be end-to-end encrypted where the architecture requires a zero-knowledge broker.
 
-### 5.1 Blind Forwarding Invariant
-The relay is an opaque bit forwarder. It receives ciphertext packets, reads the destination channel ID, and forwards the packet to the paired peer. The relay:
-- Cannot decrypt packet contents.
-- Cannot inspect file names, MIME types, or item counts.
-- Cannot modify packet contents without triggering AEAD decryption failure at the receiving client.
+A complete implementation must demonstrate:
 
-### 5.2 Bandwidth Quotas & Anti-Abuse Policies
-1. **Relay Bandwidth Ceiling:**
-   - **Direct P2P Transfers (ICE UDP hole punching):** **Uncapped** up to Protocol V1 limits (64 GiB per item, 256 GiB per batch).
-   - **Relayed Transfers (Public / Community Relay):** Capped at **100 MB per transfer**.
-   - If an offered transfer requires relaying and exceeds 100 MB, the client displays:
-     > *"Direct peer-to-peer connection could not be established across firewalls. Relayed transfer is limited to 100 MB. To transfer larger files, connect both devices to the same local Wi-Fi network or configure a private relay."*
-2. **Rate Limits:**
-   - Maximum 3 concurrent transfer sessions per IP.
-   - Maximum 10 connection attempts per minute per IP.
-   - Excess traffic triggers immediate TCP connection termination (`RST`).
+- a real signaling broker/service contract;
+- connect/listen/rendezvous lifecycle and expiry;
+- authenticated endpoint verification;
+- bounded messages and rate limits;
+- peer disconnect/reconnect/error behavior;
+- broker state retention/deletion policy;
+- no signaling dependency during ordinary local transfers.
+
+`RemoteSignalingClient` is a useful client abstraction but does not by itself satisfy those operational requirements.
 
 ---
 
-## 6. Consent, User Privacy & Metered Data Protection
+## 5. ICE/STUN target
 
-### 6.1 Metered Connection Detection
-The client queries native OS networking APIs before assembling or accepting a remote transfer:
-- **Android:** `ConnectivityManager.getNetworkCapabilities().hasCapability(NET_CAPABILITY_NOT_METERED) == false`
-- **Windows:** `NetworkInformation.GetInternetConnectionProfile().GetConnectionCost().NetworkCostType == Metered`
-- **Apple (iOS/macOS):** `nw_path_is_expensive(path) == true` or `nw_path_is_constrained(path) == true`
-- **Linux:** NetworkManager D-Bus property `org.freedesktop.NetworkManager.Device.Metered`
+A standards-based ICE implementation must gather candidates, perform connectivity checks, maintain candidate-pair state, nominate a successful pair, and react to network changes/failure.
 
-### 6.2 User Warning Dialog
-When a metered network is detected, the transfer is suspended until the user explicitly confirms:
-```
-+-------------------------------------------------------------+
-|               Metered Cellular Connection                   |
-+-------------------------------------------------------------+
-|  Transferring "project_archive.zip" (340 MB) will use your   |
-|  mobile cellular data. Carrier charges may apply.           |
-|                                                             |
-|          [ Cancel Transfer ]      [ Proceed on Cellular ]    |
-+-------------------------------------------------------------+
-```
+Candidate categories may include:
+
+1. host candidates;
+2. server-reflexive candidates obtained via STUN;
+3. relayed candidates obtained through TURN.
+
+The HARD-002 reviewed `RemoteTransferSession.SelectCandidatePair` selects candidate *types/priorities* from lists; it is not evidence of RFC 8445 connectivity checks or successful NAT traversal. Future remote work must prove actual candidate checks/nomination across NAT topologies before claiming ICE completion.
+
+No unverified success-rate marketing percentage should be used without measured, dated population/device/network evidence.
 
 ---
 
-## 7. Remote Transfer Threat Model Additions
+## 6. TURN relay target and anti-abuse
 
-The following threat catalog entries are incorporated into [GLIDE_THREAT_MODEL.md](../security/GLIDE_THREAT_MODEL.md):
+A production relay path must establish and maintain real TURN allocations/permissions/channels against an authorized relay service and forward only end-to-end encrypted payloads.
 
-| Threat ID | Description | Likelihood | Impact | Countermeasures & Verifications |
-|:---|:---|:---:|:---:|:---|
-| **R01** | Unauthorized Remote Ingress / Spam | High | High | Ephemeral 120s rendezvous UUID; out-of-band link; explicit human consent prompt. |
-| **R02** | Signaling Relay Snooping & Metadata Leak | Medium | Critical | E2EE encryption of all signaling payloads; broker stores zero state. |
-| **R03** | Blind Relay Bandwidth Abuse / DDoS | High | High | Cryptographic blind tokens; 100 MB relay transfer ceiling; IP rate limiting. |
-| **R04** | Man-in-the-Middle Attack | Medium | Critical | Ephemeral X25519 key exchange; SPKI hash pinning from out-of-band invitation URI. |
-| **R05** | Metered Data Bill Shock | High | Medium | OS metered connection detection; explicit user warning with byte disclosure. |
-| **R06** | Stale / Replayed Invitation Links | Medium | High | Monotonic 120-second TTL; one-use rendezvous token consumption. |
-| **R07** | Remote Executable / Malware Ingress | Medium | High | Sandboxed quarantine staging; single-pass SHA-256 validation; no auto-execution. |
-| **R08** | Cloud Dependency Creep | Medium | Critical | Strict isolation: Local LAN and Nearby P2P never touch signaling or relay servers. |
+Policy targets retained from the design include:
+
+- bounded public/community relay transfer size;
+- concurrency/rate limits;
+- short-lived authorization tokens;
+- no relay decryption keys;
+- cancellation/accounting on both peers;
+- explicit fallback messaging when a direct path cannot be established.
+
+`TurnClient` and `RelayQuotaTracker` provide protocol/policy component evidence. They are not deployment evidence for a reachable relay or a complete application fallback path.
 
 ---
 
-## 8. Multi-Phase Implementation Roadmap
+## 7. End-to-end cryptographic target
 
-- **Phase R1: Ephemeral Signaling Broker & Out-of-Band Invitation Codec**
-  - Implement URI encoder/decoder for `glide://remote/v1#...`.
-  - Lightweight WebSocket signaling protocol client.
-- **Phase R2: STUN / ICE Direct P2P Hole Punching**
-  - Implement ICE agent (RFC 8445) and STUN binding discovery (RFC 8489).
-  - Hole punching verification across NAT topologies.
-- **Phase R3: Blind TURN Relay Fallback & Anti-Abuse Engine**
-  - Implement blind packet forwarding client for TURN (RFC 8656).
-  - Enforce 100 MB relay bandwidth cap and blind authorization token verification.
-- **Phase R4: Metered Data UX & Platform Integration**
-  - Integrate native metered network detection across Android, Windows, Apple, and Linux.
-  - Implement cellular data warning prompts.
-- **Phase R5: End-to-End Remote Conformance Certification**
-  - Automated integration testing verifying E2EE wire encryption, relay fallback, and strict local LAN isolation.
+The remote data path must have one frozen, interoperable security construction—not an unresolved "Noise IK **or** mutual TLS" choice in release code.
+
+Before remote implementation can be considered complete, an ADR/protocol update must freeze:
+
+- authenticated key-establishment mechanism;
+- peer identity/key binding to the out-of-band invitation;
+- forward-secrecy and rekey/session lifetime behavior;
+- transcript/channel binding;
+- nonce/counter/replay rules;
+- framing of encrypted control/data records;
+- failure behavior on authentication/decryption errors;
+- key erasure/logging requirements.
+
+The reviewed post-`ea2e811` source does not provide a production end-to-end encrypted payload channel, so statements such as "all remote signaling and payload streams are E2EE" describe the **target invariant**, not current implementation fact.
+
+---
+
+## 8. Metered network and user consent target
+
+Before remote transfer starts, each supported platform should determine whether the active route is metered/expensive/constrained using actual native APIs and present a clear user decision when required.
+
+The existing C# policy/prompt abstractions are useful domain components. Production completion requires real Android, Windows, Linux, and any future Apple detector integration plus UI behavior and tests on the target operating systems.
+
+Remote connection consent does not replace normal incoming file-offer consent.
+
+---
+
+## 9. Remote threat catalog
+
+The remote design continues to track at least:
+
+| ID | Threat | Required control direction |
+| --- | --- | --- |
+| R01 | unauthorized remote ingress/spam | short-lived invitation + explicit consent + rate limits |
+| R02 | signaling snooping/metadata exposure | authenticated TLS + minimized broker data + E2EE where specified |
+| R03 | relay bandwidth abuse/DDoS | auth tokens + quotas + concurrency/rate limits |
+| R04 | MITM | cryptographic peer binding to invitation/identity |
+| R05 | metered-data bill shock | native metered detection + explicit warning |
+| R06 | stale/replayed invitations | expiry + one-use consumption + replay cache/policy |
+| R07 | malicious file ingress | standard quarantine/integrity/no auto-execution rules |
+| R08 | cloud dependency creep | local paths remain fully independent |
+
+Threat-model presence is not proof that the control is implemented or deployed.
+
+---
+
+## 10. Reconciled implementation roadmap
+
+| Phase | Intended result | HARD-002 classification |
+| --- | --- | --- |
+| R1 invitation + signaling | invitation codec plus real rendezvous service/client | **Partial: codecs/client helpers exist; broker deployment not evidenced** |
+| R2 STUN/ICE | real connectivity checks and nominated direct path | **Partial: STUN/candidate/gathering helpers exist; ICE connectivity not proven** |
+| R3 TURN fallback | live blind relay with quota/auth | **Partial: TURN/quota components exist; relay integration/deployment not proven** |
+| R4 metered UX/platform integration | native detection and explicit consent | **Partial: C# policy abstraction exists; cross-platform product integration incomplete** |
+| R5 end-to-end certification | encrypted payload transfer through direct and relay paths with failure/security tests | **Not achieved by the reviewed unit tests** |
+
+Remote/Internet transfer is deliberately **deferred** from HARD-001–043 active release scope. Existing code is retained for future work; no current task may treat remote transfer as production-complete without an explicit scope amendment, frozen security construction, real infrastructure/runtime integration, and end-to-end network evidence.
