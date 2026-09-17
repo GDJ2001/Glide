@@ -151,7 +151,10 @@ class GlideWebGatewayTest {
             conn.setRequestProperty("Cookie", "glide_web_session=${gateway.token}")
             assertEquals(200, conn.responseCode)
             assertEquals(testFileBytes.size.toLong(), conn.contentLengthLong)
-            assertTrue(conn.getHeaderField("Content-Disposition").contains("filename=\"sample_doc.pdf\""))
+            val disposition = conn.getHeaderField("Content-Disposition")
+            assertTrue(disposition.contains("filename=\"sample_doc.pdf\""))
+            assertTrue(disposition.contains("filename*=UTF-8''sample_doc.pdf"))
+            assertEquals("bytes", conn.getHeaderField("Accept-Ranges"))
 
             val downloadedBytes = conn.inputStream.readBytes()
             assertEquals(testFileBytes.size, downloadedBytes.size)
@@ -161,6 +164,135 @@ class GlideWebGatewayTest {
             assertEquals(testFileSha256, downloadedSha)
         } finally {
             conn.disconnect()
+        }
+    }
+
+    @Test
+    fun downloadItem_supportsRangeRequest_partialContent206() {
+        val downloadUrl = "http://127.0.0.1:${gateway.boundPort}/api/v1/download/doc-123"
+
+        // 1. Explicit range: bytes=100-199 (100 bytes)
+        val conn1 = URL(downloadUrl).openConnection() as HttpURLConnection
+        try {
+            conn1.setRequestProperty("Cookie", "glide_web_session=${gateway.token}")
+            conn1.setRequestProperty("Range", "bytes=100-199")
+            assertEquals(206, conn1.responseCode)
+            assertEquals("bytes 100-199/${testFileBytes.size}", conn1.getHeaderField("Content-Range"))
+            assertEquals(100L, conn1.contentLengthLong)
+            val bytes1 = conn1.inputStream.readBytes()
+            assertEquals(100, bytes1.size)
+            for (i in 0 until 100) {
+                assertEquals(testFileBytes[100 + i], bytes1[i])
+            }
+        } finally {
+            conn1.disconnect()
+        }
+
+        // 2. Open-ended range: bytes=1000-
+        val conn2 = URL(downloadUrl).openConnection() as HttpURLConnection
+        try {
+            conn2.setRequestProperty("Cookie", "glide_web_session=${gateway.token}")
+            conn2.setRequestProperty("Range", "bytes=1000-")
+            assertEquals(206, conn2.responseCode)
+            val expectedLen = testFileBytes.size - 1000
+            assertEquals("bytes 1000-${testFileBytes.size - 1}/${testFileBytes.size}", conn2.getHeaderField("Content-Range"))
+            assertEquals(expectedLen.toLong(), conn2.contentLengthLong)
+            val bytes2 = conn2.inputStream.readBytes()
+            assertEquals(expectedLen, bytes2.size)
+            for (i in 0 until expectedLen) {
+                assertEquals(testFileBytes[1000 + i], bytes2[i])
+            }
+        } finally {
+            conn2.disconnect()
+        }
+
+        // 3. Suffix range: bytes=-50 (last 50 bytes)
+        val conn3 = URL(downloadUrl).openConnection() as HttpURLConnection
+        try {
+            conn3.setRequestProperty("Cookie", "glide_web_session=${gateway.token}")
+            conn3.setRequestProperty("Range", "bytes=-50")
+            assertEquals(206, conn3.responseCode)
+            val start = testFileBytes.size - 50
+            assertEquals("bytes $start-${testFileBytes.size - 1}/${testFileBytes.size}", conn3.getHeaderField("Content-Range"))
+            assertEquals(50L, conn3.contentLengthLong)
+            val bytes3 = conn3.inputStream.readBytes()
+            assertEquals(50, bytes3.size)
+            for (i in 0 until 50) {
+                assertEquals(testFileBytes[start + i], bytes3[i])
+            }
+        } finally {
+            conn3.disconnect()
+        }
+    }
+
+    @Test
+    fun downloadItem_invalidRange_returns416() {
+        val downloadUrl = "http://127.0.0.1:${gateway.boundPort}/api/v1/download/doc-123"
+        val conn = URL(downloadUrl).openConnection() as HttpURLConnection
+        try {
+            conn.setRequestProperty("Cookie", "glide_web_session=${gateway.token}")
+            conn.setRequestProperty("Range", "bytes=500000-600000")
+            assertEquals(416, conn.responseCode)
+            assertEquals("bytes */${testFileBytes.size}", conn.getHeaderField("Content-Range"))
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    @Test
+    fun downloadItem_headMethod_returnsHeadersWithoutBody() {
+        val downloadUrl = "http://127.0.0.1:${gateway.boundPort}/api/v1/download/doc-123"
+        val conn = URL(downloadUrl).openConnection() as HttpURLConnection
+        try {
+            conn.requestMethod = "HEAD"
+            conn.setRequestProperty("Cookie", "glide_web_session=${gateway.token}")
+            assertEquals(200, conn.responseCode)
+            assertEquals(testFileBytes.size.toLong(), conn.contentLengthLong)
+            assertEquals("bytes", conn.getHeaderField("Accept-Ranges"))
+            assertTrue(conn.getHeaderField("Content-Disposition").contains("filename=\"sample_doc.pdf\""))
+
+            val body = conn.inputStream.readBytes()
+            assertEquals(0, body.size)
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    @Test
+    fun downloadItem_unicodeFilename_includesRfc6266Disposition() {
+        val unicodeName = "写真_📷_photo.png"
+        val unicodeFile = File(quarantineDir, "unicode.png")
+        unicodeFile.writeBytes(byteArrayOf(1, 2, 3, 4))
+
+        val unicodeGateway = GlideWebGateway(
+            host = "127.0.0.1",
+            port = 0,
+            offeredItems = listOf(
+                OfferedWebItem(
+                    itemId = "unicode-1",
+                    fileName = unicodeName,
+                    fileSize = 4L,
+                    file = unicodeFile
+                )
+            ),
+            deviceName = "Unicode Device",
+            quarantineDir = quarantineDir
+        )
+        unicodeGateway.start()
+        try {
+            val url = "http://127.0.0.1:${unicodeGateway.boundPort}/api/v1/download/unicode-1?token=${unicodeGateway.token}"
+            val conn = URL(url).openConnection() as HttpURLConnection
+            try {
+                assertEquals(200, conn.responseCode)
+                val disposition = conn.getHeaderField("Content-Disposition")
+                assertTrue(disposition.contains("filename="))
+                assertTrue(disposition.contains("filename*=UTF-8''"))
+                assertTrue(disposition.contains(java.net.URLEncoder.encode(unicodeName, "UTF-8").replace("+", "%20")))
+            } finally {
+                conn.disconnect()
+            }
+        } finally {
+            unicodeGateway.close()
         }
     }
 

@@ -158,7 +158,10 @@ public class WebGatewayIntegrationTests : IDisposable
         // Download
         var downloadResp = await client.GetAsync($"http://127.0.0.1:{gateway.Port}/api/v1/download/{item.ItemId}");
         Assert.Equal(HttpStatusCode.OK, downloadResp.StatusCode);
-        Assert.Equal("attachment; filename=\"large_binary.dat\"", downloadResp.Content.Headers.GetValues("Content-Disposition").First());
+        Assert.Equal("bytes", downloadResp.Headers.GetValues("Accept-Ranges").First());
+        string disposition = downloadResp.Content.Headers.GetValues("Content-Disposition").First();
+        Assert.Contains("filename=\"large_binary.dat\"", disposition);
+        Assert.Contains("filename*=UTF-8''large_binary.dat", disposition);
 
         byte[] downloadedBytes = await downloadResp.Content.ReadAsByteArrayAsync();
         Assert.Equal(payload.Length, downloadedBytes.Length);
@@ -205,6 +208,167 @@ public class WebGatewayIntegrationTests : IDisposable
         Assert.True(File.Exists(committedFile));
         byte[] savedBytes = await File.ReadAllBytesAsync(committedFile);
         Assert.Equal(uploadPayload, savedBytes);
+    }
+
+    [Fact]
+    public async Task DownloadItem_SupportsRangeRequest_PartialContent206()
+    {
+        byte[] payload = new byte[1000];
+        for (int i = 0; i < payload.Length; i++) payload[i] = (byte)(i % 256);
+
+        string testFilePath = Path.Combine(_tempDirectory, "range_test.dat");
+        await File.WriteAllBytesAsync(testFilePath, payload);
+
+        var item = new OfferedWebItem(testFilePath, "range_test.dat", "application/octet-stream");
+
+        await using var gateway = new GlideWebGateway(
+            host: "127.0.0.1",
+            port: 0,
+            offeredItems: [item],
+            quarantineStore: _quarantineStore);
+
+        await gateway.StartAsync();
+
+        var cookieContainer = new CookieContainer();
+        using var handler = new HttpClientHandler { CookieContainer = cookieContainer };
+        using var client = new HttpClient(handler);
+
+        // Authenticate
+        await client.GetAsync(gateway.OnboardingUrl);
+
+        // 1. Explicit range: bytes=100-199 (100 bytes)
+        using (var req1 = new HttpRequestMessage(HttpMethod.Get, $"http://127.0.0.1:{gateway.Port}/api/v1/download/{item.ItemId}"))
+        {
+            req1.Headers.Add("Range", "bytes=100-199");
+            var resp1 = await client.SendAsync(req1);
+            Assert.Equal(HttpStatusCode.PartialContent, resp1.StatusCode);
+            Assert.Equal("bytes 100-199/1000", resp1.Content.Headers.GetValues("Content-Range").First());
+            Assert.Equal(100, resp1.Content.Headers.ContentLength);
+            byte[] body1 = await resp1.Content.ReadAsByteArrayAsync();
+            Assert.Equal(payload[100..200], body1);
+        }
+
+        // 2. Open-ended range: bytes=900- (100 bytes)
+        using (var req2 = new HttpRequestMessage(HttpMethod.Get, $"http://127.0.0.1:{gateway.Port}/api/v1/download/{item.ItemId}"))
+        {
+            req2.Headers.Add("Range", "bytes=900-");
+            var resp2 = await client.SendAsync(req2);
+            Assert.Equal(HttpStatusCode.PartialContent, resp2.StatusCode);
+            Assert.Equal("bytes 900-999/1000", resp2.Content.Headers.GetValues("Content-Range").First());
+            Assert.Equal(100, resp2.Content.Headers.ContentLength);
+            byte[] body2 = await resp2.Content.ReadAsByteArrayAsync();
+            Assert.Equal(payload[900..1000], body2);
+        }
+
+        // 3. Suffix range: bytes=-50 (last 50 bytes)
+        using (var req3 = new HttpRequestMessage(HttpMethod.Get, $"http://127.0.0.1:{gateway.Port}/api/v1/download/{item.ItemId}"))
+        {
+            req3.Headers.Add("Range", "bytes=-50");
+            var resp3 = await client.SendAsync(req3);
+            Assert.Equal(HttpStatusCode.PartialContent, resp3.StatusCode);
+            Assert.Equal("bytes 950-999/1000", resp3.Content.Headers.GetValues("Content-Range").First());
+            Assert.Equal(50, resp3.Content.Headers.ContentLength);
+            byte[] body3 = await resp3.Content.ReadAsByteArrayAsync();
+            Assert.Equal(payload[^50..], body3);
+        }
+    }
+
+    [Fact]
+    public async Task DownloadItem_InvalidRange_Returns416RangeNotSatisfiable()
+    {
+        byte[] payload = new byte[100];
+        string testFilePath = Path.Combine(_tempDirectory, "range_invalid.dat");
+        await File.WriteAllBytesAsync(testFilePath, payload);
+
+        var item = new OfferedWebItem(testFilePath, "range_invalid.dat", "application/octet-stream");
+
+        await using var gateway = new GlideWebGateway(
+            host: "127.0.0.1",
+            port: 0,
+            offeredItems: [item],
+            quarantineStore: _quarantineStore);
+
+        await gateway.StartAsync();
+
+        var cookieContainer = new CookieContainer();
+        using var handler = new HttpClientHandler { CookieContainer = cookieContainer };
+        using var client = new HttpClient(handler);
+
+        await client.GetAsync(gateway.OnboardingUrl);
+
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"http://127.0.0.1:{gateway.Port}/api/v1/download/{item.ItemId}");
+        req.Headers.Add("Range", "bytes=500-600");
+        var resp = await client.SendAsync(req);
+
+        Assert.Equal((HttpStatusCode)416, resp.StatusCode);
+        Assert.Equal("bytes */100", resp.Content.Headers.GetValues("Content-Range").First());
+    }
+
+    [Fact]
+    public async Task DownloadItem_HeadMethod_ReturnsHeadersWithoutBody()
+    {
+        byte[] payload = new byte[512];
+        string testFilePath = Path.Combine(_tempDirectory, "head_test.dat");
+        await File.WriteAllBytesAsync(testFilePath, payload);
+
+        var item = new OfferedWebItem(testFilePath, "head_test.dat", "application/octet-stream");
+
+        await using var gateway = new GlideWebGateway(
+            host: "127.0.0.1",
+            port: 0,
+            offeredItems: [item],
+            quarantineStore: _quarantineStore);
+
+        await gateway.StartAsync();
+
+        var cookieContainer = new CookieContainer();
+        using var handler = new HttpClientHandler { CookieContainer = cookieContainer };
+        using var client = new HttpClient(handler);
+
+        await client.GetAsync(gateway.OnboardingUrl);
+
+        using var req = new HttpRequestMessage(HttpMethod.Head, $"http://127.0.0.1:{gateway.Port}/api/v1/download/{item.ItemId}");
+        var resp = await client.SendAsync(req);
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        Assert.Equal(512, resp.Content.Headers.ContentLength);
+        Assert.Equal("bytes", resp.Headers.GetValues("Accept-Ranges").First());
+        Assert.True(resp.Content.Headers.Contains("Content-Disposition"));
+
+        byte[] body = await resp.Content.ReadAsByteArrayAsync();
+        Assert.Empty(body);
+    }
+
+    [Fact]
+    public async Task DownloadItem_UnicodeFilename_IncludesRfc6266Encoding()
+    {
+        string unicodeFileName = "日本語写真_📷.jpg";
+        string testFilePath = Path.Combine(_tempDirectory, "unicode_test.jpg");
+        await File.WriteAllBytesAsync(testFilePath, [1, 2, 3, 4]);
+
+        var item = new OfferedWebItem(testFilePath, unicodeFileName, "image/jpeg");
+
+        await using var gateway = new GlideWebGateway(
+            host: "127.0.0.1",
+            port: 0,
+            offeredItems: [item],
+            quarantineStore: _quarantineStore);
+
+        await gateway.StartAsync();
+
+        var cookieContainer = new CookieContainer();
+        using var handler = new HttpClientHandler { CookieContainer = cookieContainer };
+        using var client = new HttpClient(handler);
+
+        await client.GetAsync(gateway.OnboardingUrl);
+
+        var resp = await client.GetAsync($"http://127.0.0.1:{gateway.Port}/api/v1/download/{item.ItemId}");
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+        string disposition = resp.Content.Headers.GetValues("Content-Disposition").First();
+        Assert.Contains("filename=", disposition);
+        Assert.Contains("filename*=UTF-8''", disposition);
+        Assert.Contains(Uri.EscapeDataString(unicodeFileName), disposition);
     }
 
     [Fact]

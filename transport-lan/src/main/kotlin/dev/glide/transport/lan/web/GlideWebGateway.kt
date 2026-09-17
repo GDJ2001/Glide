@@ -19,6 +19,7 @@ import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.URLDecoder
+import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -170,13 +171,16 @@ class GlideWebGateway(
             val queryParams = parseQuery(query)
             val tokenParam = queryParams["token"]
 
+            val isHead = method.equals("HEAD", ignoreCase = true)
+            val isGetOrHead = method.equals("GET", ignoreCase = true) || isHead
+
             // Static assets: serve directly with security headers
-            if (method == "GET" && path == "/style.css") {
-                sendResponse(output, 200, "OK", "text/css; charset=utf-8", GlideWebAssets.getStyleCss(), null)
+            if (isGetOrHead && path == "/style.css") {
+                sendResponse(output, 200, "OK", "text/css; charset=utf-8", GlideWebAssets.getStyleCss(), null, isHead)
                 return
             }
-            if (method == "GET" && path == "/app.js") {
-                sendResponse(output, 200, "OK", "application/javascript; charset=utf-8", GlideWebAssets.getAppJs(), null)
+            if (isGetOrHead && path == "/app.js") {
+                sendResponse(output, 200, "OK", "application/javascript; charset=utf-8", GlideWebAssets.getAppJs(), null, isHead)
                 return
             }
 
@@ -193,33 +197,33 @@ class GlideWebGateway(
             }
 
             if (!isAuthorized) {
-                sendResponse(output, 403, "Forbidden", "text/plain", "403 Forbidden: Invalid, expired, or missing authentication token.\r\n".toByteArray(), null)
+                sendResponse(output, 403, "Forbidden", "text/plain", "403 Forbidden: Invalid, expired, or missing authentication token.\r\n".toByteArray(), null, isHead)
                 return
             }
 
             // Route endpoints
             when {
-                method == "GET" && (path == "/" || path == "/index.html") -> {
-                    sendResponse(output, 200, "OK", "text/html; charset=utf-8", GlideWebAssets.getIndexHtml(), setCookieHeader)
+                isGetOrHead && (path == "/" || path == "/index.html") -> {
+                    sendResponse(output, 200, "OK", "text/html; charset=utf-8", GlideWebAssets.getIndexHtml(), setCookieHeader, isHead)
                 }
-                method == "GET" && path == "/api/v1/manifest" -> {
+                isGetOrHead && path == "/api/v1/manifest" -> {
                     val json = buildManifestJson()
-                    sendResponse(output, 200, "OK", "application/json; charset=utf-8", json.toByteArray(StandardCharsets.UTF_8), setCookieHeader)
+                    sendResponse(output, 200, "OK", "application/json; charset=utf-8", json.toByteArray(StandardCharsets.UTF_8), setCookieHeader, isHead)
                 }
-                method == "GET" && path.startsWith("/api/v1/download/") -> {
+                isGetOrHead && path.startsWith("/api/v1/download/") -> {
                     val itemId = path.removePrefix("/api/v1/download/")
                     val item = offeredItems.firstOrNull { it.itemId.equals(itemId, ignoreCase = true) }
                     if (item == null) {
-                        sendResponse(output, 404, "Not Found", "text/plain", "File not found\r\n".toByteArray(), setCookieHeader)
+                        sendResponse(output, 404, "Not Found", "text/plain", "File not found\r\n".toByteArray(), setCookieHeader, isHead)
                     } else {
-                        streamDownload(output, item, setCookieHeader)
+                        streamDownload(method, output, item, headers, setCookieHeader)
                     }
                 }
                 method == "POST" && path == "/api/v1/upload" -> {
                     handleUpload(input, output, headers, setCookieHeader)
                 }
                 else -> {
-                    sendResponse(output, 404, "Not Found", "text/plain", "404 Not Found\r\n".toByteArray(), setCookieHeader)
+                    sendResponse(output, 404, "Not Found", "text/plain", "404 Not Found\r\n".toByteArray(), setCookieHeader, isHead)
                 }
             }
         }
@@ -298,20 +302,93 @@ class GlideWebGateway(
             .replace("\n", "\\n")
     }
 
-    private fun streamDownload(output: OutputStream, item: OfferedWebItem, setCookie: String?) {
-        val headers = StringBuilder()
-        headers.append("HTTP/1.1 200 OK\r\n")
-        headers.append("Content-Type: application/octet-stream\r\n")
-        headers.append("Content-Length: ${item.fileSize}\r\n")
-        val escapedFileName = item.fileName.replace("\"", "")
-        headers.append("Content-Disposition: attachment; filename=\"$escapedFileName\"\r\n")
-        appendSecurityHeaders(headers)
-        if (setCookie != null) {
-            headers.append("Set-Cookie: $setCookie\r\n")
-        }
-        headers.append("Connection: close\r\n\r\n")
+    private fun streamDownload(
+        method: String,
+        output: OutputStream,
+        item: OfferedWebItem,
+        headers: Map<String, String>,
+        setCookie: String?
+    ) {
+        val isHead = method.equals("HEAD", ignoreCase = true)
+        val safeFileName = item.fileName.replace("/", "_").replace("\\", "_")
+        val safeAscii = safeFileName.map { if (it.code in 32..126 && it != '"' && it != '\\') it else '_' }.joinToString("").ifBlank { "download.bin" }
+        val encodedUtf8 = URLEncoder.encode(safeFileName, "UTF-8").replace("+", "%20")
+        val disposition = "attachment; filename=\"$safeAscii\"; filename*=UTF-8''$encodedUtf8"
 
-        output.write(headers.toString().toByteArray(StandardCharsets.UTF_8))
+        val totalLength = item.fileSize
+        val rangeHeader = headers["range"]
+
+        if (!rangeHeader.isNullOrBlank() && rangeHeader.startsWith("bytes=", ignoreCase = true)) {
+            val parsedRange = parseByteRange(rangeHeader, totalLength)
+            if (parsedRange == null) {
+                val sb = StringBuilder()
+                sb.append("HTTP/1.1 416 Range Not Satisfiable\r\n")
+                sb.append("Content-Range: bytes */$totalLength\r\n")
+                sb.append("Content-Length: 0\r\n")
+                sb.append("Accept-Ranges: bytes\r\n")
+                appendSecurityHeaders(sb)
+                if (setCookie != null) sb.append("Set-Cookie: $setCookie\r\n")
+                sb.append("Connection: close\r\n\r\n")
+                output.write(sb.toString().toByteArray(StandardCharsets.UTF_8))
+                output.flush()
+                return
+            }
+
+            val (start, end) = parsedRange
+            val rangeLength = end - start + 1
+
+            val sb = StringBuilder()
+            sb.append("HTTP/1.1 206 Partial Content\r\n")
+            sb.append("Content-Type: application/octet-stream\r\n")
+            sb.append("Content-Length: $rangeLength\r\n")
+            sb.append("Content-Range: bytes $start-$end/$totalLength\r\n")
+            sb.append("Accept-Ranges: bytes\r\n")
+            sb.append("Content-Disposition: $disposition\r\n")
+            appendSecurityHeaders(sb)
+            if (setCookie != null) sb.append("Set-Cookie: $setCookie\r\n")
+            sb.append("Connection: close\r\n\r\n")
+            output.write(sb.toString().toByteArray(StandardCharsets.UTF_8))
+
+            if (isHead) {
+                output.flush()
+                return
+            }
+
+            item.openStream().use { input ->
+                skipFully(input, start)
+                val buf = ByteArray(64 * 1024)
+                var remaining = rangeLength
+                while (remaining > 0) {
+                    val toRead = Math.min(buf.size.toLong(), remaining).toInt()
+                    val read = input.read(buf, 0, toRead)
+                    if (read <= 0) break
+                    output.write(buf, 0, read)
+                    remaining -= read
+                }
+            }
+            output.flush()
+            return
+        }
+
+        // Full content 200 OK
+        val sb = StringBuilder()
+        sb.append("HTTP/1.1 200 OK\r\n")
+        sb.append("Content-Type: application/octet-stream\r\n")
+        sb.append("Content-Length: $totalLength\r\n")
+        sb.append("Accept-Ranges: bytes\r\n")
+        sb.append("Content-Disposition: $disposition\r\n")
+        appendSecurityHeaders(sb)
+        if (setCookie != null) {
+            sb.append("Set-Cookie: $setCookie\r\n")
+        }
+        sb.append("Connection: close\r\n\r\n")
+
+        output.write(sb.toString().toByteArray(StandardCharsets.UTF_8))
+
+        if (isHead) {
+            output.flush()
+            return
+        }
 
         item.openStream().use { input ->
             val buf = ByteArray(64 * 1024)
@@ -321,6 +398,57 @@ class GlideWebGateway(
             }
         }
         output.flush()
+    }
+
+    private fun parseByteRange(rangeHeader: String?, totalLength: Long): Pair<Long, Long>? {
+        if (rangeHeader.isNullOrBlank() || !rangeHeader.startsWith("bytes=", ignoreCase = true) || totalLength <= 0) {
+            return null
+        }
+        var spec = rangeHeader.substring("bytes=".length).trim()
+        val commaIdx = spec.indexOf(',')
+        if (commaIdx >= 0) {
+            spec = spec.substring(0, commaIdx).trim()
+        }
+        val dashIdx = spec.indexOf('-')
+        if (dashIdx < 0) return null
+
+        val startStr = spec.substring(0, dashIdx).trim()
+        val endStr = spec.substring(dashIdx + 1).trim()
+
+        if (startStr.isEmpty() && endStr.isEmpty()) return null
+
+        if (startStr.isEmpty()) {
+            val suffix = endStr.toLongOrNull() ?: return null
+            if (suffix <= 0) return null
+            val start = Math.max(0L, totalLength - suffix)
+            return Pair(start, totalLength - 1)
+        }
+
+        val start = startStr.toLongOrNull() ?: return null
+        if (start < 0 || start >= totalLength) return null
+
+        val end = if (endStr.isEmpty()) {
+            totalLength - 1
+        } else {
+            val parsedEnd = endStr.toLongOrNull() ?: return null
+            if (parsedEnd < start) return null
+            Math.min(parsedEnd, totalLength - 1)
+        }
+
+        return Pair(start, end)
+    }
+
+    private fun skipFully(input: InputStream, bytesToSkip: Long) {
+        var remaining = bytesToSkip
+        while (remaining > 0) {
+            val skipped = input.skip(remaining)
+            if (skipped <= 0) {
+                if (input.read() == -1) break
+                remaining -= 1
+            } else {
+                remaining -= skipped
+            }
+        }
     }
 
     private fun handleUpload(
@@ -375,7 +503,8 @@ class GlideWebGateway(
         statusText: String,
         contentType: String,
         body: ByteArray,
-        setCookie: String?
+        setCookie: String?,
+        isHead: Boolean = false
     ) {
         val sb = StringBuilder()
         sb.append("HTTP/1.1 $statusCode $statusText\r\n")
@@ -388,7 +517,9 @@ class GlideWebGateway(
         sb.append("Connection: close\r\n\r\n")
 
         output.write(sb.toString().toByteArray(StandardCharsets.UTF_8))
-        output.write(body)
+        if (!isHead) {
+            output.write(body)
+        }
         output.flush()
     }
 

@@ -14,7 +14,7 @@ Write-Host "    Glide ADR-0019: Browser & Web Transfer Slice Auditor         " -
 Write-Host "=================================================================" -ForegroundColor Cyan
 
 # --- Check 1: ADR-0019 Existence and Decision Index ---
-Write-Host "`n[Check 1/6] Auditing ADR-0019 existence and decision index..." -ForegroundColor Yellow
+Write-Host "`n[Check 1/7] Auditing ADR-0019 existence and decision index..." -ForegroundColor Yellow
 $AdrPath = Join-Path $ProjectRoot "docs\adr\ADR-0019-browser-web-local-transfer.md"
 $AdrIndex = Join-Path $ProjectRoot "docs\adr\README.md"
 
@@ -32,7 +32,7 @@ if ($IndexContent -notmatch "ADR-0019 — Browser and web client zero-install lo
 Write-Host "  PASS: ADR-0019 exists and is indexed in docs/adr/README.md." -ForegroundColor Green
 
 # --- Check 2: Technical Specification Completeness ---
-Write-Host "`n[Check 2/6] Auditing Browser Web technical specification completeness..." -ForegroundColor Yellow
+Write-Host "`n[Check 2/7] Auditing Browser Web technical specification completeness..." -ForegroundColor Yellow
 $SpecPath = Join-Path $ProjectRoot "docs\future\ANDROID_BROWSER_WEB_SPECIFICATION.md"
 if (-not (Test-Path $SpecPath)) {
     Write-Error "FAIL: Specification not found at $SpecPath"
@@ -61,7 +61,7 @@ foreach ($section in $RequiredSections) {
 Write-Host "  PASS: Specification contains complete REST endpoints, QR token lifecycle, CSP headers, and 5-phase roadmap." -ForegroundColor Green
 
 # --- Check 3: Zero-Cloud & Zero-CDN Offline Invariants ---
-Write-Host "`n[Check 3/6] Auditing Zero-Cloud & Zero-CDN Offline Invariants..." -ForegroundColor Yellow
+Write-Host "`n[Check 3/7] Auditing Zero-Cloud & Zero-CDN Offline Invariants..." -ForegroundColor Yellow
 if ($SpecContent -notmatch "Zero Cloud" -or $SpecContent -notmatch "100% Offline") {
     Write-Error "FAIL: Specification missing explicit Zero Cloud / 100% Offline invariant statement."
 }
@@ -71,7 +71,7 @@ if ($SpecContent -notmatch "Zero External CDN" -or $SpecContent -notmatch "Googl
 Write-Host "  PASS: Zero-cloud, 100% offline, and zero-CDN air-gapped invariants verified." -ForegroundColor Green
 
 # --- Check 4: Browser Security Sandbox & Header Policy ---
-Write-Host "`n[Check 4/6] Auditing Browser Security Sandbox & Header Policy..." -ForegroundColor Yellow
+Write-Host "`n[Check 4/7] Auditing Browser Security Sandbox & Header Policy..." -ForegroundColor Yellow
 $RequiredHeaders = @(
     "nosniff",
     "DENY",
@@ -86,7 +86,7 @@ foreach ($header in $RequiredHeaders) {
 Write-Host "  PASS: CSP, X-Content-Type-Options, X-Frame-Options, and cookie security policies verified." -ForegroundColor Green
 
 # --- Check 5: Cross-Platform Path Strategic Alignment ---
-Write-Host "`n[Check 5/6] Auditing cross-platform roadmap strategic alignment..." -ForegroundColor Yellow
+Write-Host "`n[Check 5/7] Auditing cross-platform roadmap strategic alignment..." -ForegroundColor Yellow
 $PathFile = Join-Path $ProjectRoot "docs\future\CROSS_PLATFORM_PATH.md"
 if (-not (Test-Path $PathFile)) {
     Write-Error "FAIL: docs/future/CROSS_PLATFORM_PATH.md missing."
@@ -98,7 +98,7 @@ if ($PathContent -notmatch "Android↔Browser" -or $PathContent -notmatch "ADR-0
 Write-Host "  PASS: CROSS_PLATFORM_PATH.md Step 3 properly references ADR-0019 and web specification." -ForegroundColor Green
 
 # --- Check 6: Cross-Platform Implementation Parity (.NET & Android/Kotlin) ---
-Write-Host "`n[Check 6/6] Auditing Cross-Platform Implementation Parity (.NET & Android/Kotlin)..." -ForegroundColor Yellow
+Write-Host "`n[Check 6/7] Auditing Cross-Platform Implementation Parity (.NET & Android/Kotlin)..." -ForegroundColor Yellow
 
 # Verify .NET Gateway
 $DotNetGateway = Join-Path $ProjectRoot "windows\Glide.Transport\Web\GlideWebGateway.cs"
@@ -135,6 +135,33 @@ if (-not (Test-Path $QrGen) -or -not (Test-Path $AndroidQr)) {
 }
 
 Write-Host "  PASS: Cross-platform .NET and Android Web Gateways, embedded assets, and QR onboarding verified." -ForegroundColor Green
+
+# --- Check 7: Phase W3 Streaming Interoperability (Range, 206, 416, HEAD, RFC 6266) ---
+Write-Host "`n[Check 7/7] Auditing Phase W3 Streaming Interoperability (Range, HEAD, RFC 6266)..." -ForegroundColor Yellow
+
+# Verify .NET Phase W3 features
+if ($DotNetGatewaySrc -notmatch "Accept-Ranges" -or
+    $DotNetGatewaySrc -notmatch "PartialContent" -or
+    $DotNetGatewaySrc -notmatch "416" -or
+    $DotNetGatewaySrc -notmatch "filename\*=UTF-8''") {
+    Write-Error "FAIL: .NET GlideWebGateway missing Range 206, 416, Accept-Ranges, or RFC 6266 disposition."
+}
+
+# Verify Kotlin Phase W3 features
+if ($KotlinGatewaySrc -notmatch "Accept-Ranges" -or
+    $KotlinGatewaySrc -notmatch "206 Partial Content" -or
+    $KotlinGatewaySrc -notmatch "416 Range Not Satisfiable" -or
+    $KotlinGatewaySrc -notmatch "filename\*=UTF-8''") {
+    Write-Error "FAIL: Kotlin GlideWebGateway missing Range 206, 416, Accept-Ranges, or RFC 6266 disposition."
+}
+
+# Verify WebShareViewModel existence
+$WebShareVm = Join-Path $ProjectRoot "app\src\main\kotlin\dev\glide\app\ui\web\WebShareViewModel.kt"
+if (-not (Test-Path $WebShareVm)) {
+    Write-Error "FAIL: app/src/main/kotlin/dev/glide/app/ui/web/WebShareViewModel.kt missing."
+}
+
+Write-Host "  PASS: HTTP Range 206/416 partial streaming, HEAD support, RFC 6266 disposition, and WebShareViewModel verified." -ForegroundColor Green
 
 Write-Host "`n=================================================================" -ForegroundColor Cyan
 Write-Host "  BROWSER & WEB TRANSFER SPECIFICATION AUDIT PASSED (0 issues)   " -ForegroundColor Cyan

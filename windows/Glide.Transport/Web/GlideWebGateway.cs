@@ -160,13 +160,13 @@ public sealed class GlideWebGateway : IAsyncDisposable
             // Static asset delivery for CSS and JS does not require re-authentication if session or referer valid
             if (path.Equals("/style.css", StringComparison.OrdinalIgnoreCase))
             {
-                await ServeEmbeddedAssetAsync(response, "style.css", "text/css; charset=utf-8");
+                await ServeEmbeddedAssetAsync(request, response, "style.css", "text/css; charset=utf-8");
                 return;
             }
 
             if (path.Equals("/app.js", StringComparison.OrdinalIgnoreCase))
             {
-                await ServeEmbeddedAssetAsync(response, "app.js", "application/javascript");
+                await ServeEmbeddedAssetAsync(request, response, "app.js", "application/javascript");
                 return;
             }
 
@@ -187,24 +187,24 @@ public sealed class GlideWebGateway : IAsyncDisposable
             // Route authenticated endpoints
             if (path == "/" || path.Equals("/index.html", StringComparison.OrdinalIgnoreCase))
             {
-                await ServeEmbeddedAssetAsync(response, "index.html", "text/html; charset=utf-8");
+                await ServeEmbeddedAssetAsync(request, response, "index.html", "text/html; charset=utf-8");
                 return;
             }
 
             if (path.Equals("/api/v1/manifest", StringComparison.OrdinalIgnoreCase))
             {
-                await ServeManifestAsync(response);
+                await ServeManifestAsync(request, response);
                 return;
             }
 
             if (path.StartsWith("/api/v1/download/", StringComparison.OrdinalIgnoreCase))
             {
                 string itemId = path["/api/v1/download/".Length..].Trim();
-                await ServeDownloadAsync(response, itemId);
+                await ServeDownloadAsync(request, response, itemId);
                 return;
             }
 
-            if (path.Equals("/api/v1/upload", StringComparison.OrdinalIgnoreCase) && request.HttpMethod == "POST")
+            if (path.Equals("/api/v1/upload", StringComparison.OrdinalIgnoreCase) && request.HttpMethod.Equals("POST", StringComparison.OrdinalIgnoreCase))
             {
                 await HandleUploadAsync(request, response);
                 return;
@@ -281,7 +281,7 @@ public sealed class GlideWebGateway : IAsyncDisposable
         return false;
     }
 
-    private static async Task ServeEmbeddedAssetAsync(HttpListenerResponse response, string assetName, string contentType)
+    private static async Task ServeEmbeddedAssetAsync(HttpListenerRequest request, HttpListenerResponse response, string assetName, string contentType)
     {
         var assembly = Assembly.GetExecutingAssembly();
         string resourceName = $"Glide.Transport.Web.Assets.{assetName}";
@@ -298,11 +298,14 @@ public sealed class GlideWebGateway : IAsyncDisposable
         response.ContentType = contentType;
         response.ContentLength64 = stream.Length;
 
-        await stream.CopyToAsync(response.OutputStream);
+        if (!request.HttpMethod.Equals("HEAD", StringComparison.OrdinalIgnoreCase))
+        {
+            await stream.CopyToAsync(response.OutputStream);
+        }
         response.OutputStream.Close();
     }
 
-    private async Task ServeManifestAsync(HttpListenerResponse response)
+    private async Task ServeManifestAsync(HttpListenerRequest request, HttpListenerResponse response)
     {
         var rootNode = new JsonObject
         {
@@ -329,11 +332,14 @@ public sealed class GlideWebGateway : IAsyncDisposable
         response.ContentType = "application/json; charset=utf-8";
         response.ContentLength64 = jsonBytes.Length;
 
-        await response.OutputStream.WriteAsync(jsonBytes);
+        if (!request.HttpMethod.Equals("HEAD", StringComparison.OrdinalIgnoreCase))
+        {
+            await response.OutputStream.WriteAsync(jsonBytes);
+        }
         response.OutputStream.Close();
     }
 
-    private async Task ServeDownloadAsync(HttpListenerResponse response, string itemId)
+    private async Task ServeDownloadAsync(HttpListenerRequest request, HttpListenerResponse response, string itemId)
     {
         var item = _offeredItems.FirstOrDefault(i => string.Equals(i.ItemId, itemId, StringComparison.OrdinalIgnoreCase));
         if (item == null || !File.Exists(item.FilePath))
@@ -344,15 +350,136 @@ public sealed class GlideWebGateway : IAsyncDisposable
         }
 
         string safeFileName = WindowsPathSanitizer.SanitizeRelativePath(item.FileName).Replace('/', '_');
+        string safeAscii = new string(safeFileName.Select(c => c <= 127 && c != '"' && c != '\\' ? c : '_').ToArray());
+        if (string.IsNullOrWhiteSpace(safeAscii)) safeAscii = "download.bin";
+        string encodedUtf8 = Uri.EscapeDataString(safeFileName);
 
+        response.Headers.Set("Accept-Ranges", "bytes");
+        response.Headers.Set("Content-Disposition", $"attachment; filename=\"{safeAscii}\"; filename*=UTF-8''{encodedUtf8}");
+        response.ContentType = string.IsNullOrWhiteSpace(item.MimeType) ? "application/octet-stream" : item.MimeType;
+
+        long fileLength = item.FileSize;
+        bool isHead = request.HttpMethod.Equals("HEAD", StringComparison.OrdinalIgnoreCase);
+        string? rangeHeader = request.Headers["Range"];
+
+        if (!string.IsNullOrEmpty(rangeHeader) && rangeHeader.StartsWith("bytes=", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!TryParseRange(rangeHeader, fileLength, out long start, out long end))
+            {
+                response.StatusCode = 416; // Range Not Satisfiable
+                response.Headers.Set("Content-Range", $"bytes */{fileLength}");
+                response.ContentLength64 = 0;
+                response.Close();
+                return;
+            }
+
+            long rangeLength = end - start + 1;
+            response.StatusCode = (int)HttpStatusCode.PartialContent; // 206
+            response.Headers.Set("Content-Range", $"bytes {start}-{end}/{fileLength}");
+            response.ContentLength64 = rangeLength;
+
+            if (isHead)
+            {
+                response.Close();
+                return;
+            }
+
+            using var fileStream = new FileStream(item.FilePath, FileMode.Open, FileAccess.Read, FileShare.Read, 65536, useAsync: true);
+            if (start > 0)
+            {
+                fileStream.Seek(start, SeekOrigin.Begin);
+            }
+
+            long bytesRemaining = rangeLength;
+            byte[] buffer = new byte[65536];
+            while (bytesRemaining > 0)
+            {
+                int toRead = (int)Math.Min(buffer.Length, bytesRemaining);
+                int read = await fileStream.ReadAsync(buffer.AsMemory(0, toRead));
+                if (read <= 0) break;
+                await response.OutputStream.WriteAsync(buffer.AsMemory(0, read));
+                bytesRemaining -= read;
+            }
+            response.OutputStream.Close();
+            return;
+        }
+
+        // Full content (200 OK)
         response.StatusCode = (int)HttpStatusCode.OK;
-        response.ContentType = item.MimeType;
-        response.ContentLength64 = item.FileSize;
-        response.Headers.Set("Content-Disposition", $"attachment; filename=\"{safeFileName}\"");
+        response.ContentLength64 = fileLength;
 
-        using var fileStream = new FileStream(item.FilePath, FileMode.Open, FileAccess.Read, FileShare.Read, 65536, useAsync: true);
-        await fileStream.CopyToAsync(response.OutputStream);
+        if (isHead)
+        {
+            response.Close();
+            return;
+        }
+
+        using (var fileStream = new FileStream(item.FilePath, FileMode.Open, FileAccess.Read, FileShare.Read, 65536, useAsync: true))
+        {
+            await fileStream.CopyToAsync(response.OutputStream);
+        }
         response.OutputStream.Close();
+    }
+
+    private static bool TryParseRange(string rangeHeader, long totalLength, out long start, out long end)
+    {
+        start = 0;
+        end = totalLength - 1;
+
+        if (totalLength <= 0 || !rangeHeader.StartsWith("bytes=", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        string spec = rangeHeader["bytes=".Length..].Trim();
+        int commaIdx = spec.IndexOf(',');
+        if (commaIdx >= 0)
+        {
+            spec = spec[..commaIdx].Trim();
+        }
+
+        int dashIdx = spec.IndexOf('-');
+        if (dashIdx < 0) return false;
+
+        string startStr = spec[..dashIdx].Trim();
+        string endStr = spec[(dashIdx + 1)..].Trim();
+
+        if (string.IsNullOrEmpty(startStr) && string.IsNullOrEmpty(endStr))
+        {
+            return false;
+        }
+
+        if (string.IsNullOrEmpty(startStr))
+        {
+            // Suffix range: bytes=-500 (last 500 bytes)
+            if (!long.TryParse(endStr, out long suffixLen) || suffixLen <= 0) return false;
+            start = Math.Max(0, totalLength - suffixLen);
+            end = totalLength - 1;
+            return true;
+        }
+
+        if (!long.TryParse(startStr, out start) || start < 0 || start >= totalLength)
+        {
+            return false;
+        }
+
+        if (string.IsNullOrEmpty(endStr))
+        {
+            end = totalLength - 1;
+        }
+        else
+        {
+            if (!long.TryParse(endStr, out end) || end < start)
+            {
+                return false;
+            }
+            if (end >= totalLength)
+            {
+                end = totalLength - 1;
+            }
+        }
+
+        return true;
     }
 
     private async Task HandleUploadAsync(HttpListenerRequest request, HttpListenerResponse response)
