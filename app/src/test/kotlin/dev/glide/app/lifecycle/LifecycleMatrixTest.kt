@@ -1,6 +1,6 @@
 package dev.glide.app.lifecycle
 
-import dev.glide.app.service.TransferSessionManager
+import dev.glide.app.service.TransferRuntime
 import dev.glide.app.ui.transfer.TransferUiState
 import dev.glide.app.ui.transfer.TransferViewModel
 import dev.glide.core.coordinator.ItemPhase
@@ -336,12 +336,10 @@ class LifecycleMatrixTest {
     @Before
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
-        TransferSessionManager.resetForTesting()
     }
 
     @After
     fun tearDown() {
-        TransferSessionManager.resetForTesting()
         Dispatchers.resetMain()
     }
 
@@ -349,7 +347,9 @@ class LifecycleMatrixTest {
     fun activityRecreation_withActiveFgsSession_rebindsToSameSessionStateWithoutSecondTransfer() = runTest {
         val sid = SessionId(UUID.randomUUID().toString())
 
-        // 1. Simulate active transfer state in TransferSessionManager (governed by active FGS)
+        val runtime = TransferRuntime.forTesting()
+
+        // 1. Simulate active transfer state in the process runtime (normally governed by active FGS)
         val liveState = TransferUiState.Transferring(
             sessionId = sid.value,
             role = DeviceRole.Sender,
@@ -360,10 +360,10 @@ class LifecycleMatrixTest {
             progressFraction = 0.50f,
             speedBytesPerSec = 10_000_000L
         )
-        TransferSessionManager.setUiStateForTesting(liveState)
+        runtime.setTransferStateForTesting(liveState)
 
-        // Initial ViewModel instance collects from TransferSessionManager
-        val vm1 = TransferViewModel()
+        // Initial ViewModel instance observes the shared runtime.
+        val vm1 = TransferViewModel(runtime)
         testScheduler.advanceUntilIdle()
 
         val state1 = vm1.uiState.value
@@ -371,8 +371,8 @@ class LifecycleMatrixTest {
         assertEquals(0.50f, (state1 as TransferUiState.Transferring).progressFraction)
 
         // 2. Activity recreated (e.g. screen lock / orientation rotation / background resume)
-        // A new ViewModel instance is created and collects from TransferSessionManager
-        val vm2 = TransferViewModel()
+        // A new ViewModel instance observes the exact same runtime without creating a new owner.
+        val vm2 = TransferViewModel(runtime)
         testScheduler.advanceUntilIdle()
 
         // 3. Confirm vm2 immediately rebinds to the exact same live transfer state without duplicate transfer
@@ -436,9 +436,9 @@ class LifecycleMatrixTest {
             ioDispatcher = testDispatcher
         )
 
-        val vm = TransferViewModel()
+        val runtime = TransferRuntime.forTesting().also { it.attachServiceScope(this) }
+        val vm = TransferViewModel(runtime)
         vm.bindCoordinator(coordinator, peerDisplayName = "Remote Sender")
-        coordinator.start()
         testScheduler.advanceUntilIdle()
 
         // Prepare staging for incoming item
@@ -463,8 +463,8 @@ class LifecycleMatrixTest {
         receiveStore.discardStaging(handle)
         assertEquals(0, receiveStore.stagedFiles.size)
 
-        // Cleanly stop coordinator to cancel background observation jobs
-        coordinator.stop()
+        // Cleanly detach the service-owned runtime to cancel background observation jobs.
+        runtime.detachServiceScope()
     }
 
     @Test
