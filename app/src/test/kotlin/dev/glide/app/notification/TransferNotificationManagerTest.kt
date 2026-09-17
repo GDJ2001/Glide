@@ -303,4 +303,103 @@ class TransferNotificationManagerTest {
         val defaultManager = TransferNotificationManager()
         assertNotNull(defaultManager)
     }
+
+    @Test
+    fun resolveNotificationContent_stalledTransfer_displaysStalledIndicator() {
+        val manager = TransferNotificationManager()
+        val settings = GlideSettings(notificationDetails = true)
+
+        val stalledState = TransferUiState.Transferring(
+            sessionId = "s1",
+            role = DeviceRole.Receiver,
+            peerName = "Pixel 9 Pro",
+            itemName = "data.bin",
+            transferredBytes = 500_000L,
+            totalBytes = 1_000_000L,
+            progressFraction = 0.5f,
+            speedBytesPerSec = 0L,
+            isStalled = true
+        )
+        val content = manager.resolveNotificationContent(stalledState, settings)
+        assertTrue(content.text.contains("· Stalled"))
+    }
+
+    @Test
+    fun resolveNotificationContent_multiItemTransfer_displaysItemIndexAndCount() {
+        val manager = TransferNotificationManager()
+        val settings = GlideSettings(notificationDetails = true)
+
+        val senderState = TransferUiState.Transferring(
+            sessionId = "s1",
+            role = DeviceRole.Sender,
+            peerName = "Pixel 9 Pro",
+            itemName = "document.pdf",
+            transferredBytes = 200_000L,
+            totalBytes = 600_000L,
+            progressFraction = 0.33f,
+            itemIndex = 2,
+            itemCount = 3
+        )
+        val senderContent = manager.resolveNotificationContent(senderState, settings)
+        assertEquals("Sending document.pdf (2/3)", senderContent.title)
+
+        val receiverState = TransferUiState.Transferring(
+            sessionId = "s1",
+            role = DeviceRole.Receiver,
+            peerName = "Pixel 9 Pro",
+            itemName = "document.pdf",
+            transferredBytes = 200_000L,
+            totalBytes = 600_000L,
+            progressFraction = 0.33f,
+            itemIndex = 2,
+            itemCount = 3
+        )
+        val receiverContent = manager.resolveNotificationContent(receiverState, settings)
+        assertEquals("Receiving document.pdf (2/3)", receiverContent.title)
+    }
+
+    @Test
+    fun resolveNotificationContent_multiItemVerifying_displaysItemIndexAndCount() {
+        val manager = TransferNotificationManager()
+        val settings = GlideSettings(notificationDetails = true)
+
+        val verifyingState = TransferUiState.Verifying(
+            sessionId = "s1",
+            role = DeviceRole.Receiver,
+            peerName = "Pixel 9 Pro",
+            itemName = "archive.zip",
+            itemIndex = 1,
+            itemCount = 4,
+            totalBytes = 10_000_000L
+        )
+        val content = manager.resolveNotificationContent(verifyingState, settings)
+        assertEquals("Verifying archive.zip (1/4)...", content.title)
+        assertEquals("Checking file integrity...", content.text)
+    }
+
+    @Test
+    fun resolveNotificationContent_multiItemCompleted_displaysCountAndTotalBytes() {
+        val manager = TransferNotificationManager()
+        val detailedSettings = GlideSettings(notificationDetails = true)
+        val redactedSettings = GlideSettings(notificationDetails = false)
+
+        val completedState = TransferUiState.Completed(
+            sessionId = "s1",
+            role = DeviceRole.Receiver,
+            peerName = "Pixel 9 Pro",
+            totalBytes = 15_000_000L,
+            itemName = "first.txt",
+            itemCount = 3
+        )
+
+        val detailedContent = manager.resolveNotificationContent(completedState, detailedSettings)
+        assertEquals("Transfer complete", detailedContent.title)
+        assertTrue(detailedContent.text.contains("3 files"))
+        assertTrue(detailedContent.text.contains("transferred"))
+
+        val redactedContent = manager.resolveNotificationContent(completedState, redactedSettings)
+        assertEquals("Transfer complete", redactedContent.title)
+        assertFalse(redactedContent.text.contains("3 files"))
+        assertTrue(redactedContent.text.contains("transferred successfully"))
+    }
 }

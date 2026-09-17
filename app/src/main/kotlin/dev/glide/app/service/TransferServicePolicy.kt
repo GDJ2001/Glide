@@ -62,11 +62,13 @@ object TransferServicePolicy {
      * @param sdkInt The platform API level (e.g. Build.VERSION.SDK_INT).
      * @param isAppInForeground True if the calling app currently has a visible/resumed Activity or foreground presence.
      * @param isPermissionGranted Predicate evaluating whether a runtime permission string is currently granted.
+     * @param isLanTransfer True if the active transfer route is LAN (Wi-Fi sockets/mDNS), false if Nearby Connections.
      */
     fun validateServiceStart(
         sdkInt: Int,
         isAppInForeground: Boolean,
-        isPermissionGranted: (String) -> Boolean
+        isPermissionGranted: (String) -> Boolean,
+        isLanTransfer: Boolean = false
     ): ServiceStartValidation {
         // 1. Check API 31+ background start restriction
         if (sdkInt >= 31 && !isAppInForeground) {
@@ -75,20 +77,65 @@ object TransferServicePolicy {
             )
         }
 
-        // 2. Check API 34+ connectedDevice runtime prerequisites
-        if (sdkInt >= 34) {
-            val required = requiredConnectedDevicePermissions(sdkInt)
-            val missing = required.filterNot { isPermissionGranted(it) }
-            // For connectedDevice FGS, at least BLUETOOTH_CONNECT or NEARBY_WIFI_DEVICES must be granted
-            if (missing.contains(PermissionPolicy.PERMISSION_BLUETOOTH_CONNECT)) {
+        // 2. Check route-specific prerequisites
+        if (isLanTransfer) {
+            // LAN transfers are strictly independent of Bluetooth (LAN-025).
+            // On Android 17+ (API 37+), platform local-network privacy requires ACCESS_LOCAL_NETWORK.
+            if (sdkInt >= 37 && !isPermissionGranted(PermissionPolicy.PERMISSION_ACCESS_LOCAL_NETWORK)) {
                 return ServiceStartValidation.MissingPrerequisites(
-                    missingPermissions = missing,
-                    reason = "Required nearby device permissions are missing to maintain background transfer."
+                    missingPermissions = listOf(PermissionPolicy.PERMISSION_ACCESS_LOCAL_NETWORK),
+                    reason = "Local network permission is required to maintain background transfer on this network."
                 )
+            }
+        } else {
+            // Nearby transfer: Check API 34+ connectedDevice runtime prerequisites
+            if (sdkInt >= 34) {
+                val required = requiredConnectedDevicePermissions(sdkInt)
+                val missing = required.filterNot { isPermissionGranted(it) }
+                // For connectedDevice FGS, at least BLUETOOTH_CONNECT or NEARBY_WIFI_DEVICES must be granted
+                if (missing.contains(PermissionPolicy.PERMISSION_BLUETOOTH_CONNECT)) {
+                    return ServiceStartValidation.MissingPrerequisites(
+                        missingPermissions = missing,
+                        reason = "Required nearby device permissions are missing to maintain background transfer."
+                    )
+                }
             }
         }
 
         return ServiceStartValidation.Allowed
+    }
+
+    /**
+     * Evaluates whether runtime permissions for an ongoing active session were revoked (LAN-025).
+     *
+     * @param sdkInt The platform API level.
+     * @param isLanTransfer True if the active session is over LAN, false if Nearby Connections.
+     * @param isPermissionGranted Predicate evaluating runtime permission grants.
+     * @return True if any prerequisite permission for the active route has been revoked.
+     */
+    fun isPermissionRevokedForActiveSession(
+        sdkInt: Int,
+        isLanTransfer: Boolean,
+        isPermissionGranted: (String) -> Boolean
+    ): Boolean {
+        return if (isLanTransfer) {
+            if (sdkInt >= 37) {
+                !isPermissionGranted(PermissionPolicy.PERMISSION_ACCESS_LOCAL_NETWORK)
+            } else {
+                false
+            }
+        } else {
+            if (sdkInt >= 34) {
+                !isPermissionGranted(PermissionPolicy.PERMISSION_BLUETOOTH_CONNECT)
+            } else if (sdkInt >= 31) {
+                !isPermissionGranted(PermissionPolicy.PERMISSION_BLUETOOTH_CONNECT)
+            } else if (sdkInt >= 29) {
+                !isPermissionGranted(PermissionPolicy.PERMISSION_ACCESS_FINE_LOCATION) &&
+                    !isPermissionGranted(PermissionPolicy.PERMISSION_ACCESS_COARSE_LOCATION)
+            } else {
+                !isPermissionGranted(PermissionPolicy.PERMISSION_ACCESS_COARSE_LOCATION)
+            }
+        }
     }
 
     /**

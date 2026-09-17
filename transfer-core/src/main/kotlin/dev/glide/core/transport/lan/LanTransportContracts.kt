@@ -57,7 +57,11 @@ data class LanMdnsRecord(
 }
 
 /**
- * Encodes and decodes 4-byte big-endian length-prefixed stream frames for Glide LAN sockets.
+ * Legacy 4-byte big-endian length-prefixed control framing helper (ADR-0017).
+ *
+ * NOTE: For LAN Profile 1 framed streaming, use [LanRecordCodec] and [LanRecord], which implement
+ * the 5-byte header (`kind: UByte` + `payloadLength: UInt32`) specified in ADR-0018 and master plan Section 6.
+ * Retained for backward compatibility with early control tests.
  */
 object LanFrameHeader {
     const val HEADER_SIZE = 4

@@ -23,6 +23,8 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dagger.hilt.android.AndroidEntryPoint
+import dev.glide.app.ingress.IngressOutcome
+import dev.glide.app.ingress.ShareIngressHandler
 import dev.glide.app.ingress.ShareIngressParser
 import dev.glide.app.ingress.ShareIngressResult
 import dev.glide.app.navigation.GlideAppNavDisplay
@@ -53,7 +55,8 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var settingsStore: SettingsStore
 
-    private val intentFlow = MutableStateFlow<Intent?>(null)
+    private var lastHandledFingerprint: String? = null
+    private val incomingOutcomeFlow = MutableStateFlow<IngressOutcome?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -892,22 +895,33 @@ class MainActivity : ComponentActivity() {
         }
 
         // 2. Evaluate cold-start share intent or notification session if no debug override active
+        var initialDialogState: IngressDialogState? = null
         val initialRoute = debugRoute ?: run {
-            val sessionIdExtra = intent?.getStringExtra(dev.glide.app.service.TransferService.EXTRA_SESSION_ID)
-            if (sessionIdExtra != null) {
-                GlideRoute.Transfer(sessionIdExtra)
-            } else {
-                val shareResult = ShareIngressParser.parse(intent)
-                if (shareResult is ShareIngressResult.Success && !ActiveSessionTracker.isSessionActive.value) {
-                    tryTakePersistableUriPermissions(intent, shareResult.uris)
-                    GlideRoute.Selection(shareResult.uris.map { it.toString() })
-                } else {
+            val outcome = ShareIngressHandler.handleLaunchIntent(
+                intent = intent,
+                isRecreating = savedInstanceState != null,
+                isSessionActive = ActiveSessionTracker.isSessionActive.value,
+                activeSessionId = ActiveSessionTracker.activeSessionId.value
+            )
+            when (outcome) {
+                is IngressOutcome.Route -> {
+                    ShareIngressHandler.tryTakePersistableUriPermissions(contentResolver, outcome.urisToPersist)
+                    outcome.route
+                }
+                is IngressOutcome.ActiveSessionBusy -> {
+                    initialDialogState = IngressDialogState(outcome.dialogTitle, outcome.dialogMessage)
+                    val sid = outcome.activeSessionId ?: "active"
+                    GlideRoute.Transfer(sid)
+                }
+                is IngressOutcome.ShowDialog -> {
+                    initialDialogState = IngressDialogState(outcome.title, outcome.message)
+                    GlideRoute.Home
+                }
+                is IngressOutcome.NoOp -> {
                     GlideRoute.Home
                 }
             }
         }
-
-        intentFlow.value = intent
 
         setContent {
             val settings by (if (::settingsStore.isInitialized) settingsStore.settingsFlow else flowOf(GlideSettings()))
@@ -994,55 +1008,26 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.fillMaxSize(),
                         color = MaterialTheme.colorScheme.background
                     ) {
-                    val latestIntent by intentFlow.collectAsStateWithLifecycle()
+                    val latestOutcome by incomingOutcomeFlow.collectAsStateWithLifecycle()
                     var incomingRoute by remember { mutableStateOf<GlideRoute?>(null) }
-                    var ingressDialog by remember { mutableStateOf<IngressDialogState?>(null) }
+                    var ingressDialog by remember { mutableStateOf<IngressDialogState?>(initialDialogState) }
 
-                    LaunchedEffect(latestIntent) {
-                        val current = latestIntent ?: return@LaunchedEffect
-                        val sessionIdExtra = current.getStringExtra(dev.glide.app.service.TransferService.EXTRA_SESSION_ID)
-                        if (sessionIdExtra != null) {
-                            incomingRoute = GlideRoute.Transfer(sessionIdExtra)
-                            return@LaunchedEffect
-                        }
-                        when (val result = ShareIngressParser.parse(current)) {
-                            is ShareIngressResult.Success -> {
-                                if (ActiveSessionTracker.isSessionActive.value) {
-                                    ingressDialog = IngressDialogState(
-                                        title = "Transfer in progress",
-                                        message = "Glide cannot start a new share while a transfer is active. Complete or cancel the current transfer before sharing new files."
-                                    )
-                                } else {
-                                    tryTakePersistableUriPermissions(current, result.uris)
-                                    incomingRoute = GlideRoute.Selection(result.uris.map { it.toString() })
-                                }
+                    LaunchedEffect(latestOutcome) {
+                        when (val outcome = latestOutcome) {
+                            is IngressOutcome.Route -> {
+                                ShareIngressHandler.tryTakePersistableUriPermissions(contentResolver, outcome.urisToPersist)
+                                incomingRoute = outcome.route
                             }
-                            is ShareIngressResult.UnsupportedType -> {
-                                ingressDialog = IngressDialogState(
-                                    title = "Unsupported share",
-                                    message = result.message
-                                )
+                            is IngressOutcome.ActiveSessionBusy -> {
+                                val sid = outcome.activeSessionId ?: "active"
+                                incomingRoute = GlideRoute.Transfer(sid)
+                                ingressDialog = IngressDialogState(outcome.dialogTitle, outcome.dialogMessage)
                             }
-                            is ShareIngressResult.InvalidScheme -> {
-                                ingressDialog = IngressDialogState(
-                                    title = "Invalid share",
-                                    message = "Direct file and web URL sharing is not permitted for security reasons. Only content URIs are accepted."
-                                )
+                            is IngressOutcome.ShowDialog -> {
+                                ingressDialog = IngressDialogState(outcome.title, outcome.message)
                             }
-                            is ShareIngressResult.BatchLimitExceeded -> {
-                                ingressDialog = IngressDialogState(
-                                    title = "Batch limit exceeded",
-                                    message = "Cannot share more than ${result.max} files in a single batch (selected: ${result.count})."
-                                )
-                            }
-                            is ShareIngressResult.Error -> {
-                                ingressDialog = IngressDialogState(
-                                    title = "Cannot share files",
-                                    message = result.message
-                                )
-                            }
-                            is ShareIngressResult.Ignored -> {
-                                // No action for non-share intents
+                            is IngressOutcome.NoOp, null -> {
+                                // No action
                             }
                         }
                     }
@@ -1079,20 +1064,15 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        intentFlow.value = intent
-    }
-
-    private fun tryTakePersistableUriPermissions(intent: Intent?, uris: List<Uri>) {
-        if (intent == null) return
-        val readFlag = intent.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION
-        if (readFlag != 0) {
-            for (uri in uris) {
-                try {
-                    contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                } catch (_: SecurityException) {
-                    // Expected for transient Share Sheet content grants
-                }
-            }
+        val (outcome, fingerprint) = ShareIngressHandler.handleNewIntent(
+            intent = intent,
+            isSessionActive = ActiveSessionTracker.isSessionActive.value,
+            activeSessionId = ActiveSessionTracker.activeSessionId.value,
+            lastHandledFingerprint = lastHandledFingerprint
+        )
+        lastHandledFingerprint = fingerprint
+        if (outcome !is IngressOutcome.NoOp) {
+            incomingOutcomeFlow.value = outcome
         }
     }
 }

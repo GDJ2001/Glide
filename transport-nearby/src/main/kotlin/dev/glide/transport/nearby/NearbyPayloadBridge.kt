@@ -10,6 +10,7 @@ import dev.glide.core.ports.BulkProgress
 import dev.glide.core.ports.ControlMessage
 import dev.glide.core.ports.IncomingStream
 import dev.glide.core.ports.InputStreamProvider
+import dev.glide.core.ports.StreamExpectation
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -140,6 +141,13 @@ class NearbyPayloadBridge(
         synchronized(lock) {
             readyHandshakes[bulkRef]?.complete(Unit)
         }
+    }
+
+    /**
+     * Registers a typed [StreamExpectation] from validated ITEM_START for an expected incoming stream.
+     */
+    fun registerExpectedStream(expectation: StreamExpectation) {
+        registerExpectedStream(expectation.bulkRef)
     }
 
     /**

@@ -604,4 +604,248 @@ class TransferViewModelTest {
         assertEquals(1, retryBatch!!.items.size)
         assertEquals(item2.id, retryBatch.items.first().id)
     }
+
+    @Test
+    fun openVerifiedItem_whenKeyNull_setsFeedback() {
+        val viewModel = TransferViewModel()
+        val item = VerifiedItemUiState(
+            itemId = "item-1",
+            displayName = "file.txt",
+            mimeType = "text/plain",
+            sizeBytes = 100L,
+            committedFileKey = null
+        )
+
+        viewModel.openVerifiedItem(null, item)
+        assertEquals("File not found", viewModel.openFileFeedback.value)
+    }
+
+    @Test
+    fun openVerifiedItem_whenFileMissing_setsFeedback() {
+        val viewModel = TransferViewModel()
+        val item = VerifiedItemUiState(
+            itemId = "item-1",
+            displayName = "file.txt",
+            mimeType = "text/plain",
+            sizeBytes = 100L,
+            committedFileKey = "missing-key"
+        )
+
+        viewModel.openVerifiedItem(null, item, fileResolver = { null })
+        assertEquals("File not found on device", viewModel.openFileFeedback.value)
+    }
+
+    @Test
+    fun openVerifiedItem_whenFileExists_callsOpenerAndClearsFeedback() {
+        val viewModel = TransferViewModel()
+        val validFile = tempFolder.newFile("open_test.txt")
+        validFile.writeText("content")
+
+        val item = VerifiedItemUiState(
+            itemId = "item-1",
+            displayName = "open_test.txt",
+            mimeType = "text/plain",
+            sizeBytes = 100L,
+            committedFileKey = "open-key"
+        )
+
+        viewModel.openVerifiedItem(
+            context = null,
+            item = item,
+            fileResolver = { validFile },
+            fileOpener = { _, _, _ -> FileOpenResult.Success }
+        )
+        assertNull(viewModel.openFileFeedback.value)
+    }
+
+    @Test
+    fun shareVerifiedItem_whenFileMissing_setsFeedback() {
+        val viewModel = TransferViewModel()
+        val item = VerifiedItemUiState(
+            itemId = "item-1",
+            displayName = "share_test.txt",
+            mimeType = "text/plain",
+            sizeBytes = 100L,
+            committedFileKey = "missing-key"
+        )
+
+        viewModel.shareVerifiedItem(null, item, fileResolver = { null })
+        assertEquals("File not found on device", viewModel.openFileFeedback.value)
+    }
+
+    @Test
+    fun shareVerifiedItem_whenSuccess_clearsFeedback() {
+        val viewModel = TransferViewModel()
+        val validFile = tempFolder.newFile("share_test.txt")
+        validFile.writeText("content")
+
+        val item = VerifiedItemUiState(
+            itemId = "item-1",
+            displayName = "share_test.txt",
+            mimeType = "text/plain",
+            sizeBytes = 100L,
+            committedFileKey = "key"
+        )
+
+        viewModel.shareVerifiedItem(
+            context = null,
+            item = item,
+            fileResolver = { validFile },
+            fileSharer = { _, _, _ -> FileOpenResult.Success }
+        )
+        assertNull(viewModel.openFileFeedback.value)
+    }
+
+    @Test
+    fun exportVerifiedItem_whenSuccess_setsExportStatusSuccess() = runTest {
+        val viewModel = TransferViewModel()
+        val validFile = tempFolder.newFile("export_test.txt")
+        validFile.writeText("content")
+
+        val item = VerifiedItemUiState(
+            itemId = "item-1",
+            displayName = "export_test.txt",
+            mimeType = "text/plain",
+            sizeBytes = 100L,
+            committedFileKey = "export-key"
+        )
+
+        val fakeExporter = object : dev.glide.data.export.FileExporter {
+            override suspend fun exportToDownloads(sourceFile: File, displayName: String, mimeType: String): dev.glide.data.export.ExportResult {
+                return dev.glide.data.export.ExportResult.Success(
+                    destinationUriString = "content://downloads/1",
+                    destinationName = "export_test (1).txt",
+                    bytesExported = 100L
+                )
+            }
+            override suspend fun exportToUri(sourceFile: File, destinationUriString: String, displayName: String): dev.glide.data.export.ExportResult {
+                return dev.glide.data.export.ExportResult.Success(
+                    destinationUriString = destinationUriString,
+                    destinationName = "export_test.txt",
+                    bytesExported = 100L
+                )
+            }
+        }
+
+        viewModel.exportVerifiedItem(
+            context = null,
+            item = item,
+            fileResolver = { validFile },
+            fileExporter = fakeExporter
+        )
+        testScheduler.advanceUntilIdle()
+
+        val status = viewModel.exportStatus.value
+        assertTrue(status is ExportUiStatus.Success)
+        assertEquals("export_test (1).txt", (status as ExportUiStatus.Success).destinationName)
+    }
+
+    @Test
+    fun shareAllVerifiedItems_whenNoFilesAvailable_setsFeedback() {
+        val viewModel = TransferViewModel()
+        val item = VerifiedItemUiState(
+            itemId = "item-1",
+            displayName = "file1.txt",
+            mimeType = "text/plain",
+            sizeBytes = 100L,
+            committedFileKey = "key1"
+        )
+
+        viewModel.setUiStateForTesting(
+            TransferUiState.Completed(
+                sessionId = "s1",
+                role = DeviceRole.Receiver,
+                peerName = "Sender",
+                totalBytes = 100L,
+                itemName = "file1.txt",
+                verifiedItems = listOf(item)
+            )
+        )
+
+        viewModel.shareAllVerifiedItems(null, fileResolver = { null })
+        assertEquals("No files available on device to share", viewModel.openFileFeedback.value)
+    }
+
+    @Test
+    fun shareAllVerifiedItems_whenSuccess_invokesSharerAndClearsFeedback() {
+        val viewModel = TransferViewModel()
+        val file1 = tempFolder.newFile("batch1.txt").apply { writeText("1") }
+        val file2 = tempFolder.newFile("batch2.txt").apply { writeText("2") }
+
+        val item1 = VerifiedItemUiState("i1", "batch1.txt", "text/plain", 10L, "k1")
+        val item2 = VerifiedItemUiState("i2", "batch2.txt", "text/plain", 20L, "k2")
+
+        viewModel.setUiStateForTesting(
+            TransferUiState.Completed(
+                sessionId = "s1",
+                role = DeviceRole.Receiver,
+                peerName = "Sender",
+                totalBytes = 30L,
+                itemName = "batch1.txt",
+                verifiedItems = listOf(item1, item2)
+            )
+        )
+
+        var sharedFilesCount = 0
+        viewModel.shareAllVerifiedItems(
+            context = null,
+            fileResolver = { key -> if (key == "k1") file1 else file2 },
+            fileSharer = { files, _ ->
+                sharedFilesCount = files.size
+                FileOpenResult.Success
+            }
+        )
+
+        assertEquals(2, sharedFilesCount)
+        assertNull(viewModel.openFileFeedback.value)
+    }
+
+    @Test
+    fun exportAllVerifiedItems_multipleFiles_updatesStatusWithTotalCount() = runTest {
+        val viewModel = TransferViewModel()
+        val file1 = tempFolder.newFile("export1.txt").apply { writeText("1") }
+        val file2 = tempFolder.newFile("export2.txt").apply { writeText("2") }
+
+        val item1 = VerifiedItemUiState("i1", "export1.txt", "text/plain", 10L, "k1")
+        val item2 = VerifiedItemUiState("i2", "export2.txt", "text/plain", 20L, "k2")
+
+        viewModel.setUiStateForTesting(
+            TransferUiState.Completed(
+                sessionId = "s1",
+                role = DeviceRole.Receiver,
+                peerName = "Sender",
+                totalBytes = 30L,
+                itemName = "export1.txt",
+                verifiedItems = listOf(item1, item2)
+            )
+        )
+
+        val fakeExporter = object : dev.glide.data.export.FileExporter {
+            override suspend fun exportToDownloads(sourceFile: File, displayName: String, mimeType: String): dev.glide.data.export.ExportResult {
+                return dev.glide.data.export.ExportResult.Success(
+                    destinationUriString = "content://downloads/1",
+                    destinationName = displayName,
+                    bytesExported = 10L
+                )
+            }
+            override suspend fun exportToUri(sourceFile: File, destinationUriString: String, displayName: String): dev.glide.data.export.ExportResult {
+                return dev.glide.data.export.ExportResult.Success(
+                    destinationUriString = destinationUriString,
+                    destinationName = displayName,
+                    bytesExported = 10L
+                )
+            }
+        }
+
+        viewModel.exportAllVerifiedItems(
+            context = null,
+            fileResolver = { key -> if (key == "k1") file1 else file2 },
+            fileExporter = fakeExporter
+        )
+        testScheduler.advanceUntilIdle()
+
+        val status = viewModel.exportStatus.value
+        assertTrue(status is ExportUiStatus.Success)
+        assertEquals("2 files", (status as ExportUiStatus.Success).destinationName)
+    }
 }

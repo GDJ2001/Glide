@@ -11,10 +11,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -23,6 +29,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import dev.glide.designsystem.glideHoverHand
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -59,6 +66,12 @@ fun TransferResultCard(
     onExportFile: () -> Unit = {},
     exportStatus: ExportUiStatus = ExportUiStatus.Idle,
     onRetryTransfer: () -> Unit = {},
+    onShareFile: () -> Unit = {},
+    onOpenItem: (VerifiedItemUiState) -> Unit = { onOpenFile() },
+    onShareItem: (VerifiedItemUiState) -> Unit = { onShareFile() },
+    onExportItem: (VerifiedItemUiState) -> Unit = { onExportFile() },
+    onExportAll: () -> Unit = { onExportFile() },
+    onShareAll: () -> Unit = { onShareFile() },
     modifier: Modifier = Modifier
 ) {
     val haptics = dev.glide.designsystem.GlideTheme.haptics
@@ -80,6 +93,12 @@ fun TransferResultCard(
                 openFileFeedback = openFileFeedback,
                 onExportFile = onExportFile,
                 exportStatus = exportStatus,
+                onShareFile = onShareFile,
+                onOpenItem = onOpenItem,
+                onShareItem = onShareItem,
+                onExportItem = onExportItem,
+                onExportAll = onExportAll,
+                onShareAll = onShareAll,
                 modifier = modifier
             )
         }
@@ -110,6 +129,12 @@ private fun CompletedResultCard(
     openFileFeedback: String?,
     onExportFile: () -> Unit,
     exportStatus: ExportUiStatus,
+    onShareFile: () -> Unit = {},
+    onOpenItem: (VerifiedItemUiState) -> Unit = { onOpenFile() },
+    onShareItem: (VerifiedItemUiState) -> Unit = { onShareFile() },
+    onExportItem: (VerifiedItemUiState) -> Unit = { onExportFile() },
+    onExportAll: () -> Unit = { onExportFile() },
+    onShareAll: () -> Unit = { onShareFile() },
     modifier: Modifier = Modifier
 ) {
     val isReceiver = state.role == DeviceRole.Receiver
@@ -237,6 +262,137 @@ private fun CompletedResultCard(
                 )
             }
 
+            // Itemized Verified Items
+            if (state.verifiedItems.isNotEmpty()) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Verified items (${state.verifiedItems.size})",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+
+                    state.verifiedItems.forEach { item ->
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surface,
+                            tonalElevation = 1.dp,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = item.displayName.isolateBidi(),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = "${TransferFormatting.formatBytes(item.sizeBytes)} • ${item.mimeType}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = MaterialTheme.colorScheme.primaryContainer,
+                                        modifier = Modifier.padding(start = 8.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                modifier = Modifier.size(12.dp)
+                                            )
+                                            Text(
+                                                text = "Verified",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                                            )
+                                        }
+                                    }
+                                }
+
+                                if (isReceiver && item.committedFileKey != null) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        OutlinedButton(
+                                            onClick = { onOpenItem(item) },
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .heightIn(min = 40.dp)
+                                                .glideHoverHand()
+                                                .semantics {
+                                                    role = Role.Button
+                                                    contentDescription = "Open ${item.displayName.isolateBidi()}"
+                                                }
+                                        ) {
+                                            Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(14.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Open", style = MaterialTheme.typography.labelSmall)
+                                        }
+
+                                        OutlinedButton(
+                                            onClick = { onShareItem(item) },
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .heightIn(min = 40.dp)
+                                                .glideHoverHand()
+                                                .semantics {
+                                                    role = Role.Button
+                                                    contentDescription = "Share ${item.displayName.isolateBidi()}"
+                                                }
+                                        ) {
+                                            Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(14.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Share", style = MaterialTheme.typography.labelSmall)
+                                        }
+
+                                        Button(
+                                            onClick = { onExportItem(item) },
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .heightIn(min = 40.dp)
+                                                .glideHoverHand()
+                                                .semantics {
+                                                    role = Role.Button
+                                                    contentDescription = "Export ${item.displayName.isolateBidi()} to Downloads"
+                                                }
+                                        ) {
+                                            Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(14.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Export", style = MaterialTheme.typography.labelSmall)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // Feedback messages
             if (openFileFeedback != null) {
                 Text(
@@ -287,48 +443,104 @@ private fun CompletedResultCard(
                 }
             }
 
-            // Action Buttons (stacked vertically for 200% font scale immunity)
+            // Action Buttons
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                if (isReceiver && state.committedFileKey != null) {
-                    Button(
-                        onClick = onExportFile,
-                        enabled = exportStatus !is ExportUiStatus.Exporting,
-                        shape = PrimaryButtonShape,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 56.dp)
-                            .semantics {
-                                role = Role.Button
-                                contentDescription = "Export received file ${state.itemName.isolateBidi()} to Downloads"
-                            }
-                    ) {
-                        Text(
-                            text = if (exportStatus is ExportUiStatus.Exporting) "Exporting…" else "Export to Downloads",
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                    }
+                if (isReceiver && (state.committedFileKey != null || state.verifiedItems.any { it.committedFileKey != null })) {
+                    if (state.verifiedItems.size > 1) {
+                        Button(
+                            onClick = onExportAll,
+                            enabled = exportStatus !is ExportUiStatus.Exporting,
+                            shape = PrimaryButtonShape,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 56.dp)
+                                .semantics {
+                                    role = Role.Button
+                                    contentDescription = "Export all ${state.verifiedItems.size} files to Downloads"
+                                }
+                        ) {
+                            Text(
+                                text = if (exportStatus is ExportUiStatus.Exporting) "Exporting…" else "Export all to Downloads",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                        }
 
-                    OutlinedButton(
-                        onClick = onOpenFile,
-                        shape = PrimaryButtonShape,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 48.dp)
-                            .semantics {
-                                role = Role.Button
-                                contentDescription = "Open received file ${state.itemName.isolateBidi()}"
-                            }
-                    ) {
-                        Text(text = "Open file", style = MaterialTheme.typography.labelLarge)
+                        OutlinedButton(
+                            onClick = onShareAll,
+                            shape = PrimaryButtonShape,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                                .semantics {
+                                    role = Role.Button
+                                    contentDescription = "Share all verified files"
+                                }
+                        ) {
+                            Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(text = "Share all files", style = MaterialTheme.typography.labelLarge)
+                        }
+                    } else {
+                        Button(
+                            onClick = onExportFile,
+                            enabled = exportStatus !is ExportUiStatus.Exporting,
+                            shape = PrimaryButtonShape,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 56.dp)
+                                .semantics {
+                                    role = Role.Button
+                                    contentDescription = "Export received file ${state.itemName.isolateBidi()} to Downloads"
+                                }
+                        ) {
+                            Text(
+                                text = if (exportStatus is ExportUiStatus.Exporting) "Exporting…" else "Export to Downloads",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                        }
+
+                        OutlinedButton(
+                            onClick = onShareFile,
+                            shape = PrimaryButtonShape,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                                .semantics {
+                                    role = Role.Button
+                                    contentDescription = "Share received file ${state.itemName.isolateBidi()}"
+                                }
+                        ) {
+                            Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(text = "Share file", style = MaterialTheme.typography.labelLarge)
+                        }
+
+                        OutlinedButton(
+                            onClick = onOpenFile,
+                            shape = PrimaryButtonShape,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                                .semantics {
+                                    role = Role.Button
+                                    contentDescription = "Open received file ${state.itemName.isolateBidi()}"
+                                }
+                        ) {
+                            Text(text = "Open file", style = MaterialTheme.typography.labelLarge)
+                        }
                     }
 
                     OutlinedButton(

@@ -19,6 +19,7 @@ rootProject.name = "Glide"
 include(":app")
 include(":transfer-core")
 include(":transport-nearby")
+include(":transport-lan")
 include(":data")
 include(":designsystem")
 include(":benchmark")

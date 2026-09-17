@@ -407,6 +407,8 @@ class FakeReceivedFileDao : ReceivedFileDao {
     override suspend fun detachItemIdsExceedingMax(maxCount: Int): Int = 0
 
     override suspend fun detachAllItemIds(): Int = 0
+
+    override suspend fun detachItemIdsForSession(sessionId: String): Int = 0
 }
 
 class FakeHistoryStore : HistoryStore {

@@ -33,6 +33,9 @@ class HistoryViewModel(
     private val fileOpener: (Context?, File, String, String) -> FileOpenResult = { context, file, name, mime ->
         context?.let { FileOpener.openFile(it, file, name, mime) } ?: FileOpenResult.FileNotFound
     },
+    private val fileSharer: (Context?, File, String, String) -> FileOpenResult = { context, file, name, mime ->
+        context?.let { dev.glide.app.util.FileSharing.shareFile(it, file, name, mime) } ?: FileOpenResult.FileNotFound
+    },
     private val fileExporterFactory: (Context) -> FileExporter = { context ->
         AndroidFileExporter(context)
     }
@@ -163,6 +166,46 @@ class HistoryViewModel(
         }
     }
 
+    fun deleteSession(sessionId: String) {
+        viewModelScope.launch {
+            historyStore.deleteSession(SessionId(sessionId))
+            _uiState.value = _uiState.value.copy(
+                selectedSessionDetail = null
+            )
+            loadHistory()
+        }
+    }
+
+    fun shareItemFile(context: Context?, item: HistoryItemDetail) {
+        val key = item.receivedFileKey
+        if (key == null) {
+            _uiState.value = _uiState.value.copy(openFileFeedback = "File not found")
+            return
+        }
+
+        val file = fileResolver(context, key)
+        if (file == null || !file.exists()) {
+            _uiState.value = _uiState.value.copy(openFileFeedback = "File not found on device")
+            return
+        }
+
+        val result = fileSharer(context, file, item.displayName, item.mimeType)
+        when (result) {
+            is FileOpenResult.Success -> {
+                _uiState.value = _uiState.value.copy(openFileFeedback = null)
+            }
+            is FileOpenResult.NoViewerApp -> {
+                _uiState.value = _uiState.value.copy(openFileFeedback = "No app available to share this file")
+            }
+            is FileOpenResult.FileNotFound -> {
+                _uiState.value = _uiState.value.copy(openFileFeedback = "File not found on device")
+            }
+            is FileOpenResult.Error -> {
+                _uiState.value = _uiState.value.copy(openFileFeedback = result.message)
+            }
+        }
+    }
+
     fun openItemFile(context: Context?, item: HistoryItemDetail) {
         val key = item.receivedFileKey
         if (key == null) {
@@ -252,13 +295,16 @@ class HistoryViewModel(
             fileOpener: (Context?, File, String, String) -> FileOpenResult = { context, file, name, mime ->
                 context?.let { FileOpener.openFile(it, file, name, mime) } ?: FileOpenResult.FileNotFound
             },
+            fileSharer: (Context?, File, String, String) -> FileOpenResult = { context, file, name, mime ->
+                context?.let { dev.glide.app.util.FileSharing.shareFile(it, file, name, mime) } ?: FileOpenResult.FileNotFound
+            },
             fileExporterFactory: (Context) -> FileExporter = { context ->
                 AndroidFileExporter(context)
             }
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                return HistoryViewModel(historyStore, fileResolver, fileOpener, fileExporterFactory) as T
+                return HistoryViewModel(historyStore, fileResolver, fileOpener, fileSharer, fileExporterFactory) as T
             }
         }
     }

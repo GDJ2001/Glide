@@ -27,6 +27,20 @@ sealed class PermissionEvaluation {
     ) : PermissionEvaluation()
 }
 
+sealed interface PermissionAction {
+    /** Nearby Connections discovery, advertising, and transfer. */
+    data object NearbyTransfer : PermissionAction
+
+    /** Local Area Network (mDNS/NSD + TLS) discovery and transfer. */
+    data object LanTransfer : PermissionAction
+
+    /** Scanning QR pairing invitations via camera. */
+    data object ScanQr : PermissionAction
+
+    /** Foreground transfer progress and cancellation notifications. */
+    data object Notification : PermissionAction
+}
+
 /**
  * Pure policy engine mapping Android API levels (Build.VERSION.SDK_INT) to required
  * permissions, point-of-use rationales, and grant evaluation.
@@ -38,6 +52,8 @@ sealed class PermissionEvaluation {
  * - API 33..36: BLUETOOTH_SCAN, BLUETOOTH_ADVERTISE, BLUETOOTH_CONNECT + NEARBY_WIFI_DEVICES
  * - API 37+: Above + ACCESS_LOCAL_NETWORK
  * - Notifications on API 33+: POST_NOTIFICATIONS (for background progress)
+ * - Camera: CAMERA strictly at point-of-use for QR scanner
+ * - LAN: Direct sockets/NSD without Bluetooth runtime dependencies
  */
 object PermissionPolicy {
 
@@ -50,6 +66,7 @@ object PermissionPolicy {
     const val PERMISSION_ACCESS_FINE_LOCATION = "android.permission.ACCESS_FINE_LOCATION"
     const val PERMISSION_ACCESS_LOCAL_NETWORK = "android.permission.ACCESS_LOCAL_NETWORK"
     const val PERMISSION_POST_NOTIFICATIONS = "android.permission.POST_NOTIFICATIONS"
+    const val PERMISSION_CAMERA = "android.permission.CAMERA"
 
     /**
      * Returns the exact set of runtime permissions required for nearby device discovery
@@ -102,6 +119,26 @@ object PermissionPolicy {
     }
 
     /**
+     * Returns runtime permissions required for Local Area Network (LAN) discovery and transfer.
+     * On API 26..36, standard local sockets require zero runtime permissions.
+     * On API 37+, platform local-network privacy requires ACCESS_LOCAL_NETWORK.
+     * Crucially: LAN transfers do NOT require Bluetooth or Location permissions.
+     */
+    fun lanTransferPermissions(sdkInt: Int = Build.VERSION.SDK_INT): List<String> {
+        return if (sdkInt >= 37) {
+            listOf(PERMISSION_ACCESS_LOCAL_NETWORK)
+        } else {
+            emptyList()
+        }
+    }
+
+    /**
+     * Returns runtime permissions required for scanning QR pairing invitations.
+     * Strictly evaluated only when opening the QR scanner.
+     */
+    fun scanQrPermissions(): List<String> = listOf(PERMISSION_CAMERA)
+
+    /**
      * Contextual user-facing rationale for nearby transfer permissions at point-of-use.
      */
     fun getNearbyTransferRationale(sdkInt: Int = Build.VERSION.SDK_INT): String {
@@ -113,10 +150,72 @@ object PermissionPolicy {
     }
 
     /**
+     * Contextual user-facing rationale for Local Area Network (LAN) permissions at point-of-use.
+     */
+    fun getLanTransferRationale(sdkInt: Int = Build.VERSION.SDK_INT): String {
+        return if (sdkInt >= 37) {
+            "Glide needs local network permission to discover and connect with devices on your Wi-Fi network. Glide does not access the internet or track your location."
+        } else {
+            "Glide uses your local Wi-Fi network to connect to nearby devices."
+        }
+    }
+
+    /**
+     * Contextual user-facing rationale for QR scanner camera permission at point-of-use.
+     */
+    fun getScanQrRationale(): String {
+        return "Glide needs camera access to scan pairing QR codes. You can also paste an invitation code instead."
+    }
+
+    /**
      * Contextual user-facing rationale for background notifications at point-of-use.
      */
     fun getNotificationRationale(): String {
         return "Glide shows a notification with transfer progress and a cancel button when you leave the app."
+    }
+
+    /**
+     * Returns the required permissions for the given [PermissionAction].
+     */
+    fun permissionsForAction(action: PermissionAction, sdkInt: Int = Build.VERSION.SDK_INT): List<String> {
+        return when (action) {
+            PermissionAction.NearbyTransfer -> nearbyTransferPermissions(sdkInt)
+            PermissionAction.LanTransfer -> lanTransferPermissions(sdkInt)
+            PermissionAction.ScanQr -> scanQrPermissions()
+            PermissionAction.Notification -> notificationPermissions(sdkInt)
+        }
+    }
+
+    /**
+     * Returns the contextual user-facing rationale for the given [PermissionAction].
+     */
+    fun rationaleForAction(action: PermissionAction, sdkInt: Int = Build.VERSION.SDK_INT): String {
+        return when (action) {
+            PermissionAction.NearbyTransfer -> getNearbyTransferRationale(sdkInt)
+            PermissionAction.LanTransfer -> getLanTransferRationale(sdkInt)
+            PermissionAction.ScanQr -> getScanQrRationale()
+            PermissionAction.Notification -> getNotificationRationale()
+        }
+    }
+
+    /**
+     * Evaluates permission status for a specific [PermissionAction].
+     */
+    fun evaluateAction(
+        action: PermissionAction,
+        isGranted: (String) -> Boolean,
+        shouldShowRationale: (String) -> Boolean,
+        wasPreviouslyRequested: (String) -> Boolean = { false },
+        sdkInt: Int = Build.VERSION.SDK_INT
+    ): PermissionEvaluation {
+        val perms = permissionsForAction(action, sdkInt)
+        return evaluate(
+            permissions = perms,
+            isGranted = isGranted,
+            shouldShowRationale = shouldShowRationale,
+            wasPreviouslyRequested = wasPreviouslyRequested,
+            defaultRationale = rationaleForAction(action, sdkInt)
+        )
     }
 
     /**
@@ -126,12 +225,14 @@ object PermissionPolicy {
      * @param isGranted Pure function returning true if the given permission is currently granted.
      * @param shouldShowRationale Pure function returning true if rationale should be displayed for the permission.
      * @param wasPreviouslyRequested Pure function returning true if the permission was requested at least once before.
+     * @param defaultRationale Optional custom rationale when rationale is needed.
      */
     fun evaluate(
         permissions: List<String>,
         isGranted: (String) -> Boolean,
         shouldShowRationale: (String) -> Boolean,
-        wasPreviouslyRequested: (String) -> Boolean = { false }
+        wasPreviouslyRequested: (String) -> Boolean = { false },
+        defaultRationale: String = getNearbyTransferRationale()
     ): PermissionEvaluation {
         val missing = permissions.filterNot { isGranted(it) }
         if (missing.isEmpty()) {
@@ -156,7 +257,7 @@ object PermissionPolicy {
         return if (needsRationale) {
             PermissionEvaluation.NeedsRationale(
                 permissions = missing,
-                rationale = getNearbyTransferRationale()
+                rationale = defaultRationale
             )
         } else {
             PermissionEvaluation.Requestable(permissions = missing)

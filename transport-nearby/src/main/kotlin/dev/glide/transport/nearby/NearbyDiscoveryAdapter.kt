@@ -11,6 +11,7 @@ import dev.glide.core.domain.PeerDevice
 import dev.glide.core.domain.PeerId
 import dev.glide.core.ports.AdvertisingEvent
 import dev.glide.core.ports.DiscoveryEvent
+import dev.glide.core.ports.VerificationEvidence
 import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.delay
@@ -116,7 +117,7 @@ class NearbyDiscoveryAdapter(
                 val displayName = sanitizeDeviceName(info.endpointName)
                 val authDigits = info.authenticationDigits.takeIf { it.isNotBlank() } ?: "0000"
                 val peer = PeerDevice(id = peerId, displayName = displayName)
-                trySend(AdvertisingEvent.ConnectionInitiated(peer, authDigits))
+                trySend(AdvertisingEvent.ConnectionInitiated(peer, VerificationEvidence.NearbyDigits(authDigits)))
                 connectionCallback?.onConnectionInitiated(endpointId, info)
             }
 

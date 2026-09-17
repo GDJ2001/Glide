@@ -24,7 +24,7 @@ sealed class NearbyHardwareStatus {
 /**
  * Interface for checking Nearby hardware radios and system availability.
  */
-interface NearbyAvailabilityChecker {
+fun interface NearbyAvailabilityChecker {
     fun checkHardwareStatus(): NearbyHardwareStatus
 }
 

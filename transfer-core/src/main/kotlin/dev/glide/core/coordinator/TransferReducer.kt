@@ -301,6 +301,33 @@ object TransferReducer {
             return ReducerResult(state, emptyList())
         }
 
+        val parsedSizeBytes = try {
+            dev.glide.core.protocol.DecimalByteCount.parse(event.start.sizeBytes)
+        } catch (_: Exception) {
+            -1L
+        }
+        if (parsedSizeBytes != currentItem.sizeBytes) {
+            val failure = TransferFailure.ProtocolOrder(
+                "ITEM_START size $parsedSizeBytes does not match offered size ${currentItem.sizeBytes} for item ${currentItem.id.value}"
+            )
+            val failedItem = state.itemStates[currentItem.id]!!.copy(phase = ItemPhase.Failed, failure = failure)
+            val remainingItems = state.itemStates.mapValues { (id, itState) ->
+                if (id == currentItem.id) failedItem else if (itState.phase == ItemPhase.Queued) itState.copy(phase = ItemPhase.NotAttempted) else itState
+            }
+            return ReducerResult(
+                state.copy(
+                    phase = SessionPhase.Failed,
+                    itemStates = remainingItems,
+                    failure = failure,
+                    lastActivityMonotonicMs = event.timestampMs
+                ),
+                listOf(
+                    ReducerEffect.CloseTransportChannel,
+                    ReducerEffect.NotifyTerminalOutcome(SessionPhase.Failed, failure)
+                )
+            )
+        }
+
         val readyBody = ItemReadyBody(batchId = event.start.batchId, itemId = currentItem.id)
         val (env, nextSeq) = makeEnvelope(state, MessageTypes.ITEM_READY, ProtocolCodec.encodeBody(readyBody))
 

@@ -3,6 +3,7 @@ package dev.glide.app.service
 import dev.glide.app.transfer.ActiveSessionTracker
 import dev.glide.app.ui.transfer.TransferUiState
 import dev.glide.app.ui.transfer.toUiState
+import dev.glide.app.util.BatchTransferRateTracker
 import dev.glide.core.coordinator.SessionPhase
 import dev.glide.core.coordinator.TransferCoordinator
 import kotlinx.coroutines.CoroutineScope
@@ -29,6 +30,9 @@ object TransferSessionManager {
 
     private var _uiState = MutableStateFlow<TransferUiState>(TransferUiState.Idle)
     val uiState: StateFlow<TransferUiState> get() = _uiState.asStateFlow()
+
+    var timeProvider: () -> Long = { System.currentTimeMillis() }
+    private var rateTracker = BatchTransferRateTracker(timeProvider = { timeProvider() })
 
     /**
      * Callback invoked when the active session reaches a terminal state, allowing
@@ -74,35 +78,35 @@ object TransferSessionManager {
         ActiveSessionTracker.setSessionActive(coordinator.sessionId.value, true)
 
         // 5. Observe coordinator state in the service scope
-        var lastBytes = 0L
-        var lastTimestampMs = 0L
-        var smoothedSpeed = 0L
+        rateTracker.reset()
+        var lastPhase: SessionPhase? = null
 
         activeJob = scope.launch {
             coordinator.state.collect { sessionState ->
+                val committedKeys = coordinator.committedItemFiles.mapKeys { it.key.value }.mapValues { it.value.value }
                 val baseUiState = sessionState.toUiState(
                     peerDisplayName = peerDisplayName,
-                    committedFileKey = coordinator.lastCommittedFileHandle?.value
+                    committedFileKey = coordinator.lastCommittedFileHandle?.value,
+                    committedItemKeys = committedKeys
                 )
 
+                val phaseChanged = sessionState.phase != lastPhase
+                lastPhase = sessionState.phase
+
                 if (baseUiState is TransferUiState.Transferring) {
-                    val now = System.currentTimeMillis()
-                    val currentBytes = sessionState.currentItemState?.transferredBytes ?: 0L
-                    if (lastTimestampMs > 0L) {
-                        val dt = (now - lastTimestampMs) / 1000.0
-                        if (dt >= 0.5) {
-                            val deltaBytes = (currentBytes - lastBytes).coerceAtLeast(0L)
-                            val instantRate = (deltaBytes / dt).toLong()
-                            smoothedSpeed = if (smoothedSpeed == 0L) instantRate else ((smoothedSpeed * 0.7) + (instantRate * 0.3)).toLong()
-                            lastBytes = currentBytes
-                            lastTimestampMs = now
-                        }
-                    } else {
-                        lastBytes = currentBytes
-                        lastTimestampMs = now
+                    val snapshot = rateTracker.updateProgress(
+                        cumulativeBatchBytes = baseUiState.transferredBytes,
+                        currentItemIndex = baseUiState.itemIndex,
+                        forceImmediate = phaseChanged
+                    )
+                    if (snapshot.shouldEmitUiUpdate || _uiState.value !is TransferUiState.Transferring) {
+                        _uiState.value = baseUiState.copy(
+                            speedBytesPerSec = snapshot.speedBytesPerSec,
+                            isStalled = snapshot.isStalled
+                        )
                     }
-                    _uiState.value = baseUiState.copy(speedBytesPerSec = smoothedSpeed)
                 } else {
+                    rateTracker.reset()
                     _uiState.value = baseUiState
                 }
 
@@ -177,6 +181,7 @@ object TransferSessionManager {
      */
     @Synchronized
     fun stopSession() {
+        rateTracker.reset()
         activeCoordinator?.stop()
         activeCoordinator = null
         activeJob?.cancel()
@@ -212,6 +217,8 @@ object TransferSessionManager {
      * Resets internal state for clean testing isolation.
      */
     internal fun resetForTesting() {
+        rateTracker.reset()
+        timeProvider = { System.currentTimeMillis() }
         activeJob?.cancel()
         activeJob = null
         activeCoordinator = null

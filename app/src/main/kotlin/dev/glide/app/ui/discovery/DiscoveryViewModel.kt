@@ -2,6 +2,7 @@ package dev.glide.app.ui.discovery
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import dev.glide.app.discovery.UnifiedDiscoveryRepository
 import dev.glide.core.domain.PeerId
 import dev.glide.core.ports.DiscoveryEvent
 import kotlinx.coroutines.Job
@@ -14,9 +15,10 @@ import kotlinx.coroutines.launch
 
 /**
  * ViewModel governing the Discovery route UI state, 120-second timeout,
- * stable non-jumping peer cards, and live discovery observations (LAN-004).
+ * stable non-jumping peer cards, and live discovery observations (LAN-004, LAN-015).
  */
 class DiscoveryViewModel(
+    val unifiedDiscoveryRepository: UnifiedDiscoveryRepository? = null,
     private val discoveryFlowProvider: (() -> Flow<DiscoveryEvent>)? = null,
     private val onStopDiscoveryCallback: (() -> Unit)? = null
 ) : ViewModel() {
@@ -59,7 +61,21 @@ class DiscoveryViewModel(
             }
         }
 
-        if (discoveryFlowProvider != null) {
+        if (unifiedDiscoveryRepository != null) {
+            discoveryJob = viewModelScope.launch {
+                try {
+                    unifiedDiscoveryRepository.startDiscovery()
+                    unifiedDiscoveryRepository.unifiedPeers.collect { peerList ->
+                        val current = _uiState.value
+                        if (current is DiscoveryUiState.Searching) {
+                            _uiState.value = current.copy(peers = peerList)
+                        }
+                    }
+                } catch (_: Exception) {
+                    // Cancelled or stopped cleanly
+                }
+            }
+        } else if (discoveryFlowProvider != null) {
             discoveryJob = viewModelScope.launch {
                 try {
                     discoveryFlowProvider.invoke().collect { event ->
@@ -94,6 +110,9 @@ class DiscoveryViewModel(
         if (current !is DiscoveryUiState.Searching) return
         if (current.selectedPeerId != null) return // Already connecting to a peer; ignore duplicate tap
 
+        val target = current.peers.find { it.id == peerId }
+        if (target == null || !target.isAvailable || target.isBusy) return // Cannot select unavailable or busy peer
+
         val updatedPeers = current.peers.map { peer ->
             if (peer.id == peerId) {
                 peer.copy(isConnecting = true, isSelected = true)
@@ -108,6 +127,19 @@ class DiscoveryViewModel(
         )
 
         onInitiateConnection(peerId)
+    }
+
+    /**
+     * Updates the busy status of a peer from transport observations.
+     */
+    fun setPeerBusy(peerId: PeerId, isBusy: Boolean) {
+        val current = _uiState.value
+        if (current is DiscoveryUiState.Searching) {
+            val updated = current.peers.map { peer ->
+                if (peer.id == peerId) peer.copy(isBusy = isBusy) else peer
+            }
+            _uiState.value = current.copy(peers = updated)
+        }
     }
 
     /**
@@ -147,6 +179,7 @@ class DiscoveryViewModel(
     fun stopDiscovery() {
         discoveryJob?.cancel()
         discoveryJob = null
+        unifiedDiscoveryRepository?.stopDiscovery()
         onStopDiscoveryCallback?.invoke()
     }
 
@@ -169,5 +202,6 @@ class DiscoveryViewModel(
     override fun onCleared() {
         super.onCleared()
         stopDiscovery()
+        unifiedDiscoveryRepository?.close()
     }
 }

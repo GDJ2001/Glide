@@ -176,6 +176,29 @@ class TransferService : Service() {
                 )
             )
             handleTerminalTeardown()
+        } catch (e: IllegalStateException) {
+            // API 31+ ForegroundServiceStartNotAllowedException is a subclass of IllegalStateException
+            TransferSessionManager.setUiStateForTesting(
+                TransferUiState.Failed(
+                    sessionId = TransferSessionManager.getActiveCoordinator()?.sessionId?.value ?: "",
+                    role = TransferSessionManager.getActiveCoordinator()?.role ?: dev.glide.core.domain.DeviceRole.Sender,
+                    message = "Cannot maintain background transfer while Glide is in the background.",
+                    code = "FOREGROUND_START_NOT_ALLOWED",
+                    isRecoverable = false
+                )
+            )
+            handleTerminalTeardown()
+        } catch (e: Exception) {
+            TransferSessionManager.setUiStateForTesting(
+                TransferUiState.Failed(
+                    sessionId = TransferSessionManager.getActiveCoordinator()?.sessionId?.value ?: "",
+                    role = TransferSessionManager.getActiveCoordinator()?.role ?: dev.glide.core.domain.DeviceRole.Sender,
+                    message = "Failed to start transfer foreground service: ${e.message}",
+                    code = "SERVICE_START_FAILED",
+                    isRecoverable = false
+                )
+            )
+            handleTerminalTeardown()
         }
     }
 
@@ -247,15 +270,22 @@ class TransferService : Service() {
 
         const val EXTRA_SESSION_ID = "dev.glide.app.extra.SESSION_ID"
         const val EXTRA_PEER_NAME = "dev.glide.app.extra.PEER_NAME"
+        const val EXTRA_IS_LAN = "dev.glide.app.extra.IS_LAN"
 
         const val NOTIFICATION_CHANNEL_ID = "glide_transfer_channel"
         const val NOTIFICATION_ID = 1001
 
-        fun startService(context: Context, sessionId: String, peerName: String = "Nearby device") {
+        fun startService(
+            context: Context,
+            sessionId: String,
+            peerName: String = "Nearby device",
+            isLan: Boolean = false
+        ) {
             val intent = Intent(context, TransferService::class.java).apply {
                 action = ACTION_START
                 putExtra(EXTRA_SESSION_ID, sessionId)
                 putExtra(EXTRA_PEER_NAME, peerName)
+                putExtra(EXTRA_IS_LAN, isLan)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)

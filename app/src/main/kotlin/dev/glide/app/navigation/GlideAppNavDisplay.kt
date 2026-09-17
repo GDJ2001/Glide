@@ -2,6 +2,8 @@ package dev.glide.app.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation3.runtime.entryProvider
@@ -10,6 +12,7 @@ import androidx.navigation3.ui.NavDisplay
 import dev.glide.app.ui.HomeScreen
 import dev.glide.app.ui.TransferScreen
 import dev.glide.app.ui.selection.SelectionScreen
+import dev.glide.app.ui.transfer.VerifiedItemUiState
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.tween
@@ -23,6 +26,7 @@ import dev.glide.designsystem.LocalReducedMotion
 import dev.glide.designsystem.rememberWindowSizeClass
 import dev.glide.app.navigation.adaptive.GlideAdaptiveScaffold
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GlideAppNavDisplay(
     modifier: Modifier = Modifier,
@@ -147,7 +151,7 @@ fun GlideAppNavDisplay(
                     }
                 )
             }
-            entry<GlideRoute.Discovery> {
+            entry<GlideRoute.Discovery> { route ->
                 val viewModel = androidx.lifecycle.viewmodel.compose.viewModel<dev.glide.app.ui.discovery.DiscoveryViewModel>()
                 androidx.compose.runtime.LaunchedEffect(initialDiscoveryState) {
                     if (initialDiscoveryState != null) {
@@ -164,34 +168,79 @@ fun GlideAppNavDisplay(
                     },
                     onSelectPeer = { peerId ->
                         viewModel.selectPeer(peerId) { selectedId ->
-                            backStack.add(GlideRoute.Transfer("send-${selectedId.value}"))
+                            backStack.add(GlideRoute.Transfer(sessionId = "send-${selectedId.value}", batchId = route.batchId))
                         }
                     },
                     onRetry = {
                         viewModel.retryDiscovery()
+                    },
+                    onScanQrClicked = {
+                        backStack.add(GlideRoute.QrScanner)
                     }
                 )
             }
             entry<GlideRoute.ReceiveReadiness> {
                 val viewModel = androidx.lifecycle.viewmodel.compose.viewModel<dev.glide.app.ui.discovery.ReceiveReadinessViewModel>()
+                val qrViewModel = androidx.lifecycle.viewmodel.compose.viewModel<dev.glide.app.ui.pairing.QrPairingViewModel>()
+                var showQrSheet by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+
                 androidx.compose.runtime.LaunchedEffect(initialReceiveState) {
                     if (initialReceiveState != null) {
                         viewModel.setUiStateForTesting(initialReceiveState)
                     }
                 }
                 val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+                val qrState by qrViewModel.receiverState.collectAsStateWithLifecycle()
+
                 dev.glide.app.ui.discovery.ReceiveReadinessScreen(
                     uiState = uiState,
                     onStopReceiving = {
                         viewModel.stopAdvertising()
+                        qrViewModel.stopReceiving()
+                        showQrSheet = false
                         if (backStack.size > 1) {
                             backStack.removeAt(backStack.lastIndex)
                         }
                     },
                     onRestartReceiving = {
                         viewModel.startAdvertising("Glide Device")
+                    },
+                    onShowQrCode = {
+                        val deviceName = if (uiState is dev.glide.app.ui.discovery.ReceiveReadinessUiState.Advertising) {
+                            (uiState as dev.glide.app.ui.discovery.ReceiveReadinessUiState.Advertising).localDeviceName
+                        } else {
+                            "Glide Device"
+                        }
+                        qrViewModel.startReceiving(
+                            deviceName = deviceName,
+                            endpoints = listOf(dev.glide.core.pairing.LanEndpoint("192.168.1.50", 4242)),
+                            spkiSha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                        )
+                        showQrSheet = true
                     }
                 )
+
+                if (showQrSheet) {
+                    dev.glide.app.ui.pairing.QrInvitationSheet(
+                        uiState = qrState,
+                        onRefresh = {
+                            val deviceName = if (uiState is dev.glide.app.ui.discovery.ReceiveReadinessUiState.Advertising) {
+                                (uiState as dev.glide.app.ui.discovery.ReceiveReadinessUiState.Advertising).localDeviceName
+                            } else {
+                                "Glide Device"
+                            }
+                            qrViewModel.refreshInvitation(
+                                deviceName = deviceName,
+                                endpoints = listOf(dev.glide.core.pairing.LanEndpoint("192.168.1.50", 4242)),
+                                spkiSha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                            )
+                        },
+                        onDismiss = {
+                            qrViewModel.stopReceiving()
+                            showQrSheet = false
+                        }
+                    )
+                }
             }
             entry<GlideRoute.Transfer> { route ->
                 val viewModel = androidx.lifecycle.viewmodel.compose.viewModel<dev.glide.app.ui.transfer.TransferViewModel>()
@@ -223,6 +272,12 @@ fun GlideAppNavDisplay(
                     onRejectMatch = { peerId -> viewModel.rejectPairing(peerId) },
                     onOpenFile = { viewModel.openReceivedFile(context) },
                     onExportFile = { viewModel.exportReceivedFile(context) },
+                    onShareFile = { viewModel.shareAllVerifiedItems(context) },
+                    onOpenItem = { item -> viewModel.openVerifiedItem(context, item) },
+                    onShareItem = { item -> viewModel.shareVerifiedItem(context, item) },
+                    onExportItem = { item -> viewModel.exportVerifiedItem(context, item) },
+                    onExportAll = { viewModel.exportAllVerifiedItems(context) },
+                    onShareAll = { viewModel.shareAllVerifiedItems(context) },
                     onRetryTransfer = {
                         val remainingUris = viewModel.getUnfinishedSourceUris()
                         if (remainingUris.isNotEmpty()) {
@@ -301,6 +356,50 @@ fun GlideAppNavDisplay(
                 dev.glide.app.ui.settings.SettingsScreen(
                     viewModel = viewModel,
                     onBack = {
+                        if (backStack.size > 1) {
+                            backStack.removeAt(backStack.lastIndex)
+                        }
+                    }
+                )
+            }
+            entry<GlideRoute.QrScanner> {
+                val viewModel = androidx.lifecycle.viewmodel.compose.viewModel<dev.glide.app.ui.pairing.QrPairingViewModel>()
+                val scannerState by viewModel.scannerState.collectAsStateWithLifecycle()
+
+                androidx.compose.runtime.LaunchedEffect(Unit) {
+                    viewModel.startScanning()
+                }
+
+                androidx.compose.runtime.LaunchedEffect(viewModel) {
+                    viewModel.events.collect { event ->
+                        when (event) {
+                            is dev.glide.app.ui.pairing.QrPairingEvent.ConnectConfirmed -> {
+                                backStack.add(GlideRoute.Transfer("send-lan-${event.invitation.invitationId}"))
+                            }
+                            else -> {}
+                        }
+                    }
+                }
+
+                dev.glide.app.ui.pairing.QrScannerScreen(
+                    uiState = scannerState,
+                    onQrScanned = { rawText ->
+                        viewModel.onQrCodeScanned(rawText)
+                    },
+                    onInvitationPasted = { rawText ->
+                        viewModel.onInvitationPasted(rawText)
+                    },
+                    onConfirmConnection = {
+                        viewModel.confirmConnection()
+                    },
+                    onCancelConfirmation = {
+                        viewModel.cancelConfirmation()
+                    },
+                    onRetryScan = {
+                        viewModel.retryScan()
+                    },
+                    onClose = {
+                        viewModel.stopScanning()
                         if (backStack.size > 1) {
                             backStack.removeAt(backStack.lastIndex)
                         }

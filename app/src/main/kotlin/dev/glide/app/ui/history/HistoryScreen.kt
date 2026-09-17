@@ -262,6 +262,8 @@ fun HistoryScreen(
                                 onDismiss = { viewModel.dismissSessionDetail() },
                                 onOpenFile = { item -> viewModel.openItemFile(context, item) },
                                 onExportFile = { item -> viewModel.exportItemFile(context, item) },
+                                onShareFile = { item -> viewModel.shareItemFile(context, item) },
+                                onDeleteSession = { viewModel.deleteSession(selectedDetail.session.sessionId) },
                                 showCloseButton = false,
                                 modifier = Modifier.fillMaxSize()
                             )
@@ -355,7 +357,9 @@ fun HistoryScreen(
                 exportStatus = uiState.exportStatus,
                 onDismiss = { viewModel.dismissSessionDetail() },
                 onOpenFile = { item -> viewModel.openItemFile(context, item) },
-                onExportFile = { item -> viewModel.exportItemFile(context, item) }
+                onExportFile = { item -> viewModel.exportItemFile(context, item) },
+                onShareFile = { item -> viewModel.shareItemFile(context, item) },
+                onDeleteSession = { viewModel.deleteSession(selectedDetail.session.sessionId) }
             )
         }
     }

@@ -40,8 +40,9 @@ object FileOpener {
         return try {
             val contentUri = FileProvider.getUriForFile(context, authority, file, displayName)
 
+            val safeMime = MimeSanitizer.sanitize(mimeType)
             val viewIntent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(contentUri, mimeType.ifBlank { "*/*" })
+                setDataAndType(contentUri, safeMime)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }

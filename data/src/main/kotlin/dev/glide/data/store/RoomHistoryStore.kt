@@ -169,6 +169,13 @@ class RoomHistoryStore(
         sessionDao.deleteTerminalSessions()
     }
 
+    override suspend fun deleteSession(sessionId: SessionId): Boolean = withContext(ioDispatcher) {
+        val existing = sessionDao.getBySessionId(sessionId.value) ?: return@withContext false
+        receivedFileDao?.detachItemIdsForSession(sessionId.value)
+        sessionDao.delete(sessionId.value)
+        true
+    }
+
     suspend fun getReceivedFileKey(itemId: ItemId): String? = withContext(ioDispatcher) {
         receivedFileDao?.getByOriginatingItemId(itemId.value)?.fileKey
     }

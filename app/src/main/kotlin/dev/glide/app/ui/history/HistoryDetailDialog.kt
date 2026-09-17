@@ -20,8 +20,12 @@ import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -34,6 +38,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
@@ -60,6 +68,8 @@ fun HistoryDetailDialog(
     onDismiss: () -> Unit,
     onOpenFile: (HistoryItemDetail) -> Unit,
     onExportFile: (HistoryItemDetail) -> Unit,
+    onShareFile: (HistoryItemDetail) -> Unit = {},
+    onDeleteSession: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Dialog(
@@ -84,6 +94,8 @@ fun HistoryDetailDialog(
                 onDismiss = onDismiss,
                 onOpenFile = onOpenFile,
                 onExportFile = onExportFile,
+                onShareFile = onShareFile,
+                onDeleteSession = onDeleteSession,
                 showCloseButton = true
             )
         }
@@ -98,6 +110,8 @@ fun HistoryDetailContent(
     onDismiss: () -> Unit,
     onOpenFile: (HistoryItemDetail) -> Unit,
     onExportFile: (HistoryItemDetail) -> Unit,
+    onShareFile: (HistoryItemDetail) -> Unit = {},
+    onDeleteSession: () -> Unit = {},
     showCloseButton: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -201,7 +215,8 @@ fun HistoryDetailContent(
                     item = item,
                     isReceiver = detail.session.role == DeviceRole.Receiver,
                     onOpenFile = { onOpenFile(item) },
-                    onExportFile = { onExportFile(item) }
+                    onExportFile = { onExportFile(item) },
+                    onShareFile = { onShareFile(item) }
                 )
             }
         }
@@ -291,14 +306,83 @@ fun HistoryDetailContent(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Close CTA
+        var showDeleteDialog by remember { mutableStateOf(false) }
+
+        // Action CTA row
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
+            TextButton(
+                onClick = { showDeleteDialog = true },
+                colors = ButtonDefaults.textButtonColors(
+                    contentColor = MaterialTheme.colorScheme.error
+                ),
+                modifier = Modifier.semantics {
+                    role = Role.Button
+                    contentDescription = "Delete transfer from history"
+                }
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Delete,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Delete from history")
+            }
+
             TextButton(onClick = onDismiss) {
                 Text("Close")
             }
+        }
+
+        if (showDeleteDialog) {
+            AlertDialog(
+                onDismissRequest = { showDeleteDialog = false },
+                title = {
+                    Text(
+                        text = "Remove transfer from history?",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                },
+                text = {
+                    Text(
+                        text = "Removing this transfer from history will not delete downloaded files from your device.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showDeleteDialog = false
+                            onDeleteSession()
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error,
+                            contentColor = MaterialTheme.colorScheme.onError
+                        ),
+                        modifier = Modifier.semantics {
+                            role = Role.Button
+                            contentDescription = "Confirm removing transfer from history"
+                        }
+                    ) {
+                        Text("Remove")
+                    }
+                },
+                dismissButton = {
+                    OutlinedButton(
+                        onClick = { showDeleteDialog = false },
+                        modifier = Modifier.semantics {
+                            role = Role.Button
+                            contentDescription = "Cancel removing transfer"
+                        }
+                    ) {
+                        Text("Cancel")
+                    }
+                }
+            )
         }
     }
 }
@@ -309,6 +393,7 @@ fun HistoryItemCard(
     isReceiver: Boolean,
     onOpenFile: () -> Unit,
     onExportFile: () -> Unit,
+    onShareFile: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -345,7 +430,7 @@ fun HistoryItemCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
-            // For verified received files, offer Open / Export or show Missing indicator
+            // For verified received files, offer Open / Share / Export or show Missing indicator
             if (isReceiver && item.outcome == "Verified") {
                 Spacer(modifier = Modifier.height(10.dp))
                 if (item.isFileAvailable) {
@@ -365,8 +450,24 @@ fun HistoryItemCard(
                                 }
                         ) {
                             Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
                             Text("Open", style = MaterialTheme.typography.labelMedium)
+                        }
+
+                        OutlinedButton(
+                            onClick = onShareFile,
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 48.dp)
+                                .glideHoverHand()
+                                .semantics {
+                                    role = Role.Button
+                                    contentDescription = "Share ${item.displayName.isolateBidi()}"
+                                }
+                        ) {
+                            Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Share", style = MaterialTheme.typography.labelMedium)
                         }
 
                         Button(
@@ -381,7 +482,7 @@ fun HistoryItemCard(
                                 }
                         ) {
                             Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
                             Text("Export", style = MaterialTheme.typography.labelMedium)
                         }
                     }

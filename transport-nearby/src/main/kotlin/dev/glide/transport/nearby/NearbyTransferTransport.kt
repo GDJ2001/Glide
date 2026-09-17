@@ -9,6 +9,7 @@ import dev.glide.core.ports.ControlMessage
 import dev.glide.core.ports.DiscoveryEvent
 import dev.glide.core.ports.IncomingStream
 import dev.glide.core.ports.InputStreamProvider
+import dev.glide.core.ports.StreamExpectation
 import dev.glide.core.ports.TransferTransport
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -140,11 +141,28 @@ class NearbyTransferTransport(
         payloadBridge.markItemReady(bulkRef)
     }
 
+    override suspend fun registerExpectedStream(expectation: StreamExpectation) {
+        payloadBridge.registerExpectedStream(expectation)
+    }
+
     override suspend fun registerExpectedStream(bulkRef: BulkRef) {
         payloadBridge.registerExpectedStream(bulkRef)
     }
 
     override suspend fun cancelPayload(bulkRef: BulkRef) {
         payloadBridge.cancelPayload(bulkRef)
+    }
+
+    companion object {
+        fun create(
+            context: android.content.Context,
+            scope: CoroutineScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+        ): NearbyTransferTransport {
+            val connectionsClient = com.google.android.gms.nearby.Nearby.getConnectionsClient(context)
+            return NearbyTransferTransport(
+                clientWrapper = AndroidNearbyClientWrapper(connectionsClient),
+                scope = scope
+            )
+        }
     }
 }

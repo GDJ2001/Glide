@@ -17,8 +17,8 @@ Permissions are requested only after Send/Receive intent and a short contextual 
 | 34+ | FOREGROUND_SERVICE_CONNECTED_DEVICE normal; service type connectedDevice | Live external peer communication; granted Bluetooth prerequisite | Never start before prerequisite/visible user action |
 | 26+ | INTERNET / ACCESS_NETWORK_STATE normal as required by SDK/availability | Local sockets/runtime network capability, not cloud account | Inspect transitive manifest; no own external endpoint |
 | All supported | SAF/Photo Picker URI grants; no broad storage runtime grant | Explicit user selection/export | Cancel picker returns unchanged selection; revoked URI → reselect |
-| All supported | No READ_MEDIA_*, MANAGE_EXTERNAL_STORAGE, WRITE_EXTERNAL_STORAGE, READ_EXTERNAL_STORAGE in selected STREAM design | App-private receive + user-selected sources | No permission expansion to fix a provider error |
-| All supported | No background location, contacts, phone, camera, microphone or boot receiver | Not needed | Do not request |
+| All supported | No background location, contacts, phone, microphone or boot receiver | Not needed | Do not request |
+| All supported | CAMERA (runtime, requested only when opening QR Scanner; camera hardware optional) | QR pairing invitation scanning (ADR-0018 / LAN-017) | Denial offers Paste invitation fallback |
 | All supported | WAKE_LOCK only if measured active-transfer need justifies it | Optional bounded non-reference-counted lock owned by service | Avoid by default; release in every terminal path and timeout |
 
 The [Nearby guide](https://developers.google.com/nearby/connections/android/get-started) contains a sample with NEARBY_WIFI_DEVICES starting32 and location ending31. The [platform Wi-Fi guide](https://developer.android.com/develop/connectivity/wifi/wifi-permissions) places the permission at33 and location compatibility through32. This plan uses the platform boundary and conservatively retains old Wi-Fi permissions through32. GLIDE-009 must validate the exact19.5 SDK on31/32/33 and record merged-manifest/runtime evidence; narrow grants only with proof. Do not copy sample minSdkVersion permission attributes or legacy file permission examples blindly; API branching belongs in runtime policy.
@@ -27,6 +27,19 @@ The [Nearby guide](https://developers.google.com/nearby/connections/android/get-
 
 [Android17 local access](https://developer.android.com/privacy-and-security/local-network-permission) is a separate platform requirement from internet connectivity. System NSD picker exemptions are relevant to future LAN transport, not automatically to Nearby. [Notification permission](https://developer.android.com/develop/ui/compose/notifications/notification-permission) denial changes visibility, not authorization to omit the required FGS notification.
 
+## Transport Boundaries & Runtime Permissions (LAN vs. Nearby)
+
+| Capability / Boundary | Nearby Connections (P2P STREAM) | Local Area Network (LAN NSD + TLS 1.3) |
+|---|---|---|
+| **Supported Android APIs** | API 26+ (Android 8.0 Oreo through Android 17 Baklava) | **API 29+** (Android 10+; platform TLS 1.3 required). API 26–28 retain Nearby. |
+| **Bluetooth Permissions** | Required on API 31+ (`BLUETOOTH_SCAN`, `CONNECT`, `ADVERTISE`) | **Zero Bluetooth permissions required**. |
+| **Location Permissions** | Required on API 26–32 for legacy Wi-Fi/BT discovery compatibility | **Zero Location permissions required**. |
+| **Local Network Access** | Required on API 37+ (`ACCESS_LOCAL_NETWORK`) for Wi-Fi LAN | Required on API 37+ (`ACCESS_LOCAL_NETWORK`) for local mDNS & TLS sockets. |
+| **Camera Permission** | Not required. | **Optional runtime permission** (`CAMERA`) strictly for QR scanning. Hardware declared `required="false"`; clipboard paste pairing provides complete parity without camera. |
+| **Network Scope & Media** | Point-to-point Wi-Fi Direct / Bluetooth hotspot | On-link local network (Wi-Fi / Ethernet); VPN fail-closed; zero cloud relay. |
+| **Rollback / Isolation** | Foundation fallback transport | Cleanly disabled via `LanFeatureConfig.isLanTransportEnabled` without data loss. |
+
 ## Verification matrix
 Fresh install, grant, deny, deny repeatedly, approximate-only, settings revoke, auto-reset, upgrade from older target, radio off, location services off, GMS missing/outdated and API37 local access denied. Test via UI and actual two phones, not only mocked permission values. On revoke mid-transfer: close descriptors, cancel SDK work, persist interruption and retain verified files. Never auto-open Settings or display repeated prompts on launch.
+
 

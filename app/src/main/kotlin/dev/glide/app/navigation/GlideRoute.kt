@@ -18,11 +18,14 @@ sealed interface GlideRoute : NavKey {
     data object ReceiveReadiness : GlideRoute
 
     @Serializable
-    data class Transfer(val sessionId: String = "session-demo") : GlideRoute
+    data class Transfer(val sessionId: String = "session-demo", val batchId: String? = null) : GlideRoute
 
     @Serializable
     data class History(val initialSessionId: String? = null) : GlideRoute
 
     @Serializable
     data object Settings : GlideRoute
+
+    @Serializable
+    data object QrScanner : GlideRoute
 }

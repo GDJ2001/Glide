@@ -134,6 +134,17 @@ class FakeReceivedFileDao : ReceivedFileDao {
         }
         return count
     }
+
+    override suspend fun detachItemIdsForSession(sessionId: String): Int {
+        var count = 0
+        files.values.forEach {
+            if (it.originatingItemId != null) {
+                files[it.fileKey] = it.copy(originatingItemId = null)
+                count++
+            }
+        }
+        return count
+    }
 }
 
 class AndroidReceiveStoreTest {

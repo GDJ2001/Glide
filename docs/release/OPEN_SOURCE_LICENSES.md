@@ -21,6 +21,8 @@ Glide is built with the assistance of open-source software. Below is a consolida
 | **AndroidX ProfileInstaller** (`profileinstaller`) | The Android Open Source Project | Apache 2.0 |
 | **Google Dagger Hilt** (`hilt-android`, `hilt-compiler`) | Google LLC | Apache 2.0 |
 | **Google Play Services Nearby** (`play-services-nearby`) | Google LLC | [Google APIs Terms](https://developers.google.com/terms) |
+| **AndroidX CameraX** (`camera-core`, `camera-camera2`, `camera-lifecycle`, `camera-view`) | The Android Open Source Project | Apache 2.0 |
+| **ZXing Core** (`com.google.zxing:core`) | ZXing Authors | Apache 2.0 |
 
 ---
 

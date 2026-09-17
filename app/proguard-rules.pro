@@ -66,7 +66,27 @@
 }
 -keep class dev.glide.core.domain.** { *; }
 -keep class dev.glide.core.coordinator.** { *; }
+-keep class dev.glide.core.pairing.** { *; }
+-keep class dev.glide.core.routing.** { *; }
+-keep class dev.glide.core.discovery.** { *; }
 -keep class dev.glide.transfer.core.model.** { *; }
+
+# --------------------------------------------------------------------------------------------------
+# AndroidX CameraX (LAN-017)
+# --------------------------------------------------------------------------------------------------
+-keep class androidx.camera.** { *; }
+-dontwarn androidx.camera.**
+
+# --------------------------------------------------------------------------------------------------
+# ZXing Core QR Code Engine (LAN-017)
+# --------------------------------------------------------------------------------------------------
+-keep class com.google.zxing.** { *; }
+-dontwarn com.google.zxing.**
+
+# --------------------------------------------------------------------------------------------------
+# Local Area Network (LAN) Transport & TLS Adapter (LAN-009..012)
+# --------------------------------------------------------------------------------------------------
+-keep class dev.glide.transport.lan.** { *; }
 
 # --------------------------------------------------------------------------------------------------
 # Optimization: Remove verbose and debug logging in release builds
@@ -76,3 +96,4 @@
     public static int v(...);
     public static int d(...);
 }
+

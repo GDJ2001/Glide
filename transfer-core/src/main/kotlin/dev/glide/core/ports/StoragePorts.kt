@@ -102,4 +102,5 @@ interface HistoryStore {
     suspend fun getSessionCount(role: DeviceRole? = null): Int = 0
     suspend fun trimRetention(maxSessions: Int = 10_000, maxAgeMs: Long = 90L * 24 * 60 * 60 * 1000L, nowMs: Long = System.currentTimeMillis()): Int = 0
     suspend fun clearHistory(): Int = 0
+    suspend fun deleteSession(sessionId: SessionId): Boolean = false
 }

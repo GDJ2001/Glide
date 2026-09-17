@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material.icons.filled.Security
@@ -82,6 +83,7 @@ fun DiscoveryScreen(
     onBack: () -> Unit,
     onSelectPeer: (PeerId) -> Unit,
     onRetry: () -> Unit,
+    onScanQrClicked: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val haptics = dev.glide.designsystem.GlideTheme.haptics
@@ -196,6 +198,25 @@ fun DiscoveryScreen(
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            OutlinedButton(
+                                onClick = onScanQrClicked,
+                                shape = PrimaryButtonShape,
+                                modifier = Modifier
+                                    .heightIn(min = 48.dp)
+                                    .semantics {
+                                        role = Role.Button
+                                        contentDescription = "Scan QR code or paste invitation"
+                                    }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.QrCode2,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Scan QR or paste invite")
+                            }
                         }
                     }
                 } else {
@@ -214,11 +235,18 @@ fun DiscoveryScreen(
                                 peer = peer,
                                 hasActiveSelection = uiState.selectedPeerId != null,
                                 onClick = {
-                                    if (!peer.isConnecting && peer.isAvailable && uiState.selectedPeerId == null) {
+                                    if (!peer.isConnecting && peer.isAvailable && !peer.isBusy && uiState.selectedPeerId == null) {
                                         haptics.performSelection()
                                         onSelectPeer(peer.id)
                                     }
                                 }
+                            )
+                        }
+
+                        item {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            ScanQrActionCard(
+                                onClick = onScanQrClicked
                             )
                         }
                     }
@@ -307,7 +335,8 @@ fun DiscoveryScreen(
                     onOpenSettings = {
                         val intent = when (uiState.reason) {
                             is BlockedReason.BluetoothDisabled -> Intent(Settings.ACTION_BLUETOOTH_SETTINGS)
-                            is BlockedReason.WifiDisabled -> Intent(Settings.ACTION_WIFI_SETTINGS)
+                            is BlockedReason.WifiDisabled, is BlockedReason.NoLocalNetwork -> Intent(Settings.ACTION_WIFI_SETTINGS)
+                            is BlockedReason.VpnActive -> Intent(Settings.ACTION_VPN_SETTINGS)
                             else -> Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
                                 data = android.net.Uri.fromParts("package", context.packageName, null)
                             }
@@ -315,7 +344,11 @@ fun DiscoveryScreen(
                         try {
                             context.startActivity(intent)
                         } catch (_: Exception) {
-                            // Safe fallback
+                            try {
+                                context.startActivity(Intent(Settings.ACTION_SETTINGS))
+                            } catch (_: Exception) {
+                                // Safe fallback
+                            }
                         }
                     }
                 )
@@ -375,17 +408,17 @@ fun DiscoveredPeerCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val isInteractive = peer.isAvailable && (!hasActiveSelection || peer.isSelected)
-    val containerColor = if (peer.isSelected) {
-        MaterialTheme.colorScheme.primaryContainer
-    } else {
-        MaterialTheme.colorScheme.surfaceVariant
+    val isInteractive = peer.isAvailable && !peer.isBusy && (!hasActiveSelection || peer.isSelected)
+    val containerColor = when {
+        peer.isSelected -> MaterialTheme.colorScheme.primaryContainer
+        peer.isBusy -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+        else -> MaterialTheme.colorScheme.surfaceVariant
     }
 
-    val contentColor = if (peer.isSelected) {
-        MaterialTheme.colorScheme.onPrimaryContainer
-    } else {
-        MaterialTheme.colorScheme.onSurface
+    val contentColor = when {
+        peer.isSelected -> MaterialTheme.colorScheme.onPrimaryContainer
+        peer.isBusy -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+        else -> MaterialTheme.colorScheme.onSurface
     }
 
     val borderStroke = if (peer.isSelected) {
@@ -420,10 +453,13 @@ fun DiscoveredPeerCard(
                     append(peer.displayName.isolateBidi())
                     append(", type: ")
                     append(peer.deviceType.name)
+                    append(", route: ")
+                    append(peer.routeSubtitle)
                     append(", status: ")
                     when {
                         peer.isConnecting -> append("Connecting")
                         peer.isSelected -> append("Selected")
+                        peer.isBusy -> append("Busy with another transfer")
                         peer.isAvailable -> append("Available for sharing")
                         else -> append("Unavailable")
                     }
@@ -476,8 +512,9 @@ fun DiscoveredPeerCard(
                     text = when {
                         peer.isConnecting -> "Connecting..."
                         peer.isSelected -> "Connecting..."
-                        peer.isAvailable -> "Tap to connect"
-                        else -> "Unavailable"
+                        peer.isBusy -> "${peer.routeSubtitle} • Busy with another transfer"
+                        peer.isAvailable -> "${peer.routeSubtitle} • Tap to connect"
+                        else -> "${peer.routeSubtitle} • Unavailable"
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = if (peer.isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
@@ -507,6 +544,75 @@ fun DiscoveredPeerCard(
 }
 
 /**
+ * Action card displayed in the peer list providing quick access to offline QR scan or paste pairing (LAN-019).
+ */
+@Composable
+fun ScanQrActionCard(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+            contentColor = MaterialTheme.colorScheme.onSurface
+        ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = 64.dp)
+            .glideHoverHand()
+            .clickable(
+                onClick = onClick,
+                onClickLabel = "Scan QR code or paste invitation",
+                role = Role.Button
+            )
+            .semantics {
+                role = Role.Button
+                contentDescription = "Scan QR code or paste invitation directly from receiver"
+            }
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.secondaryContainer,
+                modifier = Modifier.size(40.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.QrCode2,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = "Scan QR code or paste invite",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "Connect directly with local network pairing",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+/**
  * Explanatory card for blocked hardware radio and permission states with explicit action buttons.
  */
 @Composable
@@ -516,31 +622,12 @@ fun DiscoveryBlockedCard(
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val (icon, title, message, actionLabel) = when (reason) {
-        is BlockedReason.BluetoothDisabled -> Quad(
-            Icons.Default.BluetoothDisabled,
-            "Bluetooth is turned off",
-            "Turn on Bluetooth to discover and connect with nearby devices directly.",
-            "Open Bluetooth settings"
-        )
-        is BlockedReason.WifiDisabled -> Quad(
-            Icons.Default.WifiOff,
-            "Wi-Fi is turned off",
-            "Turn on Wi-Fi for local high-speed direct peer-to-peer file transfer.",
-            "Open Wi-Fi settings"
-        )
-        is BlockedReason.PermissionsRequired -> Quad(
-            Icons.Default.Security,
-            "Permissions required",
-            "Glide requires Nearby devices and Location permissions to discover local peers at point of use.",
-            "Open App settings"
-        )
-        is BlockedReason.TransportError -> Quad(
-            Icons.Default.Warning,
-            "Discovery unavailable",
-            reason.message.ifBlank { "Could not start nearby discovery. Check device radio status and try again." },
-            "Open Settings"
-        )
+    val error = dev.glide.app.ui.failure.ActionableErrorMapper.fromBlockedReason(reason)
+    val icon = when (reason) {
+        is BlockedReason.BluetoothDisabled -> Icons.Default.BluetoothDisabled
+        is BlockedReason.WifiDisabled, is BlockedReason.NoLocalNetwork -> Icons.Default.WifiOff
+        is BlockedReason.PermissionsRequired, is BlockedReason.LanPermissionDenied -> Icons.Default.Security
+        is BlockedReason.VpnActive, is BlockedReason.TransportError -> Icons.Default.Warning
     }
 
     Card(
@@ -548,7 +635,7 @@ fun DiscoveryBlockedCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
         modifier = modifier
             .fillMaxWidth()
-            .semantics { contentDescription = "$title: $message" }
+            .semantics { contentDescription = "${error.title}: ${error.userWording}" }
     ) {
         Column(
             modifier = Modifier
@@ -564,15 +651,30 @@ fun DiscoveryBlockedCard(
                 tint = MaterialTheme.colorScheme.error
             )
             Text(
-                text = title,
+                text = error.title,
                 style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
-                text = message,
+                text = error.userWording,
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )
+            if (error.troubleshootingHint != null) {
+                Surface(
+                    shape = MaterialTheme.shapes.small,
+                    color = MaterialTheme.colorScheme.surface,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = error.troubleshootingHint,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(12.dp)
+                    )
+                }
+            }
             Spacer(modifier = Modifier.height(8.dp))
             Column(
                 modifier = Modifier.fillMaxWidth(),
@@ -590,30 +692,30 @@ fun DiscoveryBlockedCard(
                         .heightIn(min = 48.dp)
                         .semantics {
                             role = Role.Button
-                            contentDescription = actionLabel
+                            contentDescription = error.primaryActionLabel
                         }
                 ) {
-                    Text(actionLabel)
+                    Text(error.primaryActionLabel)
                 }
 
-                OutlinedButton(
-                    onClick = onRetry,
-                    shape = PrimaryButtonShape,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 48.dp)
-                        .semantics {
-                            role = Role.Button
-                            contentDescription = "Check again"
-                        }
-                ) {
-                    Icon(imageVector = Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Check again")
+                if (error.secondaryActionLabel != null) {
+                    OutlinedButton(
+                        onClick = onRetry,
+                        shape = PrimaryButtonShape,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .semantics {
+                                role = Role.Button
+                                contentDescription = error.secondaryActionLabel
+                            }
+                    ) {
+                        Icon(imageVector = Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(error.secondaryActionLabel)
+                    }
                 }
             }
         }
     }
 }
-
-private data class Quad<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)

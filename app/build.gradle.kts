@@ -142,12 +142,22 @@ dependencies {
     implementation(project(":designsystem"))
     implementation(project(":data"))
     implementation(project(":transport-nearby"))
+    implementation(project(":transport-lan"))
 
     // Room (for DatabaseModule)
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.work.runtime.ktx)
+
+    // CameraX (LAN-017)
+    implementation(libs.androidx.camera.core)
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.view)
+
+    // ZXing (LAN-017)
+    implementation(libs.zxing.core)
 
     // DI Hilt
     implementation(libs.hilt.android)

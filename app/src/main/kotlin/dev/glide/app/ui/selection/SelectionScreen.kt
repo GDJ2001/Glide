@@ -43,6 +43,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
@@ -77,143 +79,26 @@ fun SelectionScreen(
     modifier: Modifier = Modifier,
     onProceedToSendBatch: ((TransferBatch) -> Unit)? = null,
     initialState: SelectionUiState = SelectionUiState.Idle,
-    initialUris: List<Uri> = emptyList()
+    initialUris: List<Uri> = emptyList(),
+    viewModel: SelectionViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-    var uiState by remember { mutableStateOf<SelectionUiState>(initialState) }
-    var activeJob by remember { mutableStateOf<Job?>(null) }
-
-    val sourceAccess = remember {
-        val stagingDir = File(context.cacheDir, "staging_sources")
-        val resolverWrapper = AndroidContentResolverWrapper(context.contentResolver)
-        val stager = BoundedSourceStager(
-            stagingDir = stagingDir,
-            resolverWrapper = resolverWrapper
-        )
-        AndroidSourceAccess(
-            resolverWrapper = resolverWrapper,
-            ioDispatcher = Dispatchers.IO,
-            stager = stager
-        )
-    }
-
-    val onUrisSelected: (List<Uri>) -> Unit = { uris: List<Uri> ->
-        if (uris.isNotEmpty()) {
-            activeJob?.cancel()
-            activeJob = scope.launch {
-                val currentItems = (uiState as? SelectionUiState.BatchReady)?.items ?: emptyList()
-                val existingUris = currentItems.map { it.handle.value }.toSet()
-
-                // Deduplicate incoming URIs against already selected files
-                val distinctNewUris = uris
-                    .map { it.toString() }
-                    .distinct()
-                    .filterNot { existingUris.contains(it) }
-
-                if (distinctNewUris.isEmpty()) {
-                    // All selected files were duplicates; keep current items
-                    return@launch
-                }
-
-                val totalPlannedCount = currentItems.size + distinctNewUris.size
-                if (totalPlannedCount > ProtocolLimits.MAX_ITEMS_PER_BATCH) {
-                    uiState = SelectionUiState.Error(
-                        message = "Batch limit exceeded: Maximum ${ProtocolLimits.MAX_ITEMS_PER_BATCH} files allowed (selected: $totalPlannedCount)",
-                        isRecoverable = true
-                    )
-                    return@launch
-                }
-
-                uiState = SelectionUiState.Validating(
-                    currentCount = 0,
-                    totalCount = distinctNewUris.size
-                )
-
-                val validatedNewItems = mutableListOf<SelectedFileItem>()
-
-                for ((index, uriStr) in distinctNewUris.withIndex()) {
-                    uiState = SelectionUiState.Validating(
-                        currentCount = index + 1,
-                        totalCount = distinctNewUris.size,
-                        currentUriString = uriStr
-                    )
-
-                    val handle = SourceHandle(uriStr)
-                    try {
-                        val isCloud = uriStr.contains("com.google.android.apps.docs") ||
-                            uriStr.contains("cloud") ||
-                            uriStr.contains("nextcloud") ||
-                            uriStr.contains("dropbox")
-                        val metadata = sourceAccess.validateSource(handle) { bytesStaged ->
-                            val displayName = uriStr.substringAfterLast('/').substringBefore('?').ifBlank { "Cloud file" }
-                            uiState = SelectionUiState.StagingSource(
-                                displayName = displayName,
-                                bytesStaged = bytesStaged,
-                                isCloudProvider = isCloud
-                            )
-                        }
-                        validatedNewItems.add(
-                            SelectedFileItem(
-                                id = ItemId(UUID.randomUUID().toString()),
-                                handle = handle,
-                                displayName = metadata.name,
-                                sizeBytes = metadata.sizeBytes,
-                                mimeType = metadata.mimeType,
-                                isAvailable = true
-                            )
-                        )
-                    } catch (e: SourceAccessException) {
-                        validatedNewItems.add(
-                            SelectedFileItem(
-                                id = ItemId(UUID.randomUUID().toString()),
-                                handle = handle,
-                                displayName = uriStr.substringAfterLast('/').substringBefore('?').ifBlank { "Unavailable file" },
-                                sizeBytes = 0L,
-                                mimeType = "application/octet-stream",
-                                isAvailable = false,
-                                errorMessage = e.failure.message
-                            )
-                        )
-                    } catch (e: SecurityException) {
-                        validatedNewItems.add(
-                            SelectedFileItem(
-                                id = ItemId(UUID.randomUUID().toString()),
-                                handle = handle,
-                                displayName = uriStr.substringAfterLast('/').substringBefore('?').ifBlank { "Unavailable file" },
-                                sizeBytes = 0L,
-                                mimeType = "application/octet-stream",
-                                isAvailable = false,
-                                errorMessage = "Access denied or permission revoked: ${e.message}"
-                            )
-                        )
-                    } catch (e: Exception) {
-                        if (e is CancellationException) throw e
-                        validatedNewItems.add(
-                            SelectedFileItem(
-                                id = ItemId(UUID.randomUUID().toString()),
-                                handle = handle,
-                                displayName = uriStr.substringAfterLast('/').substringBefore('?').ifBlank { "Unavailable file" },
-                                sizeBytes = 0L,
-                                mimeType = "application/octet-stream",
-                                isAvailable = false,
-                                errorMessage = e.message ?: "Failed to read file"
-                            )
-                        )
-                    }
-                }
-
-                val combinedList = currentItems + validatedNewItems
-                uiState = SelectionUiState.BatchReady(items = combinedList)
-            }
+    androidx.compose.runtime.LaunchedEffect(initialState) {
+        if (initialState !is SelectionUiState.Idle) {
+            viewModel.setUiStateForTesting(initialState)
         }
     }
 
     androidx.compose.runtime.LaunchedEffect(initialUris) {
         if (initialUris.isNotEmpty() && uiState is SelectionUiState.Idle) {
-            onUrisSelected(initialUris)
+            viewModel.onUrisSelected(initialUris, context)
         }
+    }
+
+    val onUrisSelected: (List<Uri>) -> Unit = { uris: List<Uri> ->
+        viewModel.onUrisSelected(uris, context)
     }
 
     // Photo picker contract (PickMultipleVisualMedia)
@@ -247,8 +132,7 @@ fun SelectionScreen(
         ) {
             OutlinedButton(
                 onClick = {
-                    activeJob?.cancel()
-                    sourceAccess.cleanupAllStaged()
+                    viewModel.clear()
                     onBack()
                 },
                 shape = PrimaryButtonShape,
@@ -265,9 +149,7 @@ fun SelectionScreen(
             if (uiState is SelectionUiState.BatchReady) {
                 TextButton(
                     onClick = {
-                        activeJob?.cancel()
-                        sourceAccess.cleanupAllStaged()
-                        uiState = SelectionUiState.Idle
+                        viewModel.clear()
                     },
                     modifier = Modifier.semantics {
                         role = Role.Button
@@ -456,9 +338,7 @@ fun SelectionScreen(
 
                         OutlinedButton(
                             onClick = {
-                                activeJob?.cancel()
-                                sourceAccess.cleanupAllStaged()
-                                uiState = SelectionUiState.Cancelled
+                                viewModel.cancelStaging()
                             },
                             shape = PrimaryButtonShape,
                             modifier = Modifier
@@ -575,12 +455,7 @@ fun SelectionScreen(
                         FileItemRow(
                             item = item,
                             onRemove = {
-                                val remaining = state.items.filterNot { it.id == item.id }
-                                uiState = if (remaining.isEmpty()) {
-                                    SelectionUiState.Idle
-                                } else {
-                                    SelectionUiState.BatchReady(items = remaining)
-                                }
+                                viewModel.removeFile(item.id)
                             }
                         )
                     }
@@ -594,16 +469,16 @@ fun SelectionScreen(
                     Button(
                         onClick = {
                             if (state.canProceed) {
-                                val batch = state.toTransferBatch()
-                                val sourceMap = state.validItems.associate { it.id to it.handle }
-                                SelectedTransferStore.store(batch, sourceMap)
-                                if (onProceedToSendBatch != null) {
-                                    onProceedToSendBatch(batch)
-                                } else {
-                                    // Fallback to legacy single handle callback
-                                    val firstHandle = state.validItems.firstOrNull()?.handle
-                                        ?: SourceHandle("glide://batch/${batch.id.value}")
-                                    onProceedToSend(firstHandle)
+                                val prepared = viewModel.prepareBatchForTransfer()
+                                if (prepared != null) {
+                                    val (batch, _) = prepared
+                                    if (onProceedToSendBatch != null) {
+                                        onProceedToSendBatch(batch)
+                                    } else {
+                                        val firstHandle = state.validItems.firstOrNull()?.handle
+                                            ?: SourceHandle("glide://batch/${batch.id.value}")
+                                        onProceedToSend(firstHandle)
+                                    }
                                 }
                             }
                         },

@@ -1082,6 +1082,18 @@ private fun LicensesDialog(
                     license = "BSD 3-Clause License",
                     description = "Copyright (c) 2008 Google Inc. All rights reserved."
                 )
+                HorizontalDivider()
+                LicenseItem(
+                    name = "AndroidX CameraX",
+                    license = "Apache License 2.0",
+                    description = "Copyright (c) The Android Open Source Project\nLicensed under the Apache License, Version 2.0."
+                )
+                HorizontalDivider()
+                LicenseItem(
+                    name = "ZXing Core",
+                    license = "Apache License 2.0",
+                    description = "Copyright (c) 2008 ZXing authors\nLicensed under the Apache License, Version 2.0."
+                )
             }
         },
         confirmButton = {

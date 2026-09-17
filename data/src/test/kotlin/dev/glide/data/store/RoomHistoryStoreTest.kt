@@ -59,6 +59,7 @@ class FakeSessionDao(private val itemDaoSupplier: () -> FakeItemDao) : SessionDa
 
     override suspend fun delete(sessionId: String) {
         sessions.remove(sessionId)
+        itemDaoSupplier().items.values.removeIf { it.sessionId == sessionId }
     }
 
     override suspend fun deleteAll() {
@@ -607,5 +608,88 @@ class RoomHistoryStoreTest {
 
         val unknownKey = historyStore.getReceivedFileKey(randomItemId())
         assertNull(unknownKey)
+    }
+
+    @Test
+    fun deleteSession_removesSessionAndItems_retainsReceivedFileAndDiskFile() = runTest {
+        val tempDir = File.createTempFile("glide_history_del_test", "").apply {
+            delete()
+            mkdirs()
+        }
+        try {
+            val sId = randomSessionId()
+            val bId = randomBatchId()
+            val iId = randomItemId()
+            val fileKey = "test-del-key-${iId.value}"
+
+            historyStore.recordSession(
+                SessionRecord(
+                    sessionId = sId,
+                    batchId = bId,
+                    role = DeviceRole.Receiver,
+                    peerLabel = "Peer Sender",
+                    startedAtMs = 5000L,
+                    endedAtMs = 6000L,
+                    outcome = "Completed"
+                )
+            )
+            historyStore.recordItem(
+                ItemRecord(
+                    itemId = iId,
+                    sessionId = sId,
+                    ordinal = 0,
+                    displayName = "safe_doc.pdf",
+                    mimeType = "application/pdf",
+                    offeredBytes = 2048L,
+                    actualBytes = 2048L,
+                    outcome = "Verified"
+                )
+            )
+
+            // Disk file
+            val diskFile = File(tempDir, "$fileKey.bin").apply {
+                writeText("Valuable user data")
+            }
+
+            // Catalog record linked to item
+            receivedFileDao.insertOrUpdate(
+                ReceivedFileEntity(
+                    fileKey = fileKey,
+                    originatingItemId = iId.value,
+                    displayName = "safe_doc.pdf",
+                    mime = "application/pdf",
+                    length = 2048L,
+                    digest = "hash-safe",
+                    receivedAtMs = 6000L
+                )
+            )
+
+            // Verify exists prior to deletion
+            assertNotNull(historyStore.getSession(sId))
+            assertEquals(1, historyStore.getItemsForSession(sId).size)
+            val initialCatalog = receivedFileDao.getByFileKey(fileKey)
+            assertNotNull(initialCatalog)
+            assertEquals(iId.value, initialCatalog?.originatingItemId)
+
+            // Execute deleteSession
+            val deleted = historyStore.deleteSession(sId)
+            assertTrue("deleteSession should return true when session existed", deleted)
+
+            // Verify session and items are gone
+            assertNull("Session must be removed from history", historyStore.getSession(sId))
+            assertTrue("Items must be removed from history", historyStore.getItemsForSession(sId).isEmpty())
+
+            // Verify catalog file record STILL EXISTS and was detached
+            val catalogFileAfter = receivedFileDao.getByFileKey(fileKey)
+            assertNotNull("Received file record MUST survive session deletion", catalogFileAfter)
+            assertNull("originatingItemId MUST be detached (null) after session deletion", catalogFileAfter?.originatingItemId)
+            assertEquals("safe_doc.pdf", catalogFileAfter?.displayName)
+
+            // Verify physical file on disk MUST NOT be deleted
+            assertTrue("File on disk MUST NOT be deleted when deleting history", diskFile.exists())
+            assertEquals("Valuable user data", diskFile.readText())
+        } finally {
+            tempDir.deleteRecursively()
+        }
     }
 }

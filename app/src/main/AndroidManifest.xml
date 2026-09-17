@@ -61,6 +61,15 @@
         android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE"
         tools:targetApi="upside_down_cake" />
 
+    <!-- Camera runtime permission for QR pairing (strictly optional; paste invitation alternative available) -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.camera.autofocus"
+        android:required="false" />
+
     <application
         android:name=".GlideApplication"
         android:allowBackup="false"

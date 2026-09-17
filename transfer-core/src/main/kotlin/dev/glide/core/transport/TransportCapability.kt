@@ -24,6 +24,10 @@ enum class TransportTier(val priority: Int) {
 
 /**
  * Architectural and operational profile for a transport candidate.
+ *
+ * NOTE (LAN-008, Section 7): These profiles represent descriptive architectural specifications
+ * and nominal ceilings from ADR-0016. Live transport routing decisions must NOT rely on nominal Mbps
+ * or speculative availability ratios; use [dev.glide.core.routing.RouteSelector] with live evidence.
  */
 data class TransportProfile(
     val type: TransportType,
@@ -143,8 +147,10 @@ data class DeviceEnvironment(
 )
 
 /**
- * Evaluates transport candidates and selects the optimal transport profile
- * based on device capabilities and environment.
+ * Legacy static transport capability evaluator (ADR-0016).
+ *
+ * NOTE (LAN-008, Section 10): Superseded by [dev.glide.core.routing.RouteSelector] for live,
+ * evidence-based, permission-checked routing decisions.
  */
 object TransportSelectionEngine {
 

@@ -99,6 +99,14 @@ class HistoryViewModelTest {
             items.clear()
             return count
         }
+
+        var deleteSessionCount = 0
+        override suspend fun deleteSession(sessionId: SessionId): Boolean {
+            deleteSessionCount++
+            val sessionExisted = sessions.removeIf { it.sessionId == sessionId }
+            items.removeIf { it.sessionId == sessionId }
+            return sessionExisted
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -158,6 +166,7 @@ class HistoryViewModelTest {
     private fun buildViewModel(
         fileResolver: (Context?, String) -> File? = { _, _ -> null },
         fileOpener: (Context?, File, String, String) -> FileOpenResult = { _, _, _, _ -> FileOpenResult.FileNotFound },
+        fileSharer: (Context?, File, String, String) -> FileOpenResult = { _, _, _, _ -> FileOpenResult.FileNotFound },
         fileExporterFactory: (Context) -> FileExporter = { _ ->
             object : FileExporter {
                 override suspend fun exportToDownloads(
@@ -178,6 +187,7 @@ class HistoryViewModelTest {
             historyStore = fakeStore,
             fileResolver = fileResolver,
             fileOpener = fileOpener,
+            fileSharer = fileSharer,
             fileExporterFactory = fileExporterFactory
         )
     }
@@ -452,5 +462,129 @@ class HistoryViewModelTest {
 
         vm.resetExportStatus()
         assertEquals(ExportUiStatus.Idle, vm.uiState.value.exportStatus)
+    }
+
+    @Test
+    fun `deleteSession removes session and items and clears selected session`() = runTest {
+        val sid = fakeStore.addSession(DeviceRole.Receiver, "SenderDevice")
+        fakeStore.addItem(sid, displayName = "sample.pdf")
+        val vm = buildViewModel()
+        advanceUntilIdle()
+
+        assertEquals(1, vm.uiState.value.sessions.size)
+
+        vm.selectSession(sid.value)
+        advanceUntilIdle()
+        assertNotNull(vm.uiState.value.selectedSessionDetail)
+
+        vm.deleteSession(sid.value)
+        advanceUntilIdle()
+
+        assertEquals(1, fakeStore.deleteSessionCount)
+        assertTrue(fakeStore.sessions.isEmpty())
+        assertTrue(fakeStore.items.isEmpty())
+        assertNull(vm.uiState.value.selectedSessionDetail)
+        assertTrue(vm.uiState.value.sessions.isEmpty())
+    }
+
+    @Test
+    fun `shareItemFile with null key sets error feedback`() = runTest {
+        val vm = buildViewModel()
+        advanceUntilIdle()
+
+        val item = HistoryItemDetail(
+            itemId = newItemId().value,
+            ordinal = 0,
+            displayName = "test.txt",
+            mimeType = "text/plain",
+            offeredBytes = 100L,
+            actualBytes = null,
+            outcome = null,
+            failureCode = null,
+            receivedFileKey = null,
+            isFileAvailable = false
+        )
+
+        vm.shareItemFile(context = null, item = item)
+        assertEquals("File not found", vm.uiState.value.openFileFeedback)
+    }
+
+    @Test
+    fun `shareItemFile with missing file sets error feedback`() = runTest {
+        val vm = buildViewModel()
+        advanceUntilIdle()
+
+        val item = HistoryItemDetail(
+            itemId = newItemId().value,
+            ordinal = 0,
+            displayName = "test.txt",
+            mimeType = "text/plain",
+            offeredBytes = 100L,
+            actualBytes = null,
+            outcome = null,
+            failureCode = null,
+            receivedFileKey = "missing-key",
+            isFileAvailable = true
+        )
+
+        vm.shareItemFile(context = null, item = item)
+        assertEquals("File not found on device", vm.uiState.value.openFileFeedback)
+    }
+
+    @Test
+    fun `shareItemFile with valid file invokes fileSharer and clears feedback on success`() = runTest {
+        val validFile = tempFolder.newFile("shareable.pdf")
+        var sharedFile: File? = null
+        val vm = buildViewModel(
+            fileResolver = { _, _ -> validFile },
+            fileSharer = { _, file, _, _ ->
+                sharedFile = file
+                FileOpenResult.Success
+            }
+        )
+        advanceUntilIdle()
+
+        val item = HistoryItemDetail(
+            itemId = newItemId().value,
+            ordinal = 0,
+            displayName = "shareable.pdf",
+            mimeType = "application/pdf",
+            offeredBytes = 200L,
+            actualBytes = 200L,
+            outcome = "Verified",
+            failureCode = null,
+            receivedFileKey = "some-key",
+            isFileAvailable = true
+        )
+
+        vm.shareItemFile(context = null, item = item)
+        assertEquals(validFile, sharedFile)
+        assertNull(vm.uiState.value.openFileFeedback)
+    }
+
+    @Test
+    fun `shareItemFile sets feedback when no app available to share`() = runTest {
+        val validFile = tempFolder.newFile("unshareable.bin")
+        val vm = buildViewModel(
+            fileResolver = { _, _ -> validFile },
+            fileSharer = { _, _, _, _ -> FileOpenResult.NoViewerApp }
+        )
+        advanceUntilIdle()
+
+        val item = HistoryItemDetail(
+            itemId = newItemId().value,
+            ordinal = 0,
+            displayName = "unshareable.bin",
+            mimeType = "application/octet-stream",
+            offeredBytes = 200L,
+            actualBytes = 200L,
+            outcome = "Verified",
+            failureCode = null,
+            receivedFileKey = "some-key",
+            isFileAvailable = true
+        )
+
+        vm.shareItemFile(context = null, item = item)
+        assertEquals("No app available to share this file", vm.uiState.value.openFileFeedback)
     }
 }

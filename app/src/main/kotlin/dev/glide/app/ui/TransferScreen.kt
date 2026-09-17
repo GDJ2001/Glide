@@ -38,6 +38,7 @@ import dev.glide.app.ui.pairing.PairingUiState
 import dev.glide.app.ui.pairing.PairingVerificationCard
 import dev.glide.app.ui.transfer.ExportUiStatus
 import dev.glide.app.ui.transfer.OfferConsentCard
+import dev.glide.app.ui.transfer.VerifiedItemUiState
 import dev.glide.app.ui.transfer.TransferProgressCard
 import dev.glide.app.ui.transfer.TransferResultCard
 import dev.glide.app.ui.transfer.TransferUiState
@@ -63,7 +64,13 @@ fun TransferScreen(
     pairingState: PairingUiState = PairingUiState.Idle,
     onConfirmMatch: (PeerId) -> Unit = {},
     onRejectMatch: (PeerId) -> Unit = {},
-    onRetryTransfer: () -> Unit = {}
+    onRetryTransfer: () -> Unit = {},
+    onShareFile: () -> Unit = {},
+    onOpenItem: (VerifiedItemUiState) -> Unit = { onOpenFile() },
+    onShareItem: (VerifiedItemUiState) -> Unit = { onShareFile() },
+    onExportItem: (VerifiedItemUiState) -> Unit = { onExportFile() },
+    onExportAll: () -> Unit = { onExportFile() },
+    onShareAll: () -> Unit = { onShareFile() }
 ) {
     val scrollState = rememberScrollState()
     val isActivelyVerifying = pairingState !is PairingUiState.Idle && pairingState !is PairingUiState.Connected
@@ -248,7 +255,13 @@ fun TransferScreen(
                     openFileFeedback = openFileFeedback,
                     onExportFile = onExportFile,
                     exportStatus = exportStatus,
-                    onRetryTransfer = onRetryTransfer
+                    onRetryTransfer = onRetryTransfer,
+                    onShareFile = onShareFile,
+                    onOpenItem = onOpenItem,
+                    onShareItem = onShareItem,
+                    onExportItem = onExportItem,
+                    onExportAll = onExportAll,
+                    onShareAll = onShareAll
                 )
             }
         }

@@ -198,4 +198,32 @@ class ShareIngressParserTest {
         val result = ShareIngressParser.parse(null)
         assertEquals(ShareIngressResult.Ignored, result)
     }
+
+    @Test
+    fun parseFromData_uppercaseFileScheme_returnsInvalidScheme() {
+        val result = ShareIngressParser.parseFromData(
+            action = Intent.ACTION_SEND,
+            mimeType = "application/pdf",
+            textExtra = null,
+            rawUriStrings = listOf("FILE:///sdcard/secret.pdf")
+        )
+
+        assertTrue(result is ShareIngressResult.InvalidScheme)
+        val invalid = result as ShareIngressResult.InvalidScheme
+        assertEquals("file", invalid.scheme)
+    }
+
+    @Test
+    fun parseFromData_uppercaseHttpScheme_returnsInvalidScheme() {
+        val result = ShareIngressParser.parseFromData(
+            action = Intent.ACTION_SEND,
+            mimeType = "text/html",
+            textExtra = null,
+            rawUriStrings = listOf("HTTP://malicious.domain/evil")
+        )
+
+        assertTrue(result is ShareIngressResult.InvalidScheme)
+        val invalid = result as ShareIngressResult.InvalidScheme
+        assertEquals("http", invalid.scheme)
+    }
 }

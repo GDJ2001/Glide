@@ -87,15 +87,20 @@ object ShareIngressParser {
                 }
             } else if (action == Intent.ACTION_SEND_MULTIPLE) {
                 val streamUris = getParcelableArrayListExtraCompat<Uri>(intent, Intent.EXTRA_STREAM)
-                if (streamUris != null) {
-                    for (uri in streamUris) {
-                        if (uri != null) {
-                            val str = uri.toString()
-                            if (!extractedUriStrings.contains(str)) {
-                                extractedUriStrings.add(str)
-                            }
-                        }
+                streamUris?.forEach { uri ->
+                    val str = uri.toString()
+                    if (str.isNotBlank() && !extractedUriStrings.contains(str)) {
+                        extractedUriStrings.add(str)
                     }
+                }
+            }
+
+            // 3. Check intent.data fallback (some apps supply URI via intent.data)
+            val intentData = intent.data
+            if (intentData != null) {
+                val str = intentData.toString()
+                if (str.isNotBlank() && !extractedUriStrings.contains(str)) {
+                    extractedUriStrings.add(str)
                 }
             }
 

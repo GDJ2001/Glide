@@ -11,6 +11,7 @@ import dev.glide.core.domain.SessionId
 import dev.glide.core.domain.Sha256Digest
 import dev.glide.core.domain.SourceHandle
 import dev.glide.core.domain.StagingHandle
+import dev.glide.core.domain.TransferFailure
 import dev.glide.core.ports.AdvertisingEvent
 import dev.glide.core.ports.BulkProgress
 import dev.glide.core.ports.ControlMessage
@@ -24,6 +25,7 @@ import dev.glide.core.ports.SessionRecord
 import dev.glide.core.ports.SessionSummary
 import dev.glide.core.ports.SourceAccess
 import dev.glide.core.ports.SourceMetadata
+import dev.glide.core.ports.StreamExpectation
 import dev.glide.core.ports.TransferTransport
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -52,6 +54,7 @@ class FakeTransferTransport : TransferTransport {
     val preparedStreams = mutableMapOf<BulkRef, InputStreamProvider>()
     val markedReadyStreams = mutableSetOf<BulkRef>()
     val registeredExpectedStreams = mutableSetOf<BulkRef>()
+    val registeredExpectations = mutableListOf<StreamExpectation>()
 
     var isDiscovering = false
     var isAdvertising = false
@@ -142,6 +145,11 @@ class FakeTransferTransport : TransferTransport {
         markedReadyStreams.add(bulkRef)
     }
 
+    override suspend fun registerExpectedStream(expectation: StreamExpectation) {
+        registeredExpectations.add(expectation)
+        registeredExpectedStreams.add(expectation.bulkRef)
+    }
+
     override suspend fun registerExpectedStream(bulkRef: BulkRef) {
         registeredExpectedStreams.add(bulkRef)
     }
@@ -156,6 +164,10 @@ class FakeTransferTransport : TransferTransport {
 }
 
 class FakeSourceAccess : SourceAccess {
+    var throwOnOpen: Exception? = null
+    var throwOnOpenForHandle: ((SourceHandle) -> Exception?)? = null
+    var onOpenHook: (suspend (SourceHandle) -> Unit)? = null
+    var throwOnValidate: Exception? = null
     private val sources = mutableMapOf<SourceHandle, Pair<SourceMetadata, ByteArray>>()
     val openCounts = mutableMapOf<SourceHandle, Int>()
 
@@ -164,10 +176,14 @@ class FakeSourceAccess : SourceAccess {
     }
 
     override suspend fun validateSource(handle: SourceHandle): SourceMetadata {
+        throwOnValidate?.let { throw it }
         return sources[handle]?.first ?: throw IllegalArgumentException("Source handle not found: $handle")
     }
 
     override suspend fun openSource(handle: SourceHandle): InputStream {
+        onOpenHook?.invoke(handle)
+        throwOnOpen?.let { throw it }
+        throwOnOpenForHandle?.invoke(handle)?.let { throw it }
         openCounts[handle] = (openCounts[handle] ?: 0) + 1
         val content = sources[handle]?.second ?: throw IllegalArgumentException("Source handle not found: $handle")
         return ByteArrayInputStream(content)
@@ -177,6 +193,9 @@ class FakeSourceAccess : SourceAccess {
 class FakeReceiveStore(
     var availableSpaceBytes: Long = 1_000_000_000L
 ) : ReceiveStore {
+    var throwOnPrepareStaging: Exception? = null
+    var throwOnOpenStagingOutput: Exception? = null
+
     private val stagingOutputs = mutableMapOf<StagingHandle, ByteArrayOutputStream>()
     val committedFiles = mutableMapOf<CommittedFileHandle, Pair<ByteArray, Sha256Digest>>()
     val discardedHandles = mutableListOf<StagingHandle>()
@@ -193,6 +212,15 @@ class FakeReceiveStore(
         displayName: String,
         mimeType: String
     ): StagingHandle {
+        throwOnPrepareStaging?.let { throw it }
+        if (!hasAvailableSpace(expectedBytes)) {
+            throw dev.glide.core.ports.ReceiveStoreException(
+                TransferFailure.InsufficientStorage(
+                    requiredBytes = expectedBytes,
+                    availableBytes = availableSpaceBytes
+                )
+            )
+        }
         val handle = StagingHandle("staging-${sessionId.value}-${itemId.value}")
         stagingOutputs[handle] = ByteArrayOutputStream()
         preparedStaging.add(handle)
@@ -200,6 +228,7 @@ class FakeReceiveStore(
     }
 
     override suspend fun openStagingOutput(handle: StagingHandle): OutputStream {
+        throwOnOpenStagingOutput?.let { throw it }
         return stagingOutputs[handle] ?: throw IllegalArgumentException("Staging handle not found: $handle")
     }
 
@@ -319,6 +348,12 @@ class FakeHistoryStore : HistoryStore {
             items.removeAll { item -> item.sessionId == it.sessionId }
         }
         return count
+    }
+
+    override suspend fun deleteSession(sessionId: SessionId): Boolean {
+        val removed = sessions.remove(sessionId) != null
+        items.removeAll { it.sessionId == sessionId }
+        return removed
     }
 }
 

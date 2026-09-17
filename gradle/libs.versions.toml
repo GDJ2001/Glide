@@ -22,6 +22,8 @@ espresso = "3.7.0"
 profileinstaller = "1.4.1"
 benchmark = "1.4.1"
 uiautomator = "2.3.0"
+camerax = "1.6.2"
+zxing = "3.5.4"
 
 [libraries]
 # AndroidX Core & Lifecycle
@@ -73,6 +75,15 @@ play-services-nearby = { group = "com.google.android.gms", name = "play-services
 androidx-profileinstaller = { group = "androidx.profileinstaller", name = "profileinstaller", version.ref = "profileinstaller" }
 androidx-benchmark-macro = { group = "androidx.benchmark", name = "benchmark-macro-junit4", version.ref = "benchmark" }
 androidx-test-uiautomator = { group = "androidx.test.uiautomator", name = "uiautomator", version.ref = "uiautomator" }
+
+# CameraX
+androidx-camera-core = { group = "androidx.camera", name = "camera-core", version.ref = "camerax" }
+androidx-camera-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "camerax" }
+androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camerax" }
+androidx-camera-view = { group = "androidx.camera", name = "camera-view", version.ref = "camerax" }
+
+# ZXing
+zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" }
 
 # Testing
 junit = { group = "junit", name = "junit", version.ref = "junit" }

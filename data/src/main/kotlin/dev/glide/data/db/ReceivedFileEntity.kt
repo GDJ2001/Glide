@@ -106,4 +106,16 @@ interface ReceivedFileDao {
 
     @Query("UPDATE received_files SET originating_item_id = NULL")
     suspend fun detachAllItemIds(): Int
+
+    @Query(
+        """
+        UPDATE received_files 
+        SET originating_item_id = NULL 
+        WHERE originating_item_id IN (
+            SELECT item_id FROM items 
+            WHERE session_id = :sessionId
+        )
+        """
+    )
+    suspend fun detachItemIdsForSession(sessionId: String): Int
 }

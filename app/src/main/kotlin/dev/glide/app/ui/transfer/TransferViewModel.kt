@@ -166,6 +166,210 @@ class TransferViewModel : ViewModel() {
         }
     }
 
+    fun openVerifiedItem(
+        context: Context?,
+        item: VerifiedItemUiState,
+        fileResolver: (String) -> File? = { key -> context?.let { FileOpener.resolveReceivedFile(it, key) } },
+        fileOpener: (File, String, String) -> FileOpenResult = { f, dn, mt ->
+            context?.let { FileOpener.openFile(it, f, dn, mt) } ?: FileOpenResult.FileNotFound
+        }
+    ) {
+        val key = item.committedFileKey
+        if (key == null) {
+            _openFileFeedback.value = "File not found"
+            return
+        }
+
+        val file = fileResolver(key)
+        if (file == null || !file.exists()) {
+            _openFileFeedback.value = "File not found on device"
+            return
+        }
+
+        val result = fileOpener(file, item.displayName, item.mimeType)
+        when (result) {
+            is FileOpenResult.Success -> {
+                _openFileFeedback.value = null
+            }
+            is FileOpenResult.NoViewerApp -> {
+                _openFileFeedback.value = "No app available to open this file"
+            }
+            is FileOpenResult.FileNotFound -> {
+                _openFileFeedback.value = "File not found on device"
+            }
+            is FileOpenResult.Error -> {
+                _openFileFeedback.value = result.message
+            }
+        }
+    }
+
+    fun shareVerifiedItem(
+        context: Context?,
+        item: VerifiedItemUiState,
+        fileResolver: (String) -> File? = { key -> context?.let { FileOpener.resolveReceivedFile(it, key) } },
+        fileSharer: (File, String, String) -> FileOpenResult = { f, dn, mt ->
+            context?.let { dev.glide.app.util.FileSharing.shareFile(it, f, dn, mt) } ?: FileOpenResult.FileNotFound
+        }
+    ) {
+        val key = item.committedFileKey
+        if (key == null) {
+            _openFileFeedback.value = "File not found"
+            return
+        }
+
+        val file = fileResolver(key)
+        if (file == null || !file.exists()) {
+            _openFileFeedback.value = "File not found on device"
+            return
+        }
+
+        val result = fileSharer(file, item.displayName, item.mimeType)
+        when (result) {
+            is FileOpenResult.Success -> {
+                _openFileFeedback.value = null
+            }
+            is FileOpenResult.NoViewerApp -> {
+                _openFileFeedback.value = "No app available to share this file"
+            }
+            is FileOpenResult.FileNotFound -> {
+                _openFileFeedback.value = "File not found on device"
+            }
+            is FileOpenResult.Error -> {
+                _openFileFeedback.value = result.message
+            }
+        }
+    }
+
+    fun exportVerifiedItem(
+        context: Context?,
+        item: VerifiedItemUiState,
+        fileResolver: (String) -> File? = { key -> context?.let { FileOpener.resolveReceivedFile(it, key) } },
+        fileExporter: FileExporter? = null
+    ) {
+        val key = item.committedFileKey
+        if (key == null) {
+            _exportStatus.value = ExportUiStatus.Failed("File not found")
+            return
+        }
+
+        val file = fileResolver(key)
+        if (file == null || !file.exists()) {
+            _exportStatus.value = ExportUiStatus.Failed("File not found on device")
+            return
+        }
+
+        val exporter = fileExporter ?: context?.let { AndroidFileExporter(it) }
+        if (exporter == null) {
+            _exportStatus.value = ExportUiStatus.Failed("Exporter unavailable")
+            return
+        }
+
+        _exportStatus.value = ExportUiStatus.Exporting
+
+        viewModelScope.launch {
+            val result = exporter.exportToDownloads(
+                sourceFile = file,
+                displayName = item.displayName
+            )
+            when (result) {
+                is ExportResult.Success -> {
+                    _exportStatus.value = ExportUiStatus.Success(result.destinationName)
+                }
+                is ExportResult.Failure -> {
+                    _exportStatus.value = ExportUiStatus.Failed(result.message)
+                }
+            }
+        }
+    }
+
+    fun shareAllVerifiedItems(
+        context: Context?,
+        fileResolver: (String) -> File? = { key -> context?.let { FileOpener.resolveReceivedFile(it, key) } },
+        fileSharer: (List<File>, String) -> FileOpenResult = { files, mime ->
+            context?.let { dev.glide.app.util.FileSharing.shareFiles(it, files, mime) } ?: FileOpenResult.FileNotFound
+        }
+    ) {
+        val state = _uiState.value
+        if (state !is TransferUiState.Completed) {
+            _openFileFeedback.value = "No verified files available to share"
+            return
+        }
+
+        val itemsWithFiles = state.verifiedItems.mapNotNull { item ->
+            val key = item.committedFileKey ?: return@mapNotNull null
+            val file = fileResolver(key)?.takeIf { it.exists() } ?: return@mapNotNull null
+            file to item.mimeType
+        }
+
+        if (itemsWithFiles.isEmpty()) {
+            _openFileFeedback.value = "No files available on device to share"
+            return
+        }
+
+        val files = itemsWithFiles.map { it.first }
+        val mimeTypes = itemsWithFiles.map { it.second }.distinct()
+        val commonMime = if (mimeTypes.size == 1) mimeTypes.first() else "*/*"
+
+        val result = fileSharer(files, commonMime)
+        when (result) {
+            is FileOpenResult.Success -> _openFileFeedback.value = null
+            is FileOpenResult.NoViewerApp -> _openFileFeedback.value = "No app available to share these files"
+            is FileOpenResult.FileNotFound -> _openFileFeedback.value = "Files not found on device"
+            is FileOpenResult.Error -> _openFileFeedback.value = result.message
+        }
+    }
+
+    fun exportAllVerifiedItems(
+        context: Context?,
+        fileResolver: (String) -> File? = { key -> context?.let { FileOpener.resolveReceivedFile(it, key) } },
+        fileExporter: FileExporter? = null
+    ) {
+        val state = _uiState.value
+        if (state !is TransferUiState.Completed || state.role != DeviceRole.Receiver) {
+            _exportStatus.value = ExportUiStatus.Failed("No verified files available to export")
+            return
+        }
+
+        val exporter = fileExporter ?: context?.let { AndroidFileExporter(it) }
+        if (exporter == null) {
+            _exportStatus.value = ExportUiStatus.Failed("Exporter unavailable")
+            return
+        }
+
+        _exportStatus.value = ExportUiStatus.Exporting
+
+        viewModelScope.launch {
+            var exportedCount = 0
+            var lastDestination = ""
+            for (item in state.verifiedItems) {
+                val key = item.committedFileKey ?: continue
+                val file = fileResolver(key)?.takeIf { it.exists() } ?: continue
+                val result = exporter.exportToDownloads(
+                    sourceFile = file,
+                    displayName = item.displayName
+                )
+                when (result) {
+                    is ExportResult.Success -> {
+                        exportedCount++
+                        lastDestination = result.destinationName
+                    }
+                    is ExportResult.Failure -> {
+                        _exportStatus.value = ExportUiStatus.Failed("Export failed for ${item.displayName}: ${result.message}")
+                        return@launch
+                    }
+                }
+            }
+
+            if (exportedCount == 0) {
+                _exportStatus.value = ExportUiStatus.Failed("No files found on device to export")
+            } else if (exportedCount == 1) {
+                _exportStatus.value = ExportUiStatus.Success(lastDestination)
+            } else {
+                _exportStatus.value = ExportUiStatus.Success("$exportedCount files")
+            }
+        }
+    }
+
     internal fun setUiStateForTesting(state: TransferUiState) {
         _uiState.value = state
         val isActive = state is TransferUiState.Connecting ||
@@ -184,9 +388,11 @@ class TransferViewModel : ViewModel() {
 
         viewModelScope.launch {
             coordinator.state.collect { sessionState ->
+                val committedKeys = coordinator.committedItemFiles.mapKeys { it.key.value }.mapValues { it.value.value }
                 _uiState.value = sessionState.toUiState(
                     peerDisplayName = peerDisplayName,
-                    committedFileKey = coordinator.lastCommittedFileHandle?.value
+                    committedFileKey = coordinator.lastCommittedFileHandle?.value,
+                    committedItemKeys = committedKeys
                 )
             }
         }

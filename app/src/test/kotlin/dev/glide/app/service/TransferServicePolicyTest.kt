@@ -133,4 +133,76 @@ class TransferServicePolicyTest {
         assertFalse(TransferServicePolicy.shouldAcceptSessionAction("session-123", ""))
         assertFalse(TransferServicePolicy.shouldAcceptSessionAction(null, null))
     }
+
+    @Test
+    fun validateServiceStart_lanTransfer_api34_allowsWithoutBluetooth() {
+        // LAN transfers are strictly independent of Bluetooth (LAN-025)
+        val result = TransferServicePolicy.validateServiceStart(
+            sdkInt = 34,
+            isAppInForeground = true,
+            isPermissionGranted = { false }, // Zero Bluetooth permissions granted
+            isLanTransfer = true
+        )
+
+        assertEquals(ServiceStartValidation.Allowed, result)
+    }
+
+    @Test
+    fun validateServiceStart_lanTransfer_api37_checksLocalNetwork() {
+        val deniedResult = TransferServicePolicy.validateServiceStart(
+            sdkInt = 37,
+            isAppInForeground = true,
+            isPermissionGranted = { false },
+            isLanTransfer = true
+        )
+        assertTrue(deniedResult is ServiceStartValidation.MissingPrerequisites)
+        val missing = deniedResult as ServiceStartValidation.MissingPrerequisites
+        assertEquals(listOf(PermissionPolicy.PERMISSION_ACCESS_LOCAL_NETWORK), missing.missingPermissions)
+
+        val allowedResult = TransferServicePolicy.validateServiceStart(
+            sdkInt = 37,
+            isAppInForeground = true,
+            isPermissionGranted = { it == PermissionPolicy.PERMISSION_ACCESS_LOCAL_NETWORK },
+            isLanTransfer = true
+        )
+        assertEquals(ServiceStartValidation.Allowed, allowedResult)
+    }
+
+    @Test
+    fun validateServiceStart_nearbyTransfer_api34_requiresBluetooth() {
+        val result = TransferServicePolicy.validateServiceStart(
+            sdkInt = 34,
+            isAppInForeground = true,
+            isPermissionGranted = { false },
+            isLanTransfer = false
+        )
+        assertTrue(result is ServiceStartValidation.MissingPrerequisites)
+    }
+
+    @Test
+    fun isPermissionRevokedForActiveSession_distinguishesLanAndNearby() {
+        // LAN on API 34 does not depend on Bluetooth revocation
+        val lanRevoked34 = TransferServicePolicy.isPermissionRevokedForActiveSession(
+            sdkInt = 34,
+            isLanTransfer = true,
+            isPermissionGranted = { false }
+        )
+        assertFalse("LAN on API 34 must not be affected by Bluetooth revocation", lanRevoked34)
+
+        // LAN on API 37 is revoked when ACCESS_LOCAL_NETWORK is revoked
+        val lanRevoked37 = TransferServicePolicy.isPermissionRevokedForActiveSession(
+            sdkInt = 37,
+            isLanTransfer = true,
+            isPermissionGranted = { false }
+        )
+        assertTrue("LAN on API 37 must detect local network revocation", lanRevoked37)
+
+        // Nearby on API 34 is revoked when BLUETOOTH_CONNECT is revoked
+        val nearbyRevoked34 = TransferServicePolicy.isPermissionRevokedForActiveSession(
+            sdkInt = 34,
+            isLanTransfer = false,
+            isPermissionGranted = { false }
+        )
+        assertTrue("Nearby on API 34 must detect Bluetooth revocation", nearbyRevoked34)
+    }
 }

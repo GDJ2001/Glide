@@ -61,9 +61,13 @@ class ManifestPermissionTest {
 
         // Sensitive / unused permissions forbidden
         assertFalse(manifestContent.contains("ACCESS_BACKGROUND_LOCATION"))
-        assertFalse(manifestContent.contains("CAMERA"))
         assertFalse(manifestContent.contains("RECORD_AUDIO"))
         assertFalse(manifestContent.contains("READ_CONTACTS"))
         assertFalse(manifestContent.contains("RECEIVE_BOOT_COMPLETED"))
+
+        // Camera is permitted only for QR scanning, and camera hardware MUST be optional
+        assertTrue(manifestContent.contains("android.permission.CAMERA"))
+        assertTrue(manifestContent.contains("""android:name="android.hardware.camera""""))
+        assertTrue(manifestContent.contains("""android:required="false""""))
     }
 }

@@ -96,14 +96,17 @@ class AdvancedTransportsComplianceTest {
         // Assert no background location or intrusive device permissions
         val bannedIntrusive = listOf(
             "android.permission.ACCESS_BACKGROUND_LOCATION",
-            "android.permission.CAMERA",
             "android.permission.RECORD_AUDIO",
             "android.permission.READ_CONTACTS",
             "android.permission.RECEIVE_BOOT_COMPLETED"
         )
         for (perm in bannedIntrusive) {
-            assertTrue("V1 must not declare $perm", !manifestText.contains(perm))
+            assertTrue("Must not declare $perm", !manifestText.contains(perm))
         }
+
+        // Camera is permitted for offline QR scanning only, with hardware marked strictly optional
+        assertTrue("Camera permission must be paired with required=false feature",
+            Regex("""<uses-feature\s+android:name="android\.hardware\.camera"\s+android:required="false"""", RegexOption.DOT_MATCHES_ALL).containsMatchIn(manifestText))
 
         // Assert legacy location permissions are bounded by maxSdkVersion="32"
         assertTrue("ACCESS_FINE_LOCATION must be bounded by maxSdkVersion=32",

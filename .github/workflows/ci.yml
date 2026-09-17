@@ -42,11 +42,17 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x gradlew
 
+      - name: Check Documentation & Link Integrity
+        run: ./gradlew checkDocumentation
+
       - name: Enforce Architecture and Static Analysis
         run: ./gradlew checkArchitecture
 
-      - name: Assemble Debug APK
+      - name: Assemble Debug APK (No Signing in PR)
         run: ./gradlew :app:assembleDebug
+
+      - name: Run Behavioral LAN and Protocol Gates
+        run: ./gradlew checkLanGate
 
       - name: Run Unit Tests
         run: ./gradlew test
@@ -71,6 +77,7 @@ jobs:
           path: |
             app/build/reports/
             transfer-core/build/reports/
+            transport-lan/build/reports/
             designsystem/build/reports/
             transport-nearby/build/reports/
             data/build/reports/

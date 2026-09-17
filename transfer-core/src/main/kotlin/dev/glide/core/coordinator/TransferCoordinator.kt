@@ -17,6 +17,8 @@ import dev.glide.core.ports.HistoryStore
 import dev.glide.core.ports.ItemRecord
 import dev.glide.core.ports.ReceiveStore
 import dev.glide.core.ports.SessionRecord
+import dev.glide.core.ports.InputStreamProvider
+import dev.glide.core.ports.StreamExpectation
 import dev.glide.core.ports.SourceAccess
 import dev.glide.core.ports.TransferTransport
 import dev.glide.core.protocol.Envelope
@@ -41,6 +43,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.Collections
+import java.util.concurrent.ConcurrentHashMap
 import java.util.UUID
 
 /**
@@ -76,6 +79,12 @@ class TransferCoordinator(
     init {
         if (role == DeviceRole.Sender) {
             requireNotNull(sessionId) { "Sender must specify an explicit non-null sessionId" }
+            if (senderBatch != null) {
+                val missing = senderBatch.items.filterNot { sourceMap.containsKey(it.id) }
+                require(missing.isEmpty()) {
+                    "sourceMap is missing handles for items: ${missing.map { it.name }}"
+                }
+            }
         }
     }
 
@@ -93,6 +102,8 @@ class TransferCoordinator(
 
     private val _committedFiles: MutableList<CommittedFileHandle> = Collections.synchronizedList(mutableListOf())
     val committedFiles: List<CommittedFileHandle> get() = _committedFiles.toList()
+    private val _committedItemFiles = ConcurrentHashMap<ItemId, CommittedFileHandle>()
+    val committedItemFiles: Map<ItemId, CommittedFileHandle> get() = _committedItemFiles.toMap()
     var lastCommittedFileHandle: CommittedFileHandle? = null
         private set
 
@@ -173,10 +184,26 @@ class TransferCoordinator(
     }
 
     /**
-     * Receiver consent acceptance: dispatches positive offer decision.
+     * Receiver consent acceptance: verifies batch space reservation before dispatching positive offer decision (LAN-022).
      */
-    fun acceptOffer() {
+     fun acceptOffer() {
         scope.launch {
+            val batch = _state.value.batch
+            if (batch != null) {
+                val hasSpace = withContext(ioDispatcher) {
+                    receiveStore.hasAvailableSpace(batch.totalBytes)
+                }
+                if (!hasSpace) {
+                    dispatch(
+                        ReducerEvent.SubmitOfferDecision(
+                            accepted = false,
+                            rejectionCode = "INSUFFICIENT_STORAGE",
+                            timestampMs = clock()
+                        )
+                    )
+                    return@launch
+                }
+            }
             dispatch(
                 ReducerEvent.SubmitOfferDecision(
                     accepted = true,
@@ -435,14 +462,23 @@ class TransferCoordinator(
                 stagingHandles[itemId] = stagingHandle
                 currentStagingHandle = stagingHandle
 
-                // LAN-002: Only register expected stream after staging preparation succeeds
+                // LAN-002, LAN-007: Only register typed stream expectation after staging preparation succeeds
                 val bulkRef = _state.value.itemStates[itemId]?.bulkRef
                 if (bulkRef != null) {
-                    transport.registerExpectedStream(bulkRef)
+                    transport.registerExpectedStream(
+                        StreamExpectation(
+                            sessionId = sessionId,
+                            itemId = itemId,
+                            bulkRef = bulkRef,
+                            sizeBytes = sizeBytes
+                        )
+                    )
                 }
                 true
             } catch (e: Exception) {
-                dispatch(ReducerEvent.TransportFailure(TransferFailure.InsufficientStorage(sizeBytes, 0), clock()))
+                val failure = (e as? dev.glide.core.ports.ReceiveStoreException)?.failure
+                    ?: TransferFailure.InsufficientStorage(sizeBytes, 0)
+                dispatch(ReducerEvent.TransportFailure(failure, clock()))
                 false
             }
         }
@@ -456,6 +492,7 @@ class TransferCoordinator(
             try {
                 val committed = receiveStore.commitVerified(staging, digest)
                 _committedFiles.add(committed)
+                _committedItemFiles[itemId] = committed
                 lastCommittedFileHandle = committed
                 stagingHandles.remove(itemId)
                 if (currentStagingHandle == staging) {
@@ -587,7 +624,17 @@ class TransferCoordinator(
                         if (firstItem != null) prepareSourceItem(firstItem) else null
                     } else null
 
-                    dispatch(ReducerEvent.OfferDecisionReceived(decision, envelope.messageId, envelope.seq, now, bulkRef))
+                    if (canPrepare && bulkRef == null) {
+                        val firstItemName = _state.value.batch?.items?.firstOrNull()?.name ?: "first item"
+                        dispatch(
+                            ReducerEvent.TransportFailure(
+                                TransferFailure.SourceUnavailable("Failed to open source stream for item: $firstItemName"),
+                                now
+                            )
+                        )
+                    } else {
+                        dispatch(ReducerEvent.OfferDecisionReceived(decision, envelope.messageId, envelope.seq, now, bulkRef))
+                    }
                 }
                 MessageTypes.ITEM_START -> {
                     val start = ProtocolCodec.decodeBody<dev.glide.core.protocol.ItemStartBody>(envelope)
@@ -622,7 +669,16 @@ class TransferCoordinator(
                         prepareSourceItem(nextItem)
                     } else null
 
-                    dispatch(ReducerEvent.ItemResultReceived(result, envelope.messageId, envelope.seq, now, nextBulkRef))
+                    if (canPrepareNext && nextBulkRef == null) {
+                        dispatch(
+                            ReducerEvent.TransportFailure(
+                                TransferFailure.SourceUnavailable("Failed to open source stream for item: ${nextItem.name}"),
+                                now
+                            )
+                        )
+                    } else {
+                        dispatch(ReducerEvent.ItemResultReceived(result, envelope.messageId, envelope.seq, now, nextBulkRef))
+                    }
                 }
                 MessageTypes.BATCH_END -> {
                     val batchEnd = ProtocolCodec.decodeBody<dev.glide.core.protocol.BatchEndBody>(envelope)
@@ -753,7 +809,14 @@ class TransferCoordinator(
                 } catch (e: IllegalStateException) {
                     dispatch(ReducerEvent.TransportFailure(TransferFailure.LimitExceeded("Receive stream limit exceeded: ${e.message}"), clock()))
                 } catch (e: Exception) {
-                    dispatch(ReducerEvent.TransportFailure(TransferFailure.WriteFailure("Receive stream failed: ${e.message}"), clock()))
+                    val isEnospc = e.message?.contains("ENOSPC", ignoreCase = true) == true ||
+                        e.message?.contains("No space left on device", ignoreCase = true) == true
+                    val failure = if (isEnospc) {
+                        TransferFailure.InsufficientStorage(curItem.item.sizeBytes, 0L)
+                    } else {
+                        TransferFailure.WriteFailure("Receive stream failed: ${e.message}")
+                    }
+                    dispatch(ReducerEvent.TransportFailure(failure, clock()))
                 } finally {
                     try { incoming.stream.close() } catch (_: Exception) {}
                 }

@@ -28,6 +28,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.HourglassBottom
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Button
@@ -62,7 +63,8 @@ fun ReceiveReadinessScreen(
     uiState: ReceiveReadinessUiState,
     onStopReceiving: () -> Unit,
     onRestartReceiving: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onShowQrCode: (() -> Unit)? = null
 ) {
     val scrollState = rememberScrollState()
 
@@ -225,6 +227,28 @@ fun ReceiveReadinessScreen(
                 }
 
                 Spacer(modifier = Modifier.weight(1f, fill = false))
+
+                // Show QR Code Button (LAN-018)
+                if (onShowQrCode != null) {
+                    OutlinedButton(
+                        onClick = onShowQrCode,
+                        shape = PrimaryButtonShape,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 52.dp)
+                            .semantics {
+                                role = Role.Button
+                                contentDescription = "Show QR code for local network pairing"
+                            }
+                    ) {
+                        Icon(imageVector = Icons.Default.QrCode2, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Show QR code",
+                            style = MaterialTheme.typography.titleSmall
+                        )
+                    }
+                }
 
                 // Stop Receiving Button
                 Button(

@@ -1,6 +1,7 @@
 package dev.glide.app.ui.discovery
 
 import androidx.compose.runtime.Immutable
+import dev.glide.core.discovery.DeclaredPlatform
 import dev.glide.core.domain.PeerId
 
 /**
@@ -22,14 +23,25 @@ enum class DeviceType {
                 else -> Phone
             }
         }
+
+        fun fromPlatform(platform: DeclaredPlatform, fallbackName: String = ""): DeviceType {
+            return when (platform) {
+                DeclaredPlatform.ANDROID, DeclaredPlatform.IOS -> {
+                    val lower = fallbackName.lowercase()
+                    if (lower.contains("tab") || lower.contains("pad")) Tablet else Phone
+                }
+                DeclaredPlatform.WINDOWS, DeclaredPlatform.MACOS, DeclaredPlatform.LINUX, DeclaredPlatform.WEB -> Computer
+                DeclaredPlatform.UNKNOWN -> fromDeviceName(fallbackName)
+            }
+        }
     }
 }
 
 /**
- * Immutable representation of a discovered peer endpoint in the UI.
+ * Immutable representation of a discovered peer endpoint in the UI (LAN-015).
  *
- * Enforces stable keys via [id], accessible device names, and non-jumping list behavior
- * by maintaining [isAvailable] rather than abruptly deleting elements from the list.
+ * Enforces stable keys via [id] and [uiKey], accessible device names, route subtitles,
+ * and non-jumping list behavior by maintaining [isAvailable] rather than abruptly deleting elements.
  */
 @Immutable
 data class DiscoveredPeer(
@@ -38,7 +50,10 @@ data class DiscoveredPeer(
     val deviceType: DeviceType = DeviceType.Phone,
     val isAvailable: Boolean = true,
     val isConnecting: Boolean = false,
-    val isSelected: Boolean = false
+    val isSelected: Boolean = false,
+    val isBusy: Boolean = false,
+    val routeSubtitle: String = "Nearby",
+    val uiKey: String = id.value
 )
 
 /**
@@ -47,6 +62,9 @@ data class DiscoveredPeer(
 sealed interface BlockedReason {
     data object BluetoothDisabled : BlockedReason
     data object WifiDisabled : BlockedReason
+    data object LanPermissionDenied : BlockedReason
+    data object NoLocalNetwork : BlockedReason
+    data object VpnActive : BlockedReason
     data object PermissionsRequired : BlockedReason
     data class TransportError(val message: String) : BlockedReason
 }

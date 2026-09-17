@@ -10,6 +10,7 @@ import com.google.android.gms.nearby.connection.PayloadTransferUpdate
 import dev.glide.core.domain.PeerDevice
 import dev.glide.core.domain.PeerId
 import dev.glide.core.ports.ConnectionEvent
+import dev.glide.core.ports.VerificationEvidence
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -126,7 +127,7 @@ class NearbyConnectionManager(
         _linkState.value = verifyingState
 
         scope.launch {
-            _connectionEvents.emit(ConnectionEvent.Initiated(PeerDevice(peerId, peerName), authDigits))
+            _connectionEvents.emit(ConnectionEvent.Initiated(PeerDevice(peerId, peerName), VerificationEvidence.NearbyDigits(authDigits)))
         }
 
         timeoutJob = scope.launch {

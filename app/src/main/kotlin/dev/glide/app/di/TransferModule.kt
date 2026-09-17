@@ -83,4 +83,36 @@ object TransferModule {
             historyStore = historyStore
         )
     }
+
+    @Provides
+    @Singleton
+    fun provideLanTransportFactory(@ApplicationContext context: Context): dev.glide.transport.lan.LanTransportFactory? {
+        return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q &&
+            dev.glide.app.config.LanFeatureConfig.isLanTransportEnabled
+        ) {
+            dev.glide.transport.lan.LanTransportFactory(context)
+        } else {
+            null
+        }
+    }
+
+    @Provides
+    @Singleton
+    fun provideLanNetworkScope(@ApplicationContext context: Context): dev.glide.transport.lan.network.LanNetworkScope {
+        return dev.glide.transport.lan.network.LanNetworkScope(context)
+    }
+
+    @Provides
+    @Singleton
+    fun provideTransportRouter(
+        @ApplicationContext context: Context,
+        lanTransportFactory: dev.glide.transport.lan.LanTransportFactory?,
+        lanNetworkScope: dev.glide.transport.lan.network.LanNetworkScope
+    ): dev.glide.app.routing.TransportRouter {
+        return dev.glide.app.routing.TransportRouter(
+            context = context,
+            lanTransportFactory = lanTransportFactory,
+            lanNetworkScope = lanNetworkScope
+        )
+    }
 }

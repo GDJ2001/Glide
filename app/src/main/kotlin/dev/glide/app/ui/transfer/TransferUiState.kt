@@ -16,6 +16,18 @@ sealed interface ExportUiStatus {
 }
 
 /**
+ * UI representation of an individual verified item within a completed transfer batch (LAN-023).
+ */
+data class VerifiedItemUiState(
+    val itemId: String,
+    val displayName: String,
+    val mimeType: String,
+    val sizeBytes: Long,
+    val committedFileKey: String? = null,
+    val digestHex: String? = null
+)
+
+/**
  * Immutable UI state representing the active transfer session (GLIDE-015).
  */
 sealed interface TransferUiState {
@@ -83,6 +95,7 @@ sealed interface TransferUiState {
         val committedFileKey: String? = null,
         val itemCount: Int = 1,
         val items: List<dev.glide.core.domain.TransferItem> = emptyList(),
+        val verifiedItems: List<VerifiedItemUiState> = emptyList(),
         val peerDeviceType: dev.glide.app.ui.discovery.DeviceType = dev.glide.app.ui.discovery.DeviceType.Phone
     ) : TransferUiState
 
@@ -118,7 +131,8 @@ sealed interface TransferUiState {
  */
 fun SessionState.toUiState(
     peerDisplayName: String = "Peer device",
-    committedFileKey: String? = null
+    committedFileKey: String? = null,
+    committedItemKeys: Map<String, String>? = null
 ): TransferUiState {
     val sid = sessionId.value
     val currentBatch = batch
@@ -126,14 +140,61 @@ fun SessionState.toUiState(
     val currentItem = currentItemState?.item ?: items.firstOrNull()
     val itemName = currentItem?.name ?: "Unknown file"
     val totalBytes = currentBatch?.totalBytes ?: (currentItem?.sizeBytes ?: 0L)
-    val transferredBytes = currentItemState?.transferredBytes ?: 0L
-    val fraction = if (totalBytes > 0L) (transferredBytes.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f) else 0f
+    val batchTransferredBytes = run {
+        var completedBytes = 0L
+        if (currentBatch != null && items.isNotEmpty()) {
+            val currentIdx = if (currentItem != null) items.indexOfFirst { it.id == currentItem.id } else -1
+            for (i in 0 until items.size) {
+                val item = items[i]
+                if (currentIdx >= 0 && i < currentIdx) {
+                    val state = itemStates[item.id]
+                    completedBytes += state?.transferredBytes ?: item.sizeBytes
+                } else if (currentIdx >= 0 && i == currentIdx) {
+                    completedBytes += (currentItemState?.transferredBytes ?: 0L)
+                }
+            }
+            completedBytes
+        } else {
+            currentItemState?.transferredBytes ?: 0L
+        }
+    }
+    val fraction = if (totalBytes > 0L) (batchTransferredBytes.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f) else 0f
     val itemCount = items.size.coerceAtLeast(1)
     val itemIndex = if (currentItem != null && items.isNotEmpty()) {
         val idx = items.indexOfFirst { it.id == currentItem.id }
         if (idx >= 0) idx + 1 else 1
     } else 1
     val peerType = dev.glide.app.ui.discovery.DeviceType.fromDeviceName(peerDisplayName)
+
+    val verifiedItemList = itemStates.values
+        .filter { it.phase == ItemPhase.Verified }
+        .map { state ->
+            val key = committedItemKeys?.get(state.item.id.value)
+                ?: if (state.item.id.value == currentItem?.id?.value) committedFileKey else null
+            VerifiedItemUiState(
+                itemId = state.item.id.value,
+                displayName = state.item.name,
+                mimeType = dev.glide.app.util.MimeSanitizer.sanitize(state.item.mimeType),
+                sizeBytes = state.item.sizeBytes,
+                committedFileKey = key,
+                digestHex = state.actualDigest?.value ?: state.expectedDigest?.value
+            )
+        }
+        .ifEmpty {
+            if (items.isNotEmpty()) {
+                items.map { it ->
+                    val key = committedItemKeys?.get(it.id.value)
+                        ?: if (it.id.value == currentItem?.id?.value) committedFileKey else null
+                    VerifiedItemUiState(
+                        itemId = it.id.value,
+                        displayName = it.name,
+                        mimeType = dev.glide.app.util.MimeSanitizer.sanitize(it.mimeType),
+                        sizeBytes = it.sizeBytes,
+                        committedFileKey = key
+                    )
+                }
+            } else emptyList()
+        }
 
     return when (phase) {
         SessionPhase.Idle, SessionPhase.Negotiating -> {
@@ -185,7 +246,7 @@ fun SessionState.toUiState(
                 role = role,
                 peerName = peerDisplayName,
                 itemName = itemName,
-                transferredBytes = transferredBytes,
+                transferredBytes = batchTransferredBytes,
                 totalBytes = totalBytes,
                 progressFraction = fraction,
                 itemIndex = itemIndex,
@@ -218,6 +279,7 @@ fun SessionState.toUiState(
                     committedFileKey = committedFileKey,
                     itemCount = itemCount,
                     items = items,
+                    verifiedItems = verifiedItemList,
                     peerDeviceType = peerType
                 )
             } else {
@@ -244,6 +306,7 @@ fun SessionState.toUiState(
                 committedFileKey = committedFileKey,
                 itemCount = itemCount,
                 items = items,
+                verifiedItems = verifiedItemList,
                 peerDeviceType = peerType
             )
         }

@@ -53,6 +53,7 @@ class FakeTestReceivedFileDao : ReceivedFileDao {
     override suspend fun detachItemIdsOlderThan(cutoffMs: Long): Int = 0
     override suspend fun detachItemIdsExceedingMax(maxCount: Int): Int = 0
     override suspend fun detachAllItemIds(): Int = 0
+    override suspend fun detachItemIdsForSession(sessionId: String): Int = 0
 }
 
 class FakeTestReceiveJournalDao : ReceiveJournalDao {

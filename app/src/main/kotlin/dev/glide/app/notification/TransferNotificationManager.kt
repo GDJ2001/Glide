@@ -136,21 +136,30 @@ class TransferNotificationManager(
                 val actionVerb = if (isSending) "Sending" else "Receiving"
 
                 title = if (settings.notificationDetails) {
-                    "$actionVerb ${state.itemName}"
+                    if (state.itemCount > 1) {
+                        "$actionVerb ${state.itemName} (${state.itemIndex}/${state.itemCount})"
+                    } else {
+                        "$actionVerb ${state.itemName}"
+                    }
                 } else {
                     "$actionVerb files..."
                 }
 
                 val transferredStr = formatFileSize(state.transferredBytes)
                 val totalStr = formatFileSize(state.totalBytes)
-                val rateStr = if (state.speedBytesPerSec > 0L) {
-                    " · ${formatFileSize(state.speedBytesPerSec)}/s"
+                val rateAndEtaStr = if (state.isStalled) {
+                    " · Stalled"
                 } else {
-                    ""
+                    val rateStr = if (state.speedBytesPerSec > 0L) {
+                        " · ${formatFileSize(state.speedBytesPerSec)}/s"
+                    } else {
+                        ""
+                    }
+                    val etaStr = formatEta(state.transferredBytes, state.totalBytes, state.speedBytesPerSec)
+                    "$rateStr$etaStr"
                 }
-                val etaStr = formatEta(state.transferredBytes, state.totalBytes, state.speedBytesPerSec)
 
-                text = "$transferredStr / $totalStr$rateStr$etaStr"
+                text = "$transferredStr / $totalStr$rateAndEtaStr"
                 subText = state.peerName
                 isIndeterminate = false
                 maxProgress = PROGRESS_MAX
@@ -160,7 +169,11 @@ class TransferNotificationManager(
 
             is TransferUiState.Verifying -> {
                 title = if (settings.notificationDetails) {
-                    "Verifying ${state.itemName}..."
+                    if (state.itemCount > 1) {
+                        "Verifying ${state.itemName} (${state.itemIndex}/${state.itemCount})..."
+                    } else {
+                        "Verifying ${state.itemName}..."
+                    }
                 } else {
                     "Verifying transfer..."
                 }
@@ -175,7 +188,11 @@ class TransferNotificationManager(
             is TransferUiState.Completed -> {
                 title = "Transfer complete"
                 text = if (settings.notificationDetails) {
-                    "${state.itemName} (${formatFileSize(state.totalBytes)}) transferred"
+                    if (state.itemCount > 1) {
+                        "${state.itemCount} files (${formatFileSize(state.totalBytes)}) transferred"
+                    } else {
+                        "${state.itemName} (${formatFileSize(state.totalBytes)}) transferred"
+                    }
                 } else {
                     "${formatFileSize(state.totalBytes)} transferred successfully"
                 }
