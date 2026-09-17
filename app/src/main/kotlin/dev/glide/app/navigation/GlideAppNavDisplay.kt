@@ -13,6 +13,7 @@ import dev.glide.app.ui.HomeScreen
 import dev.glide.app.ui.TransferScreen
 import dev.glide.app.ui.selection.SelectionScreen
 import dev.glide.app.ui.transfer.VerifiedItemUiState
+import dev.glide.app.service.TransferRuntime
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.tween
@@ -30,6 +31,7 @@ import dev.glide.app.navigation.adaptive.GlideAdaptiveScaffold
 @Composable
 fun GlideAppNavDisplay(
     modifier: Modifier = Modifier,
+    transferRuntime: TransferRuntime? = null,
     initialRoute: GlideRoute = GlideRoute.Home,
     incomingRoute: GlideRoute? = null,
     initialUiState: dev.glide.app.ui.transfer.TransferUiState? = null,
@@ -113,9 +115,13 @@ fun GlideAppNavDisplay(
 
         entryProvider = entryProvider {
             entry<GlideRoute.Home> {
-                val isSessionActive by dev.glide.app.transfer.ActiveSessionTracker.isSessionActive.collectAsStateWithLifecycle()
-                val currentActiveSessionId by dev.glide.app.transfer.ActiveSessionTracker.activeSessionId.collectAsStateWithLifecycle()
-                val activeSessionId = currentActiveSessionId.takeIf { isSessionActive }
+                val activeSessionId = if (transferRuntime != null) {
+                    val isSessionActive by transferRuntime.isSessionActive.collectAsStateWithLifecycle()
+                    val currentActiveSessionId by transferRuntime.activeSessionId.collectAsStateWithLifecycle()
+                    currentActiveSessionId.takeIf { isSessionActive }
+                } else {
+                    null
+                }
                 HomeScreen(
                     onNavigateToSend = {
                         backStack.add(GlideRoute.Selection())
@@ -263,7 +269,21 @@ fun GlideAppNavDisplay(
                 }
             }
             entry<GlideRoute.Transfer> { route ->
-                val viewModel = androidx.lifecycle.viewmodel.compose.viewModel<dev.glide.app.ui.transfer.TransferViewModel>()
+                val viewModel = if (transferRuntime != null) {
+                    val runtimeFactory = androidx.compose.runtime.remember(transferRuntime) {
+                        object : androidx.lifecycle.ViewModelProvider.Factory {
+                            @Suppress("UNCHECKED_CAST")
+                            override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
+                                return dev.glide.app.ui.transfer.TransferViewModel(transferRuntime) as T
+                            }
+                        }
+                    }
+                    androidx.lifecycle.viewmodel.compose.viewModel<dev.glide.app.ui.transfer.TransferViewModel>(
+                        factory = runtimeFactory
+                    )
+                } else {
+                    androidx.lifecycle.viewmodel.compose.viewModel<dev.glide.app.ui.transfer.TransferViewModel>()
+                }
                 androidx.compose.runtime.LaunchedEffect(initialUiState) {
                     if (initialUiState != null) {
                         viewModel.setUiStateForTesting(initialUiState)
