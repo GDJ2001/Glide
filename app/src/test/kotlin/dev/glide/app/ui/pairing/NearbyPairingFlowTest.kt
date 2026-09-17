@@ -1,7 +1,7 @@
 package dev.glide.app.ui.pairing
 
 import dev.glide.app.service.TransferSessionFactory
-import dev.glide.app.service.TransferSessionManager
+import dev.glide.app.service.TransferRuntime
 import dev.glide.app.ui.discovery.DeviceType
 import dev.glide.app.ui.selection.SelectedTransferStore
 import dev.glide.app.ui.transfer.TransferViewModel
@@ -121,20 +121,24 @@ class NearbyPairingFlowTest {
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
         SelectedTransferStore.resetForTesting()
-        TransferSessionManager.resetForTesting()
     }
 
     @After
     fun tearDown() {
         SelectedTransferStore.resetForTesting()
-        TransferSessionManager.resetForTesting()
         Dispatchers.resetMain()
     }
 
     @Test
     fun pairingFlow_surfacesRealDigits_enforcesSingleConfirm_andStartsSenderSessionWithFullBatch() = runTest(testDispatcher) {
-        val viewModel = TransferViewModel()
         val transport = FakePairingTransport(PeerId("local-sender"))
+        val factory = TransferSessionFactory(
+            sourceAccess = LocalTestSourceAccess(),
+            receiveStore = LocalTestReceiveStore(),
+            historyStore = LocalTestHistoryStore()
+        )
+        val runtime = TransferRuntime.forTesting(factory).also { it.attachServiceScope(this) }
+        val viewModel = TransferViewModel(runtime)
         var pairingSucceededPeer: PeerId? = null
 
         viewModel.bindTransport(transport) { peerId ->
@@ -194,35 +198,29 @@ class NearbyPairingFlowTest {
         val sourceMap = mapOf(item1Id to handle1, item2Id to handle2)
         SelectedTransferStore.store(batch, sourceMap)
 
-        val factory = TransferSessionFactory(
-            sourceAccess = LocalTestSourceAccess(),
-            receiveStore = LocalTestReceiveStore(),
-            historyStore = LocalTestHistoryStore()
-        )
-
         val sessionStarted = viewModel.startSenderSession(
-            factory = factory,
             transport = transport,
             peerId = remotePeer.id,
             peerDisplayName = remotePeer.displayName,
-            batchId = batchId,
-            scope = this
+            batchId = batchId
         )
         assertTrue(sessionStarted)
 
-        val activeCoordinator = TransferSessionManager.getActiveCoordinator()
+        val activeCoordinator = runtime.activeCoordinatorForTesting()
         assertNotNull(activeCoordinator)
         assertEquals(DeviceRole.Sender, activeCoordinator!!.role)
         assertEquals(2, activeCoordinator.senderBatch?.items?.size)
         assertEquals(handle1, activeCoordinator.sourceMap[item1Id])
         assertEquals(handle2, activeCoordinator.sourceMap[item2Id])
 
-        TransferSessionManager.stopSession()
+        runtime.stopActiveSession()
+        runtime.detachServiceScope()
     }
 
     @Test
     fun pairingFlow_rejectPairing_terminatesAttemptWithFailedState() = runTest(testDispatcher) {
-        val viewModel = TransferViewModel()
+        val runtime = TransferRuntime.forTesting().also { it.attachServiceScope(this) }
+        val viewModel = TransferViewModel(runtime)
         val transport = FakePairingTransport(PeerId("local-sender"))
         viewModel.bindTransport(transport)
         testScheduler.runCurrent()
@@ -239,5 +237,6 @@ class NearbyPairingFlowTest {
 
         val state = viewModel.pairingState.value
         assertTrue(state is PairingUiState.Failed)
+        runtime.detachServiceScope()
     }
 }
