@@ -21,10 +21,12 @@ The old GLIDE V1 roadmap and GLIDE-001–072 completion record are historical. T
 
 - HARD-001: **COMPLETE** — published the evidence-backed review and completion plan.
 - HARD-002: **COMPLETE** — captured source at `12681eabba26387fe7d1bbaf309971f345642e41`, reviewed the post-`ea2e811` delta, reconciled current claims/specifications, and preserved historical evidence without treating it as current certification.
-- HARD-003: **READY** — add executable regressions for confirmed production defects.
-- HARD-004–043: NOT_STARTED until their dependencies are met.
+- HARD-003: **COMPLETE** — executable red-before-fix regressions are isolated from the ordinary green baseline.
+- HARD-004: **COMPLETE** — Android/Windows/Linux CI is green at run 35286514435 with build/test/lint/package artifacts.
+- HARD-005: **IN PROGRESS** — service-owned Android TransferRuntime implementation and ownership tests are under final CI validation.
+- HARD-006–043: NOT_STARTED until their dependencies are met.
 
-Overall current hardening progress: **2 / 43 tasks (4.7%)**.
+M0 Honest baseline is **COMPLETE (4/4)**. Overall current hardening progress: **4 / 43 tasks (9.3%)**; HARD-005 is active.
 
 ## HARD-002 scope boundary
 
