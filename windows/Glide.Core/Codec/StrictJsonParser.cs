@@ -9,6 +9,9 @@ public sealed class StrictJsonParser
     private int _index;
     private int _currentDepth;
 
+    public static JsonObject Parse(string text, int maxDepth = 8) => new StrictJsonParser(text, maxDepth).Parse();
+    public static JsonObject Parse(byte[] utf8Bytes, int maxDepth = 8) => Parse(System.Text.Encoding.UTF8.GetString(utf8Bytes), maxDepth);
+
     public StrictJsonParser(string text, int maxDepth = 8)
     {
         _text = text ?? throw new ArgumentNullException(nameof(text));

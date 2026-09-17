@@ -8,8 +8,10 @@ using System.Windows;
 using System.Windows.Input;
 using Glide.Core.Codec;
 using Glide.Core.Models;
+using Glide.Core.Pairing;
 using Glide.Core.Security;
 using Glide.Core.Storage;
+using Glide.Core.Transport.Lan;
 using Glide.Transport.Discovery;
 using Glide.Transport.Framing;
 using Glide.Transport.Sockets;
@@ -44,6 +46,13 @@ public class MainViewModel : ViewModelBase
 
     private TlsSocketListener? _listener;
 
+    private readonly MdnsDiscoveryService _mdnsService = new();
+    public ObservableCollection<DiscoveredPeerViewModel> DiscoveredPeers { get; } = [];
+
+    private bool _isPairModalVisible;
+    private string _pairInputUri = "";
+    private string _activeInvitationUri = "";
+
     public ObservableCollection<TransferItemViewModel> SelectedFiles { get; } = [];
     public ObservableCollection<HistoryItemViewModel> HistoryItems { get; } = [];
 
@@ -57,6 +66,12 @@ public class MainViewModel : ViewModelBase
     public RelayCommand RejectSasCommand { get; }
     public RelayCommand CancelTransferCommand { get; }
     public RelayCommand OpenDownloadsCommand { get; }
+    public RelayCommand ShowPairModalCommand { get; }
+    public RelayCommand CancelPairModalCommand { get; }
+    public RelayCommand SubmitPairModalCommand { get; }
+    public RelayCommand SelectPeerCommand { get; }
+    public RelayCommand RefreshPeersCommand { get; }
+    public RelayCommand CopyPairingLinkCommand { get; }
 
     public MainViewModel()
     {
@@ -73,7 +88,56 @@ public class MainViewModel : ViewModelBase
         RejectSasCommand = new RelayCommand(() => _sasConfirmationTcs?.TrySetResult(false));
         CancelTransferCommand = new RelayCommand(() => _activeTransferCts?.Cancel());
         OpenDownloadsCommand = new RelayCommand(ExecuteOpenDownloads);
+        ShowPairModalCommand = new RelayCommand(() => IsPairModalVisible = true);
+        CancelPairModalCommand = new RelayCommand(() => { IsPairModalVisible = false; PairInputUri = ""; });
+        SubmitPairModalCommand = new RelayCommand(ExecuteSubmitPairModal);
+        SelectPeerCommand = new RelayCommand(param =>
+        {
+            if (param is DiscoveredPeerViewModel peer)
+            {
+                PeerHost = peer.Host;
+                PeerPort = peer.Port;
+                StatusMessage = $"Selected peer: {peer.DeviceName} ({peer.Host}:{peer.Port})";
+            }
+        });
+        RefreshPeersCommand = new RelayCommand(() =>
+        {
+            _mdnsService.QueryPeers();
+            StatusMessage = "Scanning for nearby Glide devices...";
+        });
+        CopyPairingLinkCommand = new RelayCommand(() =>
+        {
+            if (!string.IsNullOrEmpty(ActiveInvitationUri))
+            {
+                Clipboard.SetText(ActiveInvitationUri);
+                StatusMessage = "Pairing link copied to clipboard!";
+            }
+        });
 
+        _mdnsService.PeerDiscovered += peer =>
+        {
+            Application.Current?.Dispatcher?.Invoke(() =>
+            {
+                if (!DiscoveredPeers.Any(p => p.Host == peer.Host && p.Port == peer.Port))
+                {
+                    DiscoveredPeers.Add(new DiscoveredPeerViewModel(peer));
+                }
+            });
+        };
+
+        _mdnsService.PeerLost += peer =>
+        {
+            Application.Current?.Dispatcher?.Invoke(() =>
+            {
+                var existing = DiscoveredPeers.FirstOrDefault(p => p.Host == peer.Host && p.Port == peer.Port);
+                if (existing != null)
+                {
+                    DiscoveredPeers.Remove(existing);
+                }
+            });
+        };
+
+        _mdnsService.Start(enableBrowsing: true);
         RefreshNetworkInfo();
     }
 
@@ -123,6 +187,24 @@ public class MainViewModel : ViewModelBase
     {
         get => _isSasModalVisible;
         set => SetProperty(ref _isSasModalVisible, value);
+    }
+
+    public bool IsPairModalVisible
+    {
+        get => _isPairModalVisible;
+        set => SetProperty(ref _isPairModalVisible, value);
+    }
+
+    public string PairInputUri
+    {
+        get => _pairInputUri;
+        set => SetProperty(ref _pairInputUri, value);
+    }
+
+    public string ActiveInvitationUri
+    {
+        get => _activeInvitationUri;
+        set => SetProperty(ref _activeInvitationUri, value);
     }
 
     public string SasCode
@@ -218,10 +300,35 @@ public class MainViewModel : ViewModelBase
         }
     }
 
+    private void ExecuteSubmitPairModal()
+    {
+        if (string.IsNullOrWhiteSpace(PairInputUri)) return;
+
+        try
+        {
+            var invitation = InvitationCodec.Decode(PairInputUri.Trim());
+            var targetEndpoint = invitation.Endpoints.FirstOrDefault();
+            if (targetEndpoint != null)
+            {
+                PeerHost = targetEndpoint.Address;
+                PeerPort = targetEndpoint.Port;
+                StatusMessage = $"Paired with {invitation.Name} ({targetEndpoint.Address}:{targetEndpoint.Port})";
+                IsPairModalVisible = false;
+                PairInputUri = "";
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Invalid pairing invitation link:\n\n{ex.Message}", "Pairing Failed", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
     private async Task ToggleListenerAsync()
     {
         if (IsListening)
         {
+            _mdnsService.StopAdvertising();
+            ActiveInvitationUri = "";
             _listener?.Dispose();
             _listener = null;
             IsListening = false;
@@ -240,8 +347,52 @@ public class MainViewModel : ViewModelBase
 
         ListeningPort = _listener.BoundPort;
         IsListening = true;
-        StatusMessage = $"Listening on port {ListeningPort}";
 
+        try
+        {
+            string presence = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
+            byte[] tokenBytes = RandomNumberGenerator.GetBytes(32);
+            string token = Convert.ToBase64String(tokenBytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+            byte[] spkiHashBytes = SHA256.HashData(_listener.ServerCertificate.PublicKey.ExportSubjectPublicKeyInfo());
+            string spkiSha256 = Convert.ToHexString(spkiHashBytes).ToLowerInvariant();
+            long expiresAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 120;
+
+            var localIps = Dns.GetHostAddresses(Dns.GetHostName())
+                .Where(ip => ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                .Select(ip => ip.ToString())
+                .ToList();
+
+            var endpoints = localIps.Select(ip => new LanEndpoint(ip, ListeningPort)).Take(4).ToList();
+            if (endpoints.Count == 0)
+            {
+                endpoints.Add(new LanEndpoint("127.0.0.1", ListeningPort));
+            }
+
+            var invitation = new LanInvitation(
+                invitationId: Guid.NewGuid().ToString().ToLowerInvariant(),
+                presence: presence,
+                name: Environment.MachineName,
+                platform: "windows",
+                endpoints: endpoints,
+                spkiSha256: spkiSha256,
+                token: token,
+                expiresAt: expiresAt.ToString(),
+                ttlSeconds: 120);
+
+            ActiveInvitationUri = InvitationCodec.Encode(invitation);
+
+            _mdnsService.StartAdvertising(
+                deviceName: Environment.MachineName,
+                port: ListeningPort,
+                certFingerprintPrefix: spkiSha256[..8],
+                capabilities: LanDiscoveryConstants.DefaultCapabilities);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Failed to generate pairing invitation: {ex.Message}");
+        }
+
+        StatusMessage = $"Listening on port {ListeningPort}";
         _ = Task.Run(async () => await RunListenerLoopAsync());
     }
 

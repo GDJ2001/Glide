@@ -38,6 +38,7 @@ public sealed class TlsSocketListener : IDisposable
     private readonly TcpListener _listener;
     private readonly X509Certificate2 _serverCertificate;
     public int BoundPort { get; }
+    public X509Certificate2 ServerCertificate => _serverCertificate;
 
     public TlsSocketListener(int port = 0, X509Certificate2? certificate = null)
     {

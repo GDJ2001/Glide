@@ -149,31 +149,75 @@
                         </Grid>
                     </Border>
 
-                    <!-- Peer Target & Send Button -->
+                    <!-- Discovered Peers & Target Bar -->
                     <Border Grid.Row="2" Margin="0,16,0,0" Background="{StaticResource SurfaceBrush}"
                             BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="12" Padding="16,12">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="100" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <!-- Header with Scan & Pair via Link Buttons -->
+                            <DockPanel Margin="0,0,0,10">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="🌐 Nearby Glide Peers (mDNS)" FontSize="13" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center" />
+                                    <TextBlock Text=" • " Foreground="{StaticResource TextSecondaryBrush}" />
+                                    <TextBlock Text="Automatic local discovery" FontSize="11"
+                                               Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                    <Button Style="{StaticResource SecondaryButtonStyle}" Content="🔄 Scan" Margin="4,0"
+                                            Command="{Binding RefreshPeersCommand}" Padding="8,3" FontSize="11" />
+                                    <Button Style="{StaticResource SecondaryButtonStyle}" Content="🔗 Pair via Link" Margin="4,0"
+                                            Command="{Binding ShowPairModalCommand}" Padding="8,3" FontSize="11" />
+                                </StackPanel>
+                            </DockPanel>
 
-                            <TextBlock Grid.Column="0" Text="Target Device IP:" VerticalAlignment="Center" Margin="0,0,12,0"
-                                       FontWeight="Medium" Foreground="{StaticResource TextSecondaryBrush}" />
-                            <TextBox Grid.Column="1" Style="{StaticResource ModernTextBoxStyle}" Text="{Binding PeerHost, UpdateSourceTrigger=PropertyChanged}"
-                                     Margin="0,0,12,0" VerticalAlignment="Center" />
+                            <!-- Discovered peers horizontal list -->
+                            <ItemsControl ItemsSource="{Binding DiscoveredPeers}" Margin="0,0,0,8">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel Orientation="Horizontal" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Button Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8" Padding="10,6"
+                                                Command="{Binding DataContext.SelectPeerCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                CommandParameter="{Binding}">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding DeviceIcon}" FontSize="14" Margin="0,0,6,0" VerticalAlignment="Center" />
+                                                <StackPanel VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding DeviceName}" FontWeight="SemiBold" FontSize="12" Foreground="{StaticResource TextPrimaryBrush}" />
+                                                    <TextBlock Text="{Binding EndpointText}" FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" />
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
 
-                            <TextBlock Grid.Column="2" Text="Port:" VerticalAlignment="Center" Margin="0,0,8,0"
-                                       FontWeight="Medium" Foreground="{StaticResource TextSecondaryBrush}" />
-                            <TextBox Grid.Column="3" Style="{StaticResource ModernTextBoxStyle}" Text="{Binding PeerPort, UpdateSourceTrigger=PropertyChanged}"
-                                     Margin="0,0,16,0" VerticalAlignment="Center" />
+                            <!-- Manual IP/Port Entry & Send Button -->
+                            <Grid Margin="0,4,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="90" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
 
-                            <Button Grid.Column="4" Style="{StaticResource PrimaryButtonStyle}" Content="🚀 Send Files"
-                                    Command="{Binding SendFilesCommand}" MinWidth="140" />
-                        </Grid>
+                                <TextBlock Grid.Column="0" Text="Target IP:" VerticalAlignment="Center" Margin="0,0,10,0"
+                                           FontWeight="Medium" Foreground="{StaticResource TextSecondaryBrush}" />
+                                <TextBox Grid.Column="1" Style="{StaticResource ModernTextBoxStyle}" Text="{Binding PeerHost, UpdateSourceTrigger=PropertyChanged}"
+                                         Margin="0,0,10,0" VerticalAlignment="Center" />
+
+                                <TextBlock Grid.Column="2" Text="Port:" VerticalAlignment="Center" Margin="0,0,8,0"
+                                           FontWeight="Medium" Foreground="{StaticResource TextSecondaryBrush}" />
+                                <TextBox Grid.Column="3" Style="{StaticResource ModernTextBoxStyle}" Text="{Binding PeerPort, UpdateSourceTrigger=PropertyChanged}"
+                                         Margin="0,0,14,0" VerticalAlignment="Center" />
+
+                                <Button Grid.Column="4" Style="{StaticResource PrimaryButtonStyle}" Content="🚀 Send Files"
+                                        Command="{Binding SendFilesCommand}" MinWidth="130" />
+                            </Grid>
+                        </StackPanel>
                     </Border>
                 </Grid>
 
@@ -199,7 +243,7 @@
                             <TextBlock Text="Start the local receiver to accept incoming file transfers from Glide Android or Desktop devices on your Wi-Fi/LAN."
                                        FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" TextAlignment="Center" TextWrapping="Wrap" Margin="0,0,0,24" />
 
-                            <Border Background="{StaticResource SurfaceHighBrush}" CornerRadius="8" Padding="16" Margin="0,0,0,24">
+                            <Border Background="{StaticResource SurfaceHighBrush}" CornerRadius="8" Padding="16" Margin="0,0,0,16">
                                 <StackPanel>
                                     <Grid Margin="0,0,0,8">
                                         <TextBlock Text="Status:" Foreground="{StaticResource TextSecondaryBrush}" />
@@ -214,6 +258,19 @@
                                         <TextBlock Text="Local IP(s):" Foreground="{StaticResource TextSecondaryBrush}" />
                                         <TextBlock Text="{Binding LocalIpText}" HorizontalAlignment="Right" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                                     </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Active Pairing Invitation Link Card -->
+                            <Border Background="{StaticResource SurfaceHighBrush}" CornerRadius="8" Padding="14,12" Margin="0,0,0,20"
+                                    Visibility="{Binding IsListening, Converter={StaticResource BoolToVis}}">
+                                <StackPanel>
+                                    <TextBlock Text="🔗 Active Pairing Invitation Link" FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{StaticResource AccentBrush}" Margin="0,0,0,6" />
+                                    <TextBox Style="{StaticResource ModernTextBoxStyle}" Text="{Binding ActiveInvitationUri, Mode=OneWay}"
+                                             IsReadOnly="True" FontSize="10" Padding="8,5" Margin="0,0,0,8" />
+                                    <Button Style="{StaticResource SecondaryButtonStyle}" Content="📋 Copy Pairing Link to Clipboard"
+                                            Command="{Binding CopyPairingLinkCommand}" HorizontalAlignment="Center" Padding="16,5" FontSize="12" />
                                 </StackPanel>
                             </Border>
 
@@ -357,6 +414,38 @@
                                 Command="{Binding RejectSasCommand}" Padding="0,10" />
                         <Button Grid.Column="2" Style="{StaticResource PrimaryButtonStyle}" Content="Confirm Code"
                                 Command="{Binding ConfirmSasCommand}" Padding="0,10" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </Border>
+
+        <!-- Pair via Link / QR Modal Overlay -->
+        <Border Background="#CC070B16" Visibility="{Binding IsPairModalVisible, Converter={StaticResource BoolToVis}}"
+                HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+            <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource CardBorderBrush}"
+                    BorderThickness="1" CornerRadius="16" Padding="28" Width="480" HorizontalAlignment="Center"
+                    VerticalAlignment="Center">
+                <StackPanel HorizontalAlignment="Center" MaxWidth="440">
+                    <TextBlock Text="🔗" FontSize="36" HorizontalAlignment="Center" Margin="0,0,0,8" />
+                    <TextBlock Text="Pair with Device via Link" FontSize="17" FontWeight="Bold"
+                               Foreground="{StaticResource TextPrimaryBrush}" HorizontalAlignment="Center" Margin="0,0,0,8" />
+                    <TextBlock Text="Paste the Glide pairing invitation link (glide://pair/v1#...) or scanned QR payload from your mobile or desktop peer:"
+                               FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" TextAlignment="Center" TextWrapping="Wrap" Margin="0,0,0,16" />
+
+                    <TextBox Style="{StaticResource ModernTextBoxStyle}" Text="{Binding PairInputUri, UpdateSourceTrigger=PropertyChanged}"
+                             Height="60" TextWrapping="Wrap" AcceptsReturn="False" Margin="0,0,0,20" Padding="8" />
+
+                    <!-- Actions -->
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="16" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Button Grid.Column="0" Style="{StaticResource SecondaryButtonStyle}" Content="Cancel"
+                                Command="{Binding CancelPairModalCommand}" Padding="0,10" />
+                        <Button Grid.Column="2" Style="{StaticResource PrimaryButtonStyle}" Content="Pair Device"
+                                Command="{Binding SubmitPairModalCommand}" Padding="0,10" />
                     </Grid>
                 </StackPanel>
             </Border>

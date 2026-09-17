@@ -15,7 +15,7 @@ Write-Host "   Glide.Windows Companion Client & Cross-Platform Auditor       " -
 Write-Host "=================================================================" -ForegroundColor Cyan
 
 # --- Check 1: Toolchain & Solution Existence ---
-Write-Host "`n[Check 1/6] Auditing .NET toolchain and solution structure..." -ForegroundColor Yellow
+Write-Host "`n[Check 1/7] Auditing .NET toolchain and solution structure..." -ForegroundColor Yellow
 $SolutionPath = Join-Path $ProjectRoot "windows\Glide.slnx"
 if (-not (Test-Path $SolutionPath)) {
     Write-Error "FAIL: windows/Glide.slnx not found."
@@ -31,7 +31,7 @@ Write-Host "  PASS: .NET SDK version $dotnetVersion detected." -ForegroundColor 
 Write-Host "  PASS: windows/Glide.slnx solution and Glide.Windows.UI verified." -ForegroundColor Green
 
 # --- Check 2: Solution Build (Release Configuration) ---
-Write-Host "`n[Check 2/6] Building windows/Glide.slnx in Release configuration..." -ForegroundColor Yellow
+Write-Host "`n[Check 2/7] Building windows/Glide.slnx in Release configuration..." -ForegroundColor Yellow
 $buildOutput = dotnet build (Join-Path $ProjectRoot "windows\Glide.slnx") -c Release --nologo
 if ($LASTEXITCODE -ne 0) {
     Write-Error "FAIL: dotnet build failed with exit code $LASTEXITCODE."
@@ -45,7 +45,7 @@ if (-not (Test-Path $UIDll)) {
 Write-Host "  PASS: Glide.Core, Glide.Transport, Glide.Tests, Glide.App, and Glide.Windows.UI compiled with 0 errors." -ForegroundColor Green
 
 # --- Check 3: Golden Protocol Fixture Conformance Suite ---
-Write-Host "`n[Check 3/6] Running cross-platform golden fixture conformance tests..." -ForegroundColor Yellow
+Write-Host "`n[Check 3/7] Running cross-platform golden fixture conformance tests..." -ForegroundColor Yellow
 $testOutput = dotnet test (Join-Path $ProjectRoot "windows\Glide.Tests\Glide.Tests.csproj") -c Release --no-build --logger "console;verbosity=normal"
 if ($LASTEXITCODE -ne 0) {
     Write-Error "FAIL: Golden fixture conformance tests failed with exit code $LASTEXITCODE."
@@ -60,7 +60,7 @@ if ($passedMatches.Count -gt 0) {
 }
 
 # --- Check 4: Windows Path Sanitizer & Staging Sandbox Audit ---
-Write-Host "`n[Check 4/6] Auditing Windows filesystem security and quarantine rules..." -ForegroundColor Yellow
+Write-Host "`n[Check 4/7] Auditing Windows filesystem security and quarantine rules..." -ForegroundColor Yellow
 $SanitizerFile = Join-Path $ProjectRoot "windows\Glide.Core\Storage\WindowsPathSanitizer.cs"
 $StagingFile = Join-Path $ProjectRoot "windows\Glide.Core\Storage\QuarantineStagingStore.cs"
 
@@ -84,7 +84,7 @@ if ($stagingCode -notmatch "staging" -or $stagingCode -notmatch "quarantine" -or
 Write-Host "  PASS: QuarantineStagingStore enforces sandboxed quarantine and atomic commit." -ForegroundColor Green
 
 # --- Check 5: Length-Prefixed TLS 1.3 Framing & SAS Derivation Audit ---
-Write-Host "`n[Check 5/6] Auditing Length-Prefixed Framing and SAS Derivation..." -ForegroundColor Yellow
+Write-Host "`n[Check 5/7] Auditing Length-Prefixed Framing and SAS Derivation..." -ForegroundColor Yellow
 $SasFile = Join-Path $ProjectRoot "windows\Glide.Core\Security\SasCalculator.cs"
 $FramingFile = Join-Path $ProjectRoot "windows\Glide.Transport\Framing\LengthPrefixedFrameChannel.cs"
 
@@ -104,8 +104,36 @@ if ($framingCode -notmatch "16384" -or $framingCode -notmatch "65536") {
 }
 Write-Host "  PASS: LengthPrefixedFrameChannel enforces 16 KiB control and 64 KiB bulk stream bounds." -ForegroundColor Green
 
-# --- Check 6: Isolation & Android Architecture Non-Interference ---
-Write-Host "`n[Check 6/6] Verifying zero leakage into Android build tree..." -ForegroundColor Yellow
+# --- Check 6: LAN Profile 1 Records, QR Invitation & mDNS Service Audit ---
+Write-Host "`n[Check 6/7] Auditing LAN Profile 1 Records, QR Invitations, and mDNS Discovery..." -ForegroundColor Yellow
+$InviteFile = Join-Path $ProjectRoot "windows\Glide.Core\Pairing\InvitationCodec.cs"
+$LanRecordFile = Join-Path $ProjectRoot "windows\Glide.Core\Transport\Lan\LanRecordCodec.cs"
+$MdnsFile = Join-Path $ProjectRoot "windows\Glide.Transport\Discovery\MdnsDiscoveryService.cs"
+
+if (-not (Test-Path $InviteFile) -or -not (Test-Path $LanRecordFile) -or -not (Test-Path $MdnsFile)) {
+    Write-Error "FAIL: LAN Profile 1, QR pairing, or mDNS classes missing."
+}
+
+$inviteCode = Get-Content $InviteFile -Raw
+if ($inviteCode -notmatch "glide://pair/v1#" -or $inviteCode -notmatch "2768" -or $inviteCode -notmatch "2048") {
+    Write-Error "FAIL: InvitationCodec missing canonical URI prefix or length bounds."
+}
+Write-Host "  PASS: InvitationCodec strictly enforces glide://pair/v1#, URI (<=2768), and JSON (<=2048) bounds." -ForegroundColor Green
+
+$lanRecordCode = Get-Content $LanRecordFile -Raw
+if ($lanRecordCode -notmatch "HeaderSize = 5" -or $lanRecordCode -notmatch "65536") {
+    Write-Error "FAIL: LanRecordCodec missing 5-byte header or 64 KiB max payload bound."
+}
+Write-Host "  PASS: LanRecordCodec enforces 5-byte header and 64 KiB payload ceiling across typed records." -ForegroundColor Green
+
+$mdnsCode = Get-Content $MdnsFile -Raw
+if ($mdnsCode -notmatch "_glide._tcp.local" -or $mdnsCode -notmatch "224.0.0.251" -or $mdnsCode -notmatch "5353") {
+    Write-Error "FAIL: MdnsDiscoveryService missing multicast IP, port 5353, or service type."
+}
+Write-Host "  PASS: MdnsDiscoveryService implements zero-dependency RFC 6762/6763 mDNS responder and browser." -ForegroundColor Green
+
+# --- Check 7: Isolation & Android Architecture Non-Interference ---
+Write-Host "`n[Check 7/7] Verifying zero leakage into Android build tree..." -ForegroundColor Yellow
 $archCheck = & (Join-Path $ProjectRoot "tools\check-architecture.ps1")
 if ($LASTEXITCODE -ne 0) {
     Write-Error "FAIL: Android architecture check failed."
