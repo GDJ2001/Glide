@@ -43,6 +43,54 @@ public sealed class QrCode
     /// Returns a copy of the raw boolean module matrix (true = dark, false = light).
     /// </summary>
     public bool[,] ToMatrix() => (bool[,])_modules.Clone();
+
+    /// <summary>
+    /// Renders the QR code as a compact ANSI/UTF-8 half-block string suitable for terminal display.
+    /// Uses upper half block '▀' (\u2580), lower half block '▄' (\u2584), full block '█' (\u2588), and space ' '.
+    /// Each character cell represents 2 vertical QR modules, allowing high-contrast scanning on dark terminal backgrounds.
+    /// </summary>
+    public string ToTerminalString(int border = 2)
+    {
+        if (border < 0) border = 0;
+        int totalWidth = Size + 2 * border;
+        int totalHeight = Size + 2 * border;
+        var sb = new StringBuilder();
+
+        for (int r = 0; r < totalHeight; r += 2)
+        {
+            for (int c = 0; c < totalWidth; c++)
+            {
+                int x = c - border;
+                int y1 = r - border;
+                int y2 = r + 1 - border;
+
+                // On standard dark terminal backgrounds, white/light quiet zone and modules are drawn with foreground (white).
+                // true = dark module (black), false = light module (white).
+                bool topWhite = y1 < 0 || y1 >= Size || x < 0 || x >= Size || !GetModule(y1, x);
+                bool botWhite = (r + 1 >= totalHeight) || y2 < 0 || y2 >= Size || x < 0 || x >= Size || !GetModule(y2, x);
+
+                if (topWhite && botWhite)
+                {
+                    sb.Append('█'); // \u2588 Full block (both top & bottom are white)
+                }
+                else if (topWhite && !botWhite)
+                {
+                    sb.Append('▀'); // \u2580 Upper half block (top is white, bottom is black)
+                }
+                else if (!topWhite && botWhite)
+                {
+                    sb.Append('▄'); // \u2584 Lower half block (top is black, bottom is white)
+                }
+                else
+                {
+                    sb.Append(' '); // Space (both top & bottom are black)
+                }
+            }
+            sb.AppendLine();
+        }
+
+        return sb.ToString();
+    }
 }
 
 /// <summary>

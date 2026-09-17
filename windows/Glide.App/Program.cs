@@ -1,4 +1,5 @@
 using System.Net;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json.Nodes;
 using Glide.Core.Codec;
@@ -34,6 +35,7 @@ public static class Program
             return command switch
             {
                 "receive" => await RunReceiveAsync(args[1..]),
+                "daemon" => await RunDaemonAsync(args[1..]),
                 "send" => await RunSendAsync(args[1..]),
                 "web" => await RunWebAsync(args[1..]),
                 _ => HandleUnknownCommand(command)
@@ -65,7 +67,10 @@ public static class Program
         Console.WriteLine("  glide receive [--port <port>]");
         Console.WriteLine("      Start listening for incoming files from Glide Android or Desktop.");
         Console.WriteLine("      Defaults to port 42424 (or dynamic ephemeral port if unavailable).");
-        Console.WriteLine("      Outputs a pairing invitation link for QR code / instant pairing.\n");
+        Console.WriteLine("      Outputs a pairing invitation link and UTF-8 QR code for instant pairing.\n");
+        Console.WriteLine("  glide daemon [--port <port>]");
+        Console.WriteLine("      Run headless background daemon listening continuously for incoming transfers.");
+        Console.WriteLine("      Ideal for systemd user services, home servers, and NAS appliances.\n");
         Console.WriteLine("  glide send <peer-host> <peer-port> <file-paths...>");
         Console.WriteLine("  glide send --pair <pairing-invitation-uri> <file-paths...>");
         Console.WriteLine("      Connect to a Glide peer and send files over authenticated TLS 1.3.\n");
@@ -73,6 +78,7 @@ public static class Program
         Console.WriteLine("      Start zero-install web gateway to share files with any browser (iOS, Mac, Linux).\n");
         Console.WriteLine("Examples:");
         Console.WriteLine("  glide receive");
+        Console.WriteLine("  glide daemon");
         Console.WriteLine("  glide send 192.168.1.50 42424 \"C:\\Photos\\vacation.jpg\"");
         Console.WriteLine("  glide send --pair glide://pair/v1#... \"C:\\Photos\\vacation.jpg\"");
         Console.WriteLine("  glide web \"C:\\Photos\\vacation.jpg\"\n");
@@ -141,9 +147,13 @@ public static class Program
         }
 
         Console.ForegroundColor = ConsoleColor.Cyan;
-        Console.WriteLine($"\nWeb Share Link: {gateway.OnboardingUrl}");
+        Console.WriteLine($"\nWeb Share Link: {gateway.OnboardingUrl}\n");
         Console.ResetColor();
-        Console.WriteLine("Open this link on any device's browser (iPhone, Mac, Linux, ChromeOS) on the same Wi-Fi.");
+
+        var qr = QrCodeGenerator.EncodeText(gateway.OnboardingUrl);
+        Console.Write(qr.ToTerminalString(border: 2));
+
+        Console.WriteLine("\nOpen link or scan QR on any device's browser (iOS, Mac, Linux, ChromeOS) on the same Wi-Fi.");
         Console.WriteLine("Press [Ctrl+C] to stop.\n");
 
         var tcs = new TaskCompletionSource();
@@ -226,8 +236,11 @@ public static class Program
 
             Console.ForegroundColor = ConsoleColor.Cyan;
             Console.WriteLine("\n[PAIRING INVITATION] Scan or paste into peer device:");
-            Console.WriteLine($"  {pairingUri}");
+            Console.WriteLine($"  {pairingUri}\n");
             Console.ResetColor();
+
+            var qr = QrCodeGenerator.EncodeText(pairingUri);
+            Console.Write(qr.ToTerminalString(border: 2));
 
             Console.WriteLine("\nWaiting for peer connection (Ctrl+C to cancel)...");
 
@@ -236,257 +249,354 @@ public static class Program
             Console.WriteLine($"\n[CONNECTED] Peer connected! Performing TLS 1.3 mutual handshake...");
             Console.ResetColor();
 
-            var channel = new LanRecordChannel(conn.SslStream);
+            bool success = await HandleConnectionTransferAsync(conn, stagingStore, invitation, isDaemon: false);
+            return success ? 0 : 1;
+        }
+    }
 
-            var firstRecord = await channel.ReadRecordAsync();
-            if (firstRecord == null)
+    private static async Task<int> RunDaemonAsync(string[] args)
+    {
+        int port = LanDiscoveryConstants.DefaultPort;
+        for (int i = 0; i < args.Length; i++)
+        {
+            if (args[i] is "--port" or "-p" && i + 1 < args.Length && int.TryParse(args[i + 1], out int p))
             {
-                Console.WriteLine("[ERROR] Peer disconnected before sending first record.");
-                return 1;
+                port = p;
+                break;
+            }
+        }
+
+        TlsSocketListener listener;
+        try
+        {
+            listener = new TlsSocketListener(port);
+        }
+        catch
+        {
+            Console.WriteLine($"[{DateTime.UtcNow:O}] [INFO] Port {port} unavailable, falling back to ephemeral port...");
+            listener = new TlsSocketListener(0);
+        }
+
+        using (listener)
+        {
+            int boundPort = listener.BoundPort;
+            var stagingStore = new QuarantineStagingStore();
+
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine($"[{DateTime.UtcNow:O}] [DAEMON READY] Glide daemon listening on port {boundPort}");
+            Console.WriteLine($"[{DateTime.UtcNow:O}] [DAEMON INFO] Staging: {stagingStore.StagingRoot}");
+            Console.WriteLine($"[{DateTime.UtcNow:O}] [DAEMON INFO] Destination: {stagingStore.DestinationRoot}");
+            Console.ResetColor();
+
+            using var cts = new CancellationTokenSource();
+            Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
+            PosixSignalRegistration? sigTerm = null;
+            if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
+            {
+                sigTerm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, _ => cts.Cancel());
             }
 
-            Envelope helloEnv;
-            if (firstRecord is LanRecord.Bootstrap bootstrapRecord)
+            try
             {
-                var bootstrap = LanBootstrapCodec.DecodeBootstrap(bootstrapRecord.JsonBytes);
-                bool isValid = string.Equals(invitation.InvitationId, bootstrap.InvitationId, StringComparison.OrdinalIgnoreCase) &&
-                               string.Equals(invitation.Token, bootstrap.Token, StringComparison.Ordinal) &&
-                               string.Equals(invitation.InvitationHash, bootstrap.InvitationHash, StringComparison.OrdinalIgnoreCase) &&
-                               !invitation.IsExpired();
-
-                if (!isValid)
+                while (!cts.IsCancellationRequested)
                 {
-                    var failCode = invitation.IsExpired()
-                        ? LanBootstrapFailureCode.INVITATION_EXPIRED
-                        : LanBootstrapFailureCode.AUTHENTICATION_FAILED;
-                    await channel.WriteBootstrapResultAsync(LanBootstrapResult.Rejected(failCode));
-                    Console.ForegroundColor = ConsoleColor.Red;
-                    Console.WriteLine($"[BOOTSTRAP REJECTED] Inbound pairing token mismatch or expired ({failCode}).");
-                    Console.ResetColor();
-                    return 1;
+                    try
+                    {
+                        var acceptTask = listener.AcceptConnectionAsync();
+                        var delayTask = Task.Delay(Timeout.Infinite, cts.Token);
+                        var completedTask = await Task.WhenAny(acceptTask, delayTask);
+                        if (completedTask == delayTask) break;
+
+                        await using var conn = await acceptTask;
+                        Console.WriteLine($"[{DateTime.UtcNow:O}] [DAEMON] Connection established from {conn.TcpClient.Client.RemoteEndPoint}");
+                        await HandleConnectionTransferAsync(conn, stagingStore, null, isDaemon: true);
+                    }
+                    catch (OperationCanceledException) when (cts.IsCancellationRequested)
+                    {
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine($"[{DateTime.UtcNow:O}] [DAEMON ERROR] Connection error: {ex.Message}");
+                        Console.ResetColor();
+                    }
                 }
-
-                await channel.WriteBootstrapResultAsync(LanBootstrapResult.Accepted(bootstrap.SessionId));
-                Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine("[BOOTSTRAP ACCEPTED] QR invitation token validated successfully!");
-                Console.ResetColor();
-
-                helloEnv = await channel.ReadEnvelopeAsync();
             }
-            else if (firstRecord is LanRecord.Control controlRecord)
+            finally
             {
-                byte[] sessionNonce = RandomNumberGenerator.GetBytes(32);
-                int sas = SasCalculator.CalculateSas(conn.RemotePublicKeyBytes, conn.LocalPublicKeyBytes, sessionNonce);
+                sigTerm?.Dispose();
+            }
 
+            Console.WriteLine($"[{DateTime.UtcNow:O}] [DAEMON STOPPED] Clean shutdown complete.");
+            return 0;
+        }
+    }
+
+    private static async Task<bool> HandleConnectionTransferAsync(
+        TlsSocketConnection conn,
+        QuarantineStagingStore stagingStore,
+        LanInvitation? invitation,
+        bool isDaemon)
+    {
+        var channel = new LanRecordChannel(conn.SslStream);
+
+        var firstRecord = await channel.ReadRecordAsync();
+        if (firstRecord == null)
+        {
+            Console.WriteLine("[ERROR] Peer disconnected before sending first record.");
+            return false;
+        }
+
+        Envelope helloEnv;
+        if (firstRecord is LanRecord.Bootstrap bootstrapRecord)
+        {
+            var bootstrap = LanBootstrapCodec.DecodeBootstrap(bootstrapRecord.JsonBytes);
+            bool isValid = invitation == null ||
+                (string.Equals(invitation.InvitationId, bootstrap.InvitationId, StringComparison.OrdinalIgnoreCase) &&
+                 string.Equals(invitation.Token, bootstrap.Token, StringComparison.Ordinal) &&
+                 string.Equals(invitation.InvitationHash, bootstrap.InvitationHash, StringComparison.OrdinalIgnoreCase) &&
+                 !invitation.IsExpired());
+
+            if (!isValid)
+            {
+                var failCode = (invitation != null && invitation.IsExpired())
+                    ? LanBootstrapFailureCode.INVITATION_EXPIRED
+                    : LanBootstrapFailureCode.AUTHENTICATION_FAILED;
+                await channel.WriteBootstrapResultAsync(LanBootstrapResult.Rejected(failCode));
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"[BOOTSTRAP REJECTED] Inbound pairing token mismatch or expired ({failCode}).");
+                Console.ResetColor();
+                return false;
+            }
+
+            await channel.WriteBootstrapResultAsync(LanBootstrapResult.Accepted(bootstrap.SessionId));
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine("[BOOTSTRAP ACCEPTED] QR invitation token validated successfully!");
+            Console.ResetColor();
+
+            helloEnv = await channel.ReadEnvelopeAsync();
+        }
+        else if (firstRecord is LanRecord.Control controlRecord)
+        {
+            byte[] sessionNonce = RandomNumberGenerator.GetBytes(32);
+            int sas = SasCalculator.CalculateSas(conn.RemotePublicKeyBytes, conn.LocalPublicKeyBytes, sessionNonce);
+
+            if (!isDaemon)
+            {
                 Console.ForegroundColor = ConsoleColor.Magenta;
                 Console.WriteLine("-----------------------------------------------------------------");
                 Console.WriteLine($"  *** 6-DIGIT VERIFICATION CODE: [ {sas:D6} ] ***");
                 Console.WriteLine("  Verify that this code matches on the sending device screen.");
                 Console.WriteLine("-----------------------------------------------------------------");
                 Console.ResetColor();
-
-                helloEnv = ProtocolCodec.Decode(controlRecord.Payload);
             }
             else
             {
-                throw new ProtocolViolationException(WireErrorCodes.ProtocolOrder, $"Unexpected first record kind: {firstRecord.Kind}");
+                Console.WriteLine($"[{DateTime.UtcNow:O}] [DAEMON SAS] 6-digit verification code: {sas:D6}");
             }
 
-            Console.WriteLine($"[PROTOCOL] Received {helloEnv.Type} from '{helloEnv.Body["displayName"]}'");
+            helloEnv = ProtocolCodec.Decode(controlRecord.Payload);
+        }
+        else
+        {
+            throw new ProtocolViolationException(WireErrorCodes.ProtocolOrder, $"Unexpected first record kind: {firstRecord.Kind}");
+        }
 
-            // Send HELLO_ACK
-            var limits = new JsonObject
-            {
-                ["maxItems"] = 1000,
-                ["maxItemBytes"] = ProtocolCatalog.MaxItemBytes.ToString(),
-                ["maxBatchBytes"] = ProtocolCatalog.MaxBatchBytes.ToString(),
-                ["maxControlBytes"] = ProtocolCatalog.MaxControlBytes
-            };
-            var ackBody = new JsonObject
-            {
-                ["selectedMajor"] = 1,
-                ["capabilities"] = new JsonArray("lan-v1", "folder-v1"),
-                ["ephemeralPeerId"] = Guid.NewGuid().ToString("D").ToLowerInvariant(),
-                ["displayName"] = Environment.MachineName,
-                ["limits"] = limits
-            };
-            var ackEnv = new Envelope(1, MessageTypes.HelloAck, helloEnv.SessionId, new MessageId(Guid.NewGuid().ToString("D").ToLowerInvariant()), 2, ackBody);
-            await channel.WriteEnvelopeAsync(ackEnv);
+        Console.WriteLine($"[PROTOCOL] Received {helloEnv.Type} from '{helloEnv.Body["displayName"]}'");
 
-            // Receive OFFER_BEGIN
-            var offerBeginEnv = await channel.ReadEnvelopeAsync();
-            int itemCount = offerBeginEnv.Body["itemCount"]?.GetValue<int>() ?? 0;
-            string totalBytesStr = offerBeginEnv.Body["totalBytes"]?.ToString() ?? "0";
-            Console.WriteLine($"[OFFER] Inbound offer: {itemCount} items, {totalBytesStr} bytes");
+        // Send HELLO_ACK
+        var limits = new JsonObject
+        {
+            ["maxItems"] = 1000,
+            ["maxItemBytes"] = ProtocolCatalog.MaxItemBytes.ToString(),
+            ["maxBatchBytes"] = ProtocolCatalog.MaxBatchBytes.ToString(),
+            ["maxControlBytes"] = ProtocolCatalog.MaxControlBytes
+        };
+        var ackBody = new JsonObject
+        {
+            ["selectedMajor"] = 1,
+            ["capabilities"] = new JsonArray("lan-v1", "folder-v1"),
+            ["ephemeralPeerId"] = Guid.NewGuid().ToString("D").ToLowerInvariant(),
+            ["displayName"] = Environment.MachineName,
+            ["limits"] = limits
+        };
+        var ackEnv = new Envelope(1, MessageTypes.HelloAck, helloEnv.SessionId, new MessageId(Guid.NewGuid().ToString("D").ToLowerInvariant()), 2, ackBody);
+        await channel.WriteEnvelopeAsync(ackEnv);
 
-            // Receive OFFER_PAGE(s)
-            var itemsToReceive = new List<(string itemId, string name, long size, string relativePath)>();
-            var offerPageEnv = await channel.ReadEnvelopeAsync();
-            if (offerPageEnv.Body["items"] is JsonArray itemArr)
+        // Receive OFFER_BEGIN
+        var offerBeginEnv = await channel.ReadEnvelopeAsync();
+        int itemCount = offerBeginEnv.Body["itemCount"]?.GetValue<int>() ?? 0;
+        string totalBytesStr = offerBeginEnv.Body["totalBytes"]?.ToString() ?? "0";
+        Console.WriteLine($"[OFFER] Inbound offer: {itemCount} items, {totalBytesStr} bytes");
+
+        // Receive OFFER_PAGE(s)
+        var itemsToReceive = new List<(string itemId, string name, long size, string relativePath)>();
+        var offerPageEnv = await channel.ReadEnvelopeAsync();
+        if (offerPageEnv.Body["items"] is JsonArray itemArr)
+        {
+            foreach (var itemNode in itemArr)
             {
-                foreach (var itemNode in itemArr)
+                if (itemNode is JsonObject itemObj)
                 {
-                    if (itemNode is JsonObject itemObj)
-                    {
-                        string id = itemObj["itemId"]!.ToString();
-                        string name = itemObj["name"]!.ToString();
-                        long size = long.Parse(itemObj["sizeBytes"]!.ToString());
-                        string rel = itemObj.TryGetPropertyValue("relativePath", out var r) && r != null ? r.ToString() : name;
-                        itemsToReceive.Add((id, name, size, rel));
-                    }
+                    string id = itemObj["itemId"]!.ToString();
+                    string name = itemObj["name"]!.ToString();
+                    long size = long.Parse(itemObj["sizeBytes"]!.ToString());
+                    string rel = itemObj.TryGetPropertyValue("relativePath", out var r) && r != null ? r.ToString() : name;
+                    itemsToReceive.Add((id, name, size, rel));
                 }
             }
+        }
 
-            // Await OFFER_END
-            await channel.ReadEnvelopeAsync();
+        // Await OFFER_END
+        await channel.ReadEnvelopeAsync();
 
-            // Send OFFER_DECISION (Accepted)
-            var decisionBody = new JsonObject
+        // Send OFFER_DECISION (Accepted)
+        var decisionBody = new JsonObject
+        {
+            ["batchId"] = offerBeginEnv.Body["batchId"]!.ToString(),
+            ["accepted"] = true
+        };
+        var decisionEnv = new Envelope(1, MessageTypes.OfferDecision, helloEnv.SessionId, new MessageId(Guid.NewGuid().ToString("D").ToLowerInvariant()), 3, decisionBody);
+        await channel.WriteEnvelopeAsync(decisionEnv);
+
+        // Receive items
+        int verifiedCount = 0;
+        long totalVerifiedBytes = 0;
+
+        foreach (var item in itemsToReceive)
+        {
+            Console.WriteLine($"\n[TRANSFER] Awaiting {item.name} ({item.size:N0} bytes)...");
+
+            // ITEM_START
+            var itemStartEnv = await channel.ReadEnvelopeAsync();
+            string bulkRef = itemStartEnv.Body["bulkRef"]?.ToString() ?? Guid.NewGuid().ToString("D").ToLowerInvariant();
+
+            // Send ITEM_READY
+            var readyBody = new JsonObject
             {
                 ["batchId"] = offerBeginEnv.Body["batchId"]!.ToString(),
-                ["accepted"] = true
+                ["itemId"] = item.itemId
             };
-            var decisionEnv = new Envelope(1, MessageTypes.OfferDecision, helloEnv.SessionId, new MessageId(Guid.NewGuid().ToString("D").ToLowerInvariant()), 3, decisionBody);
-            await channel.WriteEnvelopeAsync(decisionEnv);
+            var readyEnv = new Envelope(1, MessageTypes.ItemReady, helloEnv.SessionId, new MessageId(Guid.NewGuid().ToString("D").ToLowerInvariant()), 4, readyBody);
+            await channel.WriteEnvelopeAsync(readyEnv);
 
-            // Receive items
-            int verifiedCount = 0;
-            long totalVerifiedBytes = 0;
+            // Receive bulk payload via LanRecord.Data and LanRecord.StreamEnd
+            string quarantinePath = stagingStore.GetQuarantinePath(helloEnv.SessionId, new ItemId(item.itemId));
+            string? qDir = Path.GetDirectoryName(quarantinePath);
+            if (qDir != null && !Directory.Exists(qDir)) Directory.CreateDirectory(qDir);
 
-            foreach (var item in itemsToReceive)
+            byte[] hash;
+            using (var fileStream = new FileStream(quarantinePath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, useAsync: true))
+            using (var sha256 = IncrementalHash.CreateHash(HashAlgorithmName.SHA256))
             {
-                Console.WriteLine($"\n[TRANSFER] Awaiting {item.name} ({item.size:N0} bytes)...");
-
-                // ITEM_START
-                var itemStartEnv = await channel.ReadEnvelopeAsync();
-                string bulkRef = itemStartEnv.Body["bulkRef"]?.ToString() ?? Guid.NewGuid().ToString("D").ToLowerInvariant();
-
-                // Send ITEM_READY
-                var readyBody = new JsonObject
+                long receivedBytes = 0;
+                while (true)
                 {
-                    ["batchId"] = offerBeginEnv.Body["batchId"]!.ToString(),
-                    ["itemId"] = item.itemId
-                };
-                var readyEnv = new Envelope(1, MessageTypes.ItemReady, helloEnv.SessionId, new MessageId(Guid.NewGuid().ToString("D").ToLowerInvariant()), 4, readyBody);
-                await channel.WriteEnvelopeAsync(readyEnv);
+                    var rec = await channel.ReadRecordAsync();
+                    if (rec == null) throw new EndOfStreamException("Connection terminated prematurely during payload stream.");
 
-                // Receive bulk payload via LanRecord.Data and LanRecord.StreamEnd
-                string quarantinePath = stagingStore.GetQuarantinePath(helloEnv.SessionId, new ItemId(item.itemId));
-                string? qDir = Path.GetDirectoryName(quarantinePath);
-                if (qDir != null && !Directory.Exists(qDir)) Directory.CreateDirectory(qDir);
-
-                byte[] hash;
-                using (var fileStream = new FileStream(quarantinePath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, useAsync: true))
-                using (var sha256 = IncrementalHash.CreateHash(HashAlgorithmName.SHA256))
-                {
-                    long receivedBytes = 0;
-                    while (true)
+                    if (rec is LanRecord.Data dataRec)
                     {
-                        var rec = await channel.ReadRecordAsync();
-                        if (rec == null) throw new EndOfStreamException("Connection terminated prematurely during payload stream.");
-
-                        if (rec is LanRecord.Data dataRec)
+                        if (!string.Equals(dataRec.BulkRef.Value, bulkRef, StringComparison.OrdinalIgnoreCase))
                         {
-                            if (!string.Equals(dataRec.BulkRef.Value, bulkRef, StringComparison.OrdinalIgnoreCase))
-                            {
-                                throw new ProtocolViolationException(WireErrorCodes.MalformedMessage, "Unmatched bulkRef in DATA record");
-                            }
-                            await fileStream.WriteAsync(dataRec.Chunk);
-                            sha256.AppendData(dataRec.Chunk);
-                            receivedBytes += dataRec.Chunk.Length;
+                            throw new ProtocolViolationException(WireErrorCodes.MalformedMessage, "Unmatched bulkRef in DATA record");
                         }
-                        else if (rec is LanRecord.StreamEnd streamEndRec)
-                        {
-                            if (!string.Equals(streamEndRec.BulkRef.Value, bulkRef, StringComparison.OrdinalIgnoreCase))
-                            {
-                                throw new ProtocolViolationException(WireErrorCodes.MalformedMessage, "Unmatched bulkRef in STREAM_END record");
-                            }
-                            if (streamEndRec.ActualBytes != receivedBytes || receivedBytes != item.size)
-                            {
-                                throw new ProtocolViolationException(WireErrorCodes.IntegrityMismatch, $"STREAM_END actualBytes {streamEndRec.ActualBytes} != expected {item.size}");
-                            }
-                            break;
-                        }
-                        else
-                        {
-                            throw new ProtocolViolationException(WireErrorCodes.ProtocolOrder, $"Unexpected record kind {rec.Kind} during file streaming");
-                        }
+                        await fileStream.WriteAsync(dataRec.Chunk);
+                        sha256.AppendData(dataRec.Chunk);
+                        receivedBytes += dataRec.Chunk.Length;
                     }
-                    hash = sha256.GetHashAndReset();
-                }
-
-                string computedSha256 = Convert.ToHexStringLower(hash);
-
-                // Await ITEM_END
-                var itemEndEnv = await channel.ReadEnvelopeAsync();
-                string declaredSha256 = itemEndEnv.Body["sha256"]!.ToString();
-
-                if (!string.Equals(computedSha256, declaredSha256, StringComparison.OrdinalIgnoreCase))
-                {
-                    stagingStore.PurgeQuarantine(helloEnv.SessionId, new ItemId(item.itemId));
-                    Console.ForegroundColor = ConsoleColor.Red;
-                    Console.WriteLine($"[VERIFY FAILED] SHA-256 mismatch for {item.name}! Quarantined file deleted.");
-                    Console.ResetColor();
-
-                    var failedResult = new JsonObject
+                    else if (rec is LanRecord.StreamEnd streamEndRec)
                     {
-                        ["batchId"] = offerBeginEnv.Body["batchId"]!.ToString(),
-                        ["itemId"] = item.itemId,
-                        ["status"] = "failed",
-                        ["code"] = "INTEGRITY_MISMATCH"
-                    };
-                    await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.ItemResult, helloEnv.SessionId, new MessageId(Guid.NewGuid().ToString("D").ToLowerInvariant()), 5, failedResult));
-                    continue;
+                        if (!string.Equals(streamEndRec.BulkRef.Value, bulkRef, StringComparison.OrdinalIgnoreCase))
+                        {
+                            throw new ProtocolViolationException(WireErrorCodes.MalformedMessage, "Unmatched bulkRef in STREAM_END record");
+                        }
+                        if (streamEndRec.ActualBytes != receivedBytes || receivedBytes != item.size)
+                        {
+                            throw new ProtocolViolationException(WireErrorCodes.IntegrityMismatch, $"STREAM_END actualBytes {streamEndRec.ActualBytes} != expected {item.size}");
+                        }
+                        break;
+                    }
+                    else
+                    {
+                        throw new ProtocolViolationException(WireErrorCodes.ProtocolOrder, $"Unexpected record kind {rec.Kind} during file streaming");
+                    }
                 }
+                hash = sha256.GetHashAndReset();
+            }
 
-                // Commit atomically to destination
-                string destDir = stagingStore.DestinationRoot;
-                string targetPath = Path.Combine(destDir, item.relativePath.Replace('/', Path.DirectorySeparatorChar));
-                string finalPath = QuarantineStagingStore.ResolveCollision(targetPath);
-                string? td = Path.GetDirectoryName(finalPath);
-                if (td != null && !Directory.Exists(td)) Directory.CreateDirectory(td);
+            string computedSha256 = Convert.ToHexStringLower(hash);
 
-                File.Move(quarantinePath, finalPath, overwrite: false);
+            // Await ITEM_END
+            var itemEndEnv = await channel.ReadEnvelopeAsync();
+            string declaredSha256 = itemEndEnv.Body["sha256"]!.ToString();
 
-                Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine($"[VERIFIED & COMMITTED] {item.name} -> {finalPath}");
+            if (!string.Equals(computedSha256, declaredSha256, StringComparison.OrdinalIgnoreCase))
+            {
+                stagingStore.PurgeQuarantine(helloEnv.SessionId, new ItemId(item.itemId));
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"[VERIFY FAILED] SHA-256 mismatch for {item.name}! Quarantined file deleted.");
                 Console.ResetColor();
 
-                verifiedCount++;
-                totalVerifiedBytes += item.size;
-
-                var verifiedResult = new JsonObject
+                var failedResult = new JsonObject
                 {
                     ["batchId"] = offerBeginEnv.Body["batchId"]!.ToString(),
                     ["itemId"] = item.itemId,
-                    ["status"] = "verified",
-                    ["sizeBytes"] = item.size.ToString(),
-                    ["sha256"] = computedSha256
+                    ["status"] = "failed",
+                    ["code"] = "INTEGRITY_MISMATCH"
                 };
-                await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.ItemResult, helloEnv.SessionId, new MessageId(Guid.NewGuid().ToString("D").ToLowerInvariant()), 6, verifiedResult));
+                await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.ItemResult, helloEnv.SessionId, new MessageId(Guid.NewGuid().ToString("D").ToLowerInvariant()), 5, failedResult));
+                continue;
             }
 
-            // Receive BATCH_END
-            await channel.ReadEnvelopeAsync();
+            // Commit atomically to destination
+            string destDir = stagingStore.DestinationRoot;
+            string targetPath = Path.Combine(destDir, item.relativePath.Replace('/', Path.DirectorySeparatorChar));
+            string finalPath = QuarantineStagingStore.ResolveCollision(targetPath);
+            string? td = Path.GetDirectoryName(finalPath);
+            if (td != null && !Directory.Exists(td)) Directory.CreateDirectory(td);
 
-            // Send BATCH_RESULT
-            var batchResult = new JsonObject
-            {
-                ["batchId"] = offerBeginEnv.Body["batchId"]!.ToString(),
-                ["status"] = "completed",
-                ["verifiedCount"] = verifiedCount,
-                ["totalVerifiedBytes"] = totalVerifiedBytes.ToString()
-            };
-            await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.BatchResult, helloEnv.SessionId, new MessageId(Guid.NewGuid().ToString("D").ToLowerInvariant()), 7, batchResult));
+            File.Move(quarantinePath, finalPath, overwrite: false);
 
-            Console.ForegroundColor = ConsoleColor.Cyan;
-            Console.WriteLine("\n=================================================================");
-            Console.WriteLine($"  TRANSFER COMPLETE: {verifiedCount} file(s) safely saved ({totalVerifiedBytes:N0} bytes)");
-            Console.WriteLine("=================================================================");
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine($"[VERIFIED & COMMITTED] {item.name} -> {finalPath}");
             Console.ResetColor();
 
-            return 0;
+            verifiedCount++;
+            totalVerifiedBytes += item.size;
+
+            var verifiedResult = new JsonObject
+            {
+                ["batchId"] = offerBeginEnv.Body["batchId"]!.ToString(),
+                ["itemId"] = item.itemId,
+                ["status"] = "verified",
+                ["sizeBytes"] = item.size.ToString(),
+                ["sha256"] = computedSha256
+            };
+            await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.ItemResult, helloEnv.SessionId, new MessageId(Guid.NewGuid().ToString("D").ToLowerInvariant()), 6, verifiedResult));
         }
+
+        // Receive BATCH_END
+        await channel.ReadEnvelopeAsync();
+
+        // Send BATCH_RESULT
+        var batchResult = new JsonObject
+        {
+            ["batchId"] = offerBeginEnv.Body["batchId"]!.ToString(),
+            ["status"] = "completed",
+            ["verifiedCount"] = verifiedCount,
+            ["totalVerifiedBytes"] = totalVerifiedBytes.ToString()
+        };
+        await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.BatchResult, helloEnv.SessionId, new MessageId(Guid.NewGuid().ToString("D").ToLowerInvariant()), 7, batchResult));
+
+        Console.ForegroundColor = ConsoleColor.Cyan;
+        Console.WriteLine("\n=================================================================");
+        Console.WriteLine($"  TRANSFER COMPLETE: {verifiedCount} file(s) safely saved ({totalVerifiedBytes:N0} bytes)");
+        Console.WriteLine("=================================================================");
+        Console.ResetColor();
+
+        return true;
     }
 
     private static async Task<int> RunSendAsync(string[] args)

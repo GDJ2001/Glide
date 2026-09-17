@@ -131,14 +131,30 @@ if ($SpecContent -notmatch "\[Desktop Entry\]" -or $SpecContent -notmatch "dev\.
 if ($SpecContent -notmatch "\[Unit\]" -or $SpecContent -notmatch "systemctl --user enable") {
     Write-Error "FAIL: Specification missing valid systemd user service definition."
 }
-Write-Host "  PASS: FreeDesktop .desktop entry and systemd user unit definitions verified." -ForegroundColor Green
+$DesktopPath = Join-Path $ProjectRoot "packaging\linux\glide.desktop"
+$ServicePath = Join-Path $ProjectRoot "packaging\linux\glide.service"
+if (-not (Test-Path $DesktopPath)) {
+    Write-Error "FAIL: FreeDesktop packaging asset missing: $DesktopPath"
+}
+if (-not (Test-Path $ServicePath)) {
+    Write-Error "FAIL: systemd user service packaging asset missing: $ServicePath"
+}
+Write-Host "  PASS: FreeDesktop .desktop entry and systemd user unit definitions and files verified." -ForegroundColor Green
 
 # --- Check 9: Headless Terminal QR Code Rendering Contract ---
 Write-Host "`n[Check 9/10] Auditing Headless Terminal QR Code Rendering Contract..." -ForegroundColor Yellow
 if ($SpecContent -notmatch "\\u2580" -and $SpecContent -notmatch "▀") {
     Write-Error "FAIL: Specification missing terminal half-block QR code rendering contract."
 }
-Write-Host "  PASS: Terminal UTF-8 block QR rendering contract verified for SSH/headless environments." -ForegroundColor Green
+$QrGenPath = Join-Path $ProjectRoot "windows\Glide.Core\Security\QrCodeGenerator.cs"
+$QrGenContent = Get-Content $QrGenPath -Raw
+if ($QrGenContent -notmatch "ToTerminalString") {
+    Write-Error "FAIL: QrCodeGenerator.cs missing ToTerminalString UTF-8 block renderer."
+}
+if ($ProgramContent -notmatch "ToTerminalString" -or $ProgramContent -notmatch 'daemon') {
+    Write-Error "FAIL: Program.cs missing ToTerminalString or daemon command."
+}
+Write-Host "  PASS: Terminal UTF-8 block QR rendering contract and daemon command verified in code." -ForegroundColor Green
 
 # --- Check 10: Zero-Cloud & 100% Offline Invariants ---
 Write-Host "`n[Check 10/10] Auditing Zero-Cloud & 100% Offline Invariants..." -ForegroundColor Yellow

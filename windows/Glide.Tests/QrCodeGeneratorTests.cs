@@ -91,4 +91,42 @@ public class QrCodeGeneratorTests
     {
         Assert.Throws<ArgumentNullException>(() => QrCodeGenerator.EncodeText(null!));
     }
+
+    [Fact]
+    public void ToTerminalString_RendersExpectedHalfBlockCharactersAndQuietZone()
+    {
+        var qr = QrCodeGenerator.EncodeText("HELLO", QrErrorCorrectionLevel.Low);
+        string terminalStr = qr.ToTerminalString(border: 2);
+
+        Assert.NotNull(terminalStr);
+        Assert.NotEmpty(terminalStr);
+
+        // Every character must be a valid half-block element or newline
+        var allowedChars = new HashSet<char> { '█', '▀', '▄', ' ', '\r', '\n' };
+        foreach (char c in terminalStr)
+        {
+            Assert.Contains(c, allowedChars);
+        }
+
+        var lines = terminalStr.Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries);
+        int expectedHeight = (qr.Size + 4 + 1) / 2;
+        Assert.Equal(expectedHeight, lines.Length);
+
+        // First row should be pure quiet zone (full white blocks '█')
+        int expectedWidth = qr.Size + 4;
+        Assert.Equal(expectedWidth, lines[0].Length);
+        Assert.All(lines[0], c => Assert.Equal('█', c));
+    }
+
+    [Fact]
+    public void ToTerminalString_ZeroBorder_RendersExpectedLineDimensions()
+    {
+        var qr = QrCodeGenerator.EncodeText("TEST", QrErrorCorrectionLevel.Medium);
+        string terminalStr = qr.ToTerminalString(border: 0);
+
+        var lines = terminalStr.Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries);
+        int expectedHeight = (qr.Size + 1) / 2;
+        Assert.Equal(expectedHeight, lines.Length);
+        Assert.Equal(qr.Size, lines[0].Length);
+    }
 }
