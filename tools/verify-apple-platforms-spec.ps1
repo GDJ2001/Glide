@@ -198,16 +198,29 @@ if ($SpecContent -notmatch "FileManager\.default\.moveItem" -or $SpecContent -no
 }
 $SanitizerPath = Join-Path $ProjectRoot "apple\GlideCoreKit\Sources\GlideCoreKit\Storage\DarwinPathSanitizer.swift"
 $SanitizerTestPath = Join-Path $ProjectRoot "apple\GlideCoreKit\Tests\GlideCoreKitTests\DarwinPathSanitizerTests.swift"
-foreach ($f in @($SanitizerPath, $SanitizerTestPath)) {
+$QuarantinePath = Join-Path $ProjectRoot "apple\GlideCoreKit\Sources\GlideCoreKit\Storage\QuarantineStagingStore.swift"
+$QuarantineTestPath = Join-Path $ProjectRoot "apple\GlideCoreKit\Tests\GlideCoreKitTests\QuarantineStagingStoreTests.swift"
+$PhotoExpPath = Join-Path $ProjectRoot "apple\GlideCoreKit\Sources\GlideCoreKit\Storage\PhotoLibraryExporter.swift"
+$PhotoExpTestPath = Join-Path $ProjectRoot "apple\GlideCoreKit\Tests\GlideCoreKitTests\PhotoLibraryExporterTests.swift"
+
+foreach ($f in @($SanitizerPath, $SanitizerTestPath, $QuarantinePath, $QuarantineTestPath, $PhotoExpPath, $PhotoExpTestPath)) {
     if (-not (Test-Path $f)) {
-        Write-Error "FAIL: Missing Darwin path sanitizer component: $f"
+        Write-Error "FAIL: Missing storage/quarantine component: $f"
     }
 }
 $SanitizerContent = Get-Content $SanitizerPath -Raw
 if ($SanitizerContent -notmatch "sanitizeFilename" -or $SanitizerContent -notmatch "precomposedStringWithCanonicalMapping" -or $SanitizerContent -notmatch "truncateToMaxBytes") {
     Write-Error "FAIL: DarwinPathSanitizer missing sanitizeFilename or normalization methods."
 }
-Write-Host "  PASS: Quarantine staging, incremental hashing, atomic move, and Darwin path sanitizer verified." -ForegroundColor Green
+$QuarantineContent = Get-Content $QuarantinePath -Raw
+if ($QuarantineContent -notmatch "QuarantineStagingStore" -or $QuarantineContent -notmatch "writeChunk" -or $QuarantineContent -notmatch "finalizeAndCommit" -or $QuarantineContent -notmatch "purge") {
+    Write-Error "FAIL: QuarantineStagingStore missing writeChunk, finalizeAndCommit, or purge."
+}
+$PhotoExpContent = Get-Content $PhotoExpPath -Raw
+if ($PhotoExpContent -notmatch "PhotoLibraryExporter" -or $PhotoExpContent -notmatch "classify" -or $PhotoExpContent -notmatch "isMediaFile") {
+    Write-Error "FAIL: PhotoLibraryExporter missing classify or isMediaFile."
+}
+Write-Host "  PASS: Quarantine staging, incremental hashing, atomic move, Darwin path sanitizer, and PhotoLibrary exporter verified." -ForegroundColor Green
 
 # --- Check 10: App Permissions & Privacy Declarations ---
 Write-Host "`n[Check 10/10] Auditing App Permissions & Privacy Declarations..." -ForegroundColor Yellow
