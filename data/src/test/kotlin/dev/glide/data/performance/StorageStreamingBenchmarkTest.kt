@@ -9,6 +9,7 @@ import dev.glide.data.db.ReceivedFileEntity
 import dev.glide.data.store.AndroidReceiveStore
 import dev.glide.data.store.FakeReceiveJournalDao
 import dev.glide.data.store.FakeReceivedFileDao
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -30,6 +31,10 @@ import java.util.UUID
  * - Storage amplification factor (1.0x atomic relocation vs duplicate staging copies).
  * - Multi-file staging batch IOPS and descriptor lifecycle.
  * - Discard and abort latency.
+ *
+ * The production store uses Dispatchers.IO. This JVM benchmark injects Dispatchers.Unconfined so
+ * wall-clock assertions measure filesystem/store work rather than shared-CI coroutine scheduling
+ * delay. Production dispatcher behavior is covered separately by functional store tests.
  */
 class StorageStreamingBenchmarkTest {
 
@@ -52,7 +57,8 @@ class StorageStreamingBenchmarkTest {
             rootDir = rootDir,
             journalDao = journalDao,
             fileCatalogDao = fileCatalogDao,
-            freeSpaceProvider = { 100_000_000_000L } // 100 GB
+            freeSpaceProvider = { 100_000_000_000L }, // 100 GB
+            ioDispatcher = Dispatchers.Unconfined
         )
     }
 
