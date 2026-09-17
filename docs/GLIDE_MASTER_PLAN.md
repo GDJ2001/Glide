@@ -1,102 +1,94 @@
 # Glide master engineering plan
-Planning baseline2026-09-12. Primary human/Astra/Gemini entry point. **Documentation only: application implementation has not started.** Begin with [portal](README.md), then [next task](TODO_MASTER.md#glide-001).
 
-## 1. Executive summary
-Build a premium, private, account-free local Android↔Android sharing app. Prove a real authenticated one-file transfer early, then batch UX, background reliability, polish, hardening and release. Existing accepted branding remains canonical. Gemini implements later; Astra supplies requirements and review.
+This is the current top-level engineering plan for Glide. The original September 12 Android-only planning baseline and its 72-task ledger are historical evidence, not present-day completion authority.
 
-## 2. Product vision
-Glide should feel smooth, trustworthy and direct: no advertisements, mandatory account or cloud upload. Long-term native universal transfer is enabled by portable protocol semantics, not by building all platforms now.
+- **Current completion plan:** [Code Review, Improvement, Hardening & Development Completion](planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md)
+- **Current task authority:** [TODO_MASTER — HARD-001–043](TODO_MASTER.md)
+- **Historical GLIDE-001–072 ledger:** immutable pre-HARD commit [`b07f15b`](https://github.com/GDJ2001/Glide/blob/b07f15bdde60bb5bfa9b20fdaba093b7a6a93785/docs/TODO_MASTER.md)
+- **Next READY task:** [HARD-002](TODO_MASTER.md#hard-002)
 
-## 3. Current scope
-Android file selection, nearby discovery, verified connection, separate transfer consent, sequential multi-file batches, bounded large-file streaming, SHA256, private received library/Open/Export, progress/cancel/manual retry, background best effort, history, settings, Share Sheet and adaptive accessible UI. [Roadmap](ROADMAP.md) classifies P0/P1/P2.
+## 1. Product direction
 
-## 4. Non-goals
-No true pause/resume, folders, trusted-device autoaccept, simultaneous peers, remote transfers, backend, account, ads, own telemetry SDK, custom crypto or non-Android app. P3/P4/P5 work remains a separate future bucket in [tasks](TODO_MASTER.md).
+Glide is an account-free file-sharing product built around a portable, authenticated transfer protocol. The hardening cycle must turn the existing Android, desktop, LAN/browser and recovery work into one verified product rather than treating isolated modules or source-text checks as end-to-end completion.
 
-## 5. Repository status
-201 tracked files at main3b3ad6a before planning; brand pack and generic IntelliJ project only. No Android/Gradle/source/tests/CI/application ID. IDE JDK25 is not the chosen build baseline. [Repository audit](planning/REPOSITORY_AUDIT.md) records evidence and conflicts.
+## 2. Active release scope
 
-## 6. Brand status
-178 manifest graphics:20 raster masters,156 PNG exports,2 ICOs, plus3 presentation PNGs outside that manifest. Accepted horizontal/stacked/symbol/wordmark/app variants retained. [Per-file inventory](design/BRAND_ASSET_INVENTORY.md), [gap checklist](design/BRAND_ASSET_CHECKLIST.md), [catalog](../asset/index.html). Native adaptive/themed/notification/splash integration, editable vectors and store marketing remain gaps.
+Complete and verify:
 
-## 7. Current technology stack
-Selected stable Kotlin2.4.20, AGP9.4.0/Gradle9.6/JDK17, Compose BOM2026.09.00, stable Material3/Adaptive, Navigation3, Hilt, Room2, DataStore and Nearby19.5. Versions, alternatives and compatibility gate are authoritative in [technology research](planning/TECHNOLOGY_RESEARCH.md); primary references in [sources](planning/SOURCES.md). No dependencies installed by planning.
+- Android local sharing via Nearby and LAN.
+- Windows 11 and Linux local sharing.
+- Secure browser sharing.
+- Multi-file and folder transfer.
+- Persistent device trust and true resume.
+- History, settings, accessibility, background behavior, packaging and release verification.
 
-## 8. Architecture overview
-Single Activity, Compose UDF, ViewModels/StateFlow, serialized core coordinator, explicit ports and lifecycle scopes. UI never calls transport. [Architecture](architecture/GLIDE_ARCHITECTURE.md), [engineering rules](development/GEMINI_ENGINEERING_RULES.md).
+Preserve but defer from this cycle:
 
-## 9. Module architecture
-Five production modules app/transfer-core/transport-nearby/data/designsystem; benchmark test module later. Feature packages instead of excessive Gradle modules. Dependency diagram and prohibited edges in [architecture](architecture/GLIDE_ARCHITECTURE.md).
+- Native Apple clients.
+- Remote/Internet transfer.
 
-## 10. Transfer architecture
-Nearby P2P is initial adapter; BYTES control and STREAM bulk chosen for private output and bounded hashing. One peer/batch, sequential items. Physical STREAM-versus-FILE proof required before wider work. [Transport comparison](planning/TRANSPORT_RESEARCH.md), [transport ADR](adr/ADR-0007-transport.md).
+Apple and remote source already present in the repository must not be deleted. It is simply outside the current release gate until explicitly authorized.
 
-## 11. Protocol architecture
-[Glide Protocol V1](protocol/GLIDE_PROTOCOL_V1.md) defines version negotiation, bounded messages/paged offers, consent, bulk mapping, exact lengths/SHA256, cancellation and durable receipts. Reliable authenticated channel is required from every adapter. Future clients implement the same semantics independently.
+## 3. Review and publication baselines
 
-## 12. Security model
-Full SDK authentication digits compared on both phones; separate offer acceptance; private quarantine; strict parsing/rate/path limits; secure random session IDs; no persistent trust V1. [Threat model](security/GLIDE_THREAT_MODEL.md), [security checklist](security/SECURITY_CHECKLIST.md).
+The evidence-backed hardening review inspected `main` at `ea2e811a7f2d8aaddc552e894fe04782cd08a499`. The pre-publication head for HARD-001 was `b07f15bdde60bb5bfa9b20fdaba093b7a6a93785`. Four intervening commits added Apple `GlideCoreKit` work and additional remote ICE/TURN/signaling/session code. HARD-002 must review and reconcile that delta before affected status claims are made.
 
-## 13. Privacy model
-No own backend, analytics or account. Nearby SDK diagnostics require accurate disclosure; do not claim zero third-party collection. Private history/files, explicit exports, backup/log/notification controls. Privacy authority is [threat model](security/GLIDE_THREAT_MODEL.md).
+## 4. Architecture direction
 
-## 14. Storage model
-Modern granted content URIs, bounded staging when unknown/transient, private received-file catalog and atomic file visibility with crash journal. Export verified files explicitly to MediaStore/SAF. [Storage specification](android/STORAGE_AND_BACKGROUND.md).
+### Android
 
-## 15. Permission model
-Point-of-use, API-specific nearby/Bluetooth/Wi-Fi/location compatibility and API37 local-network permission; notification request separate. No broad media/storage grants for selected design. [Permission matrix](android/PERMISSION_MATRIX.md).
+Keep `transfer-core` transport-independent. Introduce a service-owned `TransferRuntime`; ViewModels observe immutable state and issue typed commands rather than constructing transports or owning transfer scopes. Navigation carries opaque IDs instead of live transport/session objects or credentials.
 
-## 16. Background execution
-User-started connectedDevice FGS for live session; no permanent receiver or guaranteed process survival. WorkManager maintains orphans, never resumes live transfer. [Execution behavior table](android/STORAGE_AND_BACKGROUND.md).
+### Desktop
 
-## 17. Data architecture
-Separate domain/DTO/entity/UI models, Room history/catalog/journal, DataStore preferences. Deterministic orthogonal discovery/link/session/item machines and terminal races in [state/data model](architecture/STATE_AND_DATA_MODEL.md); [failure taxonomy](architecture/GLIDE_FAILURE_MODEL.md).
+Create one shared application/transfer engine consumed by WPF and CLI. Keep protocol/domain, orchestration, transport, storage and presentation responsibilities separate. WPF and CLI must exercise the same validation, consent, session and recovery implementation.
 
-## 18. UI architecture
-Home/History/Settings navigation, shared selection/discovery/verification/offer/transfer/result routes, no screen per transient state. [Screen inventory and complete flows](design/GLIDE_USER_FLOWS.md).
+### Browser
 
-## 19. Design system
-Accepted blue/cyan/indigo identity; restrained tonal depth, premium system typography, shared spacing/shapes, branded default and dynamic-color opt-in. [Design tokens](design/GLIDE_DESIGN_SYSTEM.md), [UI checklist](design/UI_QUALITY_CHECKLIST.md).
+The release browser path must use authenticated encrypted local WebRTC DataChannels loaded from a trusted static HTTPS client. File content and pairing secrets must not transit the web host, and release builds must not fall back to the existing plaintext HTTP transfer path.
 
-## 20. Motion
-Centralized durations/easing, state-explaining progress/connection transitions, no simulated bytes or excessive glow. System animation-off/reduced-motion and lifecycle stop respected. [Motion system](design/GLIDE_DESIGN_SYSTEM.md).
+## 5. Security invariants
 
-## 21. Adaptive UI
-Window-size-driven compact bar/rail/list-detail; posture/height/input aware, same state and navigation across resize. No orientation lock or separate tablet app. [Adaptive rules](design/GLIDE_DESIGN_SYSTEM.md).
+- Encryption is not identity; every native session must have authenticated bootstrap/trust.
+- QR/pinned bootstrap consumes invitations atomically and still requires offer consent.
+- Persistent trust requires explicit enrollment, protected keys and proof of possession.
+- Trusted peers do not imply arbitrary-file auto-acceptance.
+- Protocol sequence, IDs, paging, consent and terminal results are validated identically across implementations.
+- Unverified files stay quarantined.
+- Hashing and transfer remain bounded-memory.
+- Resume advances only through contiguous verified chunks, revalidates peer/source state and finishes with whole-file SHA-256.
 
-## 22. Accessibility
-TalkBack, code reading, keyboard/switch access,48dp targets,200% text, RTL, contrast, magnification, non-color status and throttled announcements. [Design requirements](design/GLIDE_DESIGN_SYSTEM.md), [quality gate](DEFINITION_OF_DONE.md).
+## 6. Development program
 
-## 23. Performance
-Measured startup/frame/RAM/CPU/thermal/size budgets; bounded multi-GB pipeline, honest device throughput and Baseline Profiles. [Performance plan](performance/GLIDE_PERFORMANCE_PLAN.md), [checklist](performance/PERFORMANCE_CHECKLIST.md).
+The program has eight milestones and 43 tasks:
 
-## 24. Testing
-Unit/contract/golden/fuzz, storage/Room integration, Compose/system UI, actual two-device proof and OEM chaos/soak. Emulator tests cannot validate radio reliability. [Test strategy](testing/GLIDE_TEST_STRATEGY.md).
+| Milestone | Scope | Tasks |
+| --- | --- | --- |
+| M0 | Honest baseline | HARD-001–004 |
+| M1 | Android production flow | HARD-005–010 |
+| M2 | Desktop/native interoperability | HARD-011–017 |
+| M3 | Trust, folders and true resume | HARD-018–024 |
+| M4 | Secure browser sharing | HARD-025–030 |
+| M5 | Structure/developer experience | HARD-031–035 |
+| M6 | Product quality/hardening | HARD-036–040 |
+| M7 | Release/operations | HARD-041–043 |
 
-## 25. CI/CD
-Pinned build, lint/tests, dependency/secret/security checks, protected release signing, artifact provenance/retention and physical evidence gates. [CI/CD plan](development/CI_CD_PLAN.md).
+Default order is M0 → M1 → M2 → M3 → M4 → M5 → M6 → M7. Deviations require an explicit task-ledger/change-control update.
 
-## 26. Release strategy
-Developer→internal→required closed testing→approved RC→controlled production→health/maintenance. Owner resolves identity/licenses/signing/Console policy and approves publication. [Release plan](release/GLIDE_RELEASE_PLAN.md).
+## 7. Evidence standard
 
-## 27. Risks
-GMS/OEM reliability, STREAM performance, process interruption, no resume, disk/provider behavior, recent compiler compatibility, branding/native gaps and release identity. [Risk register](RISK_REGISTER.md), [assumptions](ASSUMPTIONS.md), [open questions](OPEN_QUESTIONS.md).
+A feature is not complete merely because code exists or a source-pattern test passes. Completion requires the task's specified production-path tests and evidence. In particular:
 
-## 28. Roadmap
-13 V1 lifecycle milestones including documentation M0; future bucket M13 excluded. Early proof M3 includes hash/Open/history before broad polish. [Roadmap](ROADMAP.md), [end-to-end workflow](GLIDE_END_TO_END_WORKFLOW.md).
+- physical two-device tests cannot be replaced by emulator/loopback tests;
+- interoperability requires independent implementations talking to each other;
+- performance claims require real device measurements when the claim concerns device/network throughput;
+- release status belongs to an exact artifact and commit;
+- manual gates remain visible until actually performed.
 
-## 29. Task system
-72 tasks:68 current V1 delivery and4 future planning items. All application work is READY/NOT_STARTED; none complete. Exact prerequisites/acceptance/testing/evidence in [TODO_MASTER](TODO_MASTER.md), graph in [dependencies](TASK_DEPENDENCY_GRAPH.md).
+## 8. Repository evolution
 
-## 30. Gemini implementation process
-[Implementation guide](development/GEMINI_IMPLEMENTATION_GUIDE.md) → [rules](development/GEMINI_ENGINEERING_RULES.md) → selected READY task. [Prompt templates](development/GEMINI_PROMPT_TEMPLATES.md), [session handoff](development/SESSION_HANDOFF_TEMPLATE.md), [change control](development/CHANGE_CONTROL.md) and [ADR index](adr/README.md) prevent drift. Read current code before trusting a status.
+A later structural milestone may organize the repository under `android/`, `desktop/`, `web/` and `protocol/fixtures/`. That move is HARD-033 and must be mechanical. Do not mix path moves with behavior/protocol changes.
 
-## 31. Cross-platform future
-Android→Windows→browser→iOS/macOS→Linux→remote transfer. Reuse protocol/fixtures; replace native permissions/storage/execution/transport. [Strategic path](future/CROSS_PLATFORM_PATH.md). No future implementation now.
+## 9. Immediate next action
 
-## 32. Definition of done
-Build/tests + actual acceptance + UI/security/performance/accessibility review + evidence/docs, not source existence. [DoD and gates](DEFINITION_OF_DONE.md), [planning completeness audit](planning/PLANNING_COMPLETENESS_AUDIT.md).
-
-## 33. Current next action
-Open [GLIDE-001](TODO_MASTER.md#glide-001) in a later Gemini coding session, prove the pinned build and compiler/processor combination, preserve artwork and stay within task scope. Do not start it during this planning run.
-
+HARD-001 publishes the current plan and status authority only. It does not modify product behavior or authorize deployment. The next task is **HARD-002 — reconcile current source, documentation, historical claims and all commits after the review baseline**.
