@@ -9,7 +9,6 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
-import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import dev.glide.app.ui.transfer.TransferUiState
 import kotlinx.coroutines.CoroutineScope
@@ -125,7 +124,6 @@ class TransferService : Service() {
         val shouldCancel = TransferServicePolicy.shouldAcceptCancelAction(targetSessionId, activeSessionId)
         if (shouldCancel) {
             runtime().dispatch(TransferRuntimeCommand.Cancel(targetSessionId!!))
-            handleTerminalTeardown()
         }
         return shouldCancel
     }
@@ -247,11 +245,11 @@ class TransferService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        serviceScope.cancel()
         notificationObserverJob?.cancel()
         notificationObserverJob = null
-        transferNotificationManager.reset()
         runtime().detachServiceScope()
+        serviceScope.cancel()
+        transferNotificationManager.reset()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -296,13 +294,10 @@ class TransferService : Service() {
             context.startService(intent)
         }
 
-        fun cancelTransfer(context: Context, sessionId: String? = null) {
+        fun cancelTransfer(context: Context, sessionId: String) {
             val intent = Intent(context, TransferService::class.java).apply {
                 action = ACTION_CANCEL
-                val sid = sessionId ?: runtime().getActiveSessionId()
-                if (sid != null) {
-                    putExtra(EXTRA_SESSION_ID, sid)
-                }
+                putExtra(EXTRA_SESSION_ID, sessionId)
             }
             context.startService(intent)
         }
