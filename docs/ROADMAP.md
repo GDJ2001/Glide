@@ -1,6 +1,6 @@
 # Glide roadmap
 
-Current roadmap authority is the [Code Review, Improvement, Hardening & Development Completion Plan](planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md). Task status lives in [TODO_MASTER.md](TODO_MASTER.md).
+Current roadmap authority is the [Code Review, Improvement, Hardening & Development Completion Plan](planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md). Task status lives in [TODO_MASTER.md](TODO_MASTER.md). HARD-002 reconciliation evidence is in [HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md](planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md).
 
 The old GLIDE V1 roadmap and GLIDE-001–072 completion record are historical. They describe prior planning, implementation sessions and release evidence but do not certify the present multi-platform checkout. The original task ledger remains available at immutable pre-HARD commit [`b07f15b`](https://github.com/GDJ2001/Glide/blob/b07f15bdde60bb5bfa9b20fdaba093b7a6a93785/docs/TODO_MASTER.md).
 
@@ -19,15 +19,20 @@ The old GLIDE V1 roadmap and GLIDE-001–072 completion record are historical. T
 
 ## Current status
 
-- HARD-001: COMPLETE — publish evidence-backed review and completion plan.
-- HARD-002: READY — reconcile source, documentation, historical claims and commits after the review baseline.
-- HARD-003–043: NOT_STARTED until their dependencies are met.
+- HARD-001: **COMPLETE** — published the evidence-backed review and completion plan.
+- HARD-002: **COMPLETE** — captured source at `12681eabba26387fe7d1bbaf309971f345642e41`, reviewed the post-`ea2e811` delta, reconciled current claims/specifications, and preserved historical evidence without treating it as current certification.
+- HARD-003: **READY** — add executable regressions for confirmed production defects.
+- HARD-004–043: NOT_STARTED until their dependencies are met.
 
-Overall current hardening progress: **1 / 43 tasks (2.3%)**.
+Overall current hardening progress: **2 / 43 tasks (4.7%)**.
 
-## Scope boundary
+## HARD-002 scope boundary
 
-This release cycle completes Android, Windows 11, Linux and secure browser local sharing, including folders, persistent trust and true resume. Native Apple clients and remote/Internet transfer are deferred. Existing Apple/remote implementation is preserved but does not advance the active release gate unless the task ledger is explicitly amended.
+HARD-002 classified later Apple and remote work as partial component/library implementation with historical automated-test evidence, not current physical interoperability or release evidence. Native Apple clients and remote/Internet transfer remain deferred from this release cycle. Source after the captured HARD-002 boundary must be evaluated by the task that consumes it.
+
+## Active release scope
+
+This release cycle completes Android, Windows 11, Linux and secure browser local sharing, including folders, persistent trust and true resume. Existing Apple/remote implementation is preserved but does not advance the active release gate unless the task ledger is explicitly amended.
 
 ## Evidence rule
 
