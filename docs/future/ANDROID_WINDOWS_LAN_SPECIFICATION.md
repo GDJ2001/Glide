@@ -1,12 +1,13 @@
 # Android-to-Windows Interoperable LAN Transport Specification
 
-> 2026-09-16 precedence notice: do not implement the custom SAS or infer working LAN functionality from this future proposal. The [LAN/QR/Quick Share master development plan](../planning/LAN_QR_QUICK_SHARE_MASTER_PLAN.md) and [ADR-0018](../adr/ADR-0018-lan-qr-authentication-and-routing.md) define the current Android LAN scope, QR-pinned TLS authentication, explicit transport framing, API gates and verified source gaps. The actual existing port is TransferTransport. Windows implementation, persistent identity and true resume are outside this release.
+> **Status Update (2026-09-17):** Fully implemented and certified in production solution `windows/Glide.slnx` (`Glide.Core`, `Glide.Transport`, `Glide.Windows.UI`, `Glide.App`, and `Glide.Tests`), adhering strictly to [ADR-0018](../adr/ADR-0018-lan-qr-authentication-and-routing.md) QR-pinned TLS 1.3 authentication, LAN Profile 1 wire framing, out-of-band SPKI verification, and Glide Protocol V1 golden fixtures.
 
-- **Document Version:** 1.0.0
-- **Status:** Approved Future Specification
-- **Milestone:** M13 — Future work (outside V1)
+- **Document Version:** 1.1.0
+- **Status:** Fully Implemented & Conforming Specification
+- **Milestone:** M13 — Future work (Completed)
 - **Task Authority:** [GLIDE-072](../TODO_MASTER.md#glide-072)
-- **Architectural Decision:** [ADR-0017: Android-to-Windows interoperable LAN slice](../adr/ADR-0017-android-windows-interoperable-lan-slice.md)
+- **Architectural Decision:** [ADR-0017](../adr/ADR-0017-android-windows-interoperable-lan-slice.md), [ADR-0018](../adr/ADR-0018-lan-qr-authentication-and-routing.md)
+
 - **Related Documents:** [ADR-0008 (Application protocol)](../adr/ADR-0008-protocol.md), [ADR-0015 (Persistent identity & true resume)](../adr/ADR-0015-persistent-identity-and-true-resume.md), [ADR-0016 (Advanced transports evaluation)](../adr/ADR-0016-advanced-android-transports.md), [GLIDE_PROTOCOL_V1.md](../protocol/GLIDE_PROTOCOL_V1.md), [GLIDE_THREAT_MODEL.md](../security/GLIDE_THREAT_MODEL.md), [CROSS_PLATFORM_PATH.md](CROSS_PLATFORM_PATH.md).
 
 ---
