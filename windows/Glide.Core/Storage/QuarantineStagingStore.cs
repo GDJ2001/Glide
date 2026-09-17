@@ -14,15 +14,29 @@ public sealed class QuarantineStagingStore
 
     public QuarantineStagingStore(string? stagingRoot = null, string? destinationRoot = null, Func<long>? freeSpaceProvider = null)
     {
-        _stagingRoot = stagingRoot ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Glide", "staging");
+        _stagingRoot = stagingRoot ?? GetDefaultStagingRoot();
 
         _destinationRoot = destinationRoot ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             "Downloads");
 
         _freeSpaceProvider = freeSpaceProvider;
+    }
+
+    private static string GetDefaultStagingRoot()
+    {
+        if (OperatingSystem.IsLinux())
+        {
+            string? xdgData = Environment.GetEnvironmentVariable("XDG_DATA_HOME");
+            if (!string.IsNullOrWhiteSpace(xdgData))
+            {
+                return Path.Combine(xdgData, "glide", "staging");
+            }
+        }
+
+        return Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "Glide", "staging");
     }
 
     public long GetAvailableFreeSpaceBytes()
@@ -34,7 +48,8 @@ public sealed class QuarantineStagingStore
 
         try
         {
-            var driveInfo = new DriveInfo(Path.GetPathRoot(Path.GetFullPath(_stagingRoot)) ?? "C:\\");
+            string root = Path.GetPathRoot(Path.GetFullPath(_stagingRoot)) ?? (OperatingSystem.IsWindows() ? "C:\\" : "/");
+            var driveInfo = new DriveInfo(root);
             return driveInfo.AvailableFreeSpace;
         }
         catch

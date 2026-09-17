@@ -52,7 +52,8 @@ public static class Program
     {
         Console.ForegroundColor = ConsoleColor.Cyan;
         Console.WriteLine("=================================================================");
-        Console.WriteLine("        Glide.Windows — High-Speed Local File Sharing Companion  ");
+        string osName = OperatingSystem.IsLinux() ? "Linux" : OperatingSystem.IsMacOS() ? "macOS" : "Windows";
+        Console.WriteLine($"        Glide.{osName} — High-Speed Local File Sharing Companion  ");
         Console.WriteLine("               Zero Cloud • 100% Offline Local LAN               ");
         Console.WriteLine("=================================================================");
         Console.ResetColor();
@@ -201,11 +202,13 @@ public static class Program
             var endpoints = ips.Select(ip => new LanEndpoint(ip, boundPort)).Take(4).ToList();
             if (endpoints.Count == 0) endpoints.Add(new LanEndpoint("127.0.0.1", boundPort));
 
+            var stagingStore = new QuarantineStagingStore();
+
             var invitation = new LanInvitation(
                 invitationId: Guid.NewGuid().ToString().ToLowerInvariant(),
                 presence: presence,
                 name: Environment.MachineName,
-                platform: "windows",
+                platform: GetCurrentPlatform(),
                 endpoints: endpoints,
                 spkiSha256: spkiSha256,
                 token: token,
@@ -217,8 +220,8 @@ public static class Program
             Console.ForegroundColor = ConsoleColor.Green;
             Console.WriteLine($"\n[READY] Listening for incoming transfers on port {boundPort}");
             Console.WriteLine($"[INFO] Local IP addresses: {string.Join(", ", ips)}");
-            Console.WriteLine($"[INFO] Staging sandbox: %LocalAppData%\\Glide\\staging\\");
-            Console.WriteLine($"[INFO] Destination: %USERPROFILE%\\Downloads\\");
+            Console.WriteLine($"[INFO] Staging sandbox: {stagingStore.StagingRoot}");
+            Console.WriteLine($"[INFO] Destination: {stagingStore.DestinationRoot}");
             Console.ResetColor();
 
             Console.ForegroundColor = ConsoleColor.Cyan;
@@ -234,7 +237,6 @@ public static class Program
             Console.ResetColor();
 
             var channel = new LanRecordChannel(conn.SslStream);
-            var stagingStore = new QuarantineStagingStore();
 
             var firstRecord = await channel.ReadRecordAsync();
             if (firstRecord == null)
@@ -437,8 +439,8 @@ public static class Program
                     continue;
                 }
 
-                // Commit atomically to Downloads
-                string destDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
+                // Commit atomically to destination
+                string destDir = stagingStore.DestinationRoot;
                 string targetPath = Path.Combine(destDir, item.relativePath.Replace('/', Path.DirectorySeparatorChar));
                 string finalPath = QuarantineStagingStore.ResolveCollision(targetPath);
                 string? td = Path.GetDirectoryName(finalPath);
@@ -769,4 +771,9 @@ public static class Program
 
         return 0;
     }
+
+    private static string GetCurrentPlatform() =>
+        OperatingSystem.IsLinux() ? "linux" :
+        OperatingSystem.IsMacOS() ? "macos" :
+        OperatingSystem.IsWindows() ? "windows" : "unknown";
 }
