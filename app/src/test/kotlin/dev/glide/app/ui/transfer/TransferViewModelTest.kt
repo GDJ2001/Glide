@@ -1,5 +1,6 @@
 package dev.glide.app.ui.transfer
 
+import dev.glide.app.service.TransferRuntime
 import dev.glide.core.coordinator.TransferCoordinator
 import dev.glide.core.domain.BulkRef
 import dev.glide.core.domain.CommittedFileHandle
@@ -106,7 +107,8 @@ class TransferViewModelTest {
 
     @Test
     fun bindCoordinator_initializesUiStateAndStartsCoordinator() = runTest(testDispatcher) {
-        val viewModel = TransferViewModel()
+        val runtime = TransferRuntime.forTesting().also { it.attachServiceScope(this) }
+        val viewModel = TransferViewModel(runtime)
         val transport = LocalFakeTransport()
         val sourceAccess = LocalFakeSourceAccess()
         val receiveStore = LocalFakeReceiveStore()
@@ -139,6 +141,7 @@ class TransferViewModelTest {
 
         val cancelledState = viewModel.uiState.value
         assertTrue(cancelledState is TransferUiState.Cancelled)
+        runtime.detachServiceScope()
     }
 
     @Test
@@ -496,7 +499,8 @@ class TransferViewModelTest {
 
     @Test
     fun getUnfinishedSourceUris_returnsOnlyUrisOfUncompletedItems() = runTest {
-        val viewModel = TransferViewModel()
+        val runtime = TransferRuntime.forTesting().also { it.attachServiceScope(this) }
+        val viewModel = TransferViewModel(runtime)
         val item1 = dev.glide.core.domain.TransferItem(
             id = ItemId(java.util.UUID.randomUUID().toString()),
             name = "file1.txt",
@@ -538,11 +542,13 @@ class TransferViewModelTest {
         assertEquals(2, unfinishedBefore.size)
         assertTrue(unfinishedBefore.contains("content://media/1"))
         assertTrue(unfinishedBefore.contains("content://media/2"))
+        runtime.detachServiceScope()
     }
 
     @Test
     fun getUnfinishedSourceUris_whenPartialBatchVerified_returnsOnlyUnfinished() = runTest {
-        val viewModel = TransferViewModel()
+        val runtime = TransferRuntime.forTesting().also { it.attachServiceScope(this) }
+        val viewModel = TransferViewModel(runtime)
         val item1 = dev.glide.core.domain.TransferItem(
             id = ItemId(java.util.UUID.randomUUID().toString()),
             name = "file1.txt",
@@ -606,6 +612,7 @@ class TransferViewModelTest {
         org.junit.Assert.assertNotNull(retryBatch)
         assertEquals(1, retryBatch!!.items.size)
         assertEquals(item2.id, retryBatch.items.first().id)
+        runtime.detachServiceScope()
     }
 
     @Test
