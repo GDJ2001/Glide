@@ -446,7 +446,7 @@ class TransferRuntime private constructor(
                 return true
             }
         }
-        coordinator.cancel(reason)
+        coordinator?.cancel(reason)
         return true
     }
 
