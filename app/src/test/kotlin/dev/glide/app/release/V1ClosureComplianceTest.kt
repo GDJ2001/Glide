@@ -1,20 +1,15 @@
 package dev.glide.app.release
 
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 
 /**
- * GLIDE-068: V1 Closure and Next-Cycle Handoff Compliance Verification Suite.
+ * GLIDE-068: Historical V1 Closure and Next-Cycle Handoff Compliance Verification Suite.
  *
- * Programmatically asserts:
- * 1. Existence and completeness of docs/release/V1_CLOSURE_AND_NEXT_CYCLE_HANDOFF.md.
- * 2. Master task ledger 100% completion across all 68 tasks (GLIDE-001 through GLIDE-068).
- * 3. Complete milestone retrospective across all 13 milestones (M0 through M12).
- * 4. Certified zero protocol drift against GLIDE_PROTOCOL_V1.md (GLID header, 8 codecs, Room v1).
- * 5. Milestone M13 future work items strictly segregated and marked NOT_STARTED.
- * 6. Codified ongoing maintenance schedule and security incident response SLAs.
+ * This suite verifies that the preserved V1 closure record remains internally complete while
+ * respecting the newer HARD-001–HARD-043 status authority. Historical release/closure claims
+ * are evidence records; they must not overwrite the current hardening ledger.
  */
 class V1ClosureComplianceTest {
 
@@ -49,28 +44,40 @@ class V1ClosureComplianceTest {
     }
 
     // -------------------------------------------------------------------------
-    // 2. Master Task Ledger 100% Completion Audit
+    // 2. Historical V1 Closure vs Current HARD Authority
     // -------------------------------------------------------------------------
 
     @Test
-    fun test2_masterTaskLedger_confirms100PercentV1Completion() {
+    fun test2_historicalV1Closure_isPreservedWithoutOverridingCurrentHardAuthority() {
         val root = resolveProjectRoot()
+        val closureFile = File(root, "docs/release/V1_CLOSURE_AND_NEXT_CYCLE_HANDOFF.md")
         val todoFile = File(root, "docs/TODO_MASTER.md")
-        assertTrue("TODO_MASTER.md must exist", todoFile.exists())
+        assertTrue("Historical V1 closure record must exist", closureFile.exists())
+        assertTrue("Current TODO_MASTER.md authority must exist", todoFile.exists())
 
-        val text = todoFile.readText()
-        assertTrue("Header must report 68/68 tasks complete (100.0%)", text.contains("68/68") || text.contains("100.0%"))
-        assertTrue("Milestone table must report M12 as 4 / 4 | 100%", text.contains("4 / 4 | 100%"))
+        val closureText = closureFile.readText()
+        assertTrue(
+            "Historical closure must preserve the original 68/68 V1 completion statement",
+            closureText.contains("68 of 68") && closureText.contains("100.0%")
+        )
+        assertTrue(
+            "Historical closure must preserve the M12 4/4 completion record",
+            closureText.contains("GLIDE-065–068") && closureText.contains("4 / 4")
+        )
 
-        // Verify every task from GLIDE-001 through GLIDE-068 is marked COMPLETE in the task index
-        for (i in 1..68) {
-            val taskId = String.format("GLIDE-%03d", i)
-            val regex = Regex("""\|\s*\[$taskId\]\([^)]+\)\s*\|\s*M\d+\s*\|\s*P\d+\s*\|\s*([^|]+)\|""")
-            val match = regex.find(text)
-            assertTrue("Task $taskId must be present in TODO_MASTER.md index", match != null)
-            val status = match!!.groupValues[1].trim()
-            assertEquals("Task $taskId must have status COMPLETE", "COMPLETE", status)
-        }
+        val todoText = todoFile.readText()
+        assertTrue(
+            "Current ledger must explicitly identify itself as the active development authority",
+            todoText.contains("Current status authority for active development")
+        )
+        assertTrue(
+            "Current ledger must identify the HARD-001–HARD-043 program",
+            todoText.contains("HARD-001–HARD-043")
+        )
+        assertTrue(
+            "Current ledger must preserve the historical GLIDE ledger without treating it as current certification",
+            todoText.contains("historical GLIDE-001–072 ledger") && todoText.contains("pre-HARD commit")
+        )
     }
 
     // -------------------------------------------------------------------------
@@ -126,27 +133,34 @@ class V1ClosureComplianceTest {
     }
 
     // -------------------------------------------------------------------------
-    // 5. Future Work Segregation (M13 Tasks Not Started)
+    // 5. Historical M13 Handoff vs Current Authorized Hardening Program
     // -------------------------------------------------------------------------
 
     @Test
-    fun test5_futureWork_segregatesM13AsNotStarted() {
+    fun test5_historicalM13FutureWork_isPreservedWhileCurrentLedgerOwnsActiveScope() {
         val root = resolveProjectRoot()
         val docFile = File(root, "docs/release/V1_CLOSURE_AND_NEXT_CYCLE_HANDOFF.md")
-        val text = docFile.readText()
+        val todoFile = File(root, "docs/TODO_MASTER.md")
+        val closureText = docFile.readText()
 
         val futureTasks = listOf("GLIDE-069", "GLIDE-070", "GLIDE-071", "GLIDE-072")
         for (task in futureTasks) {
-            assertTrue("Must document future milestone task: $task", text.contains(task))
+            assertTrue("Historical V1 closure must document future milestone task: $task", closureText.contains(task))
         }
+        assertTrue(
+            "Historical V1 closure must preserve M13 as future/not-started at that historical boundary",
+            closureText.contains("M13") && closureText.contains("NOT_STARTED")
+        )
 
-        // Verify in TODO_MASTER.md that M13 tasks are properly indexed under M13
-        val todoText = File(root, "docs/TODO_MASTER.md").readText()
-        for (task in futureTasks) {
-            val regex = Regex("""\|\s*\[$task\]\([^)]+\)\s*\|\s*M13\s*\|\s*P\d+\s*\|\s*([^|]+)\|""")
-            val match = regex.find(todoText)
-            assertTrue("M13 Task $task must be in TODO_MASTER.md index under M13", match != null)
-        }
+        val todoText = todoFile.readText()
+        assertTrue(
+            "Active scope must be governed by the HARD program rather than the historical M13 status",
+            todoText.contains("Current program: **HARD-001–HARD-043")
+        )
+        assertTrue(
+            "Current ledger must explicitly explain that historical completion labels do not certify the current candidate",
+            todoText.contains("Historical `COMPLETE`, release, shipped, or certified labels do not certify the current multi-platform candidate")
+        )
     }
 
     // -------------------------------------------------------------------------
