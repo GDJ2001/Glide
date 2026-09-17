@@ -16,17 +16,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  verify:
-    name: Build, Lint & Test
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
+  android:
+    name: Android Build, Lint & Test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Validate Gradle wrapper checksum
-        uses: gradle/actions/wrapper-validation@03875323d40f1a9a5f7823f64c679a8360d0e653 # v4.4.2
+        uses: gradle/actions/wrapper-validation@017a9effdb900e5b5b2fddfb590a105619dca3c3 # v4.4.2
 
       - name: Set up JDK 17
         uses: actions/setup-java@3a4f6e1af504cf6a31855fa899c6aa5355ba6c12 # v4.7.0
@@ -35,7 +35,7 @@ jobs:
           java-version: '17'
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@03875323d40f1a9a5f7823f64c679a8360d0e653 # v4.4.2
+        uses: gradle/actions/setup-gradle@017a9effdb900e5b5b2fddfb590a105619dca3c3 # v4.4.2
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
@@ -48,38 +48,150 @@ jobs:
       - name: Enforce Architecture and Static Analysis
         run: ./gradlew checkArchitecture
 
-      - name: Assemble Debug APK (No Signing in PR)
+      - name: Assemble Debug APK
         run: ./gradlew :app:assembleDebug
+
+      - name: Compile HARD-003 JVM regression sources
+        run: ./gradlew :app:compileDebugUnitTestKotlin :transport-lan:compileDebugUnitTestKotlin
 
       - name: Run Behavioral LAN and Protocol Gates
         run: ./gradlew checkLanGate
 
-      - name: Run Unit Tests
+      - name: Run ordinary unit tests
         run: ./gradlew test
+
+      - name: Prove HARD-003 Android regressions are red
+        shell: bash
+        run: |
+          set -u
+          run_expected_red() {
+            local task="$1"
+            local report_dir="$2"
+            set +e
+            ./gradlew "$task" -Phard003Regression=true --rerun-tasks
+            local status=$?
+            set -e
+            if [ "$status" -eq 0 ]; then
+              echo "::error::Expected HARD-003 regression task $task to be red, but it passed."
+              exit 1
+            fi
+            if ! grep -R -q '<failure' "$report_dir"; then
+              echo "::error::HARD-003 task $task failed without a recorded test assertion failure."
+              exit 1
+            fi
+            echo "Observed expected red regression evidence for $task."
+          }
+
+          run_expected_red ':app:testDebugUnitTest' 'app/build/test-results/testDebugUnitTest'
+          run_expected_red ':transport-lan:testDebugUnitTest' 'transport-lan/build/test-results/testDebugUnitTest'
 
       - name: Run Android Lint
         run: ./gradlew :app:lintDebug
 
       - name: Upload Debug APK
         if: always()
-        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb99baeddf # v4.6.1
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
         with:
           name: app-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: ignore
           retention-days: 14
 
-      - name: Upload Lint & Test Reports
+      - name: Upload Android verification reports
         if: always()
-        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb99baeddf # v4.6.1
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
         with:
-          name: verification-reports
+          name: android-verification-reports
           path: |
             app/build/reports/
+            app/build/test-results/
             transfer-core/build/reports/
             transport-lan/build/reports/
+            transport-lan/build/test-results/
             designsystem/build/reports/
             transport-nearby/build/reports/
             data/build/reports/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  dotnet-linux:
+    name: .NET Shared + Linux Package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build cross-platform .NET tests and dependencies
+        run: dotnet build windows/Glide.Tests/Glide.Tests.csproj -c Release
+
+      - name: Run ordinary .NET tests
+        run: dotnet test windows/Glide.Tests/Glide.Tests.csproj -c Release --no-build --filter "HARD!=003-red" --logger "trx;LogFileName=ordinary-linux.trx"
+
+      - name: Prove HARD-003 .NET regressions are red
+        shell: bash
+        run: |
+          set +e
+          dotnet test windows/Glide.Tests/Glide.Tests.csproj -c Release --no-build --filter "HARD=003-red" --logger "trx;LogFileName=hard003-red.trx"
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo "::error::Expected HARD-003 .NET regression suite to be red, but it passed."
+            exit 1
+          fi
+          trx='windows/Glide.Tests/TestResults/hard003-red.trx'
+          if [ ! -f "$trx" ] || ! grep -q 'outcome="Failed"' "$trx"; then
+            echo "::error::HARD-003 .NET command failed without a recorded failed test result."
+            exit 1
+          fi
+          echo "Observed expected red .NET regression evidence."
+
+      - name: Build Linux self-contained package
+        shell: pwsh
+        run: ./packaging/linux/build-linux-packages.ps1 -Configuration Release -Runtimes linux-x64
+
+      - name: Upload Linux package and .NET reports
+        if: always()
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
+        with:
+          name: linux-dotnet-verification
+          path: |
+            build/distributions/linux/*.tar.gz
+            windows/Glide.Tests/TestResults/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  dotnet-windows:
+    name: Windows .NET Build & Test
+    runs-on: windows-2025
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build full Windows solution
+        run: dotnet build windows/Glide.slnx -c Release
+
+      - name: Run ordinary .NET tests on Windows
+        run: dotnet test windows/Glide.Tests/Glide.Tests.csproj -c Release --no-build --filter "HARD!=003-red" --logger "trx;LogFileName=ordinary-windows.trx"
+
+      - name: Upload Windows test reports
+        if: always()
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
+        with:
+          name: windows-dotnet-verification
+          path: windows/Glide.Tests/TestResults/
           if-no-files-found: ignore
           retention-days: 14
