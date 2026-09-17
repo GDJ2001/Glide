@@ -7,7 +7,7 @@ Plan: [`planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md`](planning/CODE_R
 Latest reconciliation: [`planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md`](planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md)  
 Review baseline: `ea2e811a7f2d8aaddc552e894fe04782cd08a499`  
 HARD-002 captured source boundary: `12681eabba26387fe7d1bbaf309971f345642e41`  
-**Next recommended task: HARD-003.**
+**Next recommended task: HARD-005 (IN_PROGRESS).**
 
 Source/configuration commits after the HARD-002 captured boundary are not silently certified by HARD-002; the task that consumes them must inspect/reconcile them before relying on their claims.
 
@@ -27,15 +27,15 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 
 | Milestone | Tasks | Complete | Status |
 | --- | --- | ---: | --- |
-| M0 Honest baseline | HARD-001–004 | 2 / 4 | IN PROGRESS |
-| M1 Android production flow | HARD-005–010 | 0 / 6 | NOT STARTED |
+| M0 Honest baseline | HARD-001–004 | 4 / 4 | COMPLETE |
+| M1 Android production flow | HARD-005–010 | 0 / 6 | IN PROGRESS |
 | M2 Desktop/native interoperability | HARD-011–017 | 0 / 7 | NOT STARTED |
 | M3 Trust, folders and true resume | HARD-018–024 | 0 / 7 | NOT STARTED |
 | M4 Secure browser sharing | HARD-025–030 | 0 / 6 | NOT STARTED |
 | M5 Structure/developer experience | HARD-031–035 | 0 / 5 | NOT STARTED |
 | M6 Product quality/hardening | HARD-036–040 | 0 / 5 | NOT STARTED |
 | M7 Release/operations | HARD-041–043 | 0 / 3 | NOT STARTED |
-| **Total** | **HARD-001–043** | **2 / 43** | **4.7%** |
+| **Total** | **HARD-001–043** | **4 / 43** | **9.3%** |
 
 ## Finding → remediation map
 
@@ -61,9 +61,9 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 | --- | --- | --- | --- |
 | HARD-001 | M0 | COMPLETE | Publish evidence-backed review and completion plan |
 | HARD-002 | M0 | COMPLETE | Reconcile source, docs, claims and post-review commits |
-| HARD-003 | M0 | READY | Add regressions for confirmed review defects |
-| HARD-004 | M0 | NOT_STARTED | Establish Android/Windows/Linux CI baseline |
-| HARD-005 | M1 | NOT_STARTED | Introduce service-owned Android TransferRuntime |
+| HARD-003 | M0 | COMPLETE | Add regressions for confirmed review defects |
+| HARD-004 | M0 | COMPLETE | Establish Android/Windows/Linux CI baseline |
+| HARD-005 | M1 | IN_PROGRESS | Introduce service-owned Android TransferRuntime |
 | HARD-006 | M1 | NOT_STARTED | Wire production discovery and permissions |
 | HARD-007 | M1 | NOT_STARTED | Wire complete Nearby send/receive lifecycle |
 | HARD-008 | M1 | NOT_STARTED | Wire real LAN listener and QR invitation lifecycle |
@@ -127,28 +127,29 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 <a id="hard-003"></a>
 ## HARD-003 — Add regressions for confirmed review defects
 
-- **Milestone / status:** M0 / READY.
+- **Milestone / status:** M0 / COMPLETE.
 - **Dependencies:** HARD-002.
 - **Affected modules:** Android app/LAN production wiring; Linux/desktop app/transport/tests; browser gateway tests/tooling.
-- **Acceptance:** Executable regressions expose disconnected Android production wiring, fixed/example invitation acceptance, unsynchronized SAS authentication, sequence/pagination misuse, plaintext browser-release assumptions and whole-file production hashing. Tests should prove behavior/wiring, not merely search source text.
-- **Regression/evidence:** Record red-before behavior or deterministic failing fixtures with exact commands and map each failure to its fixing HARD task. Do not repair the underlying feature beyond the minimum needed to make the regression itself valid.
+- **Acceptance satisfied:** Executable regressions expose disconnected Android production wiring, fixed/example invitation acceptance, unsynchronized SAS authentication, sequence/pagination misuse, plaintext browser-release assumptions and whole-file production hashing while remaining isolated from the ordinary green baseline.
+- **Regression/evidence:** [HARD-003 regression evidence](development/sessions/2026-09-18-hard-003.md), including exact commands and expected-red CI evidence.
 
 <a id="hard-004"></a>
 ## HARD-004 — Establish Android/Windows/Linux CI baseline
 
-- **Milestone / status:** M0 / NOT_STARTED.
+- **Milestone / status:** M0 / COMPLETE.
 - **Dependencies:** HARD-003.
 - **Scope:** `.github/workflows`, Gradle modules, `windows/Glide.slnx`, Linux-compatible packaging/tooling.
-- **Acceptance:** CI reaches checkout and executes Android build/lint/tests plus .NET build/tests and Linux-compatible shared/package checks; action pins resolve; secrets remain protected.
-- **Evidence:** Green workflow run IDs/URLs/tool versions/artifacts plus proof that an intentional test failure blocks its job; hardware-only gaps remain named.
+- **Acceptance satisfied:** CI reaches checkout and executes Android build/lint/tests plus .NET build/tests and Linux-compatible shared/package checks; action pins resolve; secrets remain protected.
+- **Evidence:** [HARD-004 CI baseline evidence](development/sessions/2026-09-18-hard-004.md). Authoritative green run: **35286514435** at `234fb024f2fef2273c09e64ff15011b2b6663d15`; prior source-reaching failure run **35285947126** demonstrates an ordinary failing test blocks its job. Hardware-only gaps remain explicitly deferred to later gates.
 
 <a id="hard-005"></a>
 ## HARD-005 — Introduce service-owned Android TransferRuntime
 
-- **Milestone / status:** M1 / NOT_STARTED.
+- **Milestone / status:** M1 / IN_PROGRESS.
 - **Dependencies:** HARD-004.
 - **Acceptance:** One service-owned runtime exposes typed send/receive/accept/reject/cancel/resume commands and immutable discovery/pairing/transfer state; ViewModels do not construct transports or own active transfer scopes.
-- **Tests/evidence:** Rotation/recreation, duplicate-command, exact-session cancellation and runtime-ownership tests plus architecture diff/lifecycle traces.
+- **Current implementation:** `TransferRuntime` now owns service-scoped coordinator/pairing execution and immutable runtime state; production Activity/navigation/application/service paths observe/use that runtime. Discovery/permission behavior remains deliberately fail-closed until HARD-006.
+- **Tests/evidence pending final CI:** Rotation/recreation, duplicate-command, exact-session cancellation, pairing ownership, service-detach interruption and fail-closed receive-availability tests.
 
 <a id="hard-006"></a>
 ## HARD-006 — Wire production discovery and permissions
