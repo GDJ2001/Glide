@@ -4,7 +4,7 @@ Start every development session from the [documentation portal](../README.md), t
 
 Glide contains substantial Android, Windows/.NET, Linux, browser/LAN, Apple and remote-transfer work. Historical planning and completion records are evidence, not a substitute for inspecting the current checkout.
 
-**Current next READY task:** [HARD-003](../TODO_MASTER.md#hard-003).
+**Current active task:** [HARD-005](../TODO_MASTER.md#hard-005). M0 (HARD-001–004) is complete.
 
 ## Authority order
 
@@ -24,9 +24,9 @@ The active hardening cycle completes Android local sharing, Windows 11/Linux loc
 
 Native Apple applications and remote/Internet transfers are **deferred**, even though implementation material exists. Preserve that material; do not extend it unless a current HARD task or explicit user instruction authorizes it.
 
-## Immediate HARD-003 rule
+## Immediate HARD-005 rule
 
-HARD-003 is a regression task. Before repairing production behavior, add executable tests/fixtures that expose the confirmed defects identified by the review/reconciliation. Prefer tests that exercise production wiring or independently implemented peers. Source-text checks alone do not satisfy HARD-003. Record which tests are red against the defect and which later task is responsible for the fix.
+HARD-005 is an Android runtime-ownership task. Keep `transfer-core` transport-independent. The foreground service-owned `TransferRuntime` is the sole production owner of active coordinator and pairing execution scopes; ViewModels observe immutable runtime state and issue typed commands. Real discovery/permission composition remains fail-closed until HARD-006, and physical two-device flow remains a later HARD-010 gate.
 
 ## Task execution protocol
 
