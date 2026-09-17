@@ -85,17 +85,25 @@ if ($SpecContent -notmatch "AWS S3" -and $SpecContent -notmatch "buckets") {
 Write-Host "  PASS: Zero cloud file storage and direct peer data sovereignty verified." -ForegroundColor Green
 
 # --- Check 5: Zero-Knowledge Signaling & Blind Relay Invariants ---
-Write-Host "`n[Check 5/10] Auditing Zero-Knowledge Signaling & Blind Relay Invariants..." -ForegroundColor Yellow
+Write-Host "`n[Check 5/10] Auditing Zero-Knowledge Signaling, Blind Relay & Signaling Client..." -ForegroundColor Yellow
 if ($SpecContent -notmatch "blind bit couriers" -or $SpecContent -notmatch "End-to-End Encrypted") {
     Write-Error "FAIL: Specification missing blind courier and E2EE payload invariants."
 }
 if ($SpecContent -notmatch "zero cryptographic keys" -or $SpecContent -notmatch "cannot inspect") {
     Write-Error "FAIL: Specification must mandate that relays possess zero decryption capability."
 }
-Write-Host "  PASS: Zero-knowledge signaling and blind packet relay invariants verified." -ForegroundColor Green
+$SigClientPath = Join-Path $ProjectRoot "windows\Glide.Transport\Remote\RemoteSignalingClient.cs"
+$SigMsgPath = Join-Path $ProjectRoot "windows\Glide.Transport\Remote\SignalingMessages.cs"
+$SigTestPath = Join-Path $ProjectRoot "windows\Glide.Tests\SignalingMessagesTests.cs"
+foreach ($f in @($SigClientPath, $SigMsgPath, $SigTestPath)) {
+    if (-not (Test-Path $f)) {
+        Write-Error "FAIL: Missing remote signaling component: $f"
+    }
+}
+Write-Host "  PASS: Zero-knowledge signaling, broker message protocol, and WebSocket client verified." -ForegroundColor Green
 
-# --- Check 6: NAT Traversal Standards (ICE / STUN / TURN) & StunClient Implementation ---
-Write-Host "`n[Check 6/10] Auditing NAT Traversal Standards (ICE, STUN, TURN) & StunClient..." -ForegroundColor Yellow
+# --- Check 6: NAT Traversal Standards (ICE / STUN / TURN) & StunClient / ICE Engine ---
+Write-Host "`n[Check 6/10] Auditing NAT Traversal Standards (ICE, STUN, TURN), StunClient & ICE Gatherer..." -ForegroundColor Yellow
 if ($SpecContent -notmatch "RFC 8445" -or $SpecContent -notmatch "RFC 8489" -or $SpecContent -notmatch "RFC 8656") {
     Write-Error "FAIL: Specification missing IETF RFC standards for ICE, STUN, and TURN."
 }
@@ -104,17 +112,21 @@ if ($SpecContent -notmatch "Server-Reflexive Candidates" -or $SpecContent -notma
 }
 $StunClientPath = Join-Path $ProjectRoot "windows\Glide.Transport\Remote\StunClient.cs"
 $StunTestPath = Join-Path $ProjectRoot "windows\Glide.Tests\StunClientTests.cs"
-if (-not (Test-Path $StunClientPath)) {
-    Write-Error "FAIL: RFC 8489 StunClient implementation missing: $StunClientPath"
+$IceCandidatePath = Join-Path $ProjectRoot "windows\Glide.Core\Remote\IceCandidate.cs"
+$IceGathererPath = Join-Path $ProjectRoot "windows\Glide.Transport\Remote\IceCandidateGatherer.cs"
+$IceTestPath = Join-Path $ProjectRoot "windows\Glide.Tests\IceCandidateTests.cs"
+$GathererTestPath = Join-Path $ProjectRoot "windows\Glide.Tests\IceCandidateGathererTests.cs"
+
+foreach ($f in @($StunClientPath, $StunTestPath, $IceCandidatePath, $IceGathererPath, $IceTestPath, $GathererTestPath)) {
+    if (-not (Test-Path $f)) {
+        Write-Error "FAIL: Missing ICE / STUN component: $f"
+    }
 }
 $StunContent = Get-Content $StunClientPath -Raw
 if ($StunContent -notmatch "BuildBindingRequest" -or $StunContent -notmatch "ParseBindingResponse" -or $StunContent -notmatch "AttrXorMappedAddress") {
     Write-Error "FAIL: StunClient.cs missing RFC 8489 packet builder or XOR-MAPPED-ADDRESS parser."
 }
-if (-not (Test-Path $StunTestPath)) {
-    Write-Error "FAIL: StunClient unit test suite missing: $StunTestPath"
-}
-Write-Host "  PASS: ICE (RFC 8445), STUN (RFC 8489), and StunClient pure C# implementation verified." -ForegroundColor Green
+Write-Host "  PASS: ICE (RFC 8445), STUN (RFC 8489), IceCandidate, StunClient, and IceCandidateGatherer verified." -ForegroundColor Green
 
 # --- Check 7: Remote Invitation Schema, Codecs & Unit Tests ---
 Write-Host "`n[Check 7/10] Auditing Remote Invitation Schema, Codecs & Unit Tests..." -ForegroundColor Yellow
