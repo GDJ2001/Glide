@@ -73,6 +73,20 @@ public sealed class IceCandidate
     }
 
     /// <summary>
+    /// Computes an RFC 8445 candidate foundation string based on candidate type, IP address, and transport protocol.
+    /// </summary>
+    public static string ComputeFoundation(string candidateType, string ip, string transport)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(candidateType);
+        ArgumentException.ThrowIfNullOrWhiteSpace(ip);
+        ArgumentException.ThrowIfNullOrWhiteSpace(transport);
+
+        byte[] input = System.Text.Encoding.UTF8.GetBytes($"{candidateType}:{ip}:{transport.ToLowerInvariant()}");
+        byte[] hash = System.Security.Cryptography.SHA256.HashData(input);
+        return Convert.ToHexString(hash)[..8].ToLowerInvariant();
+    }
+
+    /// <summary>
     /// Factory for creating a Host candidate.
     /// </summary>
     public static IceCandidate CreateHost(string foundation, IPEndPoint endPoint, ushort localPref = 65535)
@@ -92,6 +106,19 @@ public sealed class IceCandidate
     {
         uint priority = CalculatePriority(IceCandidateType.ServerReflexive, localPref, componentId: 1);
         return new IceCandidate(foundation, 1, "udp", priority, publicEndPoint, IceCandidateType.ServerReflexive, baseEndPoint);
+    }
+
+    /// <summary>
+    /// Factory for creating a Relayed candidate discovered via TURN.
+    /// </summary>
+    public static IceCandidate CreateRelayed(
+        string foundation,
+        IPEndPoint relayedEndPoint,
+        IPEndPoint baseEndPoint,
+        ushort localPref = 0)
+    {
+        uint priority = CalculatePriority(IceCandidateType.Relayed, localPref, componentId: 1);
+        return new IceCandidate(foundation, 1, "udp", priority, relayedEndPoint, IceCandidateType.Relayed, baseEndPoint);
     }
 
     /// <summary>

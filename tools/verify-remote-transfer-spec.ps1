@@ -102,8 +102,8 @@ foreach ($f in @($SigClientPath, $SigMsgPath, $SigTestPath)) {
 }
 Write-Host "  PASS: Zero-knowledge signaling, broker message protocol, and WebSocket client verified." -ForegroundColor Green
 
-# --- Check 6: NAT Traversal Standards (ICE / STUN / TURN) & StunClient / ICE Engine ---
-Write-Host "`n[Check 6/10] Auditing NAT Traversal Standards (ICE, STUN, TURN), StunClient & ICE Gatherer..." -ForegroundColor Yellow
+# --- Check 6: NAT Traversal Standards (ICE / STUN / TURN) & StunClient / TurnClient / ICE Engine ---
+Write-Host "`n[Check 6/10] Auditing NAT Traversal Standards (ICE, STUN, TURN), StunClient, TurnClient & ICE Gatherer..." -ForegroundColor Yellow
 if ($SpecContent -notmatch "RFC 8445" -or $SpecContent -notmatch "RFC 8489" -or $SpecContent -notmatch "RFC 8656") {
     Write-Error "FAIL: Specification missing IETF RFC standards for ICE, STUN, and TURN."
 }
@@ -112,21 +112,27 @@ if ($SpecContent -notmatch "Server-Reflexive Candidates" -or $SpecContent -notma
 }
 $StunClientPath = Join-Path $ProjectRoot "windows\Glide.Transport\Remote\StunClient.cs"
 $StunTestPath = Join-Path $ProjectRoot "windows\Glide.Tests\StunClientTests.cs"
+$TurnClientPath = Join-Path $ProjectRoot "windows\Glide.Transport\Remote\TurnClient.cs"
+$TurnTestPath = Join-Path $ProjectRoot "windows\Glide.Tests\TurnClientTests.cs"
 $IceCandidatePath = Join-Path $ProjectRoot "windows\Glide.Core\Remote\IceCandidate.cs"
 $IceGathererPath = Join-Path $ProjectRoot "windows\Glide.Transport\Remote\IceCandidateGatherer.cs"
 $IceTestPath = Join-Path $ProjectRoot "windows\Glide.Tests\IceCandidateTests.cs"
 $GathererTestPath = Join-Path $ProjectRoot "windows\Glide.Tests\IceCandidateGathererTests.cs"
 
-foreach ($f in @($StunClientPath, $StunTestPath, $IceCandidatePath, $IceGathererPath, $IceTestPath, $GathererTestPath)) {
+foreach ($f in @($StunClientPath, $StunTestPath, $TurnClientPath, $TurnTestPath, $IceCandidatePath, $IceGathererPath, $IceTestPath, $GathererTestPath)) {
     if (-not (Test-Path $f)) {
-        Write-Error "FAIL: Missing ICE / STUN component: $f"
+        Write-Error "FAIL: Missing ICE / STUN / TURN component: $f"
     }
 }
 $StunContent = Get-Content $StunClientPath -Raw
 if ($StunContent -notmatch "BuildBindingRequest" -or $StunContent -notmatch "ParseBindingResponse" -or $StunContent -notmatch "AttrXorMappedAddress") {
     Write-Error "FAIL: StunClient.cs missing RFC 8489 packet builder or XOR-MAPPED-ADDRESS parser."
 }
-Write-Host "  PASS: ICE (RFC 8445), STUN (RFC 8489), IceCandidate, StunClient, and IceCandidateGatherer verified." -ForegroundColor Green
+$TurnContent = Get-Content $TurnClientPath -Raw
+if ($TurnContent -notmatch "BuildAllocateRequest" -or $TurnContent -notmatch "ParseAllocateResponse" -or $TurnContent -notmatch "BuildSendIndication") {
+    Write-Error "FAIL: TurnClient.cs missing RFC 8656 packet builder or parser methods."
+}
+Write-Host "  PASS: ICE (RFC 8445), STUN (RFC 8489), TURN (RFC 8656), StunClient, TurnClient, and IceCandidateGatherer verified." -ForegroundColor Green
 
 # --- Check 7: Remote Invitation Schema, Codecs & Unit Tests ---
 Write-Host "`n[Check 7/10] Auditing Remote Invitation Schema, Codecs & Unit Tests..." -ForegroundColor Yellow
@@ -158,7 +164,18 @@ if ($SpecContent -notmatch "100 MB per transfer") {
 if ($SpecContent -notmatch "concurrent transfer sessions" -or $SpecContent -notmatch "rate limits") {
     Write-Error "FAIL: Specification missing relay connection rate limiting rules."
 }
-Write-Host "  PASS: 100 MB relay quota and connection rate limits verified." -ForegroundColor Green
+$QuotaTrackerPath = Join-Path $ProjectRoot "windows\Glide.Core\Remote\RelayQuotaTracker.cs"
+$QuotaTestPath = Join-Path $ProjectRoot "windows\Glide.Tests\RelayQuotaTrackerTests.cs"
+foreach ($f in @($QuotaTrackerPath, $QuotaTestPath)) {
+    if (-not (Test-Path $f)) {
+        Write-Error "FAIL: Missing relay quota component: $f"
+    }
+}
+$QuotaContent = Get-Content $QuotaTrackerPath -Raw
+if ($QuotaContent -notmatch "MaxRelayBytesPerTransfer" -or $QuotaContent -notmatch "MaxConcurrentSessions" -or $QuotaContent -notmatch "MaxAttemptsPerMinute") {
+    Write-Error "FAIL: RelayQuotaTracker missing quota or rate limit constants."
+}
+Write-Host "  PASS: 100 MB relay quota, concurrency limits, and RelayQuotaTracker engine verified." -ForegroundColor Green
 
 # --- Check 9: Metered Cellular Data Protection ---
 Write-Host "`n[Check 9/10] Auditing Metered Cellular Data Protection Invariants..." -ForegroundColor Yellow
@@ -170,7 +187,18 @@ if ($SpecContent -notmatch "NET_CAPABILITY_NOT_METERED" -or
 if ($SpecContent -notmatch "Metered Cellular Connection" -or $SpecContent -notmatch "Warning") {
     Write-Error "FAIL: Specification missing metered connection warning dialog contract."
 }
-Write-Host "  PASS: OS metered network detection and user warning prompt contracts verified." -ForegroundColor Green
+$MeteredPath = Join-Path $ProjectRoot "windows\Glide.Core\Remote\MeteredNetworkProtection.cs"
+$MeteredTestPath = Join-Path $ProjectRoot "windows\Glide.Tests\MeteredNetworkProtectionTests.cs"
+foreach ($f in @($MeteredPath, $MeteredTestPath)) {
+    if (-not (Test-Path $f)) {
+        Write-Error "FAIL: Missing metered protection component: $f"
+    }
+}
+$MeteredContent = Get-Content $MeteredPath -Raw
+if ($MeteredContent -notmatch "IMeteredNetworkDetector" -or $MeteredContent -notmatch "MeteredTransferPrompt" -or $MeteredContent -notmatch "MeteredTransferPolicy") {
+    Write-Error "FAIL: MeteredNetworkProtection missing detector, prompt, or policy."
+}
+Write-Host "  PASS: OS metered network detection, user warning prompt, and policy engine verified." -ForegroundColor Green
 
 # --- Check 10: Remote Threat Model Additions (Threats R01 to R08) ---
 Write-Host "`n[Check 10/10] Auditing Remote Threat Model Additions (R01-R08)..." -ForegroundColor Yellow
