@@ -202,6 +202,7 @@
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="90" />
                                     <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
 
                                 <TextBlock Grid.Column="0" Text="Target IP:" VerticalAlignment="Center" Margin="0,0,10,0"
@@ -214,7 +215,11 @@
                                 <TextBox Grid.Column="3" Style="{StaticResource ModernTextBoxStyle}" Text="{Binding PeerPort, UpdateSourceTrigger=PropertyChanged}"
                                          Margin="0,0,14,0" VerticalAlignment="Center" />
 
-                                <Button Grid.Column="4" Style="{StaticResource PrimaryButtonStyle}" Content="🚀 Send Files"
+                                <Button Grid.Column="4" Style="{StaticResource SecondaryButtonStyle}" Content="🌐 Web Share"
+                                        Command="{Binding StartWebShareCommand}" Margin="0,0,10,0" Padding="14,8"
+                                        ToolTip="Share selected files with any web browser on local Wi-Fi without installing Glide" />
+
+                                <Button Grid.Column="5" Style="{StaticResource PrimaryButtonStyle}" Content="🚀 Send Files"
                                         Command="{Binding SendFilesCommand}" MinWidth="130" />
                             </Grid>
                         </StackPanel>
@@ -447,6 +452,41 @@
                         <Button Grid.Column="2" Style="{StaticResource PrimaryButtonStyle}" Content="Pair Device"
                                 Command="{Binding SubmitPairModalCommand}" Padding="0,10" />
                     </Grid>
+                </StackPanel>
+            </Border>
+        </Border>
+
+        <!-- Web Share Active Modal Overlay -->
+        <Border Background="#CC070B16" Visibility="{Binding IsWebShareModalVisible, Converter={StaticResource BoolToVis}}"
+                HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+            <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource CardBorderBrush}"
+                    BorderThickness="1" CornerRadius="16" Padding="28" Width="520" HorizontalAlignment="Center"
+                    VerticalAlignment="Center">
+                <StackPanel HorizontalAlignment="Center" MaxWidth="480">
+                    <TextBlock Text="🌐" FontSize="36" HorizontalAlignment="Center" Margin="0,0,0,8" />
+                    <TextBlock Text="Web Browser Transfer Active" FontSize="18" FontWeight="Bold"
+                               Foreground="{StaticResource TextPrimaryBrush}" HorizontalAlignment="Center" Margin="0,0,0,6" />
+                    <TextBlock Text="Open this single-use link on any browser (iOS, Android, macOS, Linux, ChromeOS) connected to the same Wi-Fi network to download or upload files:"
+                               FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" TextAlignment="Center" TextWrapping="Wrap" Margin="0,0,0,16" />
+
+                    <!-- Web Share URL Box -->
+                    <Border Background="{StaticResource SurfaceHighBrush}" BorderBrush="{StaticResource CardBorderBrush}"
+                            BorderThickness="1" CornerRadius="8" Padding="12,10" Margin="0,0,0,12">
+                        <TextBox Style="{StaticResource ModernTextBoxStyle}" Text="{Binding WebShareUrl, Mode=OneWay}"
+                                 IsReadOnly="True" FontSize="12" Background="Transparent" BorderThickness="0"
+                                 TextWrapping="Wrap" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" />
+                    </Border>
+
+                    <Button Style="{StaticResource SecondaryButtonStyle}" Content="📋 Copy Web Share Link"
+                            Command="{Binding CopyWebShareLinkCommand}" HorizontalAlignment="Center" Padding="16,6" Margin="0,0,0,16" />
+
+                    <TextBlock Text="⚠️ Single-use onboarding token expires in 120 seconds if not opened. Transfer stays 100% on your local network."
+                               FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextAlignment="Center" TextWrapping="Wrap" Margin="0,0,0,20" />
+
+                    <!-- Stop Button -->
+                    <Button Style="{StaticResource PrimaryButtonStyle}" Content="⏹ Stop Web Share"
+                            Command="{Binding StopWebShareCommand}" Width="160" HorizontalAlignment="Center" Padding="0,10"
+                            Background="{StaticResource ErrorBrush}" />
                 </StackPanel>
             </Border>
         </Border>

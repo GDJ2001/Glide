@@ -15,6 +15,7 @@ using Glide.Core.Transport.Lan;
 using Glide.Transport.Discovery;
 using Glide.Transport.Framing;
 using Glide.Transport.Sockets;
+using Glide.Transport.Web;
 using Glide.Windows.UI.Common;
 using Microsoft.Win32;
 using ProtocolViolationException = Glide.Core.Models.ProtocolViolationException;
@@ -55,6 +56,22 @@ public class MainViewModel : ViewModelBase
     private LanInvitation? _activeInvitation;
     private LanInvitation? _pairedInvitation;
 
+    private GlideWebGateway? _webGateway;
+    private bool _isWebShareModalVisible;
+    private string _webShareUrl = "";
+
+    public bool IsWebShareModalVisible
+    {
+        get => _isWebShareModalVisible;
+        set => SetProperty(ref _isWebShareModalVisible, value);
+    }
+
+    public string WebShareUrl
+    {
+        get => _webShareUrl;
+        set => SetProperty(ref _webShareUrl, value);
+    }
+
     public ObservableCollection<TransferItemViewModel> SelectedFiles { get; } = [];
     public ObservableCollection<HistoryItemViewModel> HistoryItems { get; } = [];
 
@@ -74,6 +91,9 @@ public class MainViewModel : ViewModelBase
     public RelayCommand SelectPeerCommand { get; }
     public RelayCommand RefreshPeersCommand { get; }
     public RelayCommand CopyPairingLinkCommand { get; }
+    public RelayCommand StartWebShareCommand { get; }
+    public RelayCommand StopWebShareCommand { get; }
+    public RelayCommand CopyWebShareLinkCommand { get; }
 
     public MainViewModel()
     {
@@ -115,6 +135,19 @@ public class MainViewModel : ViewModelBase
                 StatusMessage = "Pairing link copied to clipboard!";
             }
         });
+
+        StartWebShareCommand = new RelayCommand(async () => await ExecuteStartWebShareAsync(), () => !IsTransferActive && SelectedFiles.Count > 0);
+        StopWebShareCommand = new RelayCommand(async () => await ExecuteStopWebShareAsync());
+        CopyWebShareLinkCommand = new RelayCommand(() =>
+        {
+            if (!string.IsNullOrEmpty(WebShareUrl))
+            {
+                Clipboard.SetText(WebShareUrl);
+                StatusMessage = "Web Share link copied to clipboard!";
+            }
+        });
+
+        SelectedFiles.CollectionChanged += (_, _) => CommandManager.InvalidateRequerySuggested();
 
         _mdnsService.PeerDiscovered += peer =>
         {
@@ -920,5 +953,76 @@ public class MainViewModel : ViewModelBase
                 UseShellExecute = true
             });
         }
+    }
+
+    private async Task ExecuteStartWebShareAsync()
+    {
+        if (SelectedFiles.Count == 0)
+        {
+            StatusMessage = "Please add at least one file to share via Web.";
+            return;
+        }
+
+        try
+        {
+            await ExecuteStopWebShareAsync();
+
+            var offeredItems = SelectedFiles
+                .Where(f => File.Exists(f.FilePath))
+                .Select(f => new OfferedWebItem(f.FilePath))
+                .ToList();
+
+            if (offeredItems.Count == 0)
+            {
+                StatusMessage = "None of the selected files exist on disk.";
+                return;
+            }
+
+            string hostName = Dns.GetHostName();
+            var localIp = Dns.GetHostAddresses(hostName)
+                .FirstOrDefault(ip => ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork && !IPAddress.IsLoopback(ip))?
+                .ToString() ?? "127.0.0.1";
+
+            _webGateway = new GlideWebGateway(
+                host: localIp,
+                port: 0,
+                offeredItems: offeredItems,
+                deviceName: Environment.MachineName);
+
+            await _webGateway.StartAsync();
+
+            WebShareUrl = _webGateway.OnboardingUrl;
+            IsWebShareModalVisible = true;
+            StatusMessage = $"Web Share active on port {_webGateway.Port} ({offeredItems.Count} item(s)).";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Failed to start Web Share: {ex.Message}";
+            IsWebShareModalVisible = false;
+        }
+    }
+
+    private async Task ExecuteStopWebShareAsync()
+    {
+        if (_webGateway != null)
+        {
+            try
+            {
+                await _webGateway.StopAsync();
+                await _webGateway.DisposeAsync();
+            }
+            catch
+            {
+                // Ignored
+            }
+            finally
+            {
+                _webGateway = null;
+            }
+        }
+
+        IsWebShareModalVisible = false;
+        WebShareUrl = "";
+        StatusMessage = "Web Share stopped.";
     }
 }
