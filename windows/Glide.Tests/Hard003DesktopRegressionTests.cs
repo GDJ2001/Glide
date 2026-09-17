@@ -23,6 +23,7 @@ public sealed class Hard003ConsoleRuntimeCollectionDefinition
 /// These tests intentionally exercise the real Glide.App send/receive orchestration instead of
 /// source-text scanning. They are expected to fail until the corresponding HARD-011..016 fixes land.
 /// </summary>
+[Trait("HARD", "003-red")]
 [Collection("HARD-003 console/runtime")]
 public sealed class Hard003DesktopRegressionTests : IDisposable
 {
@@ -289,7 +290,7 @@ public sealed class Hard003DesktopRegressionTests : IDisposable
 
         Assert.InRange(
             allocationAtOfferPage,
-            0,
+            0L,
             allocationBudget);
     }
 
