@@ -5,6 +5,9 @@ import dev.glide.app.ui.discovery.DiscoveryUiState
 import dev.glide.app.ui.discovery.DiscoveryViewModel
 import dev.glide.app.ui.discovery.ReceiveReadinessUiState
 import dev.glide.app.ui.discovery.ReceiveReadinessViewModel
+import dev.glide.app.ui.pairing.QrPairingViewModel
+import dev.glide.app.ui.pairing.QrReceiverUiState
+import dev.glide.core.pairing.LanEndpoint
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -12,6 +15,7 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -61,6 +65,27 @@ class Hard003ProductionWiringRegressionTest {
             )
         } finally {
             viewModel.setBlocked(BlockedReason.TransportError("HARD-003 test cleanup"))
+        }
+    }
+
+    @Test
+    fun qrPairing_withoutLiveListenerAuthority_mustNotMintReadyInvitationFromCallerSuppliedEndpoint() = runTest(dispatcher) {
+        val viewModel = QrPairingViewModel(qrBitmapGenerator = { null })
+        try {
+            viewModel.startReceiving(
+                deviceName = "HARD-003 Receiver",
+                endpoints = listOf(LanEndpoint(address = "192.168.1.50", port = 4242)),
+                spkiSha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                networkGeneration = 0L,
+                ttlSeconds = 120
+            )
+
+            assertFalse(
+                "A receive QR must be minted only from a listener/runtime that proves the endpoint and SPKI are live; arbitrary caller-supplied placeholder values must not produce Ready state.",
+                viewModel.receiverState.value is QrReceiverUiState.Ready
+            )
+        } finally {
+            viewModel.stopReceiving()
         }
     }
 }
