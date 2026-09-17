@@ -93,8 +93,8 @@ if ($SpecContent -notmatch "APNs" -or $SpecContent -notmatch "iCloud") {
 }
 Write-Host "  PASS: Zero-cloud, 100% offline, and zero-APNs/iCloud invariants verified." -ForegroundColor Green
 
-# --- Check 5: Apple Network.framework Wire Mapping & LanRecord Codec ---
-Write-Host "`n[Check 5/10] Auditing Network.framework Wire Mapping & LanRecord Codec..." -ForegroundColor Yellow
+# --- Check 5: Apple Network.framework Wire Mapping, LanRecord Codec & SPKI Pinning ---
+Write-Host "`n[Check 5/10] Auditing Network.framework Wire Mapping, LanRecord Codec & SPKI Pinning..." -ForegroundColor Yellow
 if ($SpecContent -notmatch "NWListener" -or $SpecContent -notmatch "42424") {
     Write-Error "FAIL: Specification missing NWListener port 42424 configuration."
 }
@@ -106,26 +106,50 @@ if ($SpecContent -notmatch "TLSv13") {
 }
 $LanRecordPath = Join-Path $ProjectRoot "apple\GlideCoreKit\Sources\GlideCoreKit\Models\LanRecord.swift"
 $LanRecordTestPath = Join-Path $ProjectRoot "apple\GlideCoreKit\Tests\GlideCoreKitTests\LanRecordTests.swift"
-foreach ($f in @($LanRecordPath, $LanRecordTestPath)) {
+$SpkiPath = Join-Path $ProjectRoot "apple\GlideCoreKit\Sources\GlideCoreKit\Transport\SpkiPinningValidator.swift"
+$SpkiTestPath = Join-Path $ProjectRoot "apple\GlideCoreKit\Tests\GlideCoreKitTests\SpkiPinningValidatorTests.swift"
+$ConfigPath = Join-Path $ProjectRoot "apple\GlideCoreKit\Sources\GlideCoreKit\Transport\NetworkTransportConfig.swift"
+$ConfigTestPath = Join-Path $ProjectRoot "apple\GlideCoreKit\Tests\GlideCoreKitTests\NetworkTransportConfigTests.swift"
+
+foreach ($f in @($LanRecordPath, $LanRecordTestPath, $SpkiPath, $SpkiTestPath, $ConfigPath, $ConfigTestPath)) {
     if (-not (Test-Path $f)) {
-        Write-Error "FAIL: Missing LanRecord component: $f"
+        Write-Error "FAIL: Missing Network.framework transport component: $f"
     }
 }
 $LanContent = Get-Content $LanRecordPath -Raw
 if ($LanContent -notmatch "LanRecordCodec" -or $LanContent -notmatch "headerSize = 5" -or $LanContent -notmatch "maxRecordPayloadSize") {
     Write-Error "FAIL: LanRecord.swift missing LanRecordCodec or framing bounds."
 }
-Write-Host "  PASS: Network.framework, port 42424, TLS 1.3, and LanRecord framing verified." -ForegroundColor Green
+$SpkiContent = Get-Content $SpkiPath -Raw
+if ($SpkiContent -notmatch "computeSpkiSha256Hex" -or $SpkiContent -notmatch "verify") {
+    Write-Error "FAIL: SpkiPinningValidator.swift missing computeSpkiSha256Hex or verify methods."
+}
+$ConfigContent = Get-Content $ConfigPath -Raw
+if ($ConfigContent -notmatch "defaultPort.*42424" -or $ConfigContent -notmatch "minTlsVersion.*TLSv1\.3") {
+    Write-Error "FAIL: NetworkTransportConfig.swift missing default port or TLS 1.3 requirement."
+}
+Write-Host "  PASS: Network.framework, port 42424, TLS 1.3, SPKI pinning, and LanRecord framing verified." -ForegroundColor Green
 
-# --- Check 6: Bonjour Discovery Specification ---
-Write-Host "`n[Check 6/10] Auditing Bonjour Discovery Specification..." -ForegroundColor Yellow
+# --- Check 6: Bonjour Discovery Specification & BonjourService ---
+Write-Host "`n[Check 6/10] Auditing Bonjour Discovery Specification & BonjourService..." -ForegroundColor Yellow
 if ($SpecContent -notmatch "_glide\._tcp" -or $SpecContent -notmatch "local\.") {
     Write-Error "FAIL: Specification missing _glide._tcp Bonjour service type in local. domain."
 }
 if ($SpecContent -notmatch "spki" -or $SpecContent -notmatch "presence") {
     Write-Error "FAIL: Specification missing TXT record schema attributes (spki, presence)."
 }
-Write-Host "  PASS: Bonjour service type (_glide._tcp) and TXT record schema verified." -ForegroundColor Green
+$BonjourPath = Join-Path $ProjectRoot "apple\GlideCoreKit\Sources\GlideCoreKit\Transport\BonjourService.swift"
+$BonjourTestPath = Join-Path $ProjectRoot "apple\GlideCoreKit\Tests\GlideCoreKitTests\BonjourServiceTests.swift"
+foreach ($f in @($BonjourPath, $BonjourTestPath)) {
+    if (-not (Test-Path $f)) {
+        Write-Error "FAIL: Missing Bonjour service component: $f"
+    }
+}
+$BonjourContent = Get-Content $BonjourPath -Raw
+if ($BonjourContent -notmatch "buildTxtRecord" -or $BonjourContent -notmatch "parseTxtRecord" -or $BonjourContent -notmatch "BonjourPeer") {
+    Write-Error "FAIL: BonjourService.swift missing buildTxtRecord, parseTxtRecord, or BonjourPeer."
+}
+Write-Host "  PASS: Bonjour service type (_glide._tcp), TXT record schema, and BonjourService verified." -ForegroundColor Green
 
 # --- Check 7: Authentication & Pairing Parity (SAS & Invitation Codecs) ---
 Write-Host "`n[Check 7/10] Auditing Authentication & Pairing Parity (SAS & Invitation Codecs)..." -ForegroundColor Yellow
