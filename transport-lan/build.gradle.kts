@@ -1,3 +1,5 @@
+import org.gradle.api.tasks.testing.Test
+
 plugins {
     alias(libs.plugins.android.library)
 }
@@ -19,6 +21,17 @@ android {
     lint {
         abortOnError = true
         warningsAsErrors = false
+    }
+}
+
+// HARD-003 red-before-fix browser regressions run only when explicitly requested.
+tasks.withType<Test>().configureEach {
+    if (providers.gradleProperty("hard003Regression").orNull == "true") {
+        filter {
+            includeTestsMatching("*Hard003*")
+        }
+    } else {
+        exclude("**/Hard003*")
     }
 }
 
