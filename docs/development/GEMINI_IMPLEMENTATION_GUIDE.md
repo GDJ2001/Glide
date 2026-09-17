@@ -1,28 +1,32 @@
 # Gemini / AI implementation guide
 
-Start every development session from the [documentation portal](../README.md), then read the [current hardening/completion plan](../planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md) and the selected task in [TODO_MASTER](../TODO_MASTER.md).
+Start every development session from the [documentation portal](../README.md), then read the [current hardening/completion plan](../planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md), the [HARD-002 reconciliation](../planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md), and the selected task in [TODO_MASTER](../TODO_MASTER.md).
 
-Glide is no longer an Android-only planning repository. It contains substantial Android, Windows/.NET, Linux packaging, browser/LAN, Apple and remote-transfer work. Historical planning and completion records are evidence, not a substitute for inspecting the current checkout.
+Glide contains substantial Android, Windows/.NET, Linux, browser/LAN, Apple and remote-transfer work. Historical planning and completion records are evidence, not a substitute for inspecting the current checkout.
 
-**Current next READY task:** [HARD-002](../TODO_MASTER.md#hard-002).
+**Current next READY task:** [HARD-003](../TODO_MASTER.md#hard-003).
 
 ## Authority order
 
 For current work, resolve conflicts in this order:
 
 1. Current HARD task in `TODO_MASTER.md`.
-2. Current hardening/completion plan.
+2. Current hardening/completion plan and HARD reconciliation reports.
 3. Actual source, executable configuration and current tests.
 4. Applicable protocol specification and accepted ADR.
 5. Historical task/session/release evidence.
 
-Never assume a historical `COMPLETE`, release or certification label applies to later code.
+Never assume a historical `COMPLETE`, release or certification label applies to later code. HARD-002 explicitly classified post-review Apple and remote code as partial component/library implementation rather than current production/interoperability certification.
 
 ## Current scope
 
 The active hardening cycle completes Android local sharing, Windows 11/Linux local sharing, secure browser local sharing, folders, persistent trust, true resume and the quality/release gates required to ship them.
 
 Native Apple applications and remote/Internet transfers are **deferred**, even though implementation material exists. Preserve that material; do not extend it unless a current HARD task or explicit user instruction authorizes it.
+
+## Immediate HARD-003 rule
+
+HARD-003 is a regression task. Before repairing production behavior, add executable tests/fixtures that expose the confirmed defects identified by the review/reconciliation. Prefer tests that exercise production wiring or independently implemented peers. Source-text checks alone do not satisfy HARD-003. Record which tests are red against the defect and which later task is responsible for the fix.
 
 ## Task execution protocol
 
@@ -57,6 +61,7 @@ Native Apple applications and remote/Internet transfers are **deferred**, even t
 ### Protocol and interoperability
 
 - Kotlin, C# and later browser/native adapters implement the same ordering, pagination, identifiers, consent and terminal-result semantics.
+- LAN Profile 1 currently uses the reconciled 5-byte header and canonical record kinds; do not revive stale 4-byte framing from historical Apple documentation.
 - Any wire change updates specifications and shared golden fixtures before dependent implementations are considered complete.
 - Do not weaken one implementation to accommodate a broken peer. Fix the incompatible peer.
 
@@ -84,6 +89,8 @@ Passing tests are necessary, not sufficient. Examples:
 - An emulator does not prove physical radio reliability.
 - A virtual multi-gigabyte stream does not prove real-device network throughput.
 - A built artifact is not a released artifact.
+- A TURN packet codec without credential negotiation or live relay proof is not an operational TURN deployment.
+- A Swift coordinator with default in-memory providers is not a native Apple runtime.
 
 Use `REVIEW_REQUIRED` or `BLOCKED` rather than manufacturing completion when required evidence is unavailable.
 
