@@ -242,24 +242,22 @@ public sealed class GlideWebGateway : IAsyncDisposable
     {
         var request = context.Request;
 
-        // Check query string token: ?token=<hex>
+        // Check query string token: ?token=<hex> (Strictly One-Use)
         string? queryToken = request.QueryString["token"];
         if (!string.IsNullOrEmpty(queryToken))
         {
             if (string.Equals(queryToken, _tokenHex, StringComparison.OrdinalIgnoreCase))
             {
-                // Verify TTL
-                if ((DateTimeOffset.UtcNow - _tokenCreatedAt).TotalSeconds <= _tokenTtlSeconds)
+                lock (_listener)
                 {
-                    _tokenConsumed = true;
-                    // Issue HttpOnly SameSite=Strict session cookie
-                    var cookie = new Cookie("glide_web_session", _sessionCookie, "/")
+                    // If already consumed, reject token replay
+                    if (!_tokenConsumed && (DateTimeOffset.UtcNow - _tokenCreatedAt).TotalSeconds <= _tokenTtlSeconds)
                     {
-                        HttpOnly = true,
-                        Secure = false // Local HTTP subnet
-                    };
-                    context.Response.Cookies.Add(cookie);
-                    return true;
+                        _tokenConsumed = true;
+                        // Issue HttpOnly SameSite=Strict session cookie
+                        context.Response.Headers.Set("Set-Cookie", $"glide_web_session={_sessionCookie}; Path=/; HttpOnly; SameSite=Strict");
+                        return true;
+                    }
                 }
             }
             return false;

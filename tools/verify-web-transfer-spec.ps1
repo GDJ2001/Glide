@@ -3,7 +3,8 @@
     Automated auditor for Glide ADR-0019: Browser and Web Client Zero-Install Local Transfer Gateway.
 .DESCRIPTION
     Validates ADR-0019, technical specification completeness, zero-cloud offline invariants,
-    zero-CDN embedded SPA constraints, browser security sandbox policies, and quarantine staging.
+    zero-CDN embedded SPA constraints, browser security sandbox policies, quarantine staging,
+    and Phase W1-W5 cross-platform security conformance.
 #>
 
 $ErrorActionPreference = "Stop"
@@ -14,7 +15,7 @@ Write-Host "    Glide ADR-0019: Browser & Web Transfer Slice Auditor         " -
 Write-Host "=================================================================" -ForegroundColor Cyan
 
 # --- Check 1: ADR-0019 Existence and Decision Index ---
-Write-Host "`n[Check 1/8] Auditing ADR-0019 existence and decision index..." -ForegroundColor Yellow
+Write-Host "`n[Check 1/9] Auditing ADR-0019 existence and decision index..." -ForegroundColor Yellow
 $AdrPath = Join-Path $ProjectRoot "docs\adr\ADR-0019-browser-web-local-transfer.md"
 $AdrIndex = Join-Path $ProjectRoot "docs\adr\README.md"
 
@@ -32,7 +33,7 @@ if ($IndexContent -notmatch "ADR-0019 — Browser and web client zero-install lo
 Write-Host "  PASS: ADR-0019 exists and is indexed in docs/adr/README.md." -ForegroundColor Green
 
 # --- Check 2: Technical Specification Completeness ---
-Write-Host "`n[Check 2/8] Auditing Browser Web technical specification completeness..." -ForegroundColor Yellow
+Write-Host "`n[Check 2/9] Auditing Browser Web technical specification completeness..." -ForegroundColor Yellow
 $SpecPath = Join-Path $ProjectRoot "docs\future\ANDROID_BROWSER_WEB_SPECIFICATION.md"
 if (-not (Test-Path $SpecPath)) {
     Write-Error "FAIL: Specification not found at $SpecPath"
@@ -61,7 +62,7 @@ foreach ($section in $RequiredSections) {
 Write-Host "  PASS: Specification contains complete REST endpoints, QR token lifecycle, CSP headers, and 5-phase roadmap." -ForegroundColor Green
 
 # --- Check 3: Zero-Cloud & Zero-CDN Offline Invariants ---
-Write-Host "`n[Check 3/8] Auditing Zero-Cloud & Zero-CDN Offline Invariants..." -ForegroundColor Yellow
+Write-Host "`n[Check 3/9] Auditing Zero-Cloud & Zero-CDN Offline Invariants..." -ForegroundColor Yellow
 if ($SpecContent -notmatch "Zero Cloud" -or $SpecContent -notmatch "100% Offline") {
     Write-Error "FAIL: Specification missing explicit Zero Cloud / 100% Offline invariant statement."
 }
@@ -71,7 +72,7 @@ if ($SpecContent -notmatch "Zero External CDN" -or $SpecContent -notmatch "Googl
 Write-Host "  PASS: Zero-cloud, 100% offline, and zero-CDN air-gapped invariants verified." -ForegroundColor Green
 
 # --- Check 4: Browser Security Sandbox & Header Policy ---
-Write-Host "`n[Check 4/8] Auditing Browser Security Sandbox & Header Policy..." -ForegroundColor Yellow
+Write-Host "`n[Check 4/9] Auditing Browser Security Sandbox & Header Policy..." -ForegroundColor Yellow
 $RequiredHeaders = @(
     "nosniff",
     "DENY",
@@ -86,7 +87,7 @@ foreach ($header in $RequiredHeaders) {
 Write-Host "  PASS: CSP, X-Content-Type-Options, X-Frame-Options, and cookie security policies verified." -ForegroundColor Green
 
 # --- Check 5: Cross-Platform Path Strategic Alignment ---
-Write-Host "`n[Check 5/8] Auditing cross-platform roadmap strategic alignment..." -ForegroundColor Yellow
+Write-Host "`n[Check 5/9] Auditing cross-platform roadmap strategic alignment..." -ForegroundColor Yellow
 $PathFile = Join-Path $ProjectRoot "docs\future\CROSS_PLATFORM_PATH.md"
 if (-not (Test-Path $PathFile)) {
     Write-Error "FAIL: docs/future/CROSS_PLATFORM_PATH.md missing."
@@ -98,7 +99,7 @@ if ($PathContent -notmatch "Android↔Browser" -or $PathContent -notmatch "ADR-0
 Write-Host "  PASS: CROSS_PLATFORM_PATH.md Step 3 properly references ADR-0019 and web specification." -ForegroundColor Green
 
 # --- Check 6: Cross-Platform Implementation Parity (.NET & Android/Kotlin) ---
-Write-Host "`n[Check 6/8] Auditing Cross-Platform Implementation Parity (.NET & Android/Kotlin)..." -ForegroundColor Yellow
+Write-Host "`n[Check 6/9] Auditing Cross-Platform Implementation Parity (.NET & Android/Kotlin)..." -ForegroundColor Yellow
 
 # Verify .NET Gateway
 $DotNetGateway = Join-Path $ProjectRoot "windows\Glide.Transport\Web\GlideWebGateway.cs"
@@ -137,7 +138,7 @@ if (-not (Test-Path $QrGen) -or -not (Test-Path $AndroidQr)) {
 Write-Host "  PASS: Cross-platform .NET and Android Web Gateways, embedded assets, and QR onboarding verified." -ForegroundColor Green
 
 # --- Check 7: Phase W3 Streaming Interoperability (Range, 206, 416, HEAD, RFC 6266) ---
-Write-Host "`n[Check 7/8] Auditing Phase W3 Streaming Interoperability (Range, HEAD, RFC 6266)..." -ForegroundColor Yellow
+Write-Host "`n[Check 7/9] Auditing Phase W3 Streaming Interoperability (Range, HEAD, RFC 6266)..." -ForegroundColor Yellow
 
 # Verify .NET Phase W3 features
 if ($DotNetGatewaySrc -notmatch "Accept-Ranges" -or
@@ -164,7 +165,7 @@ if (-not (Test-Path $WebShareVm)) {
 Write-Host "  PASS: HTTP Range 206/416 partial streaming, HEAD support, RFC 6266 disposition, and WebShareViewModel verified." -ForegroundColor Green
 
 # --- Check 8: Phase W4 Quarantine Uploader, Proposal Flow, Checksum Verification & Sanitization ---
-Write-Host "`n[Check 8/8] Auditing Phase W4 Quarantine Uploader & Sanitization Flow..." -ForegroundColor Yellow
+Write-Host "`n[Check 8/9] Auditing Phase W4 Quarantine Uploader & Sanitization Flow..." -ForegroundColor Yellow
 
 # Verify .NET Phase W4 features
 if ($DotNetGatewaySrc -notmatch "/api/v1/upload/proposal" -or
@@ -213,6 +214,52 @@ if ($DotNetJsSrc -notmatch "/api/v1/upload/proposal" -or $KotlinJsSrc -notmatch 
 }
 
 Write-Host "  PASS: Phase W4 proposal flow, quarantine staging, SHA-256 verification, 507/422 handling, and filesystem sanitization verified." -ForegroundColor Green
+
+# --- Check 9: Phase W5 Security Conformance & ADR-0019 Acceptance ---
+Write-Host "`n[Check 9/9] Auditing Phase W5 Security Conformance & ADR-0019 Acceptance..." -ForegroundColor Yellow
+
+# Verify ADR-0019 status is Accepted
+if ($AdrContent -notmatch "Status.*\bAccepted\b") {
+    Write-Error "FAIL: docs/adr/ADR-0019-browser-web-local-transfer.md status must be Accepted."
+}
+
+# Verify Token Replay Protection in .NET Gateway
+if ($DotNetGatewaySrc -notmatch "_tokenConsumed") {
+    Write-Error "FAIL: .NET GlideWebGateway missing _tokenConsumed check for token replay prevention."
+}
+
+# Verify Token Replay Protection in Kotlin Gateway
+if ($KotlinGatewaySrc -notmatch "isTokenRedeemed") {
+    Write-Error "FAIL: Kotlin GlideWebGateway missing isTokenRedeemed check for token replay prevention."
+}
+
+# Verify .NET Security Conformance Test Suite
+$DotNetSecTests = Join-Path $ProjectRoot "windows\Glide.Tests\WebSecurityConformanceTests.cs"
+if (-not (Test-Path $DotNetSecTests)) {
+    Write-Error "FAIL: windows/Glide.Tests/WebSecurityConformanceTests.cs missing."
+}
+$DotNetSecTestsSrc = Get-Content $DotNetSecTests -Raw
+if ($DotNetSecTestsSrc -notmatch "TokenReplay" -or
+    $DotNetSecTestsSrc -notmatch "SecurityHeaders" -or
+    $DotNetSecTestsSrc -notmatch "UnauthorizedAccess" -or
+    $DotNetSecTestsSrc -notmatch "SessionCookie") {
+    Write-Error "FAIL: WebSecurityConformanceTests.cs missing key security assertions."
+}
+
+# Verify Kotlin Security Conformance Test Suite
+$KotlinSecTests = Join-Path $ProjectRoot "transport-lan\src\test\kotlin\dev\glide\transport\lan\web\WebSecurityConformanceTest.kt"
+if (-not (Test-Path $KotlinSecTests)) {
+    Write-Error "FAIL: transport-lan/src/test/kotlin/dev/glide/transport/lan/web/WebSecurityConformanceTest.kt missing."
+}
+$KotlinSecTestsSrc = Get-Content $KotlinSecTests -Raw
+if ($KotlinSecTestsSrc -notmatch "tokenReplay" -or
+    $KotlinSecTestsSrc -notmatch "securityHeaders" -or
+    $KotlinSecTestsSrc -notmatch "unauthorizedAccess" -or
+    $KotlinSecTestsSrc -notmatch "sessionCookie") {
+    Write-Error "FAIL: WebSecurityConformanceTest.kt missing key security assertions."
+}
+
+Write-Host "  PASS: Phase W5 Token Replay Rejection, dedicated cross-platform Conformance Suites, and ADR-0019 Acceptance verified." -ForegroundColor Green
 
 Write-Host "`n=================================================================" -ForegroundColor Cyan
 Write-Host "  BROWSER & WEB TRANSFER SPECIFICATION AUDIT PASSED (0 issues)   " -ForegroundColor Cyan

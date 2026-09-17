@@ -194,7 +194,7 @@ class GlideWebGateway(
             val isAuthorized = checkAuthorization(tokenParam, headers["cookie"], authHeader)
             var setCookieHeader: String? = null
 
-            if (tokenParam != null && tokenParam.equals(token, ignoreCase = true)) {
+            if (isAuthorized && tokenParam != null && tokenParam.equals(token, ignoreCase = true)) {
                 if (System.nanoTime() <= expiresAtMonoNs) {
                     val sessionCookie = "glide_web_session=$token; Path=/; HttpOnly; SameSite=Strict"
                     setCookieHeader = sessionCookie
@@ -241,10 +241,7 @@ class GlideWebGateway(
         val now = System.nanoTime()
         if (now > expiresAtMonoNs) return false
 
-        if (queryToken != null && queryToken.equals(token, ignoreCase = true)) {
-            return true
-        }
-
+        // Check session cookie first
         if (cookieHeader != null) {
             val cookies = cookieHeader.split(";")
             for (c in cookies) {
@@ -258,11 +255,23 @@ class GlideWebGateway(
             }
         }
 
+        // Check Authorization header
         if (authHeader != null && authHeader.startsWith("Bearer ", ignoreCase = true)) {
             val bearer = authHeader.substring("Bearer ".length).trim()
             if (bearer.equals(token, ignoreCase = true)) {
                 return true
             }
+        }
+
+        // Check query string token: strictly one-use redemption
+        if (queryToken != null && queryToken.equals(token, ignoreCase = true)) {
+            synchronized(this) {
+                if (!isTokenRedeemed) {
+                    isTokenRedeemed = true
+                    return true
+                }
+            }
+            return false
         }
 
         return false

@@ -1,6 +1,6 @@
 # ADR-0019 — Browser and Web Client Zero-Install Local Transfer Gateway
 
-- **Status:** Approved Future Architecture Decision
+- **Status:** Accepted (Fully Implemented across Windows .NET & Android Kotlin in Milestones M14–M18)
 - **Date:** 2026-09-17
 - **Authority:** [Cross-Platform Path](../future/CROSS_PLATFORM_PATH.md) | [Browser Web Specification](../future/ANDROID_BROWSER_WEB_SPECIFICATION.md) | [ADR-0018](ADR-0018-lan-qr-authentication-and-routing.md)
 - **Supersedes / Extends:** Fulfills Step 3 of [CROSS_PLATFORM_PATH.md](../future/CROSS_PLATFORM_PATH.md); extends [ADR-0008 (Protocol)](ADR-0008-protocol.md) and [ADR-0018 (LAN/QR)](ADR-0018-lan-qr-authentication-and-routing.md) to web browser runtimes.
