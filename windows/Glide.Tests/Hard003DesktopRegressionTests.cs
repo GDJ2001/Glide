@@ -14,7 +14,9 @@ using GlideAppProgram = Glide.App.Program;
 namespace Glide.Tests;
 
 [CollectionDefinition("HARD-003 console/runtime", DisableParallelization = true)]
-public sealed class Hard003ConsoleRuntimeCollectionDefinition;
+public sealed class Hard003ConsoleRuntimeCollectionDefinition
+{
+}
 
 /// <summary>
 /// Red-before-fix regressions for defects confirmed by the HARD review.
@@ -132,7 +134,7 @@ public sealed class Hard003DesktopRegressionTests : IDisposable
         for (int i = 0; i < 33; i++)
         {
             string path = Path.Combine(_root, $"page-{i:D2}.bin");
-            await File.WriteAllBytesAsync(path, []);
+            await File.WriteAllBytesAsync(path, Array.Empty<byte>());
             files.Add(path);
         }
 
@@ -171,8 +173,8 @@ public sealed class Hard003DesktopRegressionTests : IDisposable
     {
         string firstFile = Path.Combine(_root, "seq-a.bin");
         string secondFile = Path.Combine(_root, "seq-b.bin");
-        await File.WriteAllBytesAsync(firstFile, [0x11]);
-        await File.WriteAllBytesAsync(secondFile, [0x22]);
+        await File.WriteAllBytesAsync(firstFile, new byte[] { 0x11 });
+        await File.WriteAllBytesAsync(secondFile, new byte[] { 0x22 });
 
         using var listener = new TlsSocketListener(port: 0);
         long firstItemEndSeq = -1;
@@ -196,13 +198,16 @@ public sealed class Hard003DesktopRegressionTests : IDisposable
 
             Envelope itemStart = await channel.ReadEnvelopeAsync();
             string itemId = itemStart.Body["itemId"]!.ToString();
-            string bulkRef = itemStart.Body["bulkRef"]!.ToString();
             var readyBody = new JsonObject { ["batchId"] = batchId, ["itemId"] = itemId };
             await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.ItemReady, hello.SessionId, NewMessageId(), 4, readyBody));
 
             while (true)
             {
                 LanRecord? record = await channel.ReadRecordAsync();
+                if (record == null)
+                {
+                    throw new EndOfStreamException("Sender disconnected before STREAM_END.");
+                }
                 if (record is LanRecord.StreamEnd) break;
             }
 
@@ -336,7 +341,7 @@ public sealed class Hard003DesktopRegressionTests : IDisposable
             BindingFlags.NonPublic | BindingFlags.Static)
             ?? throw new MissingMethodException(typeof(GlideAppProgram).FullName, "RunSendAsync");
 
-        var task = (Task<int>?)method.Invoke(null, [args])
+        var task = (Task<int>?)method.Invoke(null, new object?[] { args })
             ?? throw new InvalidOperationException("RunSendAsync did not return Task<int>.");
         return await task;
     }
@@ -352,7 +357,7 @@ public sealed class Hard003DesktopRegressionTests : IDisposable
             BindingFlags.NonPublic | BindingFlags.Static)
             ?? throw new MissingMethodException(typeof(GlideAppProgram).FullName, "HandleConnectionTransferAsync");
 
-        var task = (Task<bool>?)method.Invoke(null, [connection, store, invitation, isDaemon])
+        var task = (Task<bool>?)method.Invoke(null, new object?[] { connection, store, invitation, isDaemon })
             ?? throw new InvalidOperationException("HandleConnectionTransferAsync did not return Task<bool>.");
         return await task;
     }
