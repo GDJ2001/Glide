@@ -1,166 +1,113 @@
-# Glide — High-Speed, Zero-Cloud, Cross-Platform Local File Sharing
+# Glide — Private Cross-Platform File Sharing
 
-[![Android SDK](https://img.shields.io/badge/Android-SDK%2026..37-3DDC84?style=flat&logo=android&logoColor=white)](app/)
-[![.NET](https://img.shields.io/badge/.NET-10.0-512BD4?style=flat&logo=dotnet&logoColor=white)](windows/)
-[![Kotlin](https://img.shields.io/badge/Kotlin-2.4.20-7F52FF?style=flat&logo=kotlin&logoColor=white)](transfer-core/)
-[![Zero Cloud](https://img.shields.io/badge/Privacy-100%25%20Offline%20%E2%80%A2%20Zero%20Cloud-success)](docs/security/GLIDE_THREAT_MODEL.md)
-[![Protocol](https://img.shields.io/badge/Protocol-V1%20Conforming-blue)](docs/protocol/GLIDE_PROTOCOL_V1.md)
-[![Tests](https://img.shields.io/badge/Conformance%20Tests-152%2F152%20Pass%20(100%25)-brightgreen)](windows/Glide.Tests/)
+Glide is an account-free file-sharing project with substantial Android, .NET desktop/Linux, browser/LAN, Apple, and remote-transfer implementation work. The repository is currently in an evidence-backed **code review, improvement, hardening, and development-completion cycle**.
 
-**Glide** (`dev.glide.app`) is an open-source, high-speed, private local file sharing system designed to transfer multi-gigabyte files effortlessly across mobile, desktop, and web devices without cloud intermediaries, accounts, tracking, or internet bandwidth consumption.
+> **Current authority:** [`docs/planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md`](docs/planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md) and [`docs/TODO_MASTER.md`](docs/TODO_MASTER.md). Historical `COMPLETE`, `shipped`, `certified`, or release labels are retained as historical evidence but do not certify the current checkout.
 
----
+## Current status
 
-## 1. Supported Platform Matrix
+The HARD review baseline is `ea2e811a7f2d8aaddc552e894fe04782cd08a499`. HARD-002 reconciles later source work and historical claims against the current multi-platform codebase.
 
-Glide connects heterogeneous platforms across local Wi-Fi, Ethernet, and direct wireless links:
+Evidence terms used below:
 
-| Platform | Interface | Transport Protocol | Pairing Mechanism | Status |
-|:---|:---|:---|:---|:---:|
-| **Android** | Native Jetpack Compose UI | Nearby Connections STREAM + LAN Profile 1 TLS 1.3 | 6-Digit SAS & QR Code | **Production Shipped** ✅ |
-| **Windows 10/11** | WinUI 3 / WPF Desktop & CLI | Native TLS 1.3 Socket Listener + mDNS Discovery | QR Scanning & 6-Digit SAS | **Production Shipped** ✅ |
-| **Web Browser** | Zero-Install Embedded SPA | Local HTTP/1.1 REST + Chunked Streaming | One-Use QR Scan (Bearer Token) | **Delivered & Certified** ✅ |
-| **Apple iOS / macOS** | SwiftUI App & Menu Bar Agent | Apple `Network.framework` TLS 1.3 + Bonjour mDNS | QR Scan & 6-Digit SAS | **Specified ([ADR-0020](docs/adr/ADR-0020-apple-platforms-architecture.md))** ✅ |
-| **Linux (Workstation/Server)**| Shared .NET 10 CLI & systemd Daemon | Cross-Platform Socket Listener + mDNS | Terminal Block QR & SAS | **Specified ([ADR-0021](docs/adr/ADR-0021-linux-platform-architecture.md))** ✅ |
-| **Remote Internet / WAN** | P2P NAT Traversal Pipeline | Noise IK / TLS 1.3 over ICE/STUN + Blind Relays | Out-of-Band Invitation Links | **Specified ([ADR-0022](docs/adr/ADR-0022-remote-internet-transfer.md))** ✅ |
+- **Implemented:** relevant source exists in the repository.
+- **Automated-tested:** repository evidence records automated/unit/fixture checks for the implementation; this is not physical interoperability proof.
+- **Physically/interoperability verified:** requires the exact real-device/platform path named by the active HARD task.
+- **Released:** requires an exact reviewed artifact plus external publication/distribution evidence. Historical release documents alone do not establish current release status.
 
----
+| Platform / capability | Current evidence classification | Active HARD position |
+| --- | --- | --- |
+| Android Nearby + LAN | Implemented; substantial historical automated/device evidence exists, but production wiring defects remain under review | Active scope; HARD-005–010 |
+| Windows 11 desktop/CLI | Implemented; substantial automated tests exist, but shared orchestration and native interoperability are not currently certified | Active scope; HARD-011–017 |
+| Linux CLI/daemon | Implemented; authentication/receive-lifecycle hardening remains | Active scope; HARD-016–017 |
+| Browser local sharing | Implemented prototype over local HTTP/Web gateway; plaintext HTTP path is not release-acceptable | Active scope; replace/harden in HARD-025–030 |
+| Persistent trust / folders / true resume | Partial design and implementation work exists; end-to-end integration is not complete | Active scope; HARD-018–024 |
+| Apple iOS/iPadOS/macOS | `GlideCoreKit` models/codecs/storage/coordinator components exist and have historical unit-test evidence; native production app/transport lifecycle is not certified | Preserved but deferred in this hardening cycle |
+| Remote / Internet transfer | ICE/STUN/TURN/signaling/quota/session components exist and have historical unit-test evidence; no live end-to-end remote product path is certified | Preserved but deferred in this hardening cycle |
 
-## 2. Core Invariants & Security Guarantees
+No platform should currently be described from this README as "Production Shipped" or "Delivered & Certified". GitHub has no repository release objects at the HARD-002 snapshot, and external store/publication evidence has not been revalidated in the HARD program.
 
-1. **Zero Cloud / 100% Offline by Default:**
-   All discovery, pairing, and payload transfers execute strictly across local networks. No user accounts, phone numbers, cloud file buckets (S3/GCS), or tracking telemetry exist.
-2. **Canonical Wire Protocol Parity ([`GLIDE_PROTOCOL_V1.md`](docs/protocol/GLIDE_PROTOCOL_V1.md)):**
-   All platforms strictly interchange standard Glide Protocol V1 JSON envelopes framed with 5-byte length prefixes (`LanRecord`), guaranteeing zero protocol divergence across Kotlin, C#, and Swift.
-3. **Mutual Cryptographic Authentication:**
-   Connections mandate **TLS 1.3** or **Noise IK** authenticated encryption with hardware acceleration. Unpaired sessions display a mutual 6-digit Short Authentication String (SAS) derived via RFC 5869 HKDF-SHA256.
-4. **Out-of-Band Physical Pairing (`glide://pair/v1#...`):**
-   Scanning an ephemeral host QR code extracts the server's SubjectPublicKeyInfo (SPKI) SHA-256 fingerprint and bearer token, establishing mutual trust with zero manual prompts.
-5. **Strict Sandboxed Quarantine & Atomic Commit:**
-   Inbound file streams are written directly to sandboxed quarantine storage (`staging/<sessionId>/<itemId>.quarantine`). Incoming bytes are hashed incrementally on the fly ($O(1)$ memory). Files are atomically committed to destination storage only after end-of-stream SHA-256 digest validation succeeds; corrupted or interrupted files are immediately purged.
-6. **Cross-Platform Filesystem Sanitization:**
-   Path traversal sequences (`..`), leading slashes, null bytes, Windows reserved DOS device names (`CON`, `PRN`, `AUX`, `NUL`), and control characters are stripped and sanitized, protecting receiver filesystems.
+## Active release scope
 
----
+This hardening cycle completes and verifies:
 
-## 3. Quick Start & Building
+- Android local sharing via Nearby and LAN.
+- Windows 11 native local sharing.
+- Linux native local sharing.
+- Android ↔ Windows ↔ Linux interoperability.
+- Folder transfer.
+- Persistent device trust and authenticated trusted sessions.
+- True resume with durable journals and integrity checks.
+- Secure browser-local sharing using an authenticated encrypted transport rather than the current plaintext HTTP release path.
+- CI, security, accessibility, performance, packaging, release-candidate evidence, and explicitly authorized release operations.
 
-### Prerequisites
-- **Android:** Android Studio Ladybug / Meerkat, JDK 17, Android SDK 37 (API 26 min).
-- **Desktop / CLI (.NET):** [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) (10.0.100 or higher), PowerShell 7+ (`pwsh`).
+Deferred for this cycle, while preserving existing code:
 
-### Android Build & Tests
+- Native Apple clients.
+- Remote/Internet/WAN transfer and relay infrastructure.
+
+## Repository layout
+
+```text
+Glide/
+├── app/                         # Android application, Compose UI, DI, lifecycle/service integration
+├── transfer-core/               # Pure Kotlin/JVM protocol and transfer domain
+├── transport-nearby/            # Google Nearby transport
+├── transport-lan/               # Android LAN transport and browser gateway work
+├── data/                        # Android storage, Room, settings, recovery
+├── designsystem/                # Android design system
+├── windows/                     # .NET shared core, transport, Windows UI, CLI/daemon, tests
+├── apple/GlideCoreKit/          # Deferred Swift shared-library/component work
+├── docs/                        # Current HARD authority plus historical specifications/evidence
+└── tools/                       # Verification/audit/developer scripts
+```
+
+## Build and verification entry points
+
+Inspect the selected HARD task before running commands. Historical scripts may verify source presence or isolated components without proving the current product path.
+
+Typical developer commands include:
+
 ```bash
-# Build debug APK
+# Android / Gradle
+./gradlew test
 ./gradlew :app:assembleDebug
 
-# Run unit tests across all Android modules
-./gradlew testDebugUnitTest
-
-# Run full local verification and architecture audit
+# Repository Android verification
 pwsh -File tools/verify-local.ps1
-```
 
-### Windows & Linux .NET Desktop Companion (`windows/Glide.slnx`)
-```powershell
-# Build entire .NET solution (Core, Transport, Windows UI, App, Tests)
-dotnet build windows/Glide.slnx -c Release
-
-# Run all 152 cross-platform golden fixture and integration unit tests
+# .NET shared/desktop tests
 dotnet test windows/Glide.Tests/Glide.Tests.csproj -c Release
-
-# Run the Windows Companion Auditor
-pwsh -File tools/verify-windows-companion.ps1
 ```
 
-### Running the CLI Companion (`Glide.App`)
-```powershell
-# Start listening for incoming transfers (renders pairing invitation and QR):
-dotnet run --project windows/Glide.App/Glide.App.csproj -- receive
+HARD-004 will establish the authoritative multi-platform CI baseline and exact fresh-checkout command set. Until then, do not turn a local script pass into a release or interoperability claim.
 
-# Send files to a discovered peer via pairing link:
-dotnet run --project windows/Glide.App/Glide.App.csproj -- send --pair "glide://pair/v1#..." "vacation.jpg"
+## Protocol and security
 
-# Share files with any browser on the local Wi-Fi (zero install on client):
-dotnet run --project windows/Glide.App/Glide.App.csproj -- web "presentation.pdf"
-```
+The portable contract is Glide Protocol V1 plus the versioned LAN/extension specifications and ADRs. The current hardening program specifically requires:
 
----
+- explicit authenticated pairing and separate transfer consent;
+- strict bounds, sequence/correlation validation, and truthful terminal states;
+- streaming SHA-256 and quarantine/atomic commit;
+- one aligned native LAN discovery/TLS/bootstrap profile;
+- durable authenticated trust/resume semantics;
+- no plaintext browser transfer in release builds;
+- no claim of physical interoperability without the named real environments.
 
-## 4. Repository Architecture
+Start with:
 
-```
-Glide/
-├── app/                        # Android application entry, Compose UI, ViewModels, Hilt DI
-├── transfer-core/              # Pure Kotlin JVM core protocol engine, codecs, reducers, fixtures
-├── transport-lan/              # Android LAN Profile 1 adapter (NsdManager, TLS 1.3, Web Gateway)
-├── transport-nearby/           # Android Google Nearby Connections P2P transport adapter
-├── data/                       # Room database, receive staging journal, preferences
-├── designsystem/               # Material 3 design tokens, theme, typography, components
-├── docs/                       # Authoritative engineering documentation
-│   ├── adr/                    # 22 Architecture Decision Records (ADR-0001 through ADR-0022)
-│   ├── future/                 # Cross-platform path and platform specifications
-│   ├── protocol/               # Glide Protocol V1 wire specification
-│   └── security/               # Threat model, security checklists, risk registers
-├── tools/                      # 27 automated PowerShell verification and audit scripts
-└── windows/                    # .NET 10 Cross-Platform Desktop & CLI Solution
-    ├── Glide.Core/             # Pure C# protocol engine, codecs, SAS calculator, quarantine
-    ├── Glide.Transport/        # Sockets (TLS 1.3), mDNS discovery, embedded Web Gateway
-    ├── Glide.Windows.UI/       # Modern WPF desktop application
-    ├── Glide.App/              # Cross-platform CLI & headless daemon executable
-    └── Glide.Tests/            # 152 unit tests validating golden fixtures and E2E transfers
-```
+- [`docs/README.md`](docs/README.md) — documentation portal
+- [`docs/planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md`](docs/planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md) — current completion plan
+- [`docs/TODO_MASTER.md`](docs/TODO_MASTER.md) — current task/status authority
+- [`docs/protocol/GLIDE_PROTOCOL_V1.md`](docs/protocol/GLIDE_PROTOCOL_V1.md) — protocol authority
+- [`docs/security/GLIDE_THREAT_MODEL.md`](docs/security/GLIDE_THREAT_MODEL.md) — threat model
 
----
+## Historical evidence
 
-## 5. Specification & Architectural Decisions Catalog
+The repository contains extensive V1, cross-platform, session, testing, and release documentation. These files remain useful for provenance, prior decisions, commands, fixtures, and regression evidence. They are not deleted or rewritten simply because later review found that a completion label was too broad.
 
-| Document | Topic & Authority | Status |
-|:---|:---|:---:|
-| [ADR-0001 — Android Application Architecture](docs/adr/ADR-0001-android-architecture.md) | Single-activity, unidirectional data flow, pure JVM core | Accepted |
-| [ADR-0007 — Initial Android Transport](docs/adr/ADR-0007-transport.md) | Google Nearby Connections P2P (STREAM payload mode) | Accepted |
-| [ADR-0008 — Application Protocol](docs/adr/ADR-0008-protocol.md) | Strict binary envelope codecs, sequence tracking, receipts | Accepted |
-| [ADR-0010 — Integrity Verification](docs/adr/ADR-0010-integrity.md) | Single-pass streaming SHA-256 verification and failure quarantine | Accepted |
-| [ADR-0014 — Safe Folder Transfer Extension](docs/adr/ADR-0014-safe-folder-transfer-extension.md) | Hierarchical directory streaming and collision safety | Accepted |
-| [ADR-0015 — Persistent Identity & True Resume](docs/adr/ADR-0015-persistent-identity-and-true-resume.md) | Android Keystore TOFU pairing and Merkle chunk true resume | Accepted |
-| [ADR-0017 — Android-to-Windows LAN Slice](docs/adr/ADR-0017-android-windows-interoperable-lan-slice.md) | mDNS discovery and TLS 1.3 socket transport | Accepted |
-| [ADR-0018 — LAN QR Authentication & Unified Routing](docs/adr/ADR-0018-lan-qr-authentication-and-routing.md) | QR-pinned TLS 1.3 mutual handshake and LAN Profile 1 framing | Accepted |
-| [ADR-0019 — Browser Web Local Transfer Gateway](docs/adr/ADR-0019-browser-web-local-transfer.md) | Zero-install offline SPA gateway for any web browser | Accepted |
-| [ADR-0020 — Apple Platforms Native Architecture](docs/adr/ADR-0020-apple-platforms-architecture.md) | Apple `Network.framework` TLS 1.3 + Bonjour mDNS for iOS & macOS | Accepted |
-| [ADR-0021 — Linux Platform Architecture & Daemon](docs/adr/ADR-0021-linux-platform-architecture.md) | Cross-platform .NET 10 runtime, XDG directories, systemd service | Accepted |
-| [ADR-0022 — Remote Internet Transfer Architecture](docs/adr/ADR-0022-remote-internet-transfer.md) | Zero-knowledge E2EE NAT traversal (ICE/STUN/TURN) & blind relays | Accepted |
+For current status, always use the HARD ledger rather than inferring completion from historical session numbers or milestone names.
 
----
+## License
 
-## 6. Automated Audit & Verification Tooling
-
-Glide enforces strict, automated verification gates across all platform layers:
-
-```powershell
-# Full Android build, lint, and unit test pass:
-pwsh -File tools/verify-local.ps1
-
-# Windows companion & .NET conformance audit (152 tests):
-pwsh -File tools/verify-windows-companion.ps1
-
-# Browser Web Transfer Gateway audit (Phases W1–W5):
-pwsh -File tools/verify-web-transfer-spec.ps1
-
-# Apple Platforms (iOS/macOS) specification auditor:
-pwsh -File tools/verify-apple-platforms-spec.ps1
-
-# Linux Platform specification auditor:
-pwsh -File tools/verify-linux-platform-spec.ps1
-
-# Remote Internet WAN & Relay threat model auditor:
-pwsh -File tools/verify-remote-transfer-spec.ps1
-
-# Android architectural boundaries and zero forbidden imports:
-pwsh -File tools/check-architecture.ps1
-```
-
----
-
-## 7. License
-
-Glide is released under the **Apache License 2.0**. See [`LICENSE`](LICENSE) for details.
+Glide is released under the Apache License 2.0. See [`LICENSE`](LICENSE).
