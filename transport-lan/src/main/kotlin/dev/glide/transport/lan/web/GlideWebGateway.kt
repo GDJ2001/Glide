@@ -73,12 +73,17 @@ class GlideWebGateway(
     val platform: String = "android",
     val quarantineDir: File = File(System.getProperty("java.io.tmpdir"), "glide_quarantine"),
     val ttlSeconds: Int = 120,
+    private val usableSpaceProvider: (() -> Long)? = null,
     private val secureRandom: SecureRandom = SecureRandom()
 ) : Closeable {
+
+    val usableSpaceBytes: Long
+        get() = usableSpaceProvider?.invoke() ?: quarantineDir.usableSpace
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var serverSocket: ServerSocket? = null
     private var acceptJob: Job? = null
+
 
     val token: String = run {
         val bytes = ByteArray(32).apply { secureRandom.nextBytes(this) }
@@ -218,6 +223,9 @@ class GlideWebGateway(
                     } else {
                         streamDownload(method, output, item, headers, setCookieHeader)
                     }
+                }
+                method == "POST" && path == "/api/v1/upload/proposal" -> {
+                    handleProposal(input, output, headers, setCookieHeader)
                 }
                 method == "POST" && path == "/api/v1/upload" -> {
                     handleUpload(input, output, headers, setCookieHeader)
@@ -451,6 +459,50 @@ class GlideWebGateway(
         }
     }
 
+    private fun handleProposal(
+        input: InputStream,
+        output: OutputStream,
+        headers: Map<String, String>,
+        setCookie: String?
+    ) {
+        val contentLength = headers["content-length"]?.toIntOrNull() ?: 0
+        val bodyBytes = ByteArray(contentLength.coerceIn(0, 8192))
+        var readTotal = 0
+        while (readTotal < bodyBytes.size) {
+            val r = input.read(bodyBytes, readTotal, bodyBytes.size - readTotal)
+            if (r == -1) break
+            readTotal += r
+        }
+        val body = String(bodyBytes, 0, readTotal, StandardCharsets.UTF_8)
+
+        val rawFileName = extractJsonString(body, "fileName")
+        val fileSize = extractJsonLong(body, "fileSize") ?: 0L
+        val safeFileName = WebPathSanitizer.sanitize(rawFileName)
+
+        // Storage verification: fileSize + 50 MB reserve
+        val available = usableSpaceBytes
+        val required = fileSize + 50L * 1024 * 1024
+        if (available < required) {
+            val respJson = "{\"status\":\"error\",\"error\":\"insufficient_storage\",\"message\":\"Insufficient storage on destination device.\"}"
+            sendResponse(output, 507, "Insufficient Storage", "application/json; charset=utf-8", respJson.toByteArray(StandardCharsets.UTF_8), setCookie)
+            return
+        }
+
+        val uploadId = UUID.randomUUID().toString()
+        val respJson = "{\"status\":\"accepted\",\"uploadId\":\"$uploadId\",\"fileName\":\"${escapeJson(safeFileName)}\",\"maxChunkSize\":65536}"
+        sendResponse(output, 200, "OK", "application/json; charset=utf-8", respJson.toByteArray(StandardCharsets.UTF_8), setCookie)
+    }
+
+    private fun extractJsonString(json: String, key: String): String? {
+        val pattern = Regex("\"$key\"\\s*:\\s*\"([^\"]*)\"")
+        return pattern.find(json)?.groupValues?.get(1)
+    }
+
+    private fun extractJsonLong(json: String, key: String): Long? {
+        val pattern = Regex("\"$key\"\\s*:\\s*([0-9]+)")
+        return pattern.find(json)?.groupValues?.get(1)?.toLongOrNull()
+    }
+
     private fun handleUpload(
         input: InputStream,
         output: OutputStream,
@@ -459,41 +511,69 @@ class GlideWebGateway(
     ) {
         val rawFileName = headers["x-file-name"]
         val fileName = if (!rawFileName.isNullOrBlank()) {
-            URLDecoder.decode(rawFileName, "UTF-8").replace("..", "").replace("/", "").replace("\\", "")
+            val decoded = URLDecoder.decode(rawFileName, "UTF-8")
+            WebPathSanitizer.sanitize(decoded)
         } else {
             "upload_${System.currentTimeMillis()}.bin"
         }
 
+        val declaredSha256 = headers["x-declared-sha256"]?.trim()?.lowercase()
         val contentLength = headers["content-length"]?.toLongOrNull() ?: -1L
-        val tempFile = File(quarantineDir, "staged_${UUID.randomUUID()}.part")
+        val declaredSize = headers["x-file-size"]?.toLongOrNull() ?: contentLength
 
-        val digest = MessageDigest.getInstance("SHA-256")
-        var totalRead = 0L
-
-        FileOutputStream(tempFile).use { fileOut ->
-            val buffer = ByteArray(64 * 1024)
-            var remaining = if (contentLength >= 0) contentLength else Long.MAX_VALUE
-            while (remaining > 0) {
-                val toRead = Math.min(buffer.size.toLong(), remaining).toInt()
-                val read = input.read(buffer, 0, toRead)
-                if (read == -1) break
-                fileOut.write(buffer, 0, read)
-                digest.update(buffer, 0, read)
-                totalRead += read
-                if (contentLength >= 0) {
-                    remaining -= read
-                }
+        // Preflight disk space verification
+        if (declaredSize > 0) {
+            val available = usableSpaceBytes
+            if (available < declaredSize + 50L * 1024 * 1024) {
+                val respJson = "{\"status\":\"error\",\"error\":\"insufficient_storage\",\"message\":\"Insufficient storage on destination device.\"}"
+                sendResponse(output, 507, "Insufficient Storage", "application/json; charset=utf-8", respJson.toByteArray(StandardCharsets.UTF_8), setCookie)
+                return
             }
         }
 
-        val sha256 = digest.digest().joinToString("") { "%02x".format(it) }
-        val targetFile = File(quarantineDir, fileName)
-        if (targetFile.exists()) {
-            targetFile.delete()
+        val tempFile = File(quarantineDir, "staged_${UUID.randomUUID()}.part")
+        val digest = MessageDigest.getInstance("SHA-256")
+        var totalRead = 0L
+
+        try {
+            FileOutputStream(tempFile).use { fileOut ->
+                val buffer = ByteArray(64 * 1024)
+                var remaining = if (contentLength >= 0) contentLength else Long.MAX_VALUE
+                while (remaining > 0) {
+                    val toRead = Math.min(buffer.size.toLong(), remaining).toInt()
+                    val read = input.read(buffer, 0, toRead)
+                    if (read == -1) break
+                    fileOut.write(buffer, 0, read)
+                    digest.update(buffer, 0, read)
+                    totalRead += read
+                    if (contentLength >= 0) {
+                        remaining -= read
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            if (tempFile.exists()) tempFile.delete()
+            throw e
         }
+
+        val actualSha256 = digest.digest().joinToString("") { "%02x".format(it) }
+
+        // Check declared checksum if provided
+        if (!declaredSha256.isNullOrBlank() && !declaredSha256.equals(actualSha256, ignoreCase = true)) {
+            // Immediate purge of quarantine file on checksum mismatch
+            if (tempFile.exists()) {
+                tempFile.delete()
+            }
+            val respJson = "{\"status\":\"error\",\"error\":\"checksum_mismatch\",\"declared\":\"${escapeJson(declaredSha256)}\",\"actual\":\"$actualSha256\"}"
+            sendResponse(output, 422, "Unprocessable Entity", "application/json; charset=utf-8", respJson.toByteArray(StandardCharsets.UTF_8), setCookie)
+            return
+        }
+
+        val uniqueName = WebPathSanitizer.resolveUniqueName(fileName, { File(quarantineDir, it).exists() })
+        val targetFile = File(quarantineDir, uniqueName)
         tempFile.renameTo(targetFile)
 
-        val respJson = "{\"status\":\"ok\",\"fileName\":\"${escapeJson(fileName)}\",\"sha256\":\"$sha256\",\"bytes\":$totalRead}"
+        val respJson = "{\"status\":\"accepted\",\"fileName\":\"${escapeJson(uniqueName)}\",\"sha256\":\"$actualSha256\",\"bytes\":$totalRead}"
         sendResponse(output, 200, "OK", "application/json; charset=utf-8", respJson.toByteArray(StandardCharsets.UTF_8), setCookie)
     }
 

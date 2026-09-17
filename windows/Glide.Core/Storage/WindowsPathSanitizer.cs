@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace Glide.Core.Storage;
@@ -104,4 +105,73 @@ public static class WindowsPathSanitizer
 
         return sanitized;
     }
+
+    public static string SanitizeWebFilename(string? rawName, string fallback = "Received file")
+    {
+        if (string.IsNullOrWhiteSpace(rawName))
+        {
+            return fallback;
+        }
+
+        // 1. Unicode NFC normalization
+        string normalized = rawName.Normalize(NormalizationForm.FormC);
+
+        // 2. Strip drive letter prefix
+        normalized = Regex.Replace(normalized, @"^[a-zA-Z]:[\\/]?", string.Empty);
+
+        // 3. Strip directory traversal sequences (..)
+        while (normalized.Contains(".."))
+        {
+            normalized = normalized.Replace("..", string.Empty);
+        }
+
+        // 4. Strip leading slashes / absolute prefixes
+        normalized = normalized.TrimStart('/', '\\');
+
+        // 5. Replace illegal characters and controls
+        var sb = new StringBuilder(normalized.Length);
+        foreach (char c in normalized)
+        {
+            if (c < 0x20 || c == 0x7F || IllegalChars.Contains(c))
+            {
+                sb.Append('_');
+            }
+            else
+            {
+                sb.Append(c);
+            }
+        }
+        string cleaned = sb.ToString();
+
+        // 6. Strip leading/trailing dots, underscores, whitespace
+        cleaned = cleaned.Trim().Trim('.', '_', ' ');
+
+        // 7. Check if empty or only navigation dots/underscores
+        if (string.IsNullOrWhiteSpace(cleaned) || cleaned == "." || cleaned == ".." || cleaned.All(c => c == '_' || c == '.'))
+        {
+            return fallback;
+        }
+
+        // 8. Reserved DOS device names
+        string baseName = cleaned;
+        int dotIdx = cleaned.IndexOf('.');
+        if (dotIdx >= 0)
+        {
+            baseName = cleaned[..dotIdx];
+        }
+
+        if (ReservedDosNames.Contains(baseName))
+        {
+            cleaned = "_" + cleaned;
+        }
+
+        // 9. Length caps: maximum 255 characters
+        if (cleaned.Length > 255)
+        {
+            cleaned = cleaned[..255];
+        }
+
+        return string.IsNullOrWhiteSpace(cleaned) ? fallback : cleaned;
+    }
 }
+

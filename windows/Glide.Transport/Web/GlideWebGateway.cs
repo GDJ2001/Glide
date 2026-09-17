@@ -204,6 +204,12 @@ public sealed class GlideWebGateway : IAsyncDisposable
                 return;
             }
 
+            if (path.Equals("/api/v1/upload/proposal", StringComparison.OrdinalIgnoreCase) && request.HttpMethod.Equals("POST", StringComparison.OrdinalIgnoreCase))
+            {
+                await HandleProposalAsync(request, response);
+                return;
+            }
+
             if (path.Equals("/api/v1/upload", StringComparison.OrdinalIgnoreCase) && request.HttpMethod.Equals("POST", StringComparison.OrdinalIgnoreCase))
             {
                 await HandleUploadAsync(request, response);
@@ -482,11 +488,102 @@ public sealed class GlideWebGateway : IAsyncDisposable
         return true;
     }
 
+    private async Task HandleProposalAsync(HttpListenerRequest request, HttpListenerResponse response)
+    {
+        using var reader = new StreamReader(request.InputStream, Encoding.UTF8);
+        string body = await reader.ReadToEndAsync();
+
+        string? rawFileName = null;
+        long fileSize = 0;
+        string? declaredSha256 = null;
+
+        try
+        {
+            var node = JsonNode.Parse(body);
+            if (node != null)
+            {
+                rawFileName = node["fileName"]?.GetValue<string>();
+                fileSize = node["fileSize"]?.GetValue<long>() ?? 0;
+                declaredSha256 = node["sha256"]?.GetValue<string>();
+            }
+        }
+        catch
+        {
+            response.StatusCode = (int)HttpStatusCode.BadRequest;
+            response.Close();
+            return;
+        }
+
+        string safeFileName = WindowsPathSanitizer.SanitizeWebFilename(rawFileName);
+
+        // Preflight available storage check (required size + 50 MB reserve)
+        long availableSpace = _quarantineStore.GetAvailableFreeSpaceBytes();
+        long requiredSpace = fileSize + (50L * 1024 * 1024);
+
+        if (availableSpace < requiredSpace)
+        {
+            response.StatusCode = 507; // Insufficient Storage
+            var errObj = new JsonObject
+            {
+                ["status"] = "error",
+                ["error"] = "insufficient_storage",
+                ["message"] = "Insufficient disk space on destination device."
+            };
+            byte[] errBytes = JsonSerializer.SerializeToUtf8Bytes(errObj);
+            response.ContentType = "application/json; charset=utf-8";
+            response.ContentLength64 = errBytes.Length;
+            await response.OutputStream.WriteAsync(errBytes);
+            response.OutputStream.Close();
+            return;
+        }
+
+        var acceptedObj = new JsonObject
+        {
+            ["status"] = "accepted",
+            ["uploadId"] = Guid.NewGuid().ToString("D"),
+            ["fileName"] = safeFileName,
+            ["maxChunkSize"] = 65536
+        };
+
+        byte[] acceptedBytes = JsonSerializer.SerializeToUtf8Bytes(acceptedObj);
+        response.StatusCode = (int)HttpStatusCode.OK;
+        response.ContentType = "application/json; charset=utf-8";
+        response.ContentLength64 = acceptedBytes.Length;
+        await response.OutputStream.WriteAsync(acceptedBytes);
+        response.OutputStream.Close();
+    }
+
     private async Task HandleUploadAsync(HttpListenerRequest request, HttpListenerResponse response)
     {
         string rawFileName = request.Headers["X-File-Name"] ?? "uploaded_file.bin";
         string decodedFileName = Uri.UnescapeDataString(rawFileName);
-        string sanitizedFileName = WindowsPathSanitizer.SanitizeRelativePath(decodedFileName).Replace('/', '_');
+        string sanitizedFileName = WindowsPathSanitizer.SanitizeWebFilename(decodedFileName);
+
+        string? declaredSha256 = request.Headers["X-Declared-Sha256"];
+        string? sizeHeader = request.Headers["X-File-Size"] ?? request.Headers["Content-Length"];
+        long.TryParse(sizeHeader, out long declaredSize);
+
+        // Preflight disk space verification
+        if (declaredSize > 0)
+        {
+            long availableSpace = _quarantineStore.GetAvailableFreeSpaceBytes();
+            if (availableSpace < declaredSize + (50L * 1024 * 1024))
+            {
+                response.StatusCode = 507; // Insufficient Storage
+                var errObj = new JsonObject
+                {
+                    ["status"] = "error",
+                    ["error"] = "insufficient_storage",
+                    ["message"] = "Insufficient disk space on destination device."
+                };
+                byte[] errBytes = JsonSerializer.SerializeToUtf8Bytes(errObj);
+                response.ContentType = "application/json; charset=utf-8";
+                response.ContentLength64 = errBytes.Length;
+                await response.OutputStream.WriteAsync(errBytes);
+                response.OutputStream.Close();
+                return;
+            }
+        }
 
         var itemId = ItemId.NewRandom();
         string quarantinePath = _quarantineStore.GetQuarantinePath(_sessionId, itemId);
@@ -516,6 +613,29 @@ public sealed class GlideWebGateway : IAsyncDisposable
         }
 
         string actualHashHex = Convert.ToHexStringLower(computedHash);
+
+        // Check declared checksum if provided
+        if (!string.IsNullOrWhiteSpace(declaredSha256) &&
+            !string.Equals(declaredSha256.Trim(), actualHashHex, StringComparison.OrdinalIgnoreCase))
+        {
+            // Immediate purge of quarantine file on checksum mismatch
+            _quarantineStore.PurgeQuarantine(_sessionId, itemId);
+
+            response.StatusCode = 422; // Unprocessable Entity
+            var mismatchObj = new JsonObject
+            {
+                ["status"] = "error",
+                ["error"] = "checksum_mismatch",
+                ["declared"] = declaredSha256.Trim(),
+                ["actual"] = actualHashHex
+            };
+            byte[] mismatchBytes = JsonSerializer.SerializeToUtf8Bytes(mismatchObj);
+            response.ContentType = "application/json; charset=utf-8";
+            response.ContentLength64 = mismatchBytes.Length;
+            await response.OutputStream.WriteAsync(mismatchBytes);
+            response.OutputStream.Close();
+            return;
+        }
 
         // Commit quarantine file to Downloads
         string finalPath = _quarantineStore.CommitQuarantineFile(_sessionId, itemId, sanitizedFileName);

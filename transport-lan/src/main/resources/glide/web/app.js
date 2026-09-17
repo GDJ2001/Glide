@@ -103,7 +103,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     let currentIndex = 0;
 
-    function uploadNext() {
+    async function uploadNext() {
       if (currentIndex >= files.length) {
         uploadFilenameEl.textContent = `Completed uploading ${files.length} file(s)!`;
         uploadPercentageEl.textContent = "100%";
@@ -117,37 +117,76 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const file = files[currentIndex];
       progressContainer.style.display = "flex";
-      uploadFilenameEl.textContent = `Uploading ${file.name} (${currentIndex + 1}/${files.length})...`;
+      uploadFilenameEl.textContent = `Proposing upload for ${file.name} (${currentIndex + 1}/${files.length})...`;
       uploadPercentageEl.textContent = "0%";
       uploadProgressFill.style.width = "0%";
 
-      const xhr = new XMLHttpRequest();
-      xhr.open("POST", "/api/v1/upload", true);
-      xhr.setRequestHeader("X-File-Name", encodeURIComponent(file.name));
-      xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+      try {
+        const proposalResp = await fetch("/api/v1/upload/proposal", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            fileName: file.name,
+            fileSize: file.size,
+            mimeType: file.type || "application/octet-stream"
+          })
+        });
 
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) {
-          const percent = Math.round((e.loaded / e.total) * 100);
-          uploadPercentageEl.textContent = `${percent}%`;
-          uploadProgressFill.style.width = `${percent}%`;
+        if (proposalResp.status === 507) {
+          uploadFilenameEl.textContent = `Declined ${file.name}: Insufficient storage space on device.`;
+          return;
         }
-      };
 
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          currentIndex++;
-          uploadNext();
-        } else {
-          uploadFilenameEl.textContent = `Failed uploading ${file.name}: ${xhr.statusText}`;
+        if (!proposalResp.ok) {
+          uploadFilenameEl.textContent = `Proposal failed for ${file.name}: ${proposalResp.statusText}`;
+          return;
         }
-      };
 
-      xhr.onerror = () => {
-        uploadFilenameEl.textContent = `Network error uploading ${file.name}`;
-      };
+        const proposalData = await proposalResp.json();
+        const uploadId = proposalData.uploadId || "";
 
-      xhr.send(file);
+        uploadFilenameEl.textContent = `Uploading ${file.name} (${currentIndex + 1}/${files.length})...`;
+
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", "/api/v1/upload", true);
+        xhr.setRequestHeader("X-File-Name", encodeURIComponent(file.name));
+        xhr.setRequestHeader("X-File-Size", file.size.toString());
+        if (uploadId) {
+          xhr.setRequestHeader("X-Upload-Id", uploadId);
+        }
+        xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            const percent = Math.round((e.loaded / e.total) * 100);
+            uploadPercentageEl.textContent = `${percent}%`;
+            uploadProgressFill.style.width = `${percent}%`;
+          }
+        };
+
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            currentIndex++;
+            uploadNext();
+          } else if (xhr.status === 422) {
+            uploadFilenameEl.textContent = `Verification failed for ${file.name}: Checksum integrity mismatch.`;
+          } else if (xhr.status === 507) {
+            uploadFilenameEl.textContent = `Failed uploading ${file.name}: Insufficient storage on device.`;
+          } else {
+            uploadFilenameEl.textContent = `Failed uploading ${file.name}: ${xhr.statusText || xhr.status}`;
+          }
+        };
+
+        xhr.onerror = () => {
+          uploadFilenameEl.textContent = `Network error uploading ${file.name}`;
+        };
+
+        xhr.send(file);
+      } catch (err) {
+        uploadFilenameEl.textContent = `Error initiating upload for ${file.name}: ${err.message}`;
+      }
     }
 
     uploadNext();

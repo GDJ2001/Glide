@@ -7,8 +7,12 @@ public sealed class QuarantineStagingStore
 {
     private readonly string _stagingRoot;
     private readonly string _destinationRoot;
+    private readonly Func<long>? _freeSpaceProvider;
 
-    public QuarantineStagingStore(string? stagingRoot = null, string? destinationRoot = null)
+    public string StagingRoot => _stagingRoot;
+    public string DestinationRoot => _destinationRoot;
+
+    public QuarantineStagingStore(string? stagingRoot = null, string? destinationRoot = null, Func<long>? freeSpaceProvider = null)
     {
         _stagingRoot = stagingRoot ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -17,12 +21,33 @@ public sealed class QuarantineStagingStore
         _destinationRoot = destinationRoot ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             "Downloads");
+
+        _freeSpaceProvider = freeSpaceProvider;
+    }
+
+    public long GetAvailableFreeSpaceBytes()
+    {
+        if (_freeSpaceProvider != null)
+        {
+            return _freeSpaceProvider();
+        }
+
+        try
+        {
+            var driveInfo = new DriveInfo(Path.GetPathRoot(Path.GetFullPath(_stagingRoot)) ?? "C:\\");
+            return driveInfo.AvailableFreeSpace;
+        }
+        catch
+        {
+            return long.MaxValue;
+        }
     }
 
     public string GetQuarantinePath(SessionId sessionId, ItemId itemId)
     {
         return Path.Combine(_stagingRoot, sessionId.Value, $"{itemId.Value}.quarantine");
     }
+
 
     public async Task<(string committedPath, Sha256Digest actualDigest)> WriteAndCommitAsync(
         SessionId sessionId,

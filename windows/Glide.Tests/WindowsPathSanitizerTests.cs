@@ -87,4 +87,34 @@ public class WindowsPathSanitizerTests
     {
         Assert.Throws<ArgumentException>(() => WindowsPathSanitizer.SanitizeRelativePath(trailing));
     }
+
+    [Theory]
+    [InlineData("vacation.jpg", "vacation.jpg")]
+    [InlineData("../../etc/passwd", "etc_passwd")]
+    [InlineData(@"C:\Windows\System32\cmd.exe", "Windows_System32_cmd.exe")]
+    [InlineData("test<file>:*\"|?name.txt", "test_file______name.txt")]
+    [InlineData("CON.txt", "_CON.txt")]
+    [InlineData("prn.pdf", "_prn.pdf")]
+    [InlineData("AUX.dat", "_AUX.dat")]
+    [InlineData("nul", "_nul")]
+    [InlineData("COM1.txt", "_COM1.txt")]
+    [InlineData("lpt9.bin", "_lpt9.bin")]
+    [InlineData(null, "Received file")]
+    [InlineData("", "Received file")]
+    [InlineData("...", "Received file")]
+    [InlineData("___", "Received file")]
+    public void SanitizeWebFilename_SanitizesSafely(string? input, string expected)
+    {
+        string result = WindowsPathSanitizer.SanitizeWebFilename(input);
+        Assert.Equal(expected, result);
+    }
+
+    [Fact]
+    public void SanitizeWebFilename_TruncatesOver255Chars()
+    {
+        string longName = new string('a', 300) + ".txt";
+        string result = WindowsPathSanitizer.SanitizeWebFilename(longName);
+        Assert.True(result.Length <= 255);
+    }
 }
+

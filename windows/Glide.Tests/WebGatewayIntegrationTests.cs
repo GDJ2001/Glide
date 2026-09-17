@@ -13,18 +13,20 @@ namespace Glide.Tests;
 public class WebGatewayIntegrationTests : IDisposable
 {
     private readonly string _tempDirectory;
+    private readonly string _stagingDirectory;
+    private readonly string _downloadsDirectory;
     private readonly QuarantineStagingStore _quarantineStore;
 
     public WebGatewayIntegrationTests()
     {
         _tempDirectory = Path.Combine(Path.GetTempPath(), "GlideWebTests_" + Guid.NewGuid().ToString("N"));
-        string stagingDir = Path.Combine(_tempDirectory, "staging");
-        string downloadsDir = Path.Combine(_tempDirectory, "downloads");
+        _stagingDirectory = Path.Combine(_tempDirectory, "staging");
+        _downloadsDirectory = Path.Combine(_tempDirectory, "downloads");
 
-        Directory.CreateDirectory(stagingDir);
-        Directory.CreateDirectory(downloadsDir);
+        Directory.CreateDirectory(_stagingDirectory);
+        Directory.CreateDirectory(_downloadsDirectory);
 
-        _quarantineStore = new QuarantineStagingStore(stagingDir, downloadsDir);
+        _quarantineStore = new QuarantineStagingStore(_stagingDirectory, _downloadsDirectory);
     }
 
     public void Dispose()
@@ -389,4 +391,201 @@ public class WebGatewayIntegrationTests : IDisposable
         var resp = await client.GetAsync(gateway.OnboardingUrl);
         Assert.Equal(HttpStatusCode.Forbidden, resp.StatusCode);
     }
+
+    [Fact]
+    public async Task UploadProposal_ValidProposal_ReturnsAccepted()
+    {
+        await using var gateway = new GlideWebGateway(
+            host: "127.0.0.1",
+            port: 0,
+            quarantineStore: _quarantineStore);
+
+        await gateway.StartAsync();
+
+        var cookieContainer = new CookieContainer();
+        using var handler = new HttpClientHandler { CookieContainer = cookieContainer };
+        using var client = new HttpClient(handler);
+
+        await client.GetAsync(gateway.OnboardingUrl);
+
+        var proposalJson = new JsonObject
+        {
+            ["fileName"] = "photo.jpg",
+            ["fileSize"] = 1024 * 1024,
+            ["mimeType"] = "image/jpeg"
+        };
+        var content = new StringContent(proposalJson.ToJsonString(), Encoding.UTF8, "application/json");
+
+        var resp = await client.PostAsync($"http://127.0.0.1:{gateway.Port}/api/v1/upload/proposal", content);
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+        string respBody = await resp.Content.ReadAsStringAsync();
+        var respNode = JsonNode.Parse(respBody);
+        Assert.NotNull(respNode);
+        Assert.Equal("accepted", respNode["status"]?.GetValue<string>());
+        Assert.NotNull(respNode["uploadId"]?.GetValue<string>());
+        Assert.Equal("photo.jpg", respNode["fileName"]?.GetValue<string>());
+        Assert.Equal(65536, respNode["maxChunkSize"]?.GetValue<int>());
+    }
+
+    [Fact]
+    public async Task UploadProposal_InsufficientSpace_Returns507InsufficientStorage()
+    {
+        // 10 MB free space
+        var lowSpaceStore = new QuarantineStagingStore(_stagingDirectory, _downloadsDirectory, freeSpaceProvider: () => 10L * 1024 * 1024);
+
+        await using var gateway = new GlideWebGateway(
+            host: "127.0.0.1",
+            port: 0,
+            quarantineStore: lowSpaceStore);
+
+        await gateway.StartAsync();
+
+        var cookieContainer = new CookieContainer();
+        using var handler = new HttpClientHandler { CookieContainer = cookieContainer };
+        using var client = new HttpClient(handler);
+
+        await client.GetAsync(gateway.OnboardingUrl);
+
+        // Propose 100 MB file (which requires 100MB + 50MB reserve > 10MB)
+        var proposalJson = new JsonObject
+        {
+            ["fileName"] = "large_video.mp4",
+            ["fileSize"] = 100L * 1024 * 1024,
+            ["mimeType"] = "video/mp4"
+        };
+        var content = new StringContent(proposalJson.ToJsonString(), Encoding.UTF8, "application/json");
+
+        var resp = await client.PostAsync($"http://127.0.0.1:{gateway.Port}/api/v1/upload/proposal", content);
+        Assert.Equal((HttpStatusCode)507, resp.StatusCode);
+
+        string respBody = await resp.Content.ReadAsStringAsync();
+        var respNode = JsonNode.Parse(respBody);
+        Assert.NotNull(respNode);
+        Assert.Equal("error", respNode["status"]?.GetValue<string>());
+        Assert.Equal("insufficient_storage", respNode["error"]?.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task UploadItem_MatchingDeclaredSha256_CommitsFile()
+    {
+        await using var gateway = new GlideWebGateway(
+            host: "127.0.0.1",
+            port: 0,
+            quarantineStore: _quarantineStore);
+
+        await gateway.StartAsync();
+
+        var cookieContainer = new CookieContainer();
+        using var handler = new HttpClientHandler { CookieContainer = cookieContainer };
+        using var client = new HttpClient(handler);
+
+        await client.GetAsync(gateway.OnboardingUrl);
+
+        byte[] payload = Encoding.UTF8.GetBytes("Hello Glide Web Transfer Phase W4 Verification!");
+        string actualSha256 = Convert.ToHexStringLower(SHA256.HashData(payload));
+
+        using var req = new HttpRequestMessage(HttpMethod.Post, $"http://127.0.0.1:{gateway.Port}/api/v1/upload")
+        {
+            Content = new ByteArrayContent(payload)
+        };
+        req.Headers.Add("X-File-Name", Uri.EscapeDataString("verified_doc.txt"));
+        req.Headers.Add("X-Declared-Sha256", actualSha256);
+
+        var resp = await client.SendAsync(req);
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+        string respBody = await resp.Content.ReadAsStringAsync();
+        var respNode = JsonNode.Parse(respBody);
+        Assert.NotNull(respNode);
+        Assert.Equal("accepted", respNode["status"]?.GetValue<string>());
+        Assert.Equal(actualSha256, respNode["sha256"]?.GetValue<string>());
+
+        string committedFile = Path.Combine(_downloadsDirectory, "verified_doc.txt");
+        Assert.True(File.Exists(committedFile));
+        byte[] readBack = await File.ReadAllBytesAsync(committedFile);
+        Assert.Equal(payload, readBack);
+    }
+
+    [Fact]
+    public async Task UploadItem_MismatchDeclaredSha256_PurgesQuarantineAndReturns422()
+    {
+        await using var gateway = new GlideWebGateway(
+            host: "127.0.0.1",
+            port: 0,
+            quarantineStore: _quarantineStore);
+
+        await gateway.StartAsync();
+
+        var cookieContainer = new CookieContainer();
+        using var handler = new HttpClientHandler { CookieContainer = cookieContainer };
+        using var client = new HttpClient(handler);
+
+        await client.GetAsync(gateway.OnboardingUrl);
+
+        byte[] payload = Encoding.UTF8.GetBytes("Tampered Payload Content");
+        string fakeSha256 = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
+
+        using var req = new HttpRequestMessage(HttpMethod.Post, $"http://127.0.0.1:{gateway.Port}/api/v1/upload")
+        {
+            Content = new ByteArrayContent(payload)
+        };
+        req.Headers.Add("X-File-Name", Uri.EscapeDataString("tampered.bin"));
+        req.Headers.Add("X-Declared-Sha256", fakeSha256);
+
+        var resp = await client.SendAsync(req);
+        Assert.Equal((HttpStatusCode)422, resp.StatusCode);
+
+        string respBody = await resp.Content.ReadAsStringAsync();
+        var respNode = JsonNode.Parse(respBody);
+        Assert.NotNull(respNode);
+        Assert.Equal("error", respNode["status"]?.GetValue<string>());
+        Assert.Equal("checksum_mismatch", respNode["error"]?.GetValue<string>());
+
+        // Verify committed file does not exist
+        string targetFile = Path.Combine(_downloadsDirectory, "tampered.bin");
+        Assert.False(File.Exists(targetFile));
+
+        // Verify quarantine directory has no leftover files
+        var remainingQuarantine = Directory.GetFiles(_stagingDirectory, "*.*", SearchOption.AllDirectories);
+        Assert.Empty(remainingQuarantine);
+    }
+
+    [Fact]
+    public async Task UploadItem_SanitizesTraversalAndReservedNames()
+    {
+        await using var gateway = new GlideWebGateway(
+            host: "127.0.0.1",
+            port: 0,
+            quarantineStore: _quarantineStore);
+
+        await gateway.StartAsync();
+
+        var cookieContainer = new CookieContainer();
+        using var handler = new HttpClientHandler { CookieContainer = cookieContainer };
+        using var client = new HttpClient(handler);
+
+        await client.GetAsync(gateway.OnboardingUrl);
+
+        byte[] payload = Encoding.UTF8.GetBytes("Traversing to reserved DOS name");
+
+        using var req = new HttpRequestMessage(HttpMethod.Post, $"http://127.0.0.1:{gateway.Port}/api/v1/upload")
+        {
+            Content = new ByteArrayContent(payload)
+        };
+        req.Headers.Add("X-File-Name", Uri.EscapeDataString("../../CON.txt"));
+
+        var resp = await client.SendAsync(req);
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+        string respBody = await resp.Content.ReadAsStringAsync();
+        var respNode = JsonNode.Parse(respBody);
+        Assert.NotNull(respNode);
+        string committedName = respNode["fileName"]!.GetValue<string>();
+        Assert.Equal("_CON.txt", committedName);
+
+        string committedFile = Path.Combine(_downloadsDirectory, "_CON.txt");
+        Assert.True(File.Exists(committedFile));
+    }
 }
+

@@ -2,6 +2,7 @@ package dev.glide.transport.lan.web
 
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -297,8 +298,73 @@ class GlideWebGatewayTest {
     }
 
     @Test
-    fun uploadItem_stagesInQuarantine_andVerifiesSha256() {
-        val uploadBytes = "Hello from Android Web Browser!".toByteArray(Charsets.UTF_8)
+    fun uploadProposal_validProposal_returnsAccepted() {
+        val proposalJson = "{\"fileName\":\"proposal_doc.pdf\",\"fileSize\":1048576,\"mimeType\":\"application/pdf\"}"
+        val proposalBytes = proposalJson.toByteArray(Charsets.UTF_8)
+
+        val url = "http://127.0.0.1:${gateway.boundPort}/api/v1/upload/proposal"
+        val conn = URL(url).openConnection() as HttpURLConnection
+        try {
+            conn.requestMethod = "POST"
+            conn.doOutput = true
+            conn.setRequestProperty("Cookie", "glide_web_session=${gateway.token}")
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.setFixedLengthStreamingMode(proposalBytes.size)
+
+            conn.outputStream.use { it.write(proposalBytes) }
+
+            assertEquals(200, conn.responseCode)
+            val resp = conn.inputStream.readBytes().toString(Charsets.UTF_8)
+            assertTrue(resp.contains("\"status\":\"accepted\""))
+            assertTrue(resp.contains("\"uploadId\":"))
+            assertTrue(resp.contains("\"fileName\":\"proposal_doc.pdf\""))
+            assertTrue(resp.contains("\"maxChunkSize\":65536"))
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    @Test
+    fun uploadProposal_insufficientSpace_returns507() {
+        val lowSpaceGateway = GlideWebGateway(
+            host = "127.0.0.1",
+            port = 0,
+            offeredItems = emptyList(),
+            deviceName = "Low Space Device",
+            quarantineDir = quarantineDir,
+            usableSpaceProvider = { 10L * 1024 * 1024 } // 10 MB free
+        )
+        lowSpaceGateway.start()
+        try {
+            val proposalJson = "{\"fileName\":\"large_film.mp4\",\"fileSize\":104857600,\"mimeType\":\"video/mp4\"}"
+            val proposalBytes = proposalJson.toByteArray(Charsets.UTF_8)
+
+            val url = "http://127.0.0.1:${lowSpaceGateway.boundPort}/api/v1/upload/proposal"
+            val conn = URL(url).openConnection() as HttpURLConnection
+            try {
+                conn.requestMethod = "POST"
+                conn.doOutput = true
+                conn.setRequestProperty("Cookie", "glide_web_session=${lowSpaceGateway.token}")
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setFixedLengthStreamingMode(proposalBytes.size)
+
+                conn.outputStream.use { it.write(proposalBytes) }
+
+                assertEquals(507, conn.responseCode)
+                val resp = conn.errorStream.readBytes().toString(Charsets.UTF_8)
+                assertTrue(resp.contains("\"status\":\"error\""))
+                assertTrue(resp.contains("\"insufficient_storage\""))
+            } finally {
+                conn.disconnect()
+            }
+        } finally {
+            lowSpaceGateway.close()
+        }
+    }
+
+    @Test
+    fun uploadItem_matchingDeclaredSha256_commitsFile() {
+        val uploadBytes = "Hello from Android Web Browser Verified!".toByteArray(Charsets.UTF_8)
         val expectedSha = MessageDigest.getInstance("SHA-256").digest(uploadBytes)
             .joinToString("") { "%02x".format(it) }
 
@@ -308,7 +374,8 @@ class GlideWebGatewayTest {
             conn.requestMethod = "POST"
             conn.doOutput = true
             conn.setRequestProperty("Cookie", "glide_web_session=${gateway.token}")
-            conn.setRequestProperty("X-File-Name", "notes.txt")
+            conn.setRequestProperty("X-File-Name", "verified_notes.txt")
+            conn.setRequestProperty("X-Declared-Sha256", expectedSha)
             conn.setRequestProperty("Content-Type", "text/plain")
             conn.setFixedLengthStreamingMode(uploadBytes.size)
 
@@ -316,13 +383,74 @@ class GlideWebGatewayTest {
 
             assertEquals(200, conn.responseCode)
             val resp = conn.inputStream.readBytes().toString(Charsets.UTF_8)
-            assertTrue(resp.contains("\"status\":\"ok\""))
-            assertTrue(resp.contains("\"fileName\":\"notes.txt\""))
+            assertTrue(resp.contains("\"status\":\"accepted\""))
+            assertTrue(resp.contains("\"fileName\":\"verified_notes.txt\""))
             assertTrue(resp.contains(expectedSha))
 
-            val savedFile = File(quarantineDir, "notes.txt")
+            val savedFile = File(quarantineDir, "verified_notes.txt")
             assertTrue("Uploaded file must exist in quarantine", savedFile.exists())
             assertEquals(uploadBytes.size.toLong(), savedFile.length())
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    @Test
+    fun uploadItem_mismatchDeclaredSha256_purgesQuarantineAndReturns422() {
+        val uploadBytes = "Original Content that gets corrupted".toByteArray(Charsets.UTF_8)
+        val fakeSha256 = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
+
+        val uploadUrl = "http://127.0.0.1:${gateway.boundPort}/api/v1/upload"
+        val conn = URL(uploadUrl).openConnection() as HttpURLConnection
+        try {
+            conn.requestMethod = "POST"
+            conn.doOutput = true
+            conn.setRequestProperty("Cookie", "glide_web_session=${gateway.token}")
+            conn.setRequestProperty("X-File-Name", "tampered.bin")
+            conn.setRequestProperty("X-Declared-Sha256", fakeSha256)
+            conn.setRequestProperty("Content-Type", "application/octet-stream")
+            conn.setFixedLengthStreamingMode(uploadBytes.size)
+
+            conn.outputStream.use { it.write(uploadBytes) }
+
+            assertEquals(422, conn.responseCode)
+            val resp = conn.errorStream.readBytes().toString(Charsets.UTF_8)
+            assertTrue(resp.contains("\"status\":\"error\""))
+            assertTrue(resp.contains("\"checksum_mismatch\""))
+
+            // Verify file was purged immediately
+            val targetFile = File(quarantineDir, "tampered.bin")
+            assertFalse(targetFile.exists())
+            val partFiles = quarantineDir.listFiles { _, name -> name.endsWith(".part") } ?: emptyArray()
+            assertEquals(0, partFiles.size)
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    @Test
+    fun uploadItem_sanitizesTraversalAndReservedNames() {
+        val uploadBytes = "Testing path traversal and reserved device name".toByteArray(Charsets.UTF_8)
+
+        val uploadUrl = "http://127.0.0.1:${gateway.boundPort}/api/v1/upload"
+        val conn = URL(uploadUrl).openConnection() as HttpURLConnection
+        try {
+            conn.requestMethod = "POST"
+            conn.doOutput = true
+            conn.setRequestProperty("Cookie", "glide_web_session=${gateway.token}")
+            conn.setRequestProperty("X-File-Name", java.net.URLEncoder.encode("../../CON.txt", "UTF-8"))
+            conn.setRequestProperty("Content-Type", "text/plain")
+            conn.setFixedLengthStreamingMode(uploadBytes.size)
+
+            conn.outputStream.use { it.write(uploadBytes) }
+
+            assertEquals(200, conn.responseCode)
+            val resp = conn.inputStream.readBytes().toString(Charsets.UTF_8)
+            assertTrue(resp.contains("\"status\":\"accepted\""))
+            assertTrue(resp.contains("\"fileName\":\"_CON.txt\""))
+
+            val savedFile = File(quarantineDir, "_CON.txt")
+            assertTrue(savedFile.exists())
         } finally {
             conn.disconnect()
         }
