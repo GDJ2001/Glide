@@ -21,3 +21,4 @@ Read each record's date and status; a planning acceptance does not prove impleme
 - [ADR-0017 — Android-to-Windows interoperable LAN slice](ADR-0017-android-windows-interoperable-lan-slice.md)
 - [ADR-0018 — Local LAN authentication, QR bootstrap and unified routing](ADR-0018-lan-qr-authentication-and-routing.md)
 - [ADR-0019 — Browser and web client zero-install local transfer gateway](ADR-0019-browser-web-local-transfer.md)
+- [ADR-0020 — Apple platforms (iOS, iPadOS, macOS) native architecture & transport strategy](ADR-0020-apple-platforms-architecture.md)
