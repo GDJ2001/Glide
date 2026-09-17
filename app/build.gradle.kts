@@ -1,3 +1,5 @@
+import org.gradle.api.tasks.testing.Test
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -117,6 +119,17 @@ android {
     }
 }
 
+// HARD-003 intentionally adds red-before-fix regressions. Keep them out of the ordinary
+// green baseline, and run them explicitly with -Phard003Regression=true.
+tasks.withType<Test>().configureEach {
+    if (providers.gradleProperty("hard003Regression").orNull == "true") {
+        filter {
+            includeTestsMatching("*Hard003*")
+        }
+    } else {
+        exclude("**/Hard003*")
+    }
+}
 
 dependencies {
     implementation(libs.androidx.core.ktx)
