@@ -2,7 +2,7 @@ package dev.glide.app.permission
 
 import dev.glide.app.service.ServiceStartValidation
 import dev.glide.app.service.TransferServicePolicy
-import dev.glide.app.service.TransferSessionManager
+import dev.glide.app.service.TransferRuntime
 import dev.glide.app.ui.transfer.TransferUiState
 import dev.glide.core.domain.DeviceRole
 import org.junit.Assert.assertEquals
@@ -152,7 +152,7 @@ class PermissionLifecycleMatrixTest {
 
     @Test
     fun startFailure_mapsToDescriptiveFailedStateWithoutCrash() {
-        TransferSessionManager.resetForTesting()
+        val runtime = TransferRuntime.forTesting()
 
         // Simulate security exception failure (missing connected device permissions)
         val missingPermState = TransferUiState.Failed(
@@ -162,8 +162,8 @@ class PermissionLifecycleMatrixTest {
             code = "MISSING_PERMISSION",
             isRecoverable = false
         )
-        TransferSessionManager.setUiStateForTesting(missingPermState)
-        assertEquals(missingPermState, TransferSessionManager.uiState.value)
+        runtime.setTransferStateForTesting(missingPermState)
+        assertEquals(missingPermState, runtime.transferState.value)
 
         // Simulate background start not allowed failure
         val bgStartFailedState = TransferUiState.Failed(
@@ -173,9 +173,9 @@ class PermissionLifecycleMatrixTest {
             code = "FOREGROUND_START_NOT_ALLOWED",
             isRecoverable = false
         )
-        TransferSessionManager.setUiStateForTesting(bgStartFailedState)
-        assertEquals(bgStartFailedState, TransferSessionManager.uiState.value)
+        runtime.setTransferStateForTesting(bgStartFailedState)
+        assertEquals(bgStartFailedState, runtime.transferState.value)
 
-        TransferSessionManager.resetForTesting()
+        runtime.resetForTesting()
     }
 }
