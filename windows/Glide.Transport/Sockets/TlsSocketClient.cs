@@ -15,9 +15,16 @@ public sealed class TlsSocketClient
         _clientCertificate = clientCertificate ?? CertificateGenerator.GenerateEphemeralCertificate("Glide-Desktop-Client");
     }
 
+    public Task<TlsSocketConnection> ConnectAsync(
+        string host,
+        int port,
+        CancellationToken cancellationToken) =>
+        ConnectAsync(host, port, expectedSpkiSha256: null, cancellationToken);
+
     public async Task<TlsSocketConnection> ConnectAsync(
         string host,
         int port,
+        string? expectedSpkiSha256 = null,
         CancellationToken cancellationToken = default)
     {
         var tcpClient = new TcpClient();
@@ -25,6 +32,7 @@ public sealed class TlsSocketClient
         await tcpClient.ConnectAsync(host, port, cancellationToken);
 
         byte[]? remotePublicKey = null;
+        string? remoteSpkiSha256 = null;
 
         var sslStream = new SslStream(tcpClient.GetStream(), leaveInnerStreamOpen: false);
 
@@ -35,6 +43,11 @@ public sealed class TlsSocketClient
             TargetHost = host,
             ClientCertificates = clientCertCollection,
             EnabledSslProtocols = SslProtocols.Tls13,
+            ApplicationProtocols = new List<SslApplicationProtocol>
+            {
+                new SslApplicationProtocol("glide-lan/1"),
+                new SslApplicationProtocol("glide-v1")
+            },
             CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
             LocalCertificateSelectionCallback = (sender, targetHost, localCertificates, remoteCertificate, acceptableIssuers) =>
             {
@@ -44,7 +57,28 @@ public sealed class TlsSocketClient
             {
                 if (certificate != null)
                 {
+                    string computedSpkiHex;
+                    if (certificate is X509Certificate2 x509)
+                    {
+                        computedSpkiHex = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(x509.PublicKey.ExportSubjectPublicKeyInfo())).ToLowerInvariant();
+                    }
+                    else
+                    {
+                        using var tempCert = new X509Certificate2(certificate);
+                        computedSpkiHex = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(tempCert.PublicKey.ExportSubjectPublicKeyInfo())).ToLowerInvariant();
+                    }
+
+                    if (!string.IsNullOrEmpty(expectedSpkiSha256))
+                    {
+                        if (!string.Equals(computedSpkiHex, expectedSpkiSha256, StringComparison.OrdinalIgnoreCase))
+                        {
+                            // SPKI Pin mismatch -> rejects connection immediately
+                            return false;
+                        }
+                    }
+
                     remotePublicKey = certificate.GetPublicKey();
+                    remoteSpkiSha256 = computedSpkiHex;
                     return true;
                 }
                 return false;
@@ -55,13 +89,17 @@ public sealed class TlsSocketClient
 
         if (remotePublicKey == null)
         {
-            throw new AuthenticationException("Peer server certificate did not provide a valid public key.");
+            throw new AuthenticationException("Peer server certificate did not provide a valid public key or failed SPKI pinning.");
         }
+
+        string localSpkiHex = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(_clientCertificate.PublicKey.ExportSubjectPublicKeyInfo())).ToLowerInvariant();
 
         return new TlsSocketConnection(
             tcpClient,
             sslStream,
             _clientCertificate.GetPublicKey(),
-            remotePublicKey);
+            remotePublicKey,
+            localSpkiHex,
+            remoteSpkiSha256);
     }
 }

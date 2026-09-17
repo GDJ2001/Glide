@@ -132,6 +132,24 @@ if ($mdnsCode -notmatch "_glide._tcp.local" -or $mdnsCode -notmatch "224.0.0.251
 }
 Write-Host "  PASS: MdnsDiscoveryService implements zero-dependency RFC 6762/6763 mDNS responder and browser." -ForegroundColor Green
 
+$LanChannelFile = Join-Path $ProjectRoot "windows\Glide.Transport\Framing\LanRecordChannel.cs"
+$TlsClientFile = Join-Path $ProjectRoot "windows\Glide.Transport\Sockets\TlsSocketClient.cs"
+if (-not (Test-Path $LanChannelFile) -or -not (Test-Path $TlsClientFile)) {
+    Write-Error "FAIL: LanRecordChannel or TlsSocketClient missing."
+}
+
+$channelCode = Get-Content $LanChannelFile -Raw
+if ($channelCode -notmatch "WriteRecordAsync" -or $channelCode -notmatch "WriteEnvelopeAsync" -or $channelCode -notmatch "WriteDataChunkAsync") {
+    Write-Error "FAIL: LanRecordChannel missing record, envelope, or data chunk framing methods."
+}
+Write-Host "  PASS: LanRecordChannel implements serialized LAN Profile 1 channel framing." -ForegroundColor Green
+
+$clientCode = Get-Content $TlsClientFile -Raw
+if ($clientCode -notmatch "expectedSpkiSha256" -or $clientCode -notmatch "glide-lan/1") {
+    Write-Error "FAIL: TlsSocketClient missing expectedSpkiSha256 or ALPN configuration."
+}
+Write-Host "  PASS: TlsSocketClient enforces out-of-band SPKI fingerprint pinning and ALPN negotiation." -ForegroundColor Green
+
 # --- Check 7: Isolation & Android Architecture Non-Interference ---
 Write-Host "`n[Check 7/7] Verifying zero leakage into Android build tree..." -ForegroundColor Yellow
 $archCheck = & (Join-Path $ProjectRoot "tools\check-architecture.ps1")

@@ -146,6 +146,22 @@ public sealed record LanInvitation
     }
 
     /// <summary>
+    /// Checks if the invitation has expired according to current UTC epoch seconds.
+    /// </summary>
+    public bool IsExpired(long currentEpochSeconds = 0)
+    {
+        if (currentEpochSeconds <= 0)
+        {
+            currentEpochSeconds = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        }
+        if (long.TryParse(ExpiresAt, out long exp))
+        {
+            return currentEpochSeconds > exp;
+        }
+        return true;
+    }
+
+    /// <summary>
     /// Redacts the shared secret token to prevent accidental logging or exposure.
     /// </summary>
     public override string ToString()

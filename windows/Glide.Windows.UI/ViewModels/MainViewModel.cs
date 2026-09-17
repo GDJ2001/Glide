@@ -52,6 +52,8 @@ public class MainViewModel : ViewModelBase
     private bool _isPairModalVisible;
     private string _pairInputUri = "";
     private string _activeInvitationUri = "";
+    private LanInvitation? _activeInvitation;
+    private LanInvitation? _pairedInvitation;
 
     public ObservableCollection<TransferItemViewModel> SelectedFiles { get; } = [];
     public ObservableCollection<HistoryItemViewModel> HistoryItems { get; } = [];
@@ -307,12 +309,19 @@ public class MainViewModel : ViewModelBase
         try
         {
             var invitation = InvitationCodec.Decode(PairInputUri.Trim());
+            if (invitation.IsExpired())
+            {
+                MessageBox.Show("This pairing invitation has expired. Please ask the receiver to generate a new pairing link.", "Pairing Expired", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
             var targetEndpoint = invitation.Endpoints.FirstOrDefault();
             if (targetEndpoint != null)
             {
                 PeerHost = targetEndpoint.Address;
                 PeerPort = targetEndpoint.Port;
-                StatusMessage = $"Paired with {invitation.Name} ({targetEndpoint.Address}:{targetEndpoint.Port})";
+                _pairedInvitation = invitation;
+                StatusMessage = $"Paired with {invitation.Name} ({targetEndpoint.Address}:{targetEndpoint.Port}) via invitation";
                 IsPairModalVisible = false;
                 PairInputUri = "";
             }
@@ -329,6 +338,7 @@ public class MainViewModel : ViewModelBase
         {
             _mdnsService.StopAdvertising();
             ActiveInvitationUri = "";
+            _activeInvitation = null;
             _listener?.Dispose();
             _listener = null;
             IsListening = false;
@@ -379,6 +389,7 @@ public class MainViewModel : ViewModelBase
                 expiresAt: expiresAt.ToString(),
                 ttlSeconds: 120);
 
+            _activeInvitation = invitation;
             ActiveInvitationUri = InvitationCodec.Encode(invitation);
 
             _mdnsService.StartAdvertising(
@@ -424,28 +435,68 @@ public class MainViewModel : ViewModelBase
                 IsTransferActive = true;
                 TransferTitle = "Incoming Connection...";
 
-                byte[] sessionNonce = RandomNumberGenerator.GetBytes(32);
-                int sas = SasCalculator.CalculateSas(conn.RemotePublicKeyBytes, conn.LocalPublicKeyBytes, sessionNonce);
-
-                SasCode = $"{sas:D6}";
-                SasPeerName = "Remote Peer";
-                IsSasModalVisible = true;
-
-                _sasConfirmationTcs = new TaskCompletionSource<bool>();
-                bool sasConfirmed = await _sasConfirmationTcs.Task;
-                IsSasModalVisible = false;
-
-                if (!sasConfirmed)
-                {
-                    StatusMessage = "Transfer rejected by user.";
-                    return;
-                }
-
-                var channel = new LengthPrefixedFrameChannel(conn.SslStream);
+                var channel = new LanRecordChannel(conn.SslStream);
                 var stagingStore = new QuarantineStagingStore();
 
-                // 1. HELLO
-                var helloEnv = await channel.ReadEnvelopeAsync(ct);
+                // Read first record: may be BOOTSTRAP or CONTROL (HELLO)
+                var firstRecord = await channel.ReadRecordAsync(ct);
+                if (firstRecord == null) return;
+
+                Envelope helloEnv;
+                if (firstRecord is LanRecord.Bootstrap bootstrapRecord)
+                {
+                    var bootstrap = LanBootstrapCodec.DecodeBootstrap(bootstrapRecord.JsonBytes);
+                    bool isValid = _activeInvitation != null &&
+                        string.Equals(_activeInvitation.InvitationId, bootstrap.InvitationId, StringComparison.OrdinalIgnoreCase) &&
+                        string.Equals(_activeInvitation.Token, bootstrap.Token, StringComparison.Ordinal) &&
+                        string.Equals(_activeInvitation.InvitationHash, bootstrap.InvitationHash, StringComparison.OrdinalIgnoreCase) &&
+                        !_activeInvitation.IsExpired();
+
+                    if (!isValid)
+                    {
+                        var failCode = (_activeInvitation?.IsExpired() ?? false)
+                            ? LanBootstrapFailureCode.INVITATION_EXPIRED
+                            : LanBootstrapFailureCode.AUTHENTICATION_FAILED;
+                        await channel.WriteBootstrapResultAsync(LanBootstrapResult.Rejected(failCode), ct);
+                        StatusMessage = "Rejected inbound transfer: Invalid or expired pairing token.";
+                        return;
+                    }
+
+                    // Acknowledge bootstrap acceptance
+                    await channel.WriteBootstrapResultAsync(LanBootstrapResult.Accepted(bootstrap.SessionId), ct);
+                    _activeInvitation = null; // One-use token consumed
+                    ActiveInvitationUri = "";
+
+                    // Read subsequent HELLO envelope
+                    helloEnv = await channel.ReadEnvelopeAsync(ct);
+                }
+                else if (firstRecord is LanRecord.Control controlRecord)
+                {
+                    // Fallback to SAS verification for direct / un-paired LAN connections
+                    byte[] sessionNonce = RandomNumberGenerator.GetBytes(32);
+                    int sas = SasCalculator.CalculateSas(conn.RemotePublicKeyBytes, conn.LocalPublicKeyBytes, sessionNonce);
+
+                    SasCode = $"{sas:D6}";
+                    SasPeerName = "Remote Peer";
+                    IsSasModalVisible = true;
+
+                    _sasConfirmationTcs = new TaskCompletionSource<bool>();
+                    bool sasConfirmed = await _sasConfirmationTcs.Task;
+                    IsSasModalVisible = false;
+
+                    if (!sasConfirmed)
+                    {
+                        StatusMessage = "Transfer rejected by user.";
+                        return;
+                    }
+
+                    helloEnv = ProtocolCodec.Decode(controlRecord.Payload);
+                }
+                else
+                {
+                    throw new ProtocolViolationException(WireErrorCodes.ProtocolOrder, $"Unexpected first record kind: {firstRecord.Kind}");
+                }
+
                 SasPeerName = helloEnv.Body["displayName"]?.ToString() ?? "Remote Peer";
 
                 // 2. HELLO_ACK
@@ -503,12 +554,13 @@ public class MainViewModel : ViewModelBase
                 foreach (var item in items)
                 {
                     CurrentFileName = item.name;
-                    await channel.ReadEnvelopeAsync(ct); // ITEM_START
+                    var itemStart = await channel.ReadEnvelopeAsync(ct); // ITEM_START
+                    string bulkRef = itemStart.Body["bulkRef"]?.ToString() ?? Guid.NewGuid().ToString("D").ToLowerInvariant();
 
                     var readyBody = new JsonObject { ["batchId"] = offerBegin.Body["batchId"]!.ToString(), ["itemId"] = item.id };
                     await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.ItemReady, helloEnv.SessionId, new MessageId(Guid.NewGuid().ToString("D").ToLowerInvariant()), 4, readyBody), ct);
 
-                    // Bulk ingestion
+                    // Bulk ingestion via LanRecord.Data and LanRecord.StreamEnd
                     string qPath = stagingStore.GetQuarantinePath(helloEnv.SessionId, new ItemId(item.id));
                     var qDir = Path.GetDirectoryName(qPath);
                     if (qDir != null && !Directory.Exists(qDir)) Directory.CreateDirectory(qDir);
@@ -517,22 +569,44 @@ public class MainViewModel : ViewModelBase
                     using (var fs = new FileStream(qPath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, true))
                     using (var sha256 = IncrementalHash.CreateHash(HashAlgorithmName.SHA256))
                     {
-                        byte[] buf = new byte[65536];
-                        long rem = item.size;
-                        while (rem > 0)
+                        long receivedBytes = 0;
+                        while (true)
                         {
-                            int toRead = (int)Math.Min(buf.Length, rem);
-                            int read = await conn.SslStream.ReadAsync(buf.AsMemory(0, toRead), ct);
-                            if (read <= 0) throw new EndOfStreamException();
-                            await fs.WriteAsync(buf.AsMemory(0, read), ct);
-                            sha256.AppendData(buf, 0, read);
-                            rem -= read;
-                            cumulativeTransferred += read;
+                            var rec = await channel.ReadRecordAsync(ct);
+                            if (rec == null) throw new EndOfStreamException("Connection terminated during payload transfer.");
 
-                            TotalProgress = totalBytes > 0 ? (cumulativeTransferred * 100.0) / totalBytes : 100;
-                            double mbps = (cumulativeTransferred / (1024.0 * 1024.0)) / Math.Max(0.01, sw.Elapsed.TotalSeconds);
-                            TransferRateText = $"{mbps:F1} MB/s";
-                            TransferredBytesText = $"{TransferItemViewModel.FormatSize(cumulativeTransferred)} / {TransferItemViewModel.FormatSize(totalBytes)}";
+                            if (rec is LanRecord.Data dataRec)
+                            {
+                                if (!string.Equals(dataRec.BulkRef.Value, bulkRef, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    throw new ProtocolViolationException(WireErrorCodes.MalformedMessage, "Unmatched bulkRef in DATA record");
+                                }
+                                await fs.WriteAsync(dataRec.Chunk.AsMemory(), ct);
+                                sha256.AppendData(dataRec.Chunk);
+                                receivedBytes += dataRec.Chunk.Length;
+                                cumulativeTransferred += dataRec.Chunk.Length;
+
+                                TotalProgress = totalBytes > 0 ? (cumulativeTransferred * 100.0) / totalBytes : 100;
+                                double mbps = (cumulativeTransferred / (1024.0 * 1024.0)) / Math.Max(0.01, sw.Elapsed.TotalSeconds);
+                                TransferRateText = $"{mbps:F1} MB/s";
+                                TransferredBytesText = $"{TransferItemViewModel.FormatSize(cumulativeTransferred)} / {TransferItemViewModel.FormatSize(totalBytes)}";
+                            }
+                            else if (rec is LanRecord.StreamEnd streamEndRec)
+                            {
+                                if (!string.Equals(streamEndRec.BulkRef.Value, bulkRef, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    throw new ProtocolViolationException(WireErrorCodes.MalformedMessage, "Unmatched bulkRef in STREAM_END record");
+                                }
+                                if (streamEndRec.ActualBytes != receivedBytes || receivedBytes != item.size)
+                                {
+                                    throw new ProtocolViolationException(WireErrorCodes.IntegrityMismatch, $"STREAM_END actualBytes {streamEndRec.ActualBytes} does not match expected {item.size}");
+                                }
+                                break;
+                            }
+                            else
+                            {
+                                throw new ProtocolViolationException(WireErrorCodes.ProtocolOrder, $"Unexpected record kind during data stream: {rec.Kind}");
+                            }
                         }
                         hash = sha256.GetHashAndReset();
                     }
@@ -615,165 +689,214 @@ public class MainViewModel : ViewModelBase
             TotalProgress = 0;
 
             var client = new TlsSocketClient();
-            await using var conn = await client.ConnectAsync(PeerHost, PeerPort, ct);
-
-            byte[] sessionNonce = RandomNumberGenerator.GetBytes(32);
-            int sas = SasCalculator.CalculateSas(conn.LocalPublicKeyBytes, conn.RemotePublicKeyBytes, sessionNonce);
-
-            SasCode = $"{sas:D6}";
-            SasPeerName = PeerHost;
-            IsSasModalVisible = true;
-
-            _sasConfirmationTcs = new TaskCompletionSource<bool>();
-            bool sasConfirmed = await _sasConfirmationTcs.Task;
-            IsSasModalVisible = false;
-
-            if (!sasConfirmed)
+            TlsSocketConnection conn;
+            if (_pairedInvitation != null)
             {
-                StatusMessage = "Transfer cancelled by user.";
-                return;
+                if (_pairedInvitation.IsExpired())
+                {
+                    StatusMessage = "Pairing invitation has expired. Please pair again.";
+                    return;
+                }
+                conn = await client.ConnectAsync(PeerHost, PeerPort, expectedSpkiSha256: _pairedInvitation.SpkiSha256, ct);
+            }
+            else
+            {
+                conn = await client.ConnectAsync(PeerHost, PeerPort, ct);
             }
 
-            var channel = new LengthPrefixedFrameChannel(conn.SslStream);
-            var sessionId = new SessionId(Guid.NewGuid().ToString("D").ToLowerInvariant());
-
-            // 1. HELLO
-            var helloBody = new JsonObject
+            await using (conn)
             {
-                ["supportedMajors"] = new JsonArray(1),
-                ["requiredCapabilities"] = new JsonArray(),
-                ["optionalCapabilities"] = new JsonArray("folder-v1"),
-                ["role"] = "sender",
-                ["ephemeralPeerId"] = Guid.NewGuid().ToString("D").ToLowerInvariant(),
-                ["displayName"] = Environment.MachineName
-            };
-            await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.Hello, sessionId, new MessageId(Guid.NewGuid().ToString("D").ToLowerInvariant()), 1, helloBody), ct);
+                var channel = new LanRecordChannel(conn.SslStream);
+                var sessionId = new SessionId(Guid.NewGuid().ToString("D").ToLowerInvariant());
 
-            // 2. HELLO_ACK
-            var ack = await channel.ReadEnvelopeAsync(ct);
-            SasPeerName = ack.Body["displayName"]?.ToString() ?? PeerHost;
-
-            // 3. OFFER_BEGIN
-            var batchId = new BatchId(Guid.NewGuid().ToString("D").ToLowerInvariant());
-            long totalBytes = SelectedFiles.Sum(f => f.SizeBytes);
-            var offerBegin = new JsonObject
-            {
-                ["batchId"] = batchId.Value,
-                ["itemCount"] = SelectedFiles.Count,
-                ["totalBytes"] = totalBytes.ToString(),
-                ["pageCount"] = 1
-            };
-            await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.OfferBegin, sessionId, new MessageId(Guid.NewGuid().ToString("D").ToLowerInvariant()), 2, offerBegin), ct);
-
-            // 4. OFFER_PAGE
-            var itemsArr = new JsonArray();
-            var itemMap = new Dictionary<string, (TransferItemViewModel item, Sha256Digest digest)>();
-
-            foreach (var f in SelectedFiles)
-            {
-                var itemId = new ItemId(Guid.NewGuid().ToString("D").ToLowerInvariant());
-                byte[] bytes = await File.ReadAllBytesAsync(f.FilePath, ct);
-                var digest = new Sha256Digest(Convert.ToHexStringLower(SHA256.HashData(bytes)));
-                itemMap[itemId.Value] = (f, digest);
-
-                itemsArr.Add(new JsonObject
+                if (_pairedInvitation != null)
                 {
-                    ["itemId"] = itemId.Value,
-                    ["name"] = f.Name,
-                    ["mime"] = "application/octet-stream",
-                    ["sizeBytes"] = f.SizeBytes.ToString(),
-                    ["relativePath"] = f.Name
-                });
-            }
+                    // Transmit BOOTSTRAP record
+                    var bootstrapMsg = new LanBootstrapMessage(
+                        invitationId: _pairedInvitation.InvitationId,
+                        token: _pairedInvitation.Token,
+                        invitationHash: _pairedInvitation.InvitationHash,
+                        sessionId: sessionId.Value,
+                        role: LanBootstrapMessage.RoleSender);
 
-            var offerPage = new JsonObject
-            {
-                ["batchId"] = batchId.Value,
-                ["pageIndex"] = 0,
-                ["items"] = itemsArr
-            };
-            await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.OfferPage, sessionId, new MessageId(Guid.NewGuid().ToString("D").ToLowerInvariant()), 3, offerPage), ct);
+                    await channel.WriteBootstrapAsync(bootstrapMsg, ct);
 
-            // 5. OFFER_END
-            await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.OfferEnd, sessionId, new MessageId(Guid.NewGuid().ToString("D").ToLowerInvariant()), 4, new JsonObject { ["batchId"] = batchId.Value }), ct);
-
-            // 6. OFFER_DECISION
-            TransferTitle = "Waiting for peer approval...";
-            var dec = await channel.ReadEnvelopeAsync(ct);
-            if (!(dec.Body["accepted"]?.GetValue<bool>() ?? false))
-            {
-                StatusMessage = "Peer rejected the transfer offer.";
-                return;
-            }
-
-            TransferTitle = $"Sending {SelectedFiles.Count} file(s) to {SasPeerName}";
-            long cumulativeTransferred = 0;
-            var sw = Stopwatch.StartNew();
-
-            foreach (var (itemId, (item, digest)) in itemMap)
-            {
-                CurrentFileName = item.Name;
-                item.Status = "Sending...";
-
-                var startBody = new JsonObject
-                {
-                    ["batchId"] = batchId.Value,
-                    ["itemId"] = itemId,
-                    ["bulkRef"] = Guid.NewGuid().ToString("D").ToLowerInvariant(),
-                    ["sizeBytes"] = item.SizeBytes.ToString()
-                };
-                await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.ItemStart, sessionId, new MessageId(Guid.NewGuid().ToString("D").ToLowerInvariant()), 5, startBody), ct);
-
-                await channel.ReadEnvelopeAsync(ct); // ITEM_READY
-
-                // Stream file
-                using (var fs = new FileStream(item.FilePath, FileMode.Open, FileAccess.Read, FileShare.Read, 65536, true))
-                {
-                    byte[] buf = new byte[65536];
-                    int read;
-                    while ((read = await fs.ReadAsync(buf.AsMemory(0, buf.Length), ct)) > 0)
+                    var bootstrapResult = await channel.ReadBootstrapResultAsync(ct);
+                    if (!bootstrapResult.IsAccepted)
                     {
-                        await conn.SslStream.WriteAsync(buf.AsMemory(0, read), ct);
-                        cumulativeTransferred += read;
-
-                        TotalProgress = totalBytes > 0 ? (cumulativeTransferred * 100.0) / totalBytes : 100;
-                        double mbps = (cumulativeTransferred / (1024.0 * 1024.0)) / Math.Max(0.01, sw.Elapsed.TotalSeconds);
-                        TransferRateText = $"{mbps:F1} MB/s";
-                        TransferredBytesText = $"{TransferItemViewModel.FormatSize(cumulativeTransferred)} / {TransferItemViewModel.FormatSize(totalBytes)}";
+                        StatusMessage = $"Pairing bootstrap rejected by peer: {bootstrapResult.Code}";
+                        return;
                     }
-                    await conn.SslStream.FlushAsync(ct);
+                    _pairedInvitation = null; // One-use token consumed
+                }
+                else
+                {
+                    byte[] sessionNonce = RandomNumberGenerator.GetBytes(32);
+                    int sas = SasCalculator.CalculateSas(conn.LocalPublicKeyBytes, conn.RemotePublicKeyBytes, sessionNonce);
+
+                    SasCode = $"{sas:D6}";
+                    SasPeerName = PeerHost;
+                    IsSasModalVisible = true;
+
+                    _sasConfirmationTcs = new TaskCompletionSource<bool>();
+                    bool sasConfirmed = await _sasConfirmationTcs.Task;
+                    IsSasModalVisible = false;
+
+                    if (!sasConfirmed)
+                    {
+                        StatusMessage = "Transfer cancelled by user.";
+                        return;
+                    }
                 }
 
-                var endBody = new JsonObject
+                // 1. HELLO
+                var helloBody = new JsonObject
+                {
+                    ["supportedMajors"] = new JsonArray(1),
+                    ["requiredCapabilities"] = new JsonArray(),
+                    ["optionalCapabilities"] = new JsonArray("folder-v1"),
+                    ["role"] = "sender",
+                    ["ephemeralPeerId"] = Guid.NewGuid().ToString("D").ToLowerInvariant(),
+                    ["displayName"] = Environment.MachineName
+                };
+                await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.Hello, sessionId, new MessageId(Guid.NewGuid().ToString("D").ToLowerInvariant()), 1, helloBody), ct);
+
+                // 2. HELLO_ACK
+                var ack = await channel.ReadEnvelopeAsync(ct);
+                SasPeerName = ack.Body["displayName"]?.ToString() ?? PeerHost;
+
+                // 3. OFFER_BEGIN
+                var batchId = new BatchId(Guid.NewGuid().ToString("D").ToLowerInvariant());
+                long totalBytes = SelectedFiles.Sum(f => f.SizeBytes);
+                var offerBegin = new JsonObject
                 {
                     ["batchId"] = batchId.Value,
-                    ["itemId"] = itemId,
-                    ["actualBytes"] = item.SizeBytes.ToString(),
-                    ["sha256"] = digest.Value
+                    ["itemCount"] = SelectedFiles.Count,
+                    ["totalBytes"] = totalBytes.ToString(),
+                    ["pageCount"] = 1
                 };
-                await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.ItemEnd, sessionId, new MessageId(Guid.NewGuid().ToString("D").ToLowerInvariant()), 6, endBody), ct);
+                await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.OfferBegin, sessionId, new MessageId(Guid.NewGuid().ToString("D").ToLowerInvariant()), 2, offerBegin), ct);
 
-                var res = await channel.ReadEnvelopeAsync(ct); // ITEM_RESULT
-                item.Status = res.Body["status"]?.ToString() == "verified" ? "Verified" : "Failed";
+                // 4. OFFER_PAGE
+                var itemsArr = new JsonArray();
+                var itemMap = new Dictionary<string, (TransferItemViewModel item, Sha256Digest digest)>();
 
-                Application.Current?.Dispatcher.Invoke(() =>
+                foreach (var f in SelectedFiles)
                 {
-                    HistoryItems.Insert(0, new HistoryItemViewModel
+                    var itemId = new ItemId(Guid.NewGuid().ToString("D").ToLowerInvariant());
+                    byte[] bytes = await File.ReadAllBytesAsync(f.FilePath, ct);
+                    var digest = new Sha256Digest(Convert.ToHexStringLower(SHA256.HashData(bytes)));
+                    itemMap[itemId.Value] = (f, digest);
+
+                    itemsArr.Add(new JsonObject
                     {
-                        Direction = "Sent",
-                        ItemName = item.Name,
-                        FormattedSize = item.FormattedSize,
-                        TargetPath = item.FilePath,
-                        PeerName = SasPeerName,
-                        Timestamp = DateTime.Now
+                        ["itemId"] = itemId.Value,
+                        ["name"] = f.Name,
+                        ["mime"] = "application/octet-stream",
+                        ["sizeBytes"] = f.SizeBytes.ToString(),
+                        ["relativePath"] = f.Name
                     });
-                });
+                }
+
+                var offerPage = new JsonObject
+                {
+                    ["batchId"] = batchId.Value,
+                    ["pageIndex"] = 0,
+                    ["items"] = itemsArr
+                };
+                await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.OfferPage, sessionId, new MessageId(Guid.NewGuid().ToString("D").ToLowerInvariant()), 3, offerPage), ct);
+
+                // 5. OFFER_END
+                await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.OfferEnd, sessionId, new MessageId(Guid.NewGuid().ToString("D").ToLowerInvariant()), 4, new JsonObject { ["batchId"] = batchId.Value }), ct);
+
+                // 6. OFFER_DECISION
+                TransferTitle = "Waiting for peer approval...";
+                var dec = await channel.ReadEnvelopeAsync(ct);
+                if (!(dec.Body["accepted"]?.GetValue<bool>() ?? false))
+                {
+                    StatusMessage = "Peer rejected the transfer offer.";
+                    return;
+                }
+
+                TransferTitle = $"Sending {SelectedFiles.Count} file(s) to {SasPeerName}";
+                long cumulativeTransferred = 0;
+                var sw = Stopwatch.StartNew();
+
+                foreach (var (itemId, (item, digest)) in itemMap)
+                {
+                    CurrentFileName = item.Name;
+                    item.Status = "Sending...";
+                    string bulkRef = Guid.NewGuid().ToString("D").ToLowerInvariant();
+
+                    var startBody = new JsonObject
+                    {
+                        ["batchId"] = batchId.Value,
+                        ["itemId"] = itemId,
+                        ["bulkRef"] = bulkRef,
+                        ["sizeBytes"] = item.SizeBytes.ToString()
+                    };
+                    await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.ItemStart, sessionId, new MessageId(Guid.NewGuid().ToString("D").ToLowerInvariant()), 5, startBody), ct);
+
+                    await channel.ReadEnvelopeAsync(ct); // ITEM_READY
+
+                    // Stream file via LanRecord.Data
+                    using (var fs = new FileStream(item.FilePath, FileMode.Open, FileAccess.Read, FileShare.Read, 65536, true))
+                    {
+                        byte[] buf = new byte[65520];
+                        int read;
+                        while ((read = await fs.ReadAsync(buf.AsMemory(0, buf.Length), ct)) > 0)
+                        {
+                            await channel.WriteDataChunkAsync(bulkRef, buf.AsMemory(0, read), ct);
+                            cumulativeTransferred += read;
+
+                            TotalProgress = totalBytes > 0 ? (cumulativeTransferred * 100.0) / totalBytes : 100;
+                            double mbps = (cumulativeTransferred / (1024.0 * 1024.0)) / Math.Max(0.01, sw.Elapsed.TotalSeconds);
+                            TransferRateText = $"{mbps:F1} MB/s";
+                            TransferredBytesText = $"{TransferItemViewModel.FormatSize(cumulativeTransferred)} / {TransferItemViewModel.FormatSize(totalBytes)}";
+                        }
+
+                        byte[] extraBuf = new byte[1];
+                        int extra = await fs.ReadAsync(extraBuf.AsMemory(0, 1), ct);
+                        if (extra > 0)
+                        {
+                            throw new InvalidOperationException($"File {item.Name} had unexpected bytes beyond declared size.");
+                        }
+                    }
+
+                    // Send STREAM_END
+                    await channel.WriteStreamEndAsync(bulkRef, item.SizeBytes, ct);
+
+                    var endBody = new JsonObject
+                    {
+                        ["batchId"] = batchId.Value,
+                        ["itemId"] = itemId,
+                        ["actualBytes"] = item.SizeBytes.ToString(),
+                        ["sha256"] = digest.Value
+                    };
+                    await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.ItemEnd, sessionId, new MessageId(Guid.NewGuid().ToString("D").ToLowerInvariant()), 6, endBody), ct);
+
+                    var res = await channel.ReadEnvelopeAsync(ct); // ITEM_RESULT
+                    item.Status = res.Body["status"]?.ToString() == "verified" ? "Verified" : "Failed";
+
+                    Application.Current?.Dispatcher.Invoke(() =>
+                    {
+                        HistoryItems.Insert(0, new HistoryItemViewModel
+                        {
+                            Direction = "Sent",
+                            ItemName = item.Name,
+                            FormattedSize = item.FormattedSize,
+                            TargetPath = item.FilePath,
+                            PeerName = SasPeerName,
+                            Timestamp = DateTime.Now
+                        });
+                    });
+                }
+
+                await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.BatchEnd, sessionId, new MessageId(Guid.NewGuid().ToString("D").ToLowerInvariant()), 7, new JsonObject { ["batchId"] = batchId.Value }), ct);
+                await channel.ReadEnvelopeAsync(ct); // BATCH_RESULT
+
+                StatusMessage = $"Sent {SelectedFiles.Count} file(s) successfully!";
             }
-
-            await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.BatchEnd, sessionId, new MessageId(Guid.NewGuid().ToString("D").ToLowerInvariant()), 7, new JsonObject { ["batchId"] = batchId.Value }), ct);
-            await channel.ReadEnvelopeAsync(ct); // BATCH_RESULT
-
-            StatusMessage = $"Sent {SelectedFiles.Count} file(s) successfully!";
         }
         catch (Exception ex)
         {

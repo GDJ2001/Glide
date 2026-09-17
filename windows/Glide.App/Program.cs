@@ -3,11 +3,14 @@ using System.Security.Cryptography;
 using System.Text.Json.Nodes;
 using Glide.Core.Codec;
 using Glide.Core.Models;
+using Glide.Core.Pairing;
 using Glide.Core.Security;
 using Glide.Core.Storage;
+using Glide.Core.Transport.Lan;
 using Glide.Transport.Discovery;
 using Glide.Transport.Framing;
 using Glide.Transport.Sockets;
+using ProtocolViolationException = Glide.Core.Models.ProtocolViolationException;
 
 namespace Glide.App;
 
@@ -58,12 +61,15 @@ public static class Program
         Console.WriteLine("\nUsage:");
         Console.WriteLine("  glide receive [--port <port>]");
         Console.WriteLine("      Start listening for incoming files from Glide Android or Desktop.");
-        Console.WriteLine("      Defaults to port 42424 (or dynamic ephemeral port if unavailable).\n");
+        Console.WriteLine("      Defaults to port 42424 (or dynamic ephemeral port if unavailable).");
+        Console.WriteLine("      Outputs a pairing invitation link for QR code / instant pairing.\n");
         Console.WriteLine("  glide send <peer-host> <peer-port> <file-paths...>");
+        Console.WriteLine("  glide send --pair <pairing-invitation-uri> <file-paths...>");
         Console.WriteLine("      Connect to a Glide peer and send files over authenticated TLS 1.3.\n");
         Console.WriteLine("Examples:");
         Console.WriteLine("  glide receive");
-        Console.WriteLine("  glide send 192.168.1.50 42424 \"C:\\Photos\\vacation.jpg\"\n");
+        Console.WriteLine("  glide send 192.168.1.50 42424 \"C:\\Photos\\vacation.jpg\"");
+        Console.WriteLine("  glide send --pair glide://pair/v1#... \"C:\\Photos\\vacation.jpg\"\n");
     }
 
     private static int HandleUnknownCommand(string command)
@@ -107,12 +113,41 @@ public static class Program
                 .Select(ip => ip.ToString())
                 .ToList();
 
+            string presence = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
+            byte[] tokenBytes = RandomNumberGenerator.GetBytes(32);
+            string token = Convert.ToBase64String(tokenBytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+            byte[] spkiHashBytes = SHA256.HashData(listener.ServerCertificate.PublicKey.ExportSubjectPublicKeyInfo());
+            string spkiSha256 = Convert.ToHexString(spkiHashBytes).ToLowerInvariant();
+            long expiresAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 120;
+
+            var endpoints = ips.Select(ip => new LanEndpoint(ip, boundPort)).Take(4).ToList();
+            if (endpoints.Count == 0) endpoints.Add(new LanEndpoint("127.0.0.1", boundPort));
+
+            var invitation = new LanInvitation(
+                invitationId: Guid.NewGuid().ToString().ToLowerInvariant(),
+                presence: presence,
+                name: Environment.MachineName,
+                platform: "windows",
+                endpoints: endpoints,
+                spkiSha256: spkiSha256,
+                token: token,
+                expiresAt: expiresAt.ToString(),
+                ttlSeconds: 120);
+
+            string pairingUri = InvitationCodec.Encode(invitation);
+
             Console.ForegroundColor = ConsoleColor.Green;
             Console.WriteLine($"\n[READY] Listening for incoming transfers on port {boundPort}");
             Console.WriteLine($"[INFO] Local IP addresses: {string.Join(", ", ips)}");
             Console.WriteLine($"[INFO] Staging sandbox: %LocalAppData%\\Glide\\staging\\");
             Console.WriteLine($"[INFO] Destination: %USERPROFILE%\\Downloads\\");
             Console.ResetColor();
+
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine("\n[PAIRING INVITATION] Scan or paste into peer device:");
+            Console.WriteLine($"  {pairingUri}");
+            Console.ResetColor();
+
             Console.WriteLine("\nWaiting for peer connection (Ctrl+C to cancel)...");
 
             await using var conn = await listener.AcceptConnectionAsync();
@@ -120,22 +155,63 @@ public static class Program
             Console.WriteLine($"\n[CONNECTED] Peer connected! Performing TLS 1.3 mutual handshake...");
             Console.ResetColor();
 
-            // Compute SAS
-            byte[] sessionNonce = RandomNumberGenerator.GetBytes(32);
-            int sas = SasCalculator.CalculateSas(conn.RemotePublicKeyBytes, conn.LocalPublicKeyBytes, sessionNonce);
-
-            Console.ForegroundColor = ConsoleColor.Magenta;
-            Console.WriteLine("-----------------------------------------------------------------");
-            Console.WriteLine($"  *** 6-DIGIT VERIFICATION CODE: [ {sas:D6} ] ***");
-            Console.WriteLine("  Verify that this code matches on the sending device screen.");
-            Console.WriteLine("-----------------------------------------------------------------");
-            Console.ResetColor();
-
-            var channel = new LengthPrefixedFrameChannel(conn.SslStream);
+            var channel = new LanRecordChannel(conn.SslStream);
             var stagingStore = new QuarantineStagingStore();
 
-            // Receive HELLO
-            var helloEnv = await channel.ReadEnvelopeAsync();
+            var firstRecord = await channel.ReadRecordAsync();
+            if (firstRecord == null)
+            {
+                Console.WriteLine("[ERROR] Peer disconnected before sending first record.");
+                return 1;
+            }
+
+            Envelope helloEnv;
+            if (firstRecord is LanRecord.Bootstrap bootstrapRecord)
+            {
+                var bootstrap = LanBootstrapCodec.DecodeBootstrap(bootstrapRecord.JsonBytes);
+                bool isValid = string.Equals(invitation.InvitationId, bootstrap.InvitationId, StringComparison.OrdinalIgnoreCase) &&
+                               string.Equals(invitation.Token, bootstrap.Token, StringComparison.Ordinal) &&
+                               string.Equals(invitation.InvitationHash, bootstrap.InvitationHash, StringComparison.OrdinalIgnoreCase) &&
+                               !invitation.IsExpired();
+
+                if (!isValid)
+                {
+                    var failCode = invitation.IsExpired()
+                        ? LanBootstrapFailureCode.INVITATION_EXPIRED
+                        : LanBootstrapFailureCode.AUTHENTICATION_FAILED;
+                    await channel.WriteBootstrapResultAsync(LanBootstrapResult.Rejected(failCode));
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine($"[BOOTSTRAP REJECTED] Inbound pairing token mismatch or expired ({failCode}).");
+                    Console.ResetColor();
+                    return 1;
+                }
+
+                await channel.WriteBootstrapResultAsync(LanBootstrapResult.Accepted(bootstrap.SessionId));
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine("[BOOTSTRAP ACCEPTED] QR invitation token validated successfully!");
+                Console.ResetColor();
+
+                helloEnv = await channel.ReadEnvelopeAsync();
+            }
+            else if (firstRecord is LanRecord.Control controlRecord)
+            {
+                byte[] sessionNonce = RandomNumberGenerator.GetBytes(32);
+                int sas = SasCalculator.CalculateSas(conn.RemotePublicKeyBytes, conn.LocalPublicKeyBytes, sessionNonce);
+
+                Console.ForegroundColor = ConsoleColor.Magenta;
+                Console.WriteLine("-----------------------------------------------------------------");
+                Console.WriteLine($"  *** 6-DIGIT VERIFICATION CODE: [ {sas:D6} ] ***");
+                Console.WriteLine("  Verify that this code matches on the sending device screen.");
+                Console.WriteLine("-----------------------------------------------------------------");
+                Console.ResetColor();
+
+                helloEnv = ProtocolCodec.Decode(controlRecord.Payload);
+            }
+            else
+            {
+                throw new ProtocolViolationException(WireErrorCodes.ProtocolOrder, $"Unexpected first record kind: {firstRecord.Kind}");
+            }
+
             Console.WriteLine($"[PROTOCOL] Received {helloEnv.Type} from '{helloEnv.Body["displayName"]}'");
 
             // Send HELLO_ACK
@@ -203,6 +279,7 @@ public static class Program
 
                 // ITEM_START
                 var itemStartEnv = await channel.ReadEnvelopeAsync();
+                string bulkRef = itemStartEnv.Body["bulkRef"]?.ToString() ?? Guid.NewGuid().ToString("D").ToLowerInvariant();
 
                 // Send ITEM_READY
                 var readyBody = new JsonObject
@@ -213,7 +290,7 @@ public static class Program
                 var readyEnv = new Envelope(1, MessageTypes.ItemReady, helloEnv.SessionId, new MessageId(Guid.NewGuid().ToString("D").ToLowerInvariant()), 4, readyBody);
                 await channel.WriteEnvelopeAsync(readyEnv);
 
-                // Receive bulk payload directly from SSL stream
+                // Receive bulk payload via LanRecord.Data and LanRecord.StreamEnd
                 string quarantinePath = stagingStore.GetQuarantinePath(helloEnv.SessionId, new ItemId(item.itemId));
                 string? qDir = Path.GetDirectoryName(quarantinePath);
                 if (qDir != null && !Directory.Exists(qDir)) Directory.CreateDirectory(qDir);
@@ -222,16 +299,38 @@ public static class Program
                 using (var fileStream = new FileStream(quarantinePath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, useAsync: true))
                 using (var sha256 = IncrementalHash.CreateHash(HashAlgorithmName.SHA256))
                 {
-                    byte[] buf = new byte[65536];
-                    long remaining = item.size;
-                    while (remaining > 0)
+                    long receivedBytes = 0;
+                    while (true)
                     {
-                        int toRead = (int)Math.Min(buf.Length, remaining);
-                        int read = await conn.SslStream.ReadAsync(buf.AsMemory(0, toRead));
-                        if (read <= 0) throw new EndOfStreamException("Connection terminated prematurely during payload stream.");
-                        await fileStream.WriteAsync(buf.AsMemory(0, read));
-                        sha256.AppendData(buf, 0, read);
-                        remaining -= read;
+                        var rec = await channel.ReadRecordAsync();
+                        if (rec == null) throw new EndOfStreamException("Connection terminated prematurely during payload stream.");
+
+                        if (rec is LanRecord.Data dataRec)
+                        {
+                            if (!string.Equals(dataRec.BulkRef.Value, bulkRef, StringComparison.OrdinalIgnoreCase))
+                            {
+                                throw new ProtocolViolationException(WireErrorCodes.MalformedMessage, "Unmatched bulkRef in DATA record");
+                            }
+                            await fileStream.WriteAsync(dataRec.Chunk);
+                            sha256.AppendData(dataRec.Chunk);
+                            receivedBytes += dataRec.Chunk.Length;
+                        }
+                        else if (rec is LanRecord.StreamEnd streamEndRec)
+                        {
+                            if (!string.Equals(streamEndRec.BulkRef.Value, bulkRef, StringComparison.OrdinalIgnoreCase))
+                            {
+                                throw new ProtocolViolationException(WireErrorCodes.MalformedMessage, "Unmatched bulkRef in STREAM_END record");
+                            }
+                            if (streamEndRec.ActualBytes != receivedBytes || receivedBytes != item.size)
+                            {
+                                throw new ProtocolViolationException(WireErrorCodes.IntegrityMismatch, $"STREAM_END actualBytes {streamEndRec.ActualBytes} != expected {item.size}");
+                            }
+                            break;
+                        }
+                        else
+                        {
+                            throw new ProtocolViolationException(WireErrorCodes.ProtocolOrder, $"Unexpected record kind {rec.Kind} during file streaming");
+                        }
                     }
                     hash = sha256.GetHashAndReset();
                 }
@@ -312,27 +411,48 @@ public static class Program
 
     private static async Task<int> RunSendAsync(string[] args)
     {
-        if (args.Length < 3)
+        string? pairUri = null;
+        string host = "127.0.0.1";
+        int port = LanDiscoveryConstants.DefaultPort;
+        var fileArgs = new List<string>();
+
+        if (args.Length >= 2 && args[0] is "--pair" or "-p")
+        {
+            pairUri = args[1];
+            fileArgs.AddRange(args[2..]);
+        }
+        else if (args.Length >= 3)
+        {
+            host = args[0];
+            if (!int.TryParse(args[1], out port))
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"[ERROR] Invalid port: '{args[1]}'");
+                Console.ResetColor();
+                return 1;
+            }
+            fileArgs.AddRange(args[2..]);
+        }
+        else
         {
             Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine("Error: 'send' requires <peer-host> <peer-port> and at least one file path.");
+            Console.WriteLine("[ERROR] Insufficient arguments for send.");
             Console.ResetColor();
+            PrintUsage();
             return 1;
         }
 
-        string host = args[0];
-        if (!int.TryParse(args[1], out int port))
+        if (fileArgs.Count == 0)
         {
             Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine($"Invalid port: '{args[1]}'");
+            Console.WriteLine("[ERROR] Please provide at least one file path to send.");
             Console.ResetColor();
             return 1;
         }
 
         var files = new List<FileInfo>();
-        for (int i = 2; i < args.Length; i++)
+        foreach (string p in fileArgs)
         {
-            string p = args[i];
             if (!File.Exists(p))
             {
                 Console.ForegroundColor = ConsoleColor.Red;
@@ -343,23 +463,76 @@ public static class Program
             files.Add(new FileInfo(p));
         }
 
+        LanInvitation? invitation = null;
+        if (pairUri != null)
+        {
+            try
+            {
+                invitation = InvitationCodec.Decode(pairUri);
+                if (invitation.IsExpired())
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine("[ERROR] Pairing invitation has expired. Request a new QR/pairing link.");
+                    Console.ResetColor();
+                    return 1;
+                }
+                var ep = invitation.Endpoints.First();
+                host = ep.Address;
+                port = ep.Port;
+                Console.WriteLine($"[INFO] Decoded pairing invitation for '{invitation.Name}' ({host}:{port})");
+            }
+            catch (Exception ex)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"[ERROR] Invalid pairing link: {ex.Message}");
+                Console.ResetColor();
+                return 1;
+            }
+        }
+
         Console.WriteLine($"[INFO] Connecting to {host}:{port} over TLS 1.3...");
         var client = new TlsSocketClient();
-        await using var conn = await client.ConnectAsync(host, port);
+        await using var conn = invitation != null
+            ? await client.ConnectAsync(host, port, expectedSpkiSha256: invitation.SpkiSha256)
+            : await client.ConnectAsync(host, port);
 
-        // Compute SAS
-        byte[] sessionNonce = RandomNumberGenerator.GetBytes(32);
-        int sas = SasCalculator.CalculateSas(conn.LocalPublicKeyBytes, conn.RemotePublicKeyBytes, sessionNonce);
-
-        Console.ForegroundColor = ConsoleColor.Magenta;
-        Console.WriteLine("-----------------------------------------------------------------");
-        Console.WriteLine($"  *** 6-DIGIT VERIFICATION CODE: [ {sas:D6} ] ***");
-        Console.WriteLine("  Verify that this code matches on the receiving device screen.");
-        Console.WriteLine("-----------------------------------------------------------------");
-        Console.ResetColor();
-
-        var channel = new LengthPrefixedFrameChannel(conn.SslStream);
+        var channel = new LanRecordChannel(conn.SslStream);
         var sessionId = new SessionId(Guid.NewGuid().ToString("D").ToLowerInvariant());
+
+        if (invitation != null)
+        {
+            var bootstrapMsg = new LanBootstrapMessage(
+                invitationId: invitation.InvitationId,
+                token: invitation.Token,
+                invitationHash: invitation.InvitationHash,
+                sessionId: sessionId.Value,
+                role: LanBootstrapMessage.RoleSender);
+
+            await channel.WriteBootstrapAsync(bootstrapMsg);
+            var bRes = await channel.ReadBootstrapResultAsync();
+            if (!bRes.IsAccepted)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"[BOOTSTRAP REJECTED] Peer rejected connection: {bRes.Code}");
+                Console.ResetColor();
+                return 1;
+            }
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine("[BOOTSTRAP ACCEPTED] Pinned TLS & invitation handshake verified!");
+            Console.ResetColor();
+        }
+        else
+        {
+            byte[] sessionNonce = RandomNumberGenerator.GetBytes(32);
+            int sas = SasCalculator.CalculateSas(conn.LocalPublicKeyBytes, conn.RemotePublicKeyBytes, sessionNonce);
+
+            Console.ForegroundColor = ConsoleColor.Magenta;
+            Console.WriteLine("-----------------------------------------------------------------");
+            Console.WriteLine($"  *** 6-DIGIT VERIFICATION CODE: [ {sas:D6} ] ***");
+            Console.WriteLine("  Verify that this code matches on the receiving device screen.");
+            Console.WriteLine("-----------------------------------------------------------------");
+            Console.ResetColor();
+        }
 
         // Send HELLO
         var helloBody = new JsonObject
@@ -444,13 +617,14 @@ public static class Program
         foreach (var (itemId, (file, digest)) in itemMap)
         {
             Console.WriteLine($"\n[SENDING] {file.Name} ({file.Length:N0} bytes)...");
+            string bulkRef = Guid.NewGuid().ToString("D").ToLowerInvariant();
 
             // Send ITEM_START
             var itemStartBody = new JsonObject
             {
                 ["batchId"] = batchId.Value,
                 ["itemId"] = itemId,
-                ["bulkRef"] = Guid.NewGuid().ToString("D").ToLowerInvariant(),
+                ["bulkRef"] = bulkRef,
                 ["sizeBytes"] = file.Length.ToString()
             };
             await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.ItemStart, sessionId, new MessageId(Guid.NewGuid().ToString("D").ToLowerInvariant()), 5, itemStartBody));
@@ -458,11 +632,23 @@ public static class Program
             // Await ITEM_READY
             await channel.ReadEnvelopeAsync();
 
-            // Stream bulk payload directly
+            // Stream bulk payload via LanRecord.Data
             using (var fs = new FileStream(file.FullName, FileMode.Open, FileAccess.Read, FileShare.Read, 65536, useAsync: true))
             {
-                await channel.WriteBulkStreamAsync(fs, file.Length);
+                byte[] buf = new byte[65520];
+                int read;
+                while ((read = await fs.ReadAsync(buf.AsMemory(0, buf.Length))) > 0)
+                {
+                    await channel.WriteDataChunkAsync(bulkRef, buf.AsMemory(0, read));
+                }
+
+                byte[] extra = new byte[1];
+                int extraRead = await fs.ReadAsync(extra.AsMemory(0, 1));
+                if (extraRead > 0) throw new InvalidOperationException($"File {file.Name} grew while streaming!");
             }
+
+            // Send STREAM_END
+            await channel.WriteStreamEndAsync(bulkRef, file.Length);
 
             // Send ITEM_END
             var itemEndBody = new JsonObject
