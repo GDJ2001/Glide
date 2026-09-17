@@ -21,6 +21,10 @@ public struct BonjourPeer: Equatable, Sendable {
         self.presenceToken = presenceToken
         self.protocolVersion = protocolVersion
     }
+
+    public var spkiFingerprintHex: String {
+        return spkiSha256
+    }
 }
 
 /// Bonjour service and TXT record contract for Apple platform discovery.
