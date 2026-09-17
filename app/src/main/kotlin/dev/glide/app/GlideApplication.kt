@@ -5,7 +5,7 @@ import android.content.pm.ApplicationInfo
 import android.os.StrictMode
 import android.util.Log
 import dagger.hilt.android.HiltAndroidApp
-import dev.glide.app.transfer.ActiveSessionTracker
+import dev.glide.app.service.TransferRuntime
 import dev.glide.data.maintenance.OrphanMaintenanceActiveSessionProvider
 import dev.glide.data.maintenance.OrphanMaintenanceCleaner
 import dev.glide.data.maintenance.OrphanMaintenanceCleanerProvider
@@ -26,9 +26,12 @@ class GlideApplication : Application(), OrphanMaintenanceCleanerProvider, Orphan
     @Inject
     lateinit var cleaner: OrphanMaintenanceCleaner
 
+    @Inject
+    lateinit var transferRuntime: TransferRuntime
+
     override fun getOrphanMaintenanceCleaner(): OrphanMaintenanceCleaner = cleaner
 
-    override fun getActiveSessionId(): String? = ActiveSessionTracker.activeSessionId.value
+    override fun getActiveSessionId(): String? = transferRuntime.activeSessionId.value
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
