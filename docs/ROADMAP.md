@@ -1,27 +1,34 @@
 # Glide roadmap
 
-[Task ledger](TODO_MASTER.md) holds statuses/percentages; [graph](TASK_DEPENDENCY_GRAPH.md) holds exact ordering. This is milestone scope and gate authority. **13 V1 lifecycle milestones including M0**, plus one future bucket M13.68 V1 delivery tasks and4 future planning tasks. No calendar estimates are promised before physical proof.
+Current roadmap authority is the [Code Review, Improvement, Hardening & Development Completion Plan](planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md). Task status lives in [TODO_MASTER.md](TODO_MASTER.md).
+
+The old GLIDE V1 roadmap and GLIDE-001–072 completion record are historical. They describe prior planning, implementation sessions and release evidence but do not certify the present multi-platform checkout. The original task ledger remains available at immutable pre-HARD commit [`b07f15b`](https://github.com/GDJ2001/Glide/blob/b07f15bdde60bb5bfa9b20fdaba093b7a6a93785/docs/TODO_MASTER.md).
+
+## Current program
 
 | Milestone | Scope / task IDs | Exit gate |
 | --- | --- | --- |
-| M0 Planning | Documentation-only blueprint | Completeness/link/dependency audit; no app implementation |
-| M1 Reproducible foundation | GLIDE-001–GLIDE-004 | Clean pinned build, module boundaries, accessible minimal shell and CI baseline |
-| M2 Core contracts and protocol | GLIDE-005–GLIDE-009 | Strict tested protocol/state/permission contracts |
-| M3 First real device transfer | GLIDE-010–GLIDE-018 | Two real phones: discover→verify→offer→stream→hash→open→history; STREAM benchmark decision |
-| M4 Foreground MVP | GLIDE-019–GLIDE-027 | Usable foreground batch/share/export/history/settings flows |
-| M5 Background and recovery | GLIDE-028–GLIDE-034 | Background/lock/interruption/journal behavior physically proven |
-| M6 Premium UI | GLIDE-035–GLIDE-043 | Consistent premium light/dark/dynamic UI, all states and faithful platform brand resources |
-| M7 Adaptive and accessibility | GLIDE-044–GLIDE-047 | Adaptive windows, assistive/input/RTL/large text gate |
-| M8 Security hardening | GLIDE-048–GLIDE-050 | Threat-model tests and no open Critical/High finding |
-| M9 Performance | GLIDE-051–GLIDE-054 | Measured startup/frame/memory/radio/thermal budgets |
-| M10 Release-candidate quality | GLIDE-055–GLIDE-059 | Complete integration/emulator/physical/regression gate |
-| M11 Release preparation | GLIDE-060–GLIDE-064 | Signed RC, identity/privacy/store/closed-testing/owner approval |
-| M12 Production and maintenance | GLIDE-065–GLIDE-068 | Published exact artifact, monitored health, incident/maintenance handoff (COMPLETE ✅) |
-| M13 Future work (outside V1) | GLIDE-069–GLIDE-072 | Folder, persistent trust/resume, advanced transport, and cross-platform LAN research (COMPLETE ✅) |
+| M0 Honest baseline | HARD-001–004 | Current source/docs/status reconciled; regressions exist for confirmed defects; Android/Windows/Linux CI reaches and tests source |
+| M1 Android production flow | HARD-005–010 | Two physical Android devices complete production send/receive in both directions with pairing, consent, integrity, rejection and cancellation |
+| M2 Desktop/native interoperability | HARD-011–017 | Android↔Windows, Android↔Linux and Windows↔Linux pass actual interoperable multi-file/multi-page transfers |
+| M3 Trust, folders and true resume | HARD-018–024 | Authenticated persistent trust and byte-identical resumable folder transfer pass cross-platform interruption/security tests |
+| M4 Secure browser sharing | HARD-025–030 | Browser↔native sharing uses authenticated encrypted local WebRTC; plaintext HTTP transfer is absent from release builds |
+| M5 Structure/developer experience | HARD-031–035 | Boundaries are maintainable; repository/tooling can be built and verified from a fresh checkout with documented commands |
+| M6 Product quality/hardening | HARD-036–040 | Physical failure, security, accessibility, performance and CI gates pass with no unresolved Critical/High security issue |
+| M7 Release/operations | HARD-041–043 | Exact reviewed artifacts have checksums/signing/evidence and release occurs only after explicit owner authorization |
 
-Priority definitions: P0 technical architecture/proof (M1–M3); P1 MVP (M4); P2 public production V1 (M5–M12); P3 V1.x enhancements; P4 advanced Android; P5 cross-platform. Folder/tree sharing, persistent trust, true resume, non-GMS alternatives and desktop/browser/iOS clients are outside V1. Motion/adaptive/security are specified early but full polish follows real transfer proof. No months of empty infrastructure before M3.
+## Current status
 
-**V1 Milestone Status:** All 13 V1 lifecycle milestones (M0–M12, 68/68 tasks) are COMPLETE ✅. Glide V1 (`0.1.0-alpha`, `versionCode 1`) is delivered, verified, and closed. See [V1 Closure & Next-Cycle Handoff](release/V1_CLOSURE_AND_NEXT_CYCLE_HANDOFF.md) for full retrospective and operational governance.
+- HARD-001: COMPLETE — publish evidence-backed review and completion plan.
+- HARD-002: READY — reconcile source, documentation, historical claims and commits after the review baseline.
+- HARD-003–043: NOT_STARTED until their dependencies are met.
 
-**Milestone M13 Status:** All 4 post-V1 strategic planning tasks (GLIDE-069–GLIDE-072) are COMPLETE ✅. Specifications, ADRs, pure JVM models, and compliance verification suites are 100% delivered and validated.
+Overall current hardening progress: **1 / 43 tasks (2.3%)**.
 
+## Scope boundary
+
+This release cycle completes Android, Windows 11, Linux and secure browser local sharing, including folders, persistent trust and true resume. Native Apple clients and remote/Internet transfer are deferred. Existing Apple/remote implementation is preserved but does not advance the active release gate unless the task ledger is explicitly amended.
+
+## Evidence rule
+
+Milestone gates are evidence-based. Unit tests, source-text scanners, loopback transports and emulators are useful layers, but they cannot replace physical or independent-implementation tests where the gate explicitly requires them.

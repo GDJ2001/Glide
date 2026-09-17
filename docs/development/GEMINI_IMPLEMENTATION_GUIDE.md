@@ -1,39 +1,96 @@
-# Gemini implementation guide
-Start every new session here through [docs portal](../README.md). Glide is a local, account-free premium file-sharing app. Android↔Android is the only current application scope. Astra/Codex authored the plan; Gemini is the later implementation agent. Planning has created no application code.
+# Gemini / AI implementation guide
 
-## Locate authority
-Read [master plan](../GLIDE_MASTER_PLAN.md), [TODO_MASTER](../TODO_MASTER.md), [roadmap](../ROADMAP.md), [dependency graph](../TASK_DEPENDENCY_GRAPH.md), then the selected task's linked architecture/ADR/design/security/tests. Task status lives only in TODO_MASTER; wire semantics in protocol; tokens in design system; decisions in ADRs. Existing raster assets are canonical. Root has a generic IDE project and brand pack at the planning snapshot, not a working Android build.
+Start every development session from the [documentation portal](../README.md), then read the [current hardening/completion plan](../planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md) and the selected task in [TODO_MASTER](../TODO_MASTER.md).
 
-## First action and implementation order
-First READY task is GLIDE-001: reproducible Android build. Do not begin random tasks, finish deferred branding first, or scaffold all possible future modules. Pick the next recommended READY item whose dependencies are COMPLETE and current milestone allows it. If code already exists in a later checkout, inspect and verify it before deciding task state.
+Glide is no longer an Android-only planning repository. It contains substantial Android, Windows/.NET, Linux packaging, browser/LAN, Apple and remote-transfer work. Historical planning and completion records are evidence, not a substitute for inspecting the current checkout.
 
-Planned modules: app, transfer-core, transport-nearby, data, designsystem; benchmark later. Android min26/compile37/target37; exact versions in [technology research](../planning/TECHNOLOGY_RESEARCH.md). Final publisher application ID remains an owner decision before public distribution; provisional dev.glide.app is not an owned identity claim.
+**Current next READY task:** [HARD-002](../TODO_MASTER.md#hard-002).
 
-## Repeatable task execution protocol
-1. Read context: task, master, relevant ADRs and linked specifications.
-2. Inspect implementation: git status/diff, relevant code/resources/tests, recent session handoff; preserve unrelated edits.
-3. Check dependencies: exact pins, platform/API requirements, module boundaries and any release-note changes since planning.
-4. State bounded scope and acceptance; mark IN_PROGRESS with owner/date. Implement only that task; no unrelated refactor.
-5. Build appropriate modules. After foundation, typical Windows commands are `.\gradlew.bat :app:assembleDebug :app:lintDebug :app:testDebugUnitTest :transfer-core:test`; use actual task names after inspecting Gradle tasks. CI uses ./gradlew. Commands are planned, not currently runnable.
-6. Test task-specific unit/integration/instrumentation and physical cases. `:app:connectedDebugAndroidTest` requires attached device; radio proof requires two physical phones.
-7. Verify UI when affected: actual light/dark/dynamic, errors/empty/success, large text, TalkBack, back/resize and relevant screenshots.
-8. Verify architecture/security/performance checklists. Run release-like checks when task affects shrinking, manifest or performance.
-9. Update authoritative docs only for reviewed behavior changes; update task evidence/status and [session handoff](SESSION_HANDOFF_TEMPLATE.md) always.
-10. Produce implementation report: changed files, decisions/deviations, exact commands/results, acceptance evidence, limitations, blockers and next READY task.
+## Authority order
 
-Use REVIEW_REQUIRED when implementation exists but review/manual validation is missing. COMPLETE requires [DoD](../DEFINITION_OF_DONE.md). No “tests passed” without actual command/exit evidence; no physical proof from emulator/fake adapters.
+For current work, resolve conflicts in this order:
 
-## Implementation rules by concern
-- State: immutable UI snapshots, ViewModels, StateFlow/lifecycle collection; serialized coordinator state; explicit scope ownership.
-- Networking: UI isolated from transport; Nearby P2P is an adapter, not domain; authenticated control then consent then stream.
-- Protocol: exact V1 bounds/order/receipts/fixtures; no app-specific Kotlin serialization defaults silently defining wire format.
-- Storage: bounded streaming and SHA256; private quarantine/commit; modern URI grants and explicit export.
-- Security: compare full SDK digits on both devices, no trusted name, redacted logs/backups and safe exported components.
-- Design: use committed logo files and documented tokens; restrained depth/motion, accessible adaptive layouts.
-- Dependencies: stable and minimal; no cloud, image-loading Glide library, custom crypto or experimental UI without ADR.
-- Uncertainty: stop the specific invalid assumption, research primary evidence, write change proposal/ADR and update affected tasks/specs before implementation; continue unrelated safe work.
-- Avoid changing: original logos, unrelated IDE/user files, protocol limits, minSdk/app identity, permissions or signing policy outside task authorization.
+1. Current HARD task in `TODO_MASTER.md`.
+2. Current hardening/completion plan.
+3. Actual source, executable configuration and current tests.
+4. Applicable protocol specification and accepted ADR.
+5. Historical task/session/release evidence.
+
+Never assume a historical `COMPLETE`, release or certification label applies to later code.
+
+## Current scope
+
+The active hardening cycle completes Android local sharing, Windows 11/Linux local sharing, secure browser local sharing, folders, persistent trust, true resume and the quality/release gates required to ship them.
+
+Native Apple applications and remote/Internet transfers are **deferred**, even though implementation material exists. Preserve that material; do not extend it unless a current HARD task or explicit user instruction authorizes it.
+
+## Task execution protocol
+
+1. Read the exact HARD task, dependencies, acceptance criteria, regression tests and evidence requirements.
+2. Inspect current branch/commit, relevant code, config, tests and recent history before editing.
+3. Reproduce the problem or prove the missing wiring with a production-path test where practical.
+4. Keep scope bounded. Do not combine protocol changes, file moves, refactors and feature behavior into one change unless the task explicitly requires it.
+5. Implement through established runtime/service/engine boundaries. Do not bypass them from UI code.
+6. Run task-specific tests first, then the appropriate wider build/lint/test gates.
+7. Perform physical/independent-platform/manual tests whenever the task gate requires them. Do not substitute loopback, source-text or emulator evidence.
+8. Review security, storage, cancellation, privacy, performance and accessibility for every changed production path.
+9. Update current documentation and task evidence. Preserve historical records rather than silently rewriting history.
+10. Record a session report with commit/diff identity, changed files, commands/results, outstanding manual checks, blockers and the next READY task.
+
+## Architecture rules
+
+### Android
+
+- `transfer-core` remains transport/platform independent.
+- The service-owned `TransferRuntime` is the target owner for production discovery/pairing/session/transfer lifetime.
+- ViewModels observe immutable state and send typed commands; they do not construct transports or own active transfer scopes.
+- Navigation carries opaque IDs, not credentials, sockets, coordinators or live transport objects.
+- Room schema changes require migrations, exported schemas and migration tests.
+
+### Desktop
+
+- WPF and CLI must use the same shared transfer/application engine.
+- Networking, protocol state, hashing, file I/O and recovery do not belong in ViewModels.
+- Hashing/streaming must be bounded-memory; do not use whole-file production reads to calculate digests.
+- Windows/Linux security and storage behavior remain explicit platform adapters around shared protocol/application logic.
+
+### Protocol and interoperability
+
+- Kotlin, C# and later browser/native adapters implement the same ordering, pagination, identifiers, consent and terminal-result semantics.
+- Any wire change updates specifications and shared golden fixtures before dependent implementations are considered complete.
+- Do not weaken one implementation to accommodate a broken peer. Fix the incompatible peer.
+
+## Security rules
+
+- TLS encryption alone is not peer authentication.
+- QR bootstrap uses real live listener endpoints/fingerprints and one atomic invitation lifecycle.
+- Unpaired/SAS authentication is not acceptable unless both peers derive the same authenticated value from a correctly exchanged/bound nonce and require explicit confirmation.
+- Persistent trust needs explicit enrollment, protected private keys, peer binding and revocation.
+- Trusted peers never imply automatic acceptance of arbitrary incoming files.
+- Unverified files remain quarantined; path names never directly determine unsafe filesystem locations.
+- Resume advances only across contiguous verified chunks and ends with whole-file integrity verification.
+- Never commit secrets, signing material or sensitive runtime values.
+
+## Browser rule
+
+The active direction is a trusted static HTTPS client using authenticated local WebRTC DataChannels. The existing plaintext HTTP web-transfer implementation is historical/transition code and must not be treated as release-safe. Do not add new release dependencies on it.
+
+## Verification rules
+
+Passing tests are necessary, not sufficient. Examples:
+
+- A source scanner proving a symbol exists does not prove authentication works.
+- A loopback transfer does not prove Android↔Windows interoperability.
+- An emulator does not prove physical radio reliability.
+- A virtual multi-gigabyte stream does not prove real-device network throughput.
+- A built artifact is not a released artifact.
+
+Use `REVIEW_REQUIRED` or `BLOCKED` rather than manufacturing completion when required evidence is unavailable.
+
+## Repository changes
+
+A future target tree (`android/`, `desktop/`, `web/`, `protocol/fixtures/`) is authorized only under HARD-033. Until then, preserve current paths. Do not opportunistically move/rename source while fixing behavior.
 
 ## Session completion
-Save a dated report under docs/development/sessions/ using the template. Reference commit/diff identity, task IDs and reproducible evidence. Recalculate milestone percentage from COMPLETE tasks only; update next recommendation and blockers. Leave remaining tasks visible. Never infer approval to publish, send messages or use signing secrets from a build task; release operations have explicit owner gates.
 
+Before ending a task, update `TODO_MASTER.md` only when its evidence contract is met, add/update the relevant session report, and name the next READY task. Deployment, publishing and release operations require their own explicit authorization and are never implied by build/test completion.
