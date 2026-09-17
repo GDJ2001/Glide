@@ -1,5 +1,6 @@
 package dev.glide.app.hardening
 
+import dev.glide.app.ui.discovery.BlockedReason
 import dev.glide.app.ui.discovery.DiscoveryUiState
 import dev.glide.app.ui.discovery.DiscoveryViewModel
 import dev.glide.app.ui.discovery.ReceiveReadinessUiState
@@ -39,20 +40,27 @@ class Hard003ProductionWiringRegressionTest {
     @Test
     fun discoveryViewModel_withoutProductionDiscoveryDependency_mustFailClosed() = runTest(dispatcher) {
         val viewModel = DiscoveryViewModel()
-
-        assertTrue(
-            "A transport-less production DiscoveryViewModel must expose Blocked instead of pretending that live discovery is running.",
-            viewModel.uiState.value is DiscoveryUiState.Blocked
-        )
+        try {
+            assertTrue(
+                "A transport-less production DiscoveryViewModel must expose Blocked instead of pretending that live discovery is running.",
+                viewModel.uiState.value is DiscoveryUiState.Blocked
+            )
+        } finally {
+            // Cancel the ViewModel's timer even when this intentional regression assertion fails.
+            viewModel.setBlocked(BlockedReason.TransportError("HARD-003 test cleanup"))
+        }
     }
 
     @Test
     fun receiveReadiness_withoutProductionAdvertisingDependency_mustFailClosed() = runTest(dispatcher) {
         val viewModel = ReceiveReadinessViewModel()
-
-        assertTrue(
-            "A transport-less production ReceiveReadinessViewModel must expose Blocked instead of claiming the device is advertising.",
-            viewModel.uiState.value is ReceiveReadinessUiState.Blocked
-        )
+        try {
+            assertTrue(
+                "A transport-less production ReceiveReadinessViewModel must expose Blocked instead of claiming the device is advertising.",
+                viewModel.uiState.value is ReceiveReadinessUiState.Blocked
+            )
+        } finally {
+            viewModel.setBlocked(BlockedReason.TransportError("HARD-003 test cleanup"))
+        }
     }
 }
