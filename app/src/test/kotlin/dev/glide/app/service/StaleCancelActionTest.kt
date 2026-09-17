@@ -24,17 +24,18 @@ class StaleCancelActionTest {
 
     private val testDispatcher = StandardTestDispatcher()
     private lateinit var service: TransferService
+    private lateinit var runtime: TransferRuntime
 
     @Before
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
-        TransferSessionManager.resetForTesting()
-        service = TransferService()
+        runtime = TransferRuntime.forTesting()
+        service = TransferService().also { it.runtimeOverride = runtime }
     }
 
     @After
     fun tearDown() {
-        TransferSessionManager.resetForTesting()
+        runtime.resetForTesting()
         Dispatchers.resetMain()
     }
 
@@ -60,7 +61,7 @@ class StaleCancelActionTest {
     @Test
     fun matchingSessionId_cancelsActiveSession() {
         val activeSessionId = "active-transfer-session-1"
-        TransferSessionManager.setUiStateForTesting(
+        runtime.setTransferStateForTesting(
             TransferUiState.Transferring(
                 sessionId = activeSessionId,
                 role = DeviceRole.Sender,
@@ -75,7 +76,7 @@ class StaleCancelActionTest {
         val cancelled = service.handleCancelAction(activeSessionId)
         assertTrue(cancelled)
 
-        val currentState = TransferSessionManager.uiState.value
+        val currentState = runtime.transferState.value
         assertTrue(currentState is TransferUiState.Cancelled)
         assertEquals(activeSessionId, currentState.sessionId)
     }
@@ -92,13 +93,13 @@ class StaleCancelActionTest {
             totalBytes = 1000L,
             progressFraction = 0.1f
         )
-        TransferSessionManager.setUiStateForTesting(activeState)
+        runtime.setTransferStateForTesting(activeState)
 
         val cancelled = service.handleCancelAction("stale-session-999")
         assertFalse(cancelled)
 
         // Active transfer must NOT be cancelled!
-        val currentState = TransferSessionManager.uiState.value
+        val currentState = runtime.transferState.value
         assertTrue(currentState is TransferUiState.Transferring)
         assertEquals(activeSessionId, currentState.sessionId)
         assertNotEquals("stale-session-999", currentState.sessionId)
@@ -116,13 +117,13 @@ class StaleCancelActionTest {
             totalBytes = 1000L,
             progressFraction = 0.1f
         )
-        TransferSessionManager.setUiStateForTesting(activeState)
+        runtime.setTransferStateForTesting(activeState)
 
         val cancelled = service.handleCancelAction(null)
         assertFalse(cancelled)
 
         // Active transfer must NOT be cancelled!
-        val currentState = TransferSessionManager.uiState.value
+        val currentState = runtime.transferState.value
         assertTrue(currentState is TransferUiState.Transferring)
         assertEquals(activeSessionId, currentState.sessionId)
     }
