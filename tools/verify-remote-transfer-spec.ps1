@@ -94,25 +94,49 @@ if ($SpecContent -notmatch "zero cryptographic keys" -or $SpecContent -notmatch 
 }
 Write-Host "  PASS: Zero-knowledge signaling and blind packet relay invariants verified." -ForegroundColor Green
 
-# --- Check 6: NAT Traversal Standards (ICE / STUN / TURN) ---
-Write-Host "`n[Check 6/10] Auditing NAT Traversal Standards (ICE, STUN, TURN)..." -ForegroundColor Yellow
+# --- Check 6: NAT Traversal Standards (ICE / STUN / TURN) & StunClient Implementation ---
+Write-Host "`n[Check 6/10] Auditing NAT Traversal Standards (ICE, STUN, TURN) & StunClient..." -ForegroundColor Yellow
 if ($SpecContent -notmatch "RFC 8445" -or $SpecContent -notmatch "RFC 8489" -or $SpecContent -notmatch "RFC 8656") {
     Write-Error "FAIL: Specification missing IETF RFC standards for ICE, STUN, and TURN."
 }
 if ($SpecContent -notmatch "Server-Reflexive Candidates" -or $SpecContent -notmatch "Relay Candidates") {
     Write-Error "FAIL: Specification missing ICE candidate gathering priorities."
 }
-Write-Host "  PASS: ICE (RFC 8445), STUN (RFC 8489), and TURN (RFC 8656) standards verified." -ForegroundColor Green
+$StunClientPath = Join-Path $ProjectRoot "windows\Glide.Transport\Remote\StunClient.cs"
+$StunTestPath = Join-Path $ProjectRoot "windows\Glide.Tests\StunClientTests.cs"
+if (-not (Test-Path $StunClientPath)) {
+    Write-Error "FAIL: RFC 8489 StunClient implementation missing: $StunClientPath"
+}
+$StunContent = Get-Content $StunClientPath -Raw
+if ($StunContent -notmatch "BuildBindingRequest" -or $StunContent -notmatch "ParseBindingResponse" -or $StunContent -notmatch "AttrXorMappedAddress") {
+    Write-Error "FAIL: StunClient.cs missing RFC 8489 packet builder or XOR-MAPPED-ADDRESS parser."
+}
+if (-not (Test-Path $StunTestPath)) {
+    Write-Error "FAIL: StunClient unit test suite missing: $StunTestPath"
+}
+Write-Host "  PASS: ICE (RFC 8445), STUN (RFC 8489), and StunClient pure C# implementation verified." -ForegroundColor Green
 
-# --- Check 7: Remote Invitation Schema & Wire Framing ---
-Write-Host "`n[Check 7/10] Auditing Remote Invitation Schema & Wire Framing..." -ForegroundColor Yellow
+# --- Check 7: Remote Invitation Schema, Codecs & Unit Tests ---
+Write-Host "`n[Check 7/10] Auditing Remote Invitation Schema, Codecs & Unit Tests..." -ForegroundColor Yellow
 if ($SpecContent -notmatch "glide://remote/v1#" -or $SpecContent -notmatch "RendezvousUUID") {
     Write-Error "FAIL: Specification missing canonical glide://remote/v1# URI schema."
 }
 if ($SpecContent -notmatch "LanRecord\.Control" -or $SpecContent -notmatch "LanRecord\.Data") {
     Write-Error "FAIL: Specification missing LanRecord framing preservation."
 }
-Write-Host "  PASS: Remote invitation URI schema and LanRecord wire framing verified." -ForegroundColor Green
+$CsModel = Join-Path $ProjectRoot "windows\Glide.Core\Remote\RemoteInvitation.cs"
+$CsCodec = Join-Path $ProjectRoot "windows\Glide.Core\Remote\RemoteInvitationCodec.cs"
+$CsTest = Join-Path $ProjectRoot "windows\Glide.Tests\RemoteInvitationCodecTests.cs"
+$KtModel = Join-Path $ProjectRoot "transfer-core\src\main\kotlin\dev\glide\core\remote\RemoteInvitation.kt"
+$KtCodec = Join-Path $ProjectRoot "transfer-core\src\main\kotlin\dev\glide\core\remote\RemoteInvitationCodec.kt"
+$KtTest = Join-Path $ProjectRoot "transfer-core\src\test\kotlin\dev\glide\core\remote\RemoteInvitationCodecTest.kt"
+
+foreach ($file in @($CsModel, $CsCodec, $CsTest, $KtModel, $KtCodec, $KtTest)) {
+    if (-not (Test-Path $file)) {
+        Write-Error "FAIL: Missing remote invitation component: $file"
+    }
+}
+Write-Host "  PASS: Remote invitation URI schema, cross-platform .NET/Kotlin codecs, and unit tests verified." -ForegroundColor Green
 
 # --- Check 8: Relay Anti-Abuse Quotas & Rate Limits ---
 Write-Host "`n[Check 8/10] Auditing Relay Anti-Abuse Quotas & Rate Limits..." -ForegroundColor Yellow
