@@ -4,12 +4,13 @@ This is the current top-level engineering plan for Glide. The original September
 
 - **Current completion plan:** [Code Review, Improvement, Hardening & Development Completion](planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md)
 - **Current task authority:** [TODO_MASTER — HARD-001–043](TODO_MASTER.md)
+- **Latest source/status reconciliation:** [HARD-002](planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md)
 - **Historical GLIDE-001–072 ledger:** immutable pre-HARD commit [`b07f15b`](https://github.com/GDJ2001/Glide/blob/b07f15bdde60bb5bfa9b20fdaba093b7a6a93785/docs/TODO_MASTER.md)
-- **Next READY task:** [HARD-002](TODO_MASTER.md#hard-002)
+- **Next READY task:** [HARD-003](TODO_MASTER.md#hard-003)
 
 ## 1. Product direction
 
-Glide is an account-free file-sharing product built around a portable, authenticated transfer protocol. The hardening cycle must turn the existing Android, desktop, LAN/browser and recovery work into one verified product rather than treating isolated modules or source-text checks as end-to-end completion.
+Glide is an account-free file-sharing product built around a portable, authenticated transfer protocol. The hardening cycle must turn the existing Android, desktop, LAN/browser and recovery work into one verified product rather than treating isolated modules, unit-test-only helpers or source-text checks as end-to-end completion.
 
 ## 2. Active release scope
 
@@ -27,11 +28,20 @@ Preserve but defer from this cycle:
 - Native Apple clients.
 - Remote/Internet transfer.
 
-Apple and remote source already present in the repository must not be deleted. It is simply outside the current release gate until explicitly authorized.
+Apple and remote source already present in the repository must not be deleted. HARD-002 classified it as partial component/library implementation with historical automated-test evidence, not a current native-runtime/interoperability/release certificate.
 
-## 3. Review and publication baselines
+## 3. Review and reconciliation baselines
 
-The evidence-backed hardening review inspected `main` at `ea2e811a7f2d8aaddc552e894fe04782cd08a499`. The pre-publication head for HARD-001 was `b07f15bdde60bb5bfa9b20fdaba093b7a6a93785`. Four intervening commits added Apple `GlideCoreKit` work and additional remote ICE/TURN/signaling/session code. HARD-002 must review and reconcile that delta before affected status claims are made.
+The evidence-backed hardening review inspected `main` at `ea2e811a7f2d8aaddc552e894fe04782cd08a499`. HARD-002 captured `main` at `12681eabba26387fe7d1bbaf309971f345642e41` and reviewed the full source/configuration delta through that boundary while separating HARD documentation commits.
+
+Key HARD-002 conclusions:
+
+- historical `COMPLETE`, `Production Shipped` and `Certified` labels are not current release authority;
+- Android/Windows/Linux/browser current completion must be re-earned through HARD production-path gates;
+- Apple `GlideCoreKit` and macOS/iOS helpers are partial implementation, not a complete native application/runtime;
+- remote ICE/STUN/TURN/signaling/session classes are partial implementation, not live E2EE WAN interoperability;
+- the Apple LAN framing specification was corrected to the actual 5-byte record header used by Kotlin, C# and Swift;
+- current repository release/publication status remains unverified until an exact-candidate release dossier proves it.
 
 ## 4. Architecture direction
 
@@ -91,4 +101,4 @@ A later structural milestone may organize the repository under `android/`, `desk
 
 ## 9. Immediate next action
 
-HARD-001 publishes the current plan and status authority only. It does not modify product behavior or authorize deployment. The next task is **HARD-002 — reconcile current source, documentation, historical claims and all commits after the review baseline**.
+HARD-001 established the plan; HARD-002 reconciled current source, historical claims and post-review Apple/remote work through its frozen boundary. The next task is **HARD-003 — add executable regressions for the confirmed production defects before implementing fixes**.
