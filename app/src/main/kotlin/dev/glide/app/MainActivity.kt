@@ -29,7 +29,7 @@ import dev.glide.app.ingress.ShareIngressParser
 import dev.glide.app.ingress.ShareIngressResult
 import dev.glide.app.navigation.GlideAppNavDisplay
 import dev.glide.app.navigation.GlideRoute
-import dev.glide.app.transfer.ActiveSessionTracker
+import dev.glide.app.service.TransferRuntime
 import dev.glide.app.ui.transfer.TransferUiState
 import dev.glide.core.domain.DeviceRole
 import dev.glide.core.ports.GlideSettings
@@ -54,6 +54,9 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var settingsStore: SettingsStore
+
+    @Inject
+    lateinit var transferRuntime: TransferRuntime
 
     private var lastHandledFingerprint: String? = null
     private val incomingOutcomeFlow = MutableStateFlow<IngressOutcome?>(null)
@@ -249,8 +252,7 @@ class MainActivity : ComponentActivity() {
                 GlideRoute.Selection(listOf(uri1.toString(), uri2.toString())) to null
             }
             isDebuggable && debugState == "share_test_busy" -> {
-                ActiveSessionTracker.setSessionActive("active-transfer-session", true)
-                GlideRoute.Transfer("active-transfer-session") to TransferUiState.Transferring(
+                val state = TransferUiState.Transferring(
                     sessionId = "active-transfer-session",
                     role = DeviceRole.Sender,
                     peerName = "Pixel 9 Pro",
@@ -260,6 +262,8 @@ class MainActivity : ComponentActivity() {
                     progressFraction = 0.32f,
                     speedBytesPerSec = 5200000L
                 )
+                transferRuntime.setTransferStateForTesting(state)
+                GlideRoute.Transfer("active-transfer-session") to state
             }
             isDebuggable && debugState == "service_transfer_active" -> {
                 val sid = "fgs-live-session"
@@ -291,7 +295,7 @@ class MainActivity : ComponentActivity() {
                     progressFraction = 0.375f,
                     speedBytesPerSec = 1500000L
                 )
-                dev.glide.app.service.TransferSessionManager.setUiStateForTesting(state)
+                transferRuntime.setTransferStateForTesting(state)
                 GlideRoute.Transfer(sid) to state
             }
             isDebuggable && debugState == "service_notification_detailed" -> {
@@ -310,7 +314,7 @@ class MainActivity : ComponentActivity() {
                     progressFraction = 0.48f,
                     speedBytesPerSec = 8200000L
                 )
-                dev.glide.app.service.TransferSessionManager.setUiStateForTesting(state)
+                transferRuntime.setTransferStateForTesting(state)
                 GlideRoute.Transfer(sid) to state
             }
             isDebuggable && debugState == "service_retry_interrupted" -> {
@@ -328,7 +332,7 @@ class MainActivity : ComponentActivity() {
                     canRetry = true,
                     peerName = "Pixel 9 Pro"
                 )
-                dev.glide.app.service.TransferSessionManager.setUiStateForTesting(state)
+                transferRuntime.setTransferStateForTesting(state)
                 GlideRoute.Transfer(sid) to state
             }
             isDebuggable && debugState == "service_retry_unconfirmed" -> {
@@ -346,7 +350,7 @@ class MainActivity : ComponentActivity() {
                     canRetry = true,
                     peerName = "Pixel 9 Pro"
                 )
-                dev.glide.app.service.TransferSessionManager.setUiStateForTesting(state)
+                transferRuntime.setTransferStateForTesting(state)
                 GlideRoute.Transfer(sid) to state
             }
             isDebuggable && debugState == "service_reconciliation_audit" -> {
@@ -548,7 +552,17 @@ class MainActivity : ComponentActivity() {
                 GlideRoute.Settings to null
             }
             isDebuggable && debugState == "home_active_transfer" -> {
-                ActiveSessionTracker.setSessionActive("active-transfer-session-88", true)
+                transferRuntime.setTransferStateForTesting(
+                    TransferUiState.Transferring(
+                        sessionId = "active-transfer-session-88",
+                        role = DeviceRole.Sender,
+                        peerName = "Nearby device",
+                        itemName = "active-transfer.bin",
+                        transferredBytes = 1L,
+                        totalBytes = 2L,
+                        progressFraction = 0.5f
+                    )
+                )
                 GlideRoute.Home to null
             }
             isDebuggable && debugState == "discovery_searching" -> {
@@ -658,7 +672,7 @@ class MainActivity : ComponentActivity() {
                     storageRequiredBytes = 4_500_000L,
                     peerDeviceType = dev.glide.app.ui.discovery.DeviceType.Phone
                 )
-                dev.glide.app.service.TransferSessionManager.setUiStateForTesting(state)
+                transferRuntime.setTransferStateForTesting(state)
                 GlideRoute.Transfer("offer-session-1") to state
             }
             isDebuggable && debugState == "offer_incoming_multi" -> {
@@ -693,7 +707,7 @@ class MainActivity : ComponentActivity() {
                     storageRequiredBytes = 42_500_000L,
                     peerDeviceType = dev.glide.app.ui.discovery.DeviceType.Tablet
                 )
-                dev.glide.app.service.TransferSessionManager.setUiStateForTesting(state)
+                transferRuntime.setTransferStateForTesting(state)
                 GlideRoute.Transfer("offer-session-2") to state
             }
             isDebuggable && debugState == "offer_insufficient_storage" -> {
@@ -716,7 +730,7 @@ class MainActivity : ComponentActivity() {
                     storageRequiredBytes = 25_000_000_000L,
                     peerDeviceType = dev.glide.app.ui.discovery.DeviceType.Computer
                 )
-                dev.glide.app.service.TransferSessionManager.setUiStateForTesting(state)
+                transferRuntime.setTransferStateForTesting(state)
                 GlideRoute.Transfer("offer-session-3") to state
             }
             isDebuggable && debugState == "offer_sender_waiting" -> {
@@ -744,7 +758,7 @@ class MainActivity : ComponentActivity() {
                     secondsRemaining = 50,
                     peerDeviceType = dev.glide.app.ui.discovery.DeviceType.Phone
                 )
-                dev.glide.app.service.TransferSessionManager.setUiStateForTesting(state)
+                transferRuntime.setTransferStateForTesting(state)
                 GlideRoute.Transfer("offer-session-4") to state
             }
             isDebuggable && debugState == "transfer_active_single" -> {
@@ -761,7 +775,7 @@ class MainActivity : ComponentActivity() {
                     itemCount = 1,
                     peerDeviceType = dev.glide.app.ui.discovery.DeviceType.Phone
                 )
-                dev.glide.app.service.TransferSessionManager.setUiStateForTesting(state)
+                transferRuntime.setTransferStateForTesting(state)
                 GlideRoute.Transfer("active-single-session") to state
             }
             isDebuggable && debugState == "transfer_active_multi" -> {
@@ -778,7 +792,7 @@ class MainActivity : ComponentActivity() {
                     itemCount = 4,
                     peerDeviceType = dev.glide.app.ui.discovery.DeviceType.Tablet
                 )
-                dev.glide.app.service.TransferSessionManager.setUiStateForTesting(state)
+                transferRuntime.setTransferStateForTesting(state)
                 GlideRoute.Transfer("active-multi-session") to state
             }
             isDebuggable && debugState == "transfer_verifying" -> {
@@ -792,7 +806,7 @@ class MainActivity : ComponentActivity() {
                     totalBytes = 100_000_000L,
                     peerDeviceType = dev.glide.app.ui.discovery.DeviceType.Tablet
                 )
-                dev.glide.app.service.TransferSessionManager.setUiStateForTesting(state)
+                transferRuntime.setTransferStateForTesting(state)
                 GlideRoute.Transfer("verifying-session") to state
             }
             isDebuggable && debugState == "transfer_completed_receiver" -> {
@@ -823,7 +837,7 @@ class MainActivity : ComponentActivity() {
                     items = listOf(itemA, itemB),
                     peerDeviceType = dev.glide.app.ui.discovery.DeviceType.Phone
                 )
-                dev.glide.app.service.TransferSessionManager.setUiStateForTesting(state)
+                transferRuntime.setTransferStateForTesting(state)
                 GlideRoute.Transfer("completed-receiver-session") to state
             }
             isDebuggable && debugState == "transfer_completed_sender" -> {
@@ -843,7 +857,7 @@ class MainActivity : ComponentActivity() {
                     items = listOf(item),
                     peerDeviceType = dev.glide.app.ui.discovery.DeviceType.Computer
                 )
-                dev.glide.app.service.TransferSessionManager.setUiStateForTesting(state)
+                transferRuntime.setTransferStateForTesting(state)
                 GlideRoute.Transfer("completed-sender-session") to state
             }
             isDebuggable && debugState == "transfer_interrupted_partial" -> {
@@ -861,7 +875,7 @@ class MainActivity : ComponentActivity() {
                     peerName = "Galaxy Tab S9",
                     peerDeviceType = dev.glide.app.ui.discovery.DeviceType.Tablet
                 )
-                dev.glide.app.service.TransferSessionManager.setUiStateForTesting(state)
+                transferRuntime.setTransferStateForTesting(state)
                 GlideRoute.Transfer("interrupted-partial-session") to state
             }
             isDebuggable && debugState == "transfer_receipt_unconfirmed" -> {
@@ -879,7 +893,7 @@ class MainActivity : ComponentActivity() {
                     peerName = "MacBook Air",
                     peerDeviceType = dev.glide.app.ui.discovery.DeviceType.Computer
                 )
-                dev.glide.app.service.TransferSessionManager.setUiStateForTesting(state)
+                transferRuntime.setTransferStateForTesting(state)
                 GlideRoute.Transfer("receipt-unconfirmed-session") to state
             }
             isDebuggable && debugState == "motion_reduced_discovery" -> {
@@ -900,8 +914,8 @@ class MainActivity : ComponentActivity() {
             val outcome = ShareIngressHandler.handleLaunchIntent(
                 intent = intent,
                 isRecreating = savedInstanceState != null,
-                isSessionActive = ActiveSessionTracker.isSessionActive.value,
-                activeSessionId = ActiveSessionTracker.activeSessionId.value
+                isSessionActive = transferRuntime.isSessionActive.value,
+                activeSessionId = transferRuntime.activeSessionId.value
             )
             when (outcome) {
                 is IngressOutcome.Route -> {
@@ -1033,6 +1047,7 @@ class MainActivity : ComponentActivity() {
                     }
 
                     GlideAppNavDisplay(
+                        transferRuntime = transferRuntime,
                         initialRoute = initialRoute,
                         incomingRoute = incomingRoute,
                         initialUiState = debugUiState,
@@ -1066,8 +1081,8 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         val (outcome, fingerprint) = ShareIngressHandler.handleNewIntent(
             intent = intent,
-            isSessionActive = ActiveSessionTracker.isSessionActive.value,
-            activeSessionId = ActiveSessionTracker.activeSessionId.value,
+            isSessionActive = transferRuntime.isSessionActive.value,
+            activeSessionId = transferRuntime.activeSessionId.value,
             lastHandledFingerprint = lastHandledFingerprint
         )
         lastHandledFingerprint = fingerprint
