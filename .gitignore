@@ -15,6 +15,9 @@ gen/
 out/
 build/
 */build/
+obj/
+*/obj/
+.vs/
 
 # Gradle files
 .gradle/

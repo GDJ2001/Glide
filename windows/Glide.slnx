@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="Glide.App/Glide.App.csproj" />
+  <Project Path="Glide.Core/Glide.Core.csproj" />
+  <Project Path="Glide.Tests/Glide.Tests.csproj" />
+  <Project Path="Glide.Transport/Glide.Transport.csproj" />
+</Solution>
