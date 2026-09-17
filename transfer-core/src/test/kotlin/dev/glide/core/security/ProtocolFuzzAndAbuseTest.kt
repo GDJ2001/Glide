@@ -91,7 +91,8 @@ class ProtocolFuzzAndAbuseTest {
             itemId: ItemId,
             expectedBytes: Long,
             displayName: String,
-            mimeType: String
+            mimeType: String,
+            relativePath: String?
         ): StagingHandle {
             val handle = StagingHandle("staging-${itemId.value}")
             stagingBuffers[handle] = ByteArrayOutputStream()

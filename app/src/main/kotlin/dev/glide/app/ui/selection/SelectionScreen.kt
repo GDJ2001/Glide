@@ -115,6 +115,15 @@ fun SelectionScreen(
         onUrisSelected(uris)
     }
 
+    // Folder picker contract (OpenDocumentTree)
+    val folderPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { treeUri: Uri? ->
+        if (treeUri != null) {
+            viewModel.onTreeUriSelected(treeUri, context)
+        }
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -243,6 +252,25 @@ fun SelectionScreen(
                         ) {
                             Text(
                                 text = "Choose files & documents",
+                                style = MaterialTheme.typography.labelLarge
+                            )
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                folderPickerLauncher.launch(null)
+                            },
+                            shape = PrimaryButtonShape,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                                .semantics {
+                                    role = Role.Button
+                                    contentDescription = "Choose entire folder from system picker"
+                                }
+                        ) {
+                            Text(
+                                text = "Choose folder",
                                 style = MaterialTheme.typography.labelLarge
                             )
                         }
@@ -557,6 +585,27 @@ fun SelectionScreen(
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
+
+                        OutlinedButton(
+                            onClick = {
+                                folderPickerLauncher.launch(null)
+                            },
+                            shape = PrimaryButtonShape,
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 48.dp)
+                                .semantics {
+                                    role = Role.Button
+                                    contentDescription = "Add folder to batch"
+                                }
+                        ) {
+                            Text(
+                                text = "Add folder",
+                                style = MaterialTheme.typography.labelLarge,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
             }
@@ -747,6 +796,22 @@ private fun FileItemRow(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                         )
+                    }
+
+                    if (item.relativePath != null) {
+                        Surface(
+                            shape = MaterialTheme.shapes.extraSmall,
+                            color = MaterialTheme.colorScheme.tertiaryContainer
+                        ) {
+                            Text(
+                                text = item.relativePath.substringBeforeLast('/', "folder"),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
                     }
                 }
 

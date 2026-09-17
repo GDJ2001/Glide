@@ -31,11 +31,17 @@ class FakeMediaStoreExportAdapter : MediaStoreExportAdapter {
     var streamWriteLimit: Int = Int.MAX_VALUE
     var uriCounter = 1
 
+    val insertedPendingWithSubfolder = mutableListOf<Triple<String, String, String?>>()
+
     override fun queryExistingDownloadNames(): Set<String> = existingDownloadNames.toSet()
 
-    override fun insertPendingDownload(displayName: String, mimeType: String): String? {
+    override fun insertPendingDownload(displayName: String, mimeType: String): String? =
+        insertPendingDownload(displayName, mimeType, null)
+
+    override fun insertPendingDownload(displayName: String, mimeType: String, subfolder: String?): String? {
         if (shouldFailInsert) return null
         insertedPending.add(displayName to mimeType)
+        insertedPendingWithSubfolder.add(Triple(displayName, mimeType, subfolder))
         val uri = "content://media/external/downloads/${uriCounter++}"
         outputStreams[uri] = ByteArrayOutputStream()
         return uri
@@ -331,5 +337,31 @@ class FileExporterTest {
         assertTrue(result is ExportResult.Failure)
         assertTrue(uriDeleteCalled)
         assertTrue(sourceFile.exists())
+    }
+
+    @Test
+    fun `exportToDownloads with relativePath passes subfolder to adapter`() = runTest {
+        val exporter = AndroidFileExporter(
+            adapter = fakeAdapter,
+            sdkInt = 30
+        )
+
+        val result = exporter.exportToDownloads(
+            sourceFile = sourceFile,
+            displayName = "beach.jpg",
+            mimeType = "image/jpeg",
+            relativePath = "Vacation/Photos/beach.jpg"
+        )
+
+        assertTrue(result is ExportResult.Success)
+        val success = result as ExportResult.Success
+        assertEquals("beach.jpg", success.destinationName)
+        assertEquals(sourceFile.length(), success.bytesExported)
+
+        assertEquals(1, fakeAdapter.insertedPendingWithSubfolder.size)
+        val inserted = fakeAdapter.insertedPendingWithSubfolder[0]
+        assertEquals("beach.jpg", inserted.first)
+        assertEquals("image/jpeg", inserted.second)
+        assertEquals("Vacation/Photos", inserted.third)
     }
 }

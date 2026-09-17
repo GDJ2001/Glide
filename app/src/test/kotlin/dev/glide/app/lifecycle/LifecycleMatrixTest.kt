@@ -137,7 +137,8 @@ class LifecycleMatrixTest {
             itemId: ItemId,
             expectedBytes: Long,
             displayName: String,
-            mimeType: String
+            mimeType: String,
+            relativePath: String?
         ): StagingHandle {
             val file = File(rootDir, "${itemId.value}.part").apply { writeBytes(ByteArray(0)) }
             val handle = StagingHandle(file.name)

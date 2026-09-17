@@ -67,7 +67,8 @@ class AndroidReceiveStore(
         itemId: ItemId,
         expectedBytes: Long,
         displayName: String,
-        mimeType: String
+        mimeType: String,
+        relativePath: String?
     ): StagingHandle = withContext(ioDispatcher) {
         if (!hasAvailableSpace(expectedBytes)) {
             val available = freeSpaceProvider(rootDir)
@@ -107,7 +108,8 @@ class AndroidReceiveStore(
             expectedBytes = expectedBytes,
             verifiedDigest = null,
             phase = JournalPhases.PREPARED,
-            updatedAtMs = clock()
+            updatedAtMs = clock(),
+            relativePath = relativePath
         )
         journalDao.insertOrUpdate(entry)
 
@@ -212,7 +214,8 @@ class AndroidReceiveStore(
             mime = entry.mimeType,
             length = hashResult.sizeBytes,
             digest = digest.value,
-            receivedAtMs = clock()
+            receivedAtMs = clock(),
+            relativePath = entry.relativePath
         )
         fileCatalogDao.insertOrUpdate(catalogRecord)
 

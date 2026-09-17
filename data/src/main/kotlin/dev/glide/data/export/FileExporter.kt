@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Environment
 import android.provider.DocumentsContract
 import android.provider.MediaStore
+import dev.glide.core.folder.SafeRelativePath
 import dev.glide.data.source.FilenameSanitizer
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -47,20 +48,23 @@ interface FileExporter {
     suspend fun exportToDownloads(
         sourceFile: File,
         displayName: String,
-        mimeType: String = "*/*"
+        mimeType: String = "*/*",
+        relativePath: String? = null
     ): ExportResult
 
     suspend fun exportToUri(
         sourceFile: File,
         destinationUriString: String,
-        displayName: String
+        displayName: String,
+        relativePath: String? = null
     ): ExportResult
 
     suspend fun exportToUri(
         sourceFile: File,
         destinationUri: Uri,
-        displayName: String
-    ): ExportResult = exportToUri(sourceFile, destinationUri.toString(), displayName)
+        displayName: String,
+        relativePath: String? = null
+    ): ExportResult = exportToUri(sourceFile, destinationUri.toString(), displayName, relativePath)
 }
 
 /**
@@ -68,7 +72,10 @@ interface FileExporter {
  */
 interface MediaStoreExportAdapter {
     fun queryExistingDownloadNames(): Set<String>
+    fun queryExistingDownloadNames(subfolder: String?): Set<String> = queryExistingDownloadNames()
     fun insertPendingDownload(displayName: String, mimeType: String): String?
+    fun insertPendingDownload(displayName: String, mimeType: String, subfolder: String?): String? =
+        insertPendingDownload(displayName, mimeType)
     fun openOutputStream(uriString: String): OutputStream?
     fun markPendingComplete(uriString: String): Boolean
     fun delete(uriString: String): Boolean
@@ -82,13 +89,23 @@ class DefaultMediaStoreExportAdapter(
     private val context: Context
 ) : MediaStoreExportAdapter {
 
-    override fun queryExistingDownloadNames(): Set<String> {
+    override fun queryExistingDownloadNames(): Set<String> = queryExistingDownloadNames(null)
+
+    override fun queryExistingDownloadNames(subfolder: String?): Set<String> {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return emptySet()
         val names = mutableSetOf<String>()
         val projection = arrayOf(MediaStore.MediaColumns.DISPLAY_NAME)
         val queryUri = MediaStore.Downloads.EXTERNAL_CONTENT_URI
+        val (selection, selectionArgs) = if (!subfolder.isNullOrBlank()) {
+            val cleanSub = subfolder.trim('/')
+            val withTrailing = "${Environment.DIRECTORY_DOWNLOADS}/Glide/$cleanSub/"
+            val withoutTrailing = "${Environment.DIRECTORY_DOWNLOADS}/Glide/$cleanSub"
+            "${MediaStore.MediaColumns.RELATIVE_PATH} = ? OR ${MediaStore.MediaColumns.RELATIVE_PATH} = ?" to arrayOf(withTrailing, withoutTrailing)
+        } else {
+            null to null
+        }
         try {
-            context.contentResolver.query(queryUri, projection, null, null, null)?.use { cursor ->
+            context.contentResolver.query(queryUri, projection, selection, selectionArgs, null)?.use { cursor ->
                 val nameIndex = cursor.getColumnIndex(MediaStore.MediaColumns.DISPLAY_NAME)
                 if (nameIndex != -1) {
                     while (cursor.moveToNext()) {
@@ -105,12 +122,20 @@ class DefaultMediaStoreExportAdapter(
         return names
     }
 
-    override fun insertPendingDownload(displayName: String, mimeType: String): String? {
+    override fun insertPendingDownload(displayName: String, mimeType: String): String? =
+        insertPendingDownload(displayName, mimeType, null)
+
+    override fun insertPendingDownload(displayName: String, mimeType: String, subfolder: String?): String? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
+        val targetRelPath = if (!subfolder.isNullOrBlank()) {
+            "${Environment.DIRECTORY_DOWNLOADS}/Glide/${subfolder.trim('/')}"
+        } else {
+            Environment.DIRECTORY_DOWNLOADS
+        }
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
             put(MediaStore.MediaColumns.MIME_TYPE, mimeType.ifBlank { "*/*" })
-            put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+            put(MediaStore.MediaColumns.RELATIVE_PATH, targetRelPath)
             put(MediaStore.MediaColumns.IS_PENDING, 1)
         }
         return try {
@@ -205,7 +230,8 @@ class AndroidFileExporter(
     override suspend fun exportToDownloads(
         sourceFile: File,
         displayName: String,
-        mimeType: String
+        mimeType: String,
+        relativePath: String?
     ): ExportResult = withContext(ioDispatcher) {
         if (!sourceFile.exists() || !sourceFile.isFile) {
             return@withContext ExportResult.Failure(
@@ -227,15 +253,19 @@ class AndroidFileExporter(
             )
         }
 
+        val subfolder = relativePath?.let {
+            SafeRelativePath.parse(it).getOrNull()?.parentPath
+        }
+
         // Safe duplicate naming resolution
-        val existingNames = adapter.queryExistingDownloadNames()
+        val existingNames = adapter.queryExistingDownloadNames(subfolder)
         val uniqueName = FilenameSanitizer.resolveUniqueName(
             desiredName = displayName,
             existsPredicate = { it in existingNames }
         )
 
         // Allocate pending entry in MediaStore.Downloads
-        val targetUriString = adapter.insertPendingDownload(uniqueName, mimeType)
+        val targetUriString = adapter.insertPendingDownload(uniqueName, mimeType, subfolder)
             ?: return@withContext ExportResult.Failure(
                 message = "Failed to allocate entry in MediaStore.Downloads"
             )
@@ -289,7 +319,8 @@ class AndroidFileExporter(
     override suspend fun exportToUri(
         sourceFile: File,
         destinationUriString: String,
-        displayName: String
+        displayName: String,
+        relativePath: String?
     ): ExportResult = withContext(ioDispatcher) {
         if (!sourceFile.exists() || !sourceFile.isFile) {
             return@withContext ExportResult.Failure(

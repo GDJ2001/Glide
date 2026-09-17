@@ -133,23 +133,62 @@ class DatabaseMigrationTest {
         )
     }
 
+    // ---------------------------------------------------------------------------
+    // 5. MIGRATION_2_3 adds relative_path to receive_journal, received_files, and items
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun migration2To3_versionBounds_are2And3() {
+        val migration = GlideDatabase.MIGRATION_2_3
+        assertEquals("MIGRATION_2_3 must start at version 2", 2, migration.startVersion)
+        assertEquals("MIGRATION_2_3 must end at version 3", 3, migration.endVersion)
+    }
+
+    @Test
+    fun migration2To3_addsRelativePathColumnsToAllThreeTables() {
+        val sqls = captureMigrationSql { db -> GlideDatabase.MIGRATION_2_3.migrate(db) }
+        val combined = sqls.joinToString("\n")
+
+        assertTrue("receive_journal relative_path missing", combined.contains("ALTER TABLE `receive_journal` ADD COLUMN `relative_path` TEXT DEFAULT NULL"))
+        assertTrue("received_files relative_path missing", combined.contains("ALTER TABLE `received_files` ADD COLUMN `relative_path` TEXT DEFAULT NULL"))
+        assertTrue("items relative_path missing", combined.contains("ALTER TABLE `items` ADD COLUMN `relative_path` TEXT DEFAULT NULL"))
+    }
+
+    // ---------------------------------------------------------------------------
+    // 6. MIGRATION_3_4 adds trusted_peers and resumable_sessions tables
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun migration3To4_versionBounds_are3And4() {
+        val migration = GlideDatabase.MIGRATION_3_4
+        assertEquals("MIGRATION_3_4 must start at version 3", 3, migration.startVersion)
+        assertEquals("MIGRATION_3_4 must end at version 4", 4, migration.endVersion)
+    }
+
+    @Test
+    fun migration3To4_createsTrustedPeersAndResumableSessionsTables() {
+        val sqls = captureMigrationSql { db -> GlideDatabase.MIGRATION_3_4.migrate(db) }
+        val combined = sqls.joinToString("\n")
+
+        assertTrue("trusted_peers creation missing", combined.contains("CREATE TABLE IF NOT EXISTS `trusted_peers`"))
+        assertTrue("trusted_peers peer_fingerprint missing", combined.contains("`peer_fingerprint` TEXT NOT NULL"))
+        assertTrue("trusted_peers public_key_der missing", combined.contains("`public_key_der` TEXT NOT NULL"))
+        assertTrue("resumable_sessions creation missing", combined.contains("CREATE TABLE IF NOT EXISTS `resumable_sessions`"))
+        assertTrue("resumable_sessions session_id missing", combined.contains("`session_id` TEXT NOT NULL"))
+        assertTrue("resumable_sessions verified_chunks missing", combined.contains("`verified_chunks` INTEGER NOT NULL"))
+    }
+
     // -------------------------------------------------------------------------
-    // 5. Schema-gap detection: MIGRATION_1_2.endVersion must equal the current DB version.
-    //    If a future developer bumps @Database(version=N) without adding MIGRATION_(N-1)_N,
-    //    this test fails — update EXPECTED_CURRENT_DB_VERSION when intentionally bumping.
+    // 7. Schema-gap detection: MIGRATION_3_4.endVersion must equal current DB version (4).
     // -------------------------------------------------------------------------
 
     @Test
-    fun migration1To2_endVersion_matchesCurrentDatabaseVersion() {
-        // Update this constant when the @Database version is intentionally bumped.
-        // This guards against silent schema drift: version bump requires both a new migration AND this update.
-        val EXPECTED_CURRENT_DB_VERSION = 2
-
-        val migrationEndVersion = GlideDatabase.MIGRATION_1_2.endVersion
+    fun migrationEndVersion_matchesCurrentDatabaseVersion() {
+        val EXPECTED_CURRENT_DB_VERSION = 4
+        val migrationEndVersion = GlideDatabase.MIGRATION_3_4.endVersion
 
         assertEquals(
-            "MIGRATION_1_2.endVersion ($migrationEndVersion) must equal the current @Database version ($EXPECTED_CURRENT_DB_VERSION). " +
-                "If the DB version was bumped, add a new MIGRATION_N_(N+1) companion entry AND update EXPECTED_CURRENT_DB_VERSION.",
+            "MIGRATION_3_4.endVersion ($migrationEndVersion) must equal the current @Database version ($EXPECTED_CURRENT_DB_VERSION).",
             EXPECTED_CURRENT_DB_VERSION, migrationEndVersion
         )
     }

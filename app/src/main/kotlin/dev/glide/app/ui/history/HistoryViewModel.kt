@@ -124,7 +124,8 @@ class HistoryViewModel(
                     outcome = item.outcome,
                     failureCode = null,
                     receivedFileKey = receivedFileKey,
-                    isFileAvailable = isFileAvailable
+                    isFileAvailable = isFileAvailable,
+                    relativePath = item.relativePath
                 )
             }
 
@@ -260,7 +261,9 @@ class HistoryViewModel(
             val exporter = fileExporterFactory(context)
             val result = exporter.exportToDownloads(
                 sourceFile = file,
-                displayName = item.displayName
+                displayName = item.displayName,
+                mimeType = item.mimeType,
+                relativePath = item.relativePath
             )
             when (result) {
                 is ExportResult.Success -> {

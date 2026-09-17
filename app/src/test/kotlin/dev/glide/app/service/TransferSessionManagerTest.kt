@@ -84,7 +84,8 @@ class TransferSessionManagerTest {
             itemId: ItemId,
             expectedBytes: Long,
             displayName: String,
-            mimeType: String
+            mimeType: String,
+            relativePath: String?
         ): StagingHandle = StagingHandle("staging-${itemId.value}")
         override suspend fun openStagingOutput(handle: StagingHandle): OutputStream = ByteArrayOutputStream()
         override suspend fun commitVerified(handle: StagingHandle, digest: Sha256Digest): CommittedFileHandle =

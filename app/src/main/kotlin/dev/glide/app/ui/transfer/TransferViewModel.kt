@@ -269,7 +269,9 @@ class TransferViewModel : ViewModel() {
         viewModelScope.launch {
             val result = exporter.exportToDownloads(
                 sourceFile = file,
-                displayName = item.displayName
+                displayName = item.displayName,
+                mimeType = item.mimeType,
+                relativePath = item.relativePath
             )
             when (result) {
                 is ExportResult.Success -> {
@@ -346,7 +348,9 @@ class TransferViewModel : ViewModel() {
                 val file = fileResolver(key)?.takeIf { it.exists() } ?: continue
                 val result = exporter.exportToDownloads(
                     sourceFile = file,
-                    displayName = item.displayName
+                    displayName = item.displayName,
+                    mimeType = item.mimeType,
+                    relativePath = item.relativePath
                 )
                 when (result) {
                     is ExportResult.Success -> {

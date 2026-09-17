@@ -54,7 +54,8 @@ class RoomHistoryStore(
             actualBytes = record.actualBytes,
             digest = record.digest?.value,
             outcome = record.outcome,
-            failureCode = null
+            failureCode = null,
+            relativePath = record.relativePath
         )
         itemDao.insert(entity)
     }
@@ -110,7 +111,8 @@ class RoomHistoryStore(
                 offeredBytes = entity.offeredBytes,
                 actualBytes = entity.actualBytes,
                 digest = entity.digest?.let { Sha256Digest(it) },
-                outcome = entity.outcome
+                outcome = entity.outcome,
+                relativePath = entity.relativePath
             )
         }
     }

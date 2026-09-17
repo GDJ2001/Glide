@@ -85,7 +85,8 @@ class TransferViewModelTest {
             itemId: ItemId,
             expectedBytes: Long,
             displayName: String,
-            mimeType: String
+            mimeType: String,
+            relativePath: String?
         ): StagingHandle = StagingHandle("staging-${itemId.value}")
         override suspend fun openStagingOutput(handle: StagingHandle): OutputStream = ByteArrayOutputStream()
         override suspend fun commitVerified(handle: StagingHandle, digest: Sha256Digest): CommittedFileHandle =
@@ -301,7 +302,8 @@ class TransferViewModelTest {
         override suspend fun exportToDownloads(
             sourceFile: File,
             displayName: String,
-            mimeType: String
+            mimeType: String,
+            relativePath: String?
         ): dev.glide.data.export.ExportResult {
             exportCalled = true
             return result
@@ -310,7 +312,8 @@ class TransferViewModelTest {
         override suspend fun exportToUri(
             sourceFile: File,
             destinationUriString: String,
-            displayName: String
+            displayName: String,
+            relativePath: String?
         ): dev.glide.data.export.ExportResult = result
     }
 
@@ -711,14 +714,14 @@ class TransferViewModelTest {
         )
 
         val fakeExporter = object : dev.glide.data.export.FileExporter {
-            override suspend fun exportToDownloads(sourceFile: File, displayName: String, mimeType: String): dev.glide.data.export.ExportResult {
+            override suspend fun exportToDownloads(sourceFile: File, displayName: String, mimeType: String, relativePath: String?): dev.glide.data.export.ExportResult {
                 return dev.glide.data.export.ExportResult.Success(
                     destinationUriString = "content://downloads/1",
                     destinationName = "export_test (1).txt",
                     bytesExported = 100L
                 )
             }
-            override suspend fun exportToUri(sourceFile: File, destinationUriString: String, displayName: String): dev.glide.data.export.ExportResult {
+            override suspend fun exportToUri(sourceFile: File, destinationUriString: String, displayName: String, relativePath: String?): dev.glide.data.export.ExportResult {
                 return dev.glide.data.export.ExportResult.Success(
                     destinationUriString = destinationUriString,
                     destinationName = "export_test.txt",
@@ -821,14 +824,14 @@ class TransferViewModelTest {
         )
 
         val fakeExporter = object : dev.glide.data.export.FileExporter {
-            override suspend fun exportToDownloads(sourceFile: File, displayName: String, mimeType: String): dev.glide.data.export.ExportResult {
+            override suspend fun exportToDownloads(sourceFile: File, displayName: String, mimeType: String, relativePath: String?): dev.glide.data.export.ExportResult {
                 return dev.glide.data.export.ExportResult.Success(
                     destinationUriString = "content://downloads/1",
                     destinationName = displayName,
                     bytesExported = 10L
                 )
             }
-            override suspend fun exportToUri(sourceFile: File, destinationUriString: String, displayName: String): dev.glide.data.export.ExportResult {
+            override suspend fun exportToUri(sourceFile: File, destinationUriString: String, displayName: String, relativePath: String?): dev.glide.data.export.ExportResult {
                 return dev.glide.data.export.ExportResult.Success(
                     destinationUriString = destinationUriString,
                     destinationName = displayName,

@@ -96,8 +96,14 @@ class NearbyPairingFlowTest {
 
     private class LocalTestReceiveStore : ReceiveStore {
         override suspend fun hasAvailableSpace(requiredBytes: Long): Boolean = true
-        override suspend fun prepareStaging(sessionId: SessionId, itemId: ItemId, expectedBytes: Long, displayName: String, mimeType: String): StagingHandle =
-            StagingHandle("staging-${itemId.value}")
+        override suspend fun prepareStaging(
+            sessionId: SessionId,
+            itemId: ItemId,
+            expectedBytes: Long,
+            displayName: String,
+            mimeType: String,
+            relativePath: String?
+        ): StagingHandle = StagingHandle("staging-${itemId.value}")
         override suspend fun openStagingOutput(handle: StagingHandle): OutputStream = ByteArrayOutputStream()
         override suspend fun commitVerified(handle: StagingHandle, digest: Sha256Digest): CommittedFileHandle =
             CommittedFileHandle("file-${handle.value}")

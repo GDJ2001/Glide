@@ -21,6 +21,9 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import dev.glide.data.source.SafDocumentNode
+import dev.glide.data.source.SafTreeCrawler
+import dev.glide.data.source.SafTreeQueryAdapter
 import java.io.InputStream
 
 /**
@@ -214,6 +217,129 @@ class SelectionViewModelTest {
         val viewModel = SelectionViewModel()
         viewModel.cancelStaging()
         assertEquals(SelectionUiState.Cancelled, viewModel.uiState.value)
+    }
+
+    @Test
+    fun onTreeUriStringSelected_traversesFolderAndPopulatesBatchWithRelativePaths() = runTest(testDispatcher) {
+        val rootId = "primary:Documents/MyFolder"
+        val adapter = FakeSafTreeQueryAdapter(
+            treeDocId = rootId,
+            rootNode = SafDocumentNode(rootId, "MyFolder", "vnd.android.document/directory", 0L, true),
+            childrenMap = mapOf(
+                rootId to listOf(
+                    SafDocumentNode("doc_1", "file1.txt", "text/plain", 100L, false),
+                    SafDocumentNode("doc_dir", "sub", "vnd.android.document/directory", 0L, true)
+                ),
+                "doc_dir" to listOf(
+                    SafDocumentNode("doc_2", "file2.png", "image/png", 200L, false)
+                )
+            )
+        )
+        val crawler = SafTreeCrawler(adapter, testDispatcher)
+
+        val viewModel = SelectionViewModel()
+        viewModel.onTreeUriStringSelected("content://tree/primary%3AMyFolder", crawler)
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertTrue("Expected BatchReady, got: $state", state is SelectionUiState.BatchReady)
+        val batch = state as SelectionUiState.BatchReady
+        assertEquals(2, batch.itemCount)
+        assertEquals(300L, batch.totalBytes)
+
+        val item1 = batch.items.find { it.displayName == "file1.txt" }
+        assertNotNull(item1)
+        assertEquals("MyFolder/file1.txt", item1!!.relativePath)
+        assertEquals(100L, item1.sizeBytes)
+
+        val item2 = batch.items.find { it.displayName == "file2.png" }
+        assertNotNull(item2)
+        assertEquals("MyFolder/sub/file2.png", item2!!.relativePath)
+        assertEquals(200L, item2.sizeBytes)
+
+        // Verify batch transfer preparation retains relative paths
+        val prepared = viewModel.prepareBatchForTransfer()
+        assertNotNull(prepared)
+        val (transferBatch, _) = prepared!!
+        assertEquals(2, transferBatch.items.size)
+        val transferItem1 = transferBatch.items.find { it.name == "file1.txt" }
+        assertEquals("MyFolder/file1.txt", transferItem1?.relativePath)
+        val transferItem2 = transferBatch.items.find { it.name == "file2.png" }
+        assertEquals("MyFolder/sub/file2.png", transferItem2?.relativePath)
+    }
+
+    @Test
+    fun onTreeUriStringSelected_emptyFolder_leavesBatchIdle() = runTest(testDispatcher) {
+        val rootId = "primary:Documents/EmptyFolder"
+        val adapter = FakeSafTreeQueryAdapter(
+            treeDocId = rootId,
+            rootNode = SafDocumentNode(rootId, "EmptyFolder", "vnd.android.document/directory", 0L, true),
+            childrenMap = emptyMap()
+        )
+        val crawler = SafTreeCrawler(adapter, testDispatcher)
+
+        val viewModel = SelectionViewModel()
+        viewModel.onTreeUriStringSelected("content://tree/primary%3AEmptyFolder", crawler)
+        advanceUntilIdle()
+
+        assertEquals(SelectionUiState.Idle, viewModel.uiState.value)
+    }
+
+    @Test
+    fun onTreeUriStringSelected_appendsToExistingBatch_retainsFlatAndFolderFiles() = runTest(testDispatcher) {
+        val fakeSourceAccess = FakeSourceAccess(
+            files = mapOf(
+                "content://media/photos/1" to SourceMetadata("flat.jpg", "image/jpeg", 500L)
+            )
+        )
+        val viewModel = SelectionViewModel(customSourceAccess = fakeSourceAccess)
+        viewModel.onUriStringsSelected(listOf("content://media/photos/1"), fakeSourceAccess)
+        advanceUntilIdle()
+
+        assertTrue(viewModel.uiState.value is SelectionUiState.BatchReady)
+
+        val rootId = "primary:Documents/Folder"
+        val adapter = FakeSafTreeQueryAdapter(
+            treeDocId = rootId,
+            rootNode = SafDocumentNode(rootId, "Folder", "vnd.android.document/directory", 0L, true),
+            childrenMap = mapOf(
+                rootId to listOf(
+                    SafDocumentNode("doc_f1", "nested.txt", "text/plain", 300L, false)
+                )
+            )
+        )
+        val crawler = SafTreeCrawler(adapter, testDispatcher)
+        viewModel.onTreeUriStringSelected("content://tree/primary%3AFolder", crawler)
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value as SelectionUiState.BatchReady
+        assertEquals(2, state.itemCount)
+        assertEquals(800L, state.totalBytes)
+
+        val flatItem = state.items.find { it.displayName == "flat.jpg" }
+        assertNotNull(flatItem)
+        assertNull(flatItem!!.relativePath)
+
+        val folderItem = state.items.find { it.displayName == "nested.txt" }
+        assertNotNull(folderItem)
+        assertEquals("Folder/nested.txt", folderItem!!.relativePath)
+    }
+
+    private class FakeSafTreeQueryAdapter(
+        private val treeDocId: String = "primary:Documents/MyFolder",
+        private val rootNode: SafDocumentNode = SafDocumentNode("primary:Documents/MyFolder", "MyFolder", "vnd.android.document/directory", 0L, true),
+        private val childrenMap: Map<String, List<SafDocumentNode>> = emptyMap()
+    ) : SafTreeQueryAdapter {
+        override fun getTreeDocumentId(treeUriString: String): String = treeDocId
+
+        override fun queryDocument(treeUriString: String, documentId: String): SafDocumentNode? =
+            if (documentId == treeDocId) rootNode else childrenMap.values.flatten().find { it.documentId == documentId }
+
+        override fun queryChildren(treeUriString: String, parentDocumentId: String): List<SafDocumentNode> =
+            childrenMap[parentDocumentId] ?: emptyList()
+
+        override fun buildDocumentUri(treeUriString: String, documentId: String): String =
+            "content://com.android.externalstorage.documents/tree/primary%3AMyFolder/document/$documentId"
     }
 
     private class FakeSourceAccess(

@@ -20,7 +20,8 @@ data class SelectedFileItem(
     val sizeBytes: Long,
     val mimeType: String,
     val isAvailable: Boolean = true,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val relativePath: String? = null
 )
 
 /**
@@ -104,7 +105,8 @@ sealed interface SelectionUiState {
                         id = item.id,
                         name = item.displayName,
                         mimeType = item.mimeType,
-                        sizeBytes = item.sizeBytes
+                        sizeBytes = item.sizeBytes,
+                        relativePath = item.relativePath
                     )
                 }
             )

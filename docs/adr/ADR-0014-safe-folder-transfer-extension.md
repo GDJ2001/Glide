@@ -1,7 +1,7 @@
 # ADR-0014 — Safe folder transfer extension
 
-- Status: Accepted (future extension); validation pending implementation evidence.
-- Date: 2026-09-14.
+- Status: Implemented (Milestone M13); verified with end-to-end automated test suites.
+- Date: 2026-09-14 (Updated 2026-09-17).
 - Authority: [Safe folder transfer specification](../future/SAFE_FOLDER_TRANSFER_SPECIFICATION.md); [cross-platform path](../future/CROSS_PLATFORM_PATH.md); [decision index](README.md).
 
 ## Context

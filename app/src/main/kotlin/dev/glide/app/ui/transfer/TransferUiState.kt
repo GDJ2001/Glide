@@ -24,7 +24,8 @@ data class VerifiedItemUiState(
     val mimeType: String,
     val sizeBytes: Long,
     val committedFileKey: String? = null,
-    val digestHex: String? = null
+    val digestHex: String? = null,
+    val relativePath: String? = null
 )
 
 /**
@@ -177,7 +178,8 @@ fun SessionState.toUiState(
                 mimeType = dev.glide.app.util.MimeSanitizer.sanitize(state.item.mimeType),
                 sizeBytes = state.item.sizeBytes,
                 committedFileKey = key,
-                digestHex = state.actualDigest?.value ?: state.expectedDigest?.value
+                digestHex = state.actualDigest?.value ?: state.expectedDigest?.value,
+                relativePath = state.item.relativePath
             )
         }
         .ifEmpty {
@@ -190,7 +192,8 @@ fun SessionState.toUiState(
                         displayName = it.name,
                         mimeType = dev.glide.app.util.MimeSanitizer.sanitize(it.mimeType),
                         sizeBytes = it.sizeBytes,
-                        committedFileKey = key
+                        committedFileKey = key,
+                        relativePath = it.relativePath
                     )
                 }
             } else emptyList()

@@ -1,10 +1,10 @@
 # Safe Folder Transfer Extension Specification
 
-**Document Status:** Proposed / Milestone M13 Future Extension  
+**Document Status:** Implemented / Milestone M13 Extension  
 **Authority:** [ADR-0014](../adr/ADR-0014-safe-folder-transfer-extension.md) | [Cross-Platform Path](CROSS_PLATFORM_PATH.md)  
-**Milestone:** M13 — Future work (outside V1)  
+**Milestone:** M13 — Completed  
 **Task:** GLIDE-069  
-**Version:** `0.1.0-draft`  
+**Version:** `1.0.0`  
 
 ---
 

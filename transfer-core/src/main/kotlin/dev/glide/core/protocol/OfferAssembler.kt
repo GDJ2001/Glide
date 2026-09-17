@@ -116,7 +116,8 @@ class OfferAssembler(
                 id = itemDto.itemId,
                 name = itemDto.name,
                 mimeType = itemDto.mime,
-                sizeBytes = sizeBytes
+                sizeBytes = sizeBytes,
+                relativePath = itemDto.relativePath
             )
             items.add(domainItem)
         }

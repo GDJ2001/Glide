@@ -1,10 +1,10 @@
 # Persistent Identity & True Resume Extension Specification
 
-**Document Status:** Proposed / Milestone M13 Future Extension  
+**Document Status:** Implemented / Milestone M13 Extension (GLIDE-070)  
 **Authority:** [ADR-0015](../adr/ADR-0015-persistent-identity-and-true-resume.md) | [Threat Model](../security/GLIDE_THREAT_MODEL.md) | [Cross-Platform Path](CROSS_PLATFORM_PATH.md)  
 **Milestone:** M13 — Future work (outside V1)  
 **Task:** GLIDE-070  
-**Version:** `0.1.0-draft`  
+**Version:** `1.0.0-implemented`  
 
 ---
 

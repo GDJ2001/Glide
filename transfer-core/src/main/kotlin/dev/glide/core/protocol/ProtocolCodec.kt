@@ -9,6 +9,7 @@ import dev.glide.core.domain.Sha256Digest
 import dev.glide.core.domain.TransferFailure
 import dev.glide.core.domain.isValidSha256
 import dev.glide.core.domain.isValidUuidV4
+import dev.glide.core.folder.SafeRelativePath
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -217,6 +218,11 @@ object ProtocolCodec {
             MessageTypes.ERROR -> validateError(body)
             MessageTypes.PING -> validatePing(body)
             MessageTypes.PONG -> validatePong(body)
+            MessageTypes.IDENTITY_CHALLENGE -> validateIdentityChallenge(body)
+            MessageTypes.IDENTITY_RESPONSE -> validateIdentityResponse(body)
+            MessageTypes.RESUME_REQUEST -> validateResumeRequest(body)
+            MessageTypes.RESUME_ACCEPT -> validateResumeAccept(body)
+            MessageTypes.RESUME_REJECT -> validateResumeReject(body)
         }
     }
 
@@ -381,6 +387,22 @@ object ProtocolCodec {
             }
 
             requireByteCount(itemObj, "sizeBytes", MAX_ITEM_BYTES)
+
+            val relPathElem = itemObj["relativePath"] as? JsonPrimitive
+            if (relPathElem != null) {
+                if (!relPathElem.isString) {
+                    throw ProtocolViolationException(TransferFailure.MalformedMessage("Item relativePath must be string"))
+                }
+                val rawPath = relPathElem.content
+                val parsed = SafeRelativePath.parse(rawPath)
+                if (parsed.isFailure) {
+                    throw ProtocolViolationException(
+                        TransferFailure.MalformedMessage(
+                            parsed.exceptionOrNull()?.message ?: "Invalid relativePath: '$rawPath'"
+                        )
+                    )
+                }
+            }
         }
     }
 
@@ -526,6 +548,70 @@ object ProtocolCodec {
 
     private fun validatePong(body: JsonObject) {
         requireUuid(body, "nonce")
+    }
+
+    private fun validateIdentityChallenge(body: JsonObject) {
+        val nonce = requireString(body, "nonceHex")
+        if (nonce.length != 64 || !nonce.all { it.isDigit() || it in 'a'..'f' || it in 'A'..'F' }) {
+            throw ProtocolViolationException(TransferFailure.MalformedMessage("nonceHex must be 64-char hex string"))
+        }
+    }
+
+    private fun validateIdentityResponse(body: JsonObject) {
+        val sig = requireString(body, "signatureHex")
+        if (sig.isBlank()) {
+            throw ProtocolViolationException(TransferFailure.MalformedMessage("signatureHex cannot be blank"))
+        }
+        val key = requireString(body, "publicKeyDerHex")
+        if (key.isBlank()) {
+            throw ProtocolViolationException(TransferFailure.MalformedMessage("publicKeyDerHex cannot be blank"))
+        }
+    }
+
+    private fun validateResumeRequest(body: JsonObject) {
+        requireString(body, "sessionId")
+        requireString(body, "itemId")
+        requireLong(body, "verifiedChunkCount", min = 0)
+        requireLong(body, "contiguousByteOffset", min = 0)
+        val root = requireString(body, "chunkRootHashHex")
+        if (root.length != 64) {
+            throw ProtocolViolationException(TransferFailure.MalformedMessage("chunkRootHashHex must be 64-char hex string"))
+        }
+        val nonce = requireString(body, "sessionNonceHex")
+        if (nonce.length != 64) {
+            throw ProtocolViolationException(TransferFailure.MalformedMessage("sessionNonceHex must be 64-char hex string"))
+        }
+        val sig = requireString(body, "signatureHex")
+        if (sig.isBlank()) {
+            throw ProtocolViolationException(TransferFailure.MalformedMessage("signatureHex cannot be blank"))
+        }
+    }
+
+    private fun validateResumeAccept(body: JsonObject) {
+        requireString(body, "sessionId")
+        requireString(body, "itemId")
+        requireLong(body, "startChunkIndex", min = 0)
+        requireLong(body, "startByteOffset", min = 0)
+    }
+
+    private fun validateResumeReject(body: JsonObject) {
+        requireString(body, "sessionId")
+        requireString(body, "itemId")
+        val reason = requireString(body, "reason")
+        if (reason.isBlank() || reason.length > 256) {
+            throw ProtocolViolationException(TransferFailure.MalformedMessage("reason must be 1..256 characters"))
+        }
+    }
+
+    private fun requireLong(obj: JsonObject, key: String, min: Long = 0): Long {
+        val elem = obj[key] as? JsonPrimitive
+            ?: throw ProtocolViolationException(TransferFailure.MalformedMessage("Missing required field '$key'"))
+        val value = elem.content.toLongOrNull()
+            ?: throw ProtocolViolationException(TransferFailure.MalformedMessage("Field '$key' must be an integer, got: '${elem.content}'"))
+        if (value < min) {
+            throw ProtocolViolationException(TransferFailure.MalformedMessage("Field '$key' ($value) must be >= $min"))
+        }
+        return value
     }
 
     private fun requireString(obj: JsonObject, key: String): String {

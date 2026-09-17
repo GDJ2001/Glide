@@ -124,11 +124,60 @@ class DatabaseSchemaVersionTest {
             ?: error("Schema directory is empty")
         val versionCount = jsonFiles.count { it.nameWithoutExtension.toIntOrNull() != null }
 
-        // GlideDatabase currently defines MIGRATION_1_2
-        val declaredMigrations = listOf(GlideDatabase.MIGRATION_1_2)
+        // GlideDatabase currently defines MIGRATION_1_2, MIGRATION_2_3, and MIGRATION_3_4
+        val declaredMigrations = listOf(GlideDatabase.MIGRATION_1_2, GlideDatabase.MIGRATION_2_3, GlideDatabase.MIGRATION_3_4)
         assertEquals(
             "Number of declared migrations (${declaredMigrations.size}) must equal (schema version count - 1 = ${versionCount - 1})",
             versionCount - 1, declaredMigrations.size
         )
+    }
+
+    @Test
+    fun schema_version3_json_existsAndDeclaresVersion3() {
+        val text = readSchemaText(3)
+        assertTrue("Schema 3.json must have formatVersion 1", text.contains("\"formatVersion\": 1"))
+        assertTrue("Schema 3.json must declare version 3", text.contains("\"version\": 3"))
+    }
+
+    @Test
+    fun schema_version3_identityHash_matchesExpected() {
+        val text = readSchemaText(3)
+        val expectedHash = "ada8c0a40029be704393657a03cf3312"
+        assertTrue(
+            "identityHash must match compiled Room schema (expected $expectedHash)",
+            text.contains("\"identityHash\": \"$expectedHash\"")
+        )
+    }
+
+    @Test
+    fun schema_version3_containsRelativePathInTables() {
+        val text = readSchemaText(3)
+        assertTrue("receive_journal must have relative_path in v3", text.contains("`relative_path` TEXT DEFAULT NULL"))
+        assertTrue("received_files must have relative_path in v3", text.contains("`relative_path` TEXT DEFAULT NULL"))
+        assertTrue("items must have relative_path in v3", text.contains("`relative_path` TEXT DEFAULT NULL"))
+    }
+
+    @Test
+    fun schema_version4_json_existsAndDeclaresVersion4() {
+        val text = readSchemaText(4)
+        assertTrue("Schema 4.json must have formatVersion 1", text.contains("\"formatVersion\": 1"))
+        assertTrue("Schema 4.json must declare version 4", text.contains("\"version\": 4"))
+    }
+
+    @Test
+    fun schema_version4_identityHash_matchesExpected() {
+        val text = readSchemaText(4)
+        val expectedHash = "e2ef8883c40077818784abeb71e64fb0"
+        assertTrue(
+            "identityHash must match compiled Room schema (expected $expectedHash)",
+            text.contains("\"identityHash\": \"$expectedHash\"")
+        )
+    }
+
+    @Test
+    fun schema_version4_containsTrustedPeersAndResumableSessions() {
+        val text = readSchemaText(4)
+        assertTrue("trusted_peers table missing from v4 schema", text.contains("\"tableName\": \"trusted_peers\""))
+        assertTrue("resumable_sessions table missing from v4 schema", text.contains("\"tableName\": \"resumable_sessions\""))
     }
 }

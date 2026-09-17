@@ -34,6 +34,11 @@ object MessageTypes {
     const val ERROR = "ERROR"
     const val PING = "PING"
     const val PONG = "PONG"
+    const val IDENTITY_CHALLENGE = "IDENTITY_CHALLENGE"
+    const val IDENTITY_RESPONSE = "IDENTITY_RESPONSE"
+    const val RESUME_REQUEST = "RESUME_REQUEST"
+    const val RESUME_ACCEPT = "RESUME_ACCEPT"
+    const val RESUME_REJECT = "RESUME_REJECT"
 
     val ALL: Set<String> = setOf(
         HELLO, HELLO_ACK,
@@ -41,7 +46,9 @@ object MessageTypes {
         ITEM_START, ITEM_READY, ITEM_END, ITEM_RESULT,
         BATCH_END, BATCH_RESULT,
         CANCEL, CANCEL_ACK,
-        ERROR, PING, PONG
+        ERROR, PING, PONG,
+        IDENTITY_CHALLENGE, IDENTITY_RESPONSE,
+        RESUME_REQUEST, RESUME_ACCEPT, RESUME_REJECT
     )
 }
 
@@ -108,10 +115,15 @@ object ProtocolCatalog {
         MessageTypes.ERROR to setOf("code", "batchId", "itemId", "detail"),
         MessageTypes.PING to setOf("nonce"),
         MessageTypes.PONG to setOf("nonce"),
+        MessageTypes.IDENTITY_CHALLENGE to setOf("nonceHex"),
+        MessageTypes.IDENTITY_RESPONSE to setOf("signatureHex", "publicKeyDerHex"),
+        MessageTypes.RESUME_REQUEST to setOf("sessionId", "itemId", "verifiedChunkCount", "contiguousByteOffset", "chunkRootHashHex", "sessionNonceHex", "signatureHex"),
+        MessageTypes.RESUME_ACCEPT to setOf("sessionId", "itemId", "startChunkIndex", "startByteOffset"),
+        MessageTypes.RESUME_REJECT to setOf("sessionId", "itemId", "reason"),
     )
 
     val ALLOWED_LIMITS_KEYS = setOf("maxItems", "maxItemBytes", "maxBatchBytes", "maxControlBytes")
-    val ALLOWED_ITEM_KEYS = setOf("itemId", "name", "mime", "sizeBytes")
+    val ALLOWED_ITEM_KEYS = setOf("itemId", "name", "mime", "sizeBytes", "relativePath", "rootHash", "chunkSize")
 }
 
 @Serializable
@@ -165,7 +177,8 @@ data class OfferItemDto(
     val itemId: ItemId,
     val name: String,
     val mime: String,
-    val sizeBytes: String
+    val sizeBytes: String,
+    val relativePath: String? = null
 )
 
 @Serializable
@@ -260,3 +273,72 @@ data class PingBody(
 data class PongBody(
     val nonce: String
 )
+
+@Serializable
+data class IdentityChallengeDto(
+    val nonceHex: String
+) {
+    init {
+        require(nonceHex.length == 64) { "Nonce must be 64 hex characters (32 bytes)" }
+    }
+}
+
+@Serializable
+data class IdentityResponseDto(
+    val signatureHex: String,
+    val publicKeyDerHex: String
+) {
+    init {
+        require(signatureHex.isNotBlank()) { "Signature cannot be blank" }
+        require(publicKeyDerHex.isNotBlank()) { "Public key DER cannot be blank" }
+    }
+}
+
+@Serializable
+data class ResumeRequestDto(
+    val sessionId: String,
+    val itemId: String,
+    val verifiedChunkCount: Long,
+    val contiguousByteOffset: Long,
+    val chunkRootHashHex: String,
+    val sessionNonceHex: String,
+    val signatureHex: String
+) {
+    init {
+        require(sessionId.isNotBlank()) { "Session ID cannot be blank" }
+        require(itemId.isNotBlank()) { "Item ID cannot be blank" }
+        require(verifiedChunkCount >= 0) { "Verified chunk count cannot be negative" }
+        require(contiguousByteOffset >= 0) { "Contiguous byte offset cannot be negative" }
+        require(chunkRootHashHex.length == 64) { "Root hash must be 64 hex characters" }
+        require(sessionNonceHex.length == 64) { "Session nonce must be 64 hex characters" }
+        require(signatureHex.isNotBlank()) { "Signature cannot be blank" }
+    }
+}
+
+@Serializable
+data class ResumeAcceptDto(
+    val sessionId: String,
+    val itemId: String,
+    val startChunkIndex: Long,
+    val startByteOffset: Long
+) {
+    init {
+        require(sessionId.isNotBlank()) { "Session ID cannot be blank" }
+        require(itemId.isNotBlank()) { "Item ID cannot be blank" }
+        require(startChunkIndex >= 0) { "Start chunk index cannot be negative" }
+        require(startByteOffset >= 0) { "Start byte offset cannot be negative" }
+    }
+}
+
+@Serializable
+data class ResumeRejectDto(
+    val sessionId: String,
+    val itemId: String,
+    val reason: String
+) {
+    init {
+        require(sessionId.isNotBlank()) { "Session ID cannot be blank" }
+        require(itemId.isNotBlank()) { "Item ID cannot be blank" }
+        require(reason.isNotBlank() && reason.length <= 256) { "Reason must be 1..256 characters" }
+    }
+}

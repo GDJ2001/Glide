@@ -424,6 +424,21 @@ fun HistoryItemCard(
 
             Spacer(modifier = Modifier.height(4.dp))
 
+            if (item.relativePath != null) {
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = MaterialTheme.colorScheme.tertiaryContainer,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                ) {
+                    Text(
+                        text = item.relativePath,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
             Text(
                 text = "${formatByteSize(item.actualBytes ?: item.offeredBytes)} · ${item.mimeType}",
                 style = MaterialTheme.typography.bodySmall,

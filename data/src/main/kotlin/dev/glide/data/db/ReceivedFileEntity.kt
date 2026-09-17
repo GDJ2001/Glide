@@ -43,7 +43,10 @@ data class ReceivedFileEntity(
     val receivedAtMs: Long,
 
     @ColumnInfo(name = "deleted_at_ms")
-    val deletedAtMs: Long? = null
+    val deletedAtMs: Long? = null,
+
+    @ColumnInfo(name = "relative_path", defaultValue = "NULL")
+    val relativePath: String? = null
 )
 
 @Dao

@@ -294,4 +294,82 @@ class SettingsViewModelTest {
         assertEquals(1, vm.uiState.value.storageSummary.totalFiles)
         assertTrue(vm.uiState.value.feedbackMessage?.contains("active transfer files were preserved") == true)
     }
+
+    @Test
+    fun `trusted devices dialog open and dismiss toggles state`() = runTest(testDispatcher) {
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        assertFalse(vm.uiState.value.isTrustedDevicesDialogOpen)
+
+        vm.showTrustedDevicesDialog()
+        assertTrue(vm.uiState.value.isTrustedDevicesDialogOpen)
+
+        vm.dismissTrustedDevicesDialog()
+        assertFalse(vm.uiState.value.isTrustedDevicesDialogOpen)
+    }
+
+    @Test
+    fun `observing trusted peers updates ui state and revoking peer deletes from dao`() = runTest(testDispatcher) {
+        val peer = dev.glide.data.db.TrustedPeerEntity(
+            peerFingerprint = "abcd1234ef567890abcd1234ef567890abcd1234ef567890abcd1234ef567890",
+            publicKeyDer = "3059301306072a8648ce3d020106082a8648ce3d03010703420004",
+            displayName = "Pixel 8 Pro",
+            pairedAtMs = 1700000000000L,
+            lastSeenAtMs = 1700000000000L
+        )
+        val peerDao = FakeTestTrustedPeerDao(listOf(peer))
+        val vm = SettingsViewModel(settingsStore, fileManager, peerDao)
+        advanceUntilIdle()
+
+        assertEquals(1, vm.uiState.value.trustedPeers.size)
+        assertEquals("Pixel 8 Pro", vm.uiState.value.trustedPeers[0].displayName)
+
+        vm.revokeTrustedPeer(peer.peerFingerprint)
+        advanceUntilIdle()
+
+        assertEquals(0, vm.uiState.value.trustedPeers.size)
+        assertEquals("Device trust revoked", vm.uiState.value.feedbackMessage)
+        assertEquals(0, peerDao.getPeerCount())
+    }
 }
+
+class FakeTestTrustedPeerDao(
+    initialPeers: List<dev.glide.data.db.TrustedPeerEntity> = emptyList()
+) : dev.glide.data.db.TrustedPeerDao {
+    private val peersFlow = MutableStateFlow(initialPeers)
+
+    override suspend fun insertOrUpdate(peer: dev.glide.data.db.TrustedPeerEntity) {
+        val current = peersFlow.value.filter { it.peerFingerprint != peer.peerFingerprint }.toMutableList()
+        current.add(peer)
+        peersFlow.value = current
+    }
+
+    override suspend fun getByFingerprint(fingerprint: String): dev.glide.data.db.TrustedPeerEntity? {
+        return peersFlow.value.find { it.peerFingerprint == fingerprint }
+    }
+
+    override suspend fun getAllPeers(): List<dev.glide.data.db.TrustedPeerEntity> = peersFlow.value
+
+    override fun observeAllPeers(): Flow<List<dev.glide.data.db.TrustedPeerEntity>> = peersFlow
+
+    override suspend fun updateLastSeen(fingerprint: String, lastSeenAtMs: Long) {
+        val current = peersFlow.value.toMutableList()
+        val index = current.indexOfFirst { it.peerFingerprint == fingerprint }
+        if (index >= 0) {
+            current[index] = current[index].copy(lastSeenAtMs = lastSeenAtMs)
+            peersFlow.value = current
+        }
+    }
+
+    override suspend fun deletePeer(peer: dev.glide.data.db.TrustedPeerEntity) {
+        deleteByFingerprint(peer.peerFingerprint)
+    }
+
+    override suspend fun deleteByFingerprint(fingerprint: String) {
+        peersFlow.value = peersFlow.value.filter { it.peerFingerprint != fingerprint }
+    }
+
+    override suspend fun getPeerCount(): Int = peersFlow.value.size
+}
+

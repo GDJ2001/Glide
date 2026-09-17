@@ -30,7 +30,11 @@ object DatabaseModule {
             GlideDatabase::class.java,
             "glide.db"
         )
-            .addMigrations(GlideDatabase.MIGRATION_1_2)
+            .addMigrations(
+                GlideDatabase.MIGRATION_1_2,
+                GlideDatabase.MIGRATION_2_3,
+                GlideDatabase.MIGRATION_3_4
+            )
             .build()
     }
 
@@ -42,6 +46,12 @@ object DatabaseModule {
 
     @Provides
     fun provideReceivedFileDao(db: GlideDatabase): ReceivedFileDao = db.receivedFileDao()
+
+    @Provides
+    fun provideTrustedPeerDao(db: GlideDatabase): dev.glide.data.db.TrustedPeerDao = db.trustedPeerDao()
+
+    @Provides
+    fun provideResumableSessionDao(db: GlideDatabase): dev.glide.data.db.ResumableSessionDao = db.resumableSessionDao()
 
     @Provides
     fun provideReceiveJournalDao(db: GlideDatabase): dev.glide.data.db.ReceiveJournalDao = db.receiveJournalDao()

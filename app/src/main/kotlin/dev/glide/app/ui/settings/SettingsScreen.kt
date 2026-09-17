@@ -63,6 +63,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.glide.core.ports.GlideSettings
 import dev.glide.core.ports.ReducedMotionPreference
 import dev.glide.core.ports.ThemePreference
+import dev.glide.data.db.TrustedPeerEntity
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -168,7 +169,16 @@ fun SettingsScreen(
                 }
             )
 
-            // 4. Private Storage & File Management Section
+            // 4. Trusted Devices Section
+            TrustedDevicesSection(
+                trustedPeerCount = uiState.trustedPeers.size,
+                onManageClick = {
+                    haptics.performSelection()
+                    viewModel.showTrustedDevicesDialog()
+                }
+            )
+
+            // 5. Private Storage & File Management Section
             PrivateStorageSection(
                 totalFiles = uiState.storageSummary.totalFiles,
                 totalBytes = uiState.storageSummary.totalBytes,
@@ -317,6 +327,17 @@ fun SettingsScreen(
     if (uiState.isLicensesDialogOpen) {
         LicensesDialog(
             onDismiss = { viewModel.dismissLicensesDialog() }
+        )
+    }
+
+    // Trusted Devices Dialog
+    if (uiState.isTrustedDevicesDialogOpen) {
+        TrustedDevicesDialog(
+            trustedPeers = uiState.trustedPeers,
+            onRevokePeer = { fingerprint ->
+                viewModel.revokeTrustedPeer(fingerprint)
+            },
+            onDismiss = { viewModel.dismissTrustedDevicesDialog() }
         )
     }
 }
@@ -1131,6 +1152,201 @@ private fun LicenseItem(
         )
     }
 }
+
+@Composable
+private fun TrustedDevicesSection(
+    trustedPeerCount: Int,
+    onManageClick: () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(
+            text = "Trusted Devices",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.primary
+        )
+
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            ),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Security,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Remembered Devices",
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = if (trustedPeerCount == 1) "1 device paired for instant verification & resume"
+                            else "$trustedPeerCount devices paired for instant verification & resume",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Text(
+                    text = "Hardware-backed device identity keys (EC P-256) verify paired peers, prevent MITM attacks, and enable seamless transfer resumption without re-entering PINs.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                OutlinedButton(
+                    onClick = onManageClick,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .semantics {
+                            contentDescription = "Manage trusted devices"
+                        }
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Security,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Manage trusted devices")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TrustedDevicesDialog(
+    trustedPeers: List<TrustedPeerEntity>,
+    onRevokePeer: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val dateFormat = remember { java.text.SimpleDateFormat("MMM d, yyyy", Locale.getDefault()) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Security,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Trusted Devices")
+            }
+        },
+        text = {
+            if (trustedPeers.isEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "No trusted devices",
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        text = "Devices paired via mutual PIN verification will appear here. Trusted devices can securely resume interrupted transfers.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 360.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    trustedPeers.forEach { peer ->
+                        val truncatedFingerprint = if (peer.peerFingerprint.length > 16) {
+                            "${peer.peerFingerprint.take(8)}...${peer.peerFingerprint.takeLast(8)}"
+                        } else {
+                            peer.peerFingerprint
+                        }
+                        val pairedDate = remember(peer.pairedAtMs) {
+                            dateFormat.format(java.util.Date(peer.pairedAtMs))
+                        }
+
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surface
+                            ),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = peer.displayName,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Text(
+                                        text = "SHA-256: $truncatedFingerprint",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = "Paired on $pairedDate",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                IconButton(
+                                    onClick = { onRevokePeer(peer.peerFingerprint) },
+                                    modifier = Modifier.semantics {
+                                        contentDescription = "Revoke trust for ${peer.displayName}"
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.DeleteOutline,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = onDismiss) {
+                Text("Close")
+            }
+        }
+    )
+}
+
 
 private fun formatBytes(bytes: Long): String {
     if (bytes < 1024) return "$bytes B"

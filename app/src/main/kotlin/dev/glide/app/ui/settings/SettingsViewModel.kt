@@ -12,12 +12,14 @@ import dev.glide.core.ports.ThemePreference
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import dev.glide.data.db.TrustedPeerDao
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class SettingsViewModel(
     private val settingsStore: SettingsStore,
-    private val fileManager: PrivateFileManager
+    private val fileManager: PrivateFileManager,
+    private val trustedPeerDao: TrustedPeerDao? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState(isLoading = true))
@@ -29,6 +31,13 @@ class SettingsViewModel(
             settingsStore.settingsFlow.collect { settings ->
                 if (!isTestingOverride) {
                     _uiState.update { it.copy(settings = settings, isLoading = false) }
+                }
+            }
+        }
+        viewModelScope.launch {
+            trustedPeerDao?.observeAllPeers()?.collect { peers ->
+                if (!isTestingOverride) {
+                    _uiState.update { it.copy(trustedPeers = peers) }
                 }
             }
         }
@@ -215,6 +224,21 @@ class SettingsViewModel(
         _uiState.update { it.copy(isLicensesDialogOpen = false) }
     }
 
+    fun showTrustedDevicesDialog() {
+        _uiState.update { it.copy(isTrustedDevicesDialogOpen = true) }
+    }
+
+    fun dismissTrustedDevicesDialog() {
+        _uiState.update { it.copy(isTrustedDevicesDialogOpen = false) }
+    }
+
+    fun revokeTrustedPeer(fingerprint: String) {
+        viewModelScope.launch {
+            trustedPeerDao?.deleteByFingerprint(fingerprint)
+            _uiState.update { it.copy(feedbackMessage = "Device trust revoked") }
+        }
+    }
+
     internal fun setUiStateForTesting(state: SettingsUiState) {
         isTestingOverride = true
         _uiState.value = state
@@ -223,11 +247,12 @@ class SettingsViewModel(
     companion object {
         fun provideFactory(
             settingsStore: SettingsStore,
-            fileManager: PrivateFileManager
+            fileManager: PrivateFileManager,
+            trustedPeerDao: TrustedPeerDao? = null
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                return SettingsViewModel(settingsStore, fileManager) as T
+                return SettingsViewModel(settingsStore, fileManager, trustedPeerDao) as T
             }
         }
     }

@@ -43,7 +43,10 @@ data class ReceiveJournalEntity(
     val phase: String, // "PREPARED", "WRITING", "COMMITTING", "COMPLETED"
 
     @ColumnInfo(name = "updated_at_ms")
-    val updatedAtMs: Long
+    val updatedAtMs: Long,
+
+    @ColumnInfo(name = "relative_path", defaultValue = "NULL")
+    val relativePath: String? = null
 )
 
 object JournalPhases {

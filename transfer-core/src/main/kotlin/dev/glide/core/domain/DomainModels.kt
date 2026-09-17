@@ -12,6 +12,10 @@ object ProtocolLimits {
     const val MAX_CONTROL_PAYLOAD_BYTES: Int = 16_384 // 16 KiB
     const val MAX_OFFER_PAGE_ITEMS: Int = 32
     const val MAX_OFFER_METADATA_BYTES: Long = 1_048_576L // 1 MiB
+    const val MAX_FOLDER_DEPTH: Int = 16
+    const val MAX_FOLDER_FILES: Int = 10_000
+    const val MAX_FOLDER_DIRECTORIES: Int = 1_000
+    const val MAX_RELATIVE_PATH_LENGTH: Int = 1_024
 }
 
 @Serializable
@@ -55,6 +59,33 @@ data class PeerDevice(
     }
 }
 
+@Serializable
+enum class TrustStatus {
+    Untrusted,
+    FirstUsePairing,
+    TrustedPersistent,
+    KeyMismatchAlert
+}
+
+@Serializable
+data class TrustedPeerRecord(
+    val peerFingerprintHex: String,
+    val publicKeyDerHex: String,
+    val displayName: String,
+    val pairedAtMs: Long,
+    val lastSeenAtMs: Long
+) {
+    init {
+        require(peerFingerprintHex.length == 64) { "Fingerprint must be 64 hex characters (32 bytes)" }
+        require(publicKeyDerHex.isNotBlank()) { "Public key DER hex cannot be blank" }
+        require(displayName.isNotBlank() && displayName.length <= 64) {
+            "Display name must be between 1 and 64 characters"
+        }
+        require(pairedAtMs > 0) { "pairedAtMs must be positive" }
+        require(lastSeenAtMs >= pairedAtMs) { "lastSeenAtMs must be >= pairedAtMs" }
+    }
+}
+
 data class SessionVerification(
     val authDigits: String,
     val promptTimeMs: Long
@@ -73,7 +104,8 @@ data class TransferItem(
     val name: String,
     val mimeType: String,
     val sizeBytes: Long,
-    val digest: Sha256Digest? = null
+    val digest: Sha256Digest? = null,
+    val relativePath: String? = null
 ) {
     init {
         require(name.isNotBlank() && name.codePointCount(0, name.length) <= ProtocolLimits.MAX_FILENAME_CODE_POINTS) {
@@ -87,6 +119,11 @@ data class TransferItem(
         }
         require(sizeBytes in 0..ProtocolLimits.MAX_ITEM_BYTES) {
             "Item sizeBytes must be between 0 and ${ProtocolLimits.MAX_ITEM_BYTES}, got $sizeBytes"
+        }
+        if (relativePath != null) {
+            require(relativePath.length <= ProtocolLimits.MAX_RELATIVE_PATH_LENGTH) {
+                "relativePath length (${relativePath.length}) exceeds maximum limit ${ProtocolLimits.MAX_RELATIVE_PATH_LENGTH}"
+            }
         }
     }
 }

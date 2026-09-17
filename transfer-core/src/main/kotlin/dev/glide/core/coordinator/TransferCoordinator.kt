@@ -457,7 +457,8 @@ class TransferCoordinator(
                     itemId = itemId,
                     expectedBytes = sizeBytes,
                     displayName = displayName,
-                    mimeType = mimeType
+                    mimeType = mimeType,
+                    relativePath = item?.relativePath
                 )
                 stagingHandles[itemId] = stagingHandle
                 currentStagingHandle = stagingHandle

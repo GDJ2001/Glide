@@ -71,7 +71,8 @@ class TransferSessionFactoryTest {
             itemId: ItemId,
             expectedBytes: Long,
             displayName: String,
-            mimeType: String
+            mimeType: String,
+            relativePath: String?
         ): StagingHandle {
             val handle = StagingHandle("staging-${itemId.value}")
             staged[handle] = ByteArrayOutputStream()

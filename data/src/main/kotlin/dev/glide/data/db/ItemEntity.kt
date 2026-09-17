@@ -59,7 +59,10 @@ data class ItemEntity(
     val outcome: String? = null,
 
     @ColumnInfo(name = "failure_code")
-    val failureCode: String? = null
+    val failureCode: String? = null,
+
+    @ColumnInfo(name = "relative_path", defaultValue = "NULL")
+    val relativePath: String? = null
 )
 
 @Dao

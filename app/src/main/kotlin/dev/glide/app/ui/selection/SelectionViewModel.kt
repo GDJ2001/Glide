@@ -13,6 +13,7 @@ import dev.glide.core.ports.SourceAccessException
 import dev.glide.data.source.AndroidContentResolverWrapper
 import dev.glide.data.source.AndroidSourceAccess
 import dev.glide.data.source.BoundedSourceStager
+import dev.glide.data.source.SafTreeCrawler
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -69,6 +70,91 @@ class SelectionViewModel(
         if (uris.isEmpty()) return
         val sourceAccess = getOrCreateSourceAccess(context)
         onUriStringsSelected(uris.map { it.toString() }, sourceAccess)
+    }
+
+    /**
+     * Ingests a directory tree URI selected via ActivityResultContracts.OpenDocumentTree().
+     * Traverses the tree recursively using [SafTreeCrawler] with loop detection and complexity limits.
+     */
+    fun onTreeUriSelected(treeUri: Uri, context: Context) {
+        val appContext = context.applicationContext
+        try {
+            appContext.contentResolver.takePersistableUriPermission(
+                treeUri,
+                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+        } catch (_: Exception) {
+            // Persistable permission may not be supported by all providers
+        }
+        val crawler = SafTreeCrawler(appContext.contentResolver)
+        onTreeUriStringSelected(treeUri.toString(), crawler)
+    }
+
+    /**
+     * Ingests a folder tree using the provided [SafTreeCrawler].
+     */
+    fun onTreeUriStringSelected(treeUriString: String, crawler: SafTreeCrawler) {
+        activeJob?.cancel()
+        activeJob = viewModelScope.launch {
+            val currentItems = (_uiState.value as? SelectionUiState.BatchReady)?.items ?: emptyList()
+            val existingHandles = currentItems.map { it.handle.value }.toSet()
+
+            _uiState.value = SelectionUiState.Validating(
+                currentCount = 0,
+                totalCount = 0,
+                currentUriString = treeUriString
+            )
+
+            val crawledFiles = mutableListOf<SelectedFileItem>()
+            try {
+                crawler.crawl(treeUriString).collect { item ->
+                    if (!existingHandles.contains(item.documentUriString)) {
+                        crawledFiles.add(
+                            SelectedFileItem(
+                                id = ItemId(UUID.randomUUID().toString()),
+                                handle = SourceHandle(item.documentUriString),
+                                displayName = item.displayName,
+                                sizeBytes = item.sizeBytes,
+                                mimeType = item.mimeType,
+                                isAvailable = true,
+                                relativePath = item.relativePath
+                            )
+                        )
+                        _uiState.value = SelectionUiState.Validating(
+                            currentCount = crawledFiles.size,
+                            totalCount = crawledFiles.size,
+                            currentUriString = item.displayName
+                        )
+                    }
+                }
+
+                if (crawledFiles.isEmpty()) {
+                    if (currentItems.isEmpty()) {
+                        _uiState.value = SelectionUiState.Idle
+                    } else {
+                        _uiState.value = SelectionUiState.BatchReady(items = currentItems)
+                    }
+                    return@launch
+                }
+
+                val totalPlanned = currentItems.size + crawledFiles.size
+                if (totalPlanned > ProtocolLimits.MAX_ITEMS_PER_BATCH) {
+                    _uiState.value = SelectionUiState.Error(
+                        message = "Batch limit exceeded: Maximum ${ProtocolLimits.MAX_ITEMS_PER_BATCH} files allowed (folder contained ${crawledFiles.size} files)",
+                        isRecoverable = true
+                    )
+                    return@launch
+                }
+
+                _uiState.value = SelectionUiState.BatchReady(items = currentItems + crawledFiles)
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _uiState.value = SelectionUiState.Error(
+                    message = e.message ?: "Failed to traverse selected folder",
+                    isRecoverable = true
+                )
+            }
+        }
     }
 
     /**

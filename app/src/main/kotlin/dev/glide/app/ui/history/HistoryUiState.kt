@@ -31,7 +31,8 @@ data class HistoryItemDetail(
     val outcome: String? = null,
     val failureCode: String? = null,
     val receivedFileKey: String? = null,
-    val isFileAvailable: Boolean = false
+    val isFileAvailable: Boolean = false,
+    val relativePath: String? = null
 )
 
 data class HistorySessionDetail(

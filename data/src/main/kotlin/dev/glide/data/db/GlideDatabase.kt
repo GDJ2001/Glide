@@ -15,9 +15,11 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ReceiveJournalEntity::class,
         ReceivedFileEntity::class,
         SessionEntity::class,
-        ItemEntity::class
+        ItemEntity::class,
+        TrustedPeerEntity::class,
+        ResumableSessionEntity::class
     ],
-    version = 2,
+    version = 4,
     exportSchema = true
 )
 abstract class GlideDatabase : RoomDatabase() {
@@ -25,6 +27,8 @@ abstract class GlideDatabase : RoomDatabase() {
     abstract fun receivedFileDao(): ReceivedFileDao
     abstract fun sessionDao(): SessionDao
     abstract fun itemDao(): ItemDao
+    abstract fun trustedPeerDao(): TrustedPeerDao
+    abstract fun resumableSessionDao(): ResumableSessionDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -68,6 +72,48 @@ abstract class GlideDatabase : RoomDatabase() {
                 )
                 db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_items_session_id_ordinal` ON `items` (`session_id`, `ordinal`)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_items_session_id` ON `items` (`session_id`)")
+            }
+        }
+
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `receive_journal` ADD COLUMN `relative_path` TEXT DEFAULT NULL")
+                db.execSQL("ALTER TABLE `received_files` ADD COLUMN `relative_path` TEXT DEFAULT NULL")
+                db.execSQL("ALTER TABLE `items` ADD COLUMN `relative_path` TEXT DEFAULT NULL")
+            }
+        }
+
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `trusted_peers` (
+                        `peer_fingerprint` TEXT NOT NULL,
+                        `public_key_der` TEXT NOT NULL,
+                        `display_name` TEXT NOT NULL,
+                        `paired_at_ms` INTEGER NOT NULL,
+                        `last_seen_at_ms` INTEGER NOT NULL,
+                        PRIMARY KEY(`peer_fingerprint`)
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `resumable_sessions` (
+                        `session_id` TEXT NOT NULL,
+                        `item_id` TEXT NOT NULL,
+                        `item_name` TEXT NOT NULL,
+                        `total_bytes` INTEGER NOT NULL,
+                        `chunk_size` INTEGER NOT NULL,
+                        `verified_chunks` INTEGER NOT NULL,
+                        `root_hash_hex` TEXT NOT NULL,
+                        `created_at_ms` INTEGER NOT NULL,
+                        `expires_at_ms` INTEGER NOT NULL,
+                        `staging_path` TEXT NOT NULL,
+                        PRIMARY KEY(`session_id`)
+                    )
+                    """.trimIndent()
+                )
             }
         }
     }

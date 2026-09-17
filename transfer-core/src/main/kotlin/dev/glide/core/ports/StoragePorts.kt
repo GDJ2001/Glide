@@ -16,7 +16,8 @@ import java.io.OutputStream
 data class SourceMetadata(
     val name: String,
     val mimeType: String,
-    val sizeBytes: Long
+    val sizeBytes: Long,
+    val relativePath: String? = null
 )
 
 open class StorageException(
@@ -49,7 +50,8 @@ interface ReceiveStore {
         itemId: ItemId,
         expectedBytes: Long,
         displayName: String = "Received file",
-        mimeType: String = "application/octet-stream"
+        mimeType: String = "application/octet-stream",
+        relativePath: String? = null
     ): StagingHandle
     suspend fun openStagingOutput(handle: StagingHandle): OutputStream
     suspend fun commitVerified(handle: StagingHandle, digest: Sha256Digest): CommittedFileHandle
@@ -75,7 +77,8 @@ data class ItemRecord(
     val offeredBytes: Long,
     val actualBytes: Long? = null,
     val digest: Sha256Digest? = null,
-    val outcome: String? = null
+    val outcome: String? = null,
+    val relativePath: String? = null
 )
 
 data class SessionSummary(

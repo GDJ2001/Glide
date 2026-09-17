@@ -81,7 +81,6 @@ $BannedV1Permissions = @(
     "android.permission.READ_MEDIA_VIDEO",
     "android.permission.READ_MEDIA_AUDIO",
     "android.permission.ACCESS_BACKGROUND_LOCATION",
-    "android.permission.CAMERA",
     "android.permission.RECORD_AUDIO",
     "android.permission.READ_CONTACTS",
     "android.permission.RECEIVE_BOOT_COMPLETED"

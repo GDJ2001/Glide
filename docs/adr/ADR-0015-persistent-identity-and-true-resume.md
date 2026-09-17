@@ -1,7 +1,7 @@
 # ADR-0015 — Persistent identity and true resume
 
-- Status: Accepted (future extension); validation pending implementation evidence.
-- Date: 2026-09-14.
+- Status: Implemented (Milestone M13, GLIDE-070); verified with comprehensive test suites across :transfer-core, :data, and :app.
+- Date: 2026-09-14 (Accepted), 2026-09-17 (Implemented).
 - Authority: [Persistent identity and resume specification](../future/PERSISTENT_IDENTITY_AND_RESUME_SPECIFICATION.md); [decision index](README.md); [threat model](../security/GLIDE_THREAT_MODEL.md).
 
 ## Context

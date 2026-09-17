@@ -12,8 +12,16 @@ object NegotiationConstants {
     const val PROTOCOL_MAJOR_VERSION: Int = 1
     const val CAPABILITY_STREAM_V1: String = "stream-v1"
     const val CAPABILITY_SHA256: String = "sha256"
+    const val CAPABILITY_FOLDER_V1: String = "folder-v1"
+    const val CAPABILITY_PERSISTENT_IDENTITY_V1: String = "identity-v1"
+    const val CAPABILITY_TRUE_RESUME_V1: String = "resume-v1"
 
     val REQUIRED_CAPABILITIES: Set<String> = setOf(CAPABILITY_STREAM_V1, CAPABILITY_SHA256)
+    val OPTIONAL_CAPABILITIES: Set<String> = setOf(
+        CAPABILITY_FOLDER_V1,
+        CAPABILITY_PERSISTENT_IDENTITY_V1,
+        CAPABILITY_TRUE_RESUME_V1
+    )
 }
 
 data class NegotiatedSession(
@@ -30,7 +38,7 @@ object NegotiationValidator {
         role: DeviceRole,
         ephemeralPeerId: String,
         displayName: String,
-        optionalCapabilities: List<String> = emptyList()
+        optionalCapabilities: List<String> = NegotiationConstants.OPTIONAL_CAPABILITIES.toList()
     ): HelloBody {
         require(isValidUuidV4(ephemeralPeerId)) { "ephemeralPeerId must be UUIDv4, got: '$ephemeralPeerId'" }
         validateDisplayName(displayName)
@@ -48,7 +56,8 @@ object NegotiationValidator {
         hello: HelloBody,
         ephemeralPeerId: String,
         displayName: String,
-        requestedLimits: EffectiveLimits = EffectiveLimits()
+        requestedLimits: EffectiveLimits = EffectiveLimits(),
+        supportedOptionalCapabilities: Set<String> = NegotiationConstants.OPTIONAL_CAPABILITIES
     ): HelloAckBody {
         validateHello(hello)
         require(isValidUuidV4(ephemeralPeerId)) { "ephemeralPeerId must be UUIDv4, got: '$ephemeralPeerId'" }
@@ -71,6 +80,8 @@ object NegotiationValidator {
             )
         }
 
+        val negotiatedCaps = (NegotiationConstants.REQUIRED_CAPABILITIES + (hello.optionalCapabilities.toSet() intersect supportedOptionalCapabilities)).toList()
+
         val limitsDto = LimitsDto(
             maxItems = requestedLimits.maxItems,
             maxItemBytes = DecimalByteCount.serialize(requestedLimits.maxItemBytes),
@@ -80,7 +91,7 @@ object NegotiationValidator {
 
         return HelloAckBody(
             selectedMajor = NegotiationConstants.PROTOCOL_MAJOR_VERSION,
-            capabilities = hello.requiredCapabilities,
+            capabilities = negotiatedCaps,
             ephemeralPeerId = ephemeralPeerId,
             displayName = displayName,
             limits = limitsDto

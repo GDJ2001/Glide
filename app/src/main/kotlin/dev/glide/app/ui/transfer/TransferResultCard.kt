@@ -302,6 +302,15 @@ private fun CompletedResultCard(
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
                                         )
+                                        if (item.relativePath != null) {
+                                            Text(
+                                                text = item.relativePath,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
                                         Text(
                                             text = "${TransferFormatting.formatBytes(item.sizeBytes)} • ${item.mimeType}",
                                             style = MaterialTheme.typography.bodySmall,

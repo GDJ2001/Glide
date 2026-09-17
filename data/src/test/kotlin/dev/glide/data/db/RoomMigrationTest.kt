@@ -69,18 +69,77 @@ class RoomMigrationTest {
     }
 
     @Test
-    fun schemaFiles_version1And2ExistAndAreValidJson() {
+    fun migration2To3_altersTablesToAddRelativePath() {
+        val executedSql = mutableListOf<String>()
+        val fakeDb = Proxy.newProxyInstance(
+            SupportSQLiteDatabase::class.java.classLoader,
+            arrayOf(SupportSQLiteDatabase::class.java)
+        ) { _, method, args ->
+            if (method.name == "execSQL") {
+                val sql = args?.get(0) as? String
+                if (sql != null) {
+                    executedSql.add(sql.trim())
+                }
+            }
+            null
+        } as SupportSQLiteDatabase
+
+        val migration = GlideDatabase.MIGRATION_2_3
+
+        assertEquals(2, migration.startVersion)
+        assertEquals(3, migration.endVersion)
+
+        migration.migrate(fakeDb)
+
+        val sqlOutput = executedSql.joinToString("\n")
+        assertTrue(sqlOutput.contains("ALTER TABLE `receive_journal` ADD COLUMN `relative_path` TEXT DEFAULT NULL"))
+        assertTrue(sqlOutput.contains("ALTER TABLE `received_files` ADD COLUMN `relative_path` TEXT DEFAULT NULL"))
+        assertTrue(sqlOutput.contains("ALTER TABLE `items` ADD COLUMN `relative_path` TEXT DEFAULT NULL"))
+    }
+
+    @Test
+    fun migration3To4_createsTrustedPeersAndResumableSessionsTables() {
+        val executedSql = mutableListOf<String>()
+        val fakeDb = Proxy.newProxyInstance(
+            SupportSQLiteDatabase::class.java.classLoader,
+            arrayOf(SupportSQLiteDatabase::class.java)
+        ) { _, method, args ->
+            if (method.name == "execSQL") {
+                val sql = args?.get(0) as? String
+                if (sql != null) {
+                    executedSql.add(sql.trim())
+                }
+            }
+            null
+        } as SupportSQLiteDatabase
+
+        val migration = GlideDatabase.MIGRATION_3_4
+
+        assertEquals(3, migration.startVersion)
+        assertEquals(4, migration.endVersion)
+
+        migration.migrate(fakeDb)
+
+        val sqlOutput = executedSql.joinToString("\n")
+        assertTrue(sqlOutput.contains("CREATE TABLE IF NOT EXISTS `trusted_peers`"))
+        assertTrue(sqlOutput.contains("CREATE TABLE IF NOT EXISTS `resumable_sessions`"))
+    }
+
+    @Test
+    fun schemaFiles_version1And2And3And4ExistAndAreValidJson() {
         val schema1File = File("schemas/dev.glide.data.db.GlideDatabase/1.json")
         val schema2File = File("schemas/dev.glide.data.db.GlideDatabase/2.json")
+        val schema3File = File("schemas/dev.glide.data.db.GlideDatabase/3.json")
+        val schema4File = File("schemas/dev.glide.data.db.GlideDatabase/4.json")
 
         assertTrue("Schema version 1 file must exist", schema1File.exists())
         assertTrue("Schema version 2 file must exist", schema2File.exists())
+        assertTrue("Schema version 3 file must exist", schema3File.exists())
+        assertTrue("Schema version 4 file must exist", schema4File.exists())
 
-        val schema2Content = schema2File.readText()
-        assertTrue(schema2Content.contains("\"version\": 2"))
-        assertTrue(schema2Content.contains("\"tableName\": \"sessions\""))
-        assertTrue(schema2Content.contains("\"tableName\": \"items\""))
-        assertTrue(schema2Content.contains("\"tableName\": \"received_files\""))
-        assertTrue(schema2Content.contains("\"tableName\": \"receive_journal\""))
+        val schema4Content = schema4File.readText()
+        assertTrue(schema4Content.contains("\"version\": 4"))
+        assertTrue(schema4Content.contains("\"tableName\": \"trusted_peers\""))
+        assertTrue(schema4Content.contains("\"tableName\": \"resumable_sessions\""))
     }
 }

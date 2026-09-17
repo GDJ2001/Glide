@@ -172,13 +172,15 @@ class HistoryViewModelTest {
                 override suspend fun exportToDownloads(
                     sourceFile: File,
                     displayName: String,
-                    mimeType: String
+                    mimeType: String,
+                    relativePath: String?
                 ): ExportResult = ExportResult.Failure("Not implemented")
 
                 override suspend fun exportToUri(
                     sourceFile: File,
                     destinationUriString: String,
-                    displayName: String
+                    displayName: String,
+                    relativePath: String?
                 ): ExportResult = ExportResult.Failure("Not implemented")
             }
         }

@@ -210,7 +210,8 @@ class FakeReceiveStore(
         itemId: ItemId,
         expectedBytes: Long,
         displayName: String,
-        mimeType: String
+        mimeType: String,
+        relativePath: String?
     ): StagingHandle {
         throwOnPrepareStaging?.let { throw it }
         if (!hasAvailableSpace(expectedBytes)) {

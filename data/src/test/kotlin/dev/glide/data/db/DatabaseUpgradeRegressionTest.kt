@@ -140,8 +140,8 @@ class DatabaseUpgradeRegressionTest {
 
     @Test
     fun upgrade_missingMigration_isDetectedByVersionMismatch() {
-        val EXPECTED_CURRENT_DB_VERSION = 2
-        val migrationEnd = GlideDatabase.MIGRATION_1_2.endVersion
+        val EXPECTED_CURRENT_DB_VERSION = 3
+        val migrationEnd = GlideDatabase.MIGRATION_2_3.endVersion
 
         assertFalse(
             "DB version ($EXPECTED_CURRENT_DB_VERSION) is ahead of last migration end ($migrationEnd). " +
@@ -156,7 +156,7 @@ class DatabaseUpgradeRegressionTest {
 
     @Test
     fun reinstall_freshInstall_requiresNoMigration_startsAtLatestVersion() {
-        val EXPECTED_CURRENT_DB_VERSION = 2
+        val EXPECTED_CURRENT_DB_VERSION = 3
         val migration = GlideDatabase.MIGRATION_1_2
         assertEquals(
             "MIGRATION_1_2.startVersion must be 1, representing the first schema ever shipped",
@@ -174,6 +174,22 @@ class DatabaseUpgradeRegressionTest {
         val migration = GlideDatabase.MIGRATION_1_2
         assertEquals("Upgrade path from v1 must start at 1", 1, migration.startVersion)
         assertEquals("Upgrade path from v1 must end at 2", 2, migration.endVersion)
+        assertEquals("Each migration covers exactly one version step", 1, migration.endVersion - migration.startVersion)
+    }
+
+    @Test
+    fun reinstall_upgradeFromV2_requiresMigration_2_3() {
+        val migration = GlideDatabase.MIGRATION_2_3
+        assertEquals("Upgrade path from v2 must start at 2", 2, migration.startVersion)
+        assertEquals("Upgrade path from v2 must end at 3", 3, migration.endVersion)
+        assertEquals("Each migration covers exactly one version step", 1, migration.endVersion - migration.startVersion)
+    }
+
+    @Test
+    fun reinstall_upgradeFromV3_requiresMigration_3_4() {
+        val migration = GlideDatabase.MIGRATION_3_4
+        assertEquals("Upgrade path from v3 must start at 3", 3, migration.startVersion)
+        assertEquals("Upgrade path from v3 must end at 4", 4, migration.endVersion)
         assertEquals("Each migration covers exactly one version step", 1, migration.endVersion - migration.startVersion)
     }
 
