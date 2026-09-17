@@ -44,8 +44,8 @@ if ($PathContent -notmatch "4\.\s*iOS/iPadOS and macOS.*ADR-0020.*APPLE_PLATFORM
 }
 Write-Host "  PASS: CROSS_PLATFORM_PATH.md Step 4 properly references ADR-0020 and specification." -ForegroundColor Green
 
-# --- Check 3: Apple Platforms Specification Completeness ---
-Write-Host "`n[Check 3/10] Auditing Apple Platforms technical specification completeness..." -ForegroundColor Yellow
+# --- Check 3: Apple Platforms Specification Completeness & GlideCoreKit SPM ---
+Write-Host "`n[Check 3/10] Auditing Apple Platforms technical specification & GlideCoreKit package..." -ForegroundColor Yellow
 $SpecPath = Join-Path $ProjectRoot "docs\future\APPLE_PLATFORMS_SPECIFICATION.md"
 if (-not (Test-Path $SpecPath)) {
     Write-Error "FAIL: Specification not found at $SpecPath"
@@ -77,7 +77,11 @@ foreach ($topic in $RequiredTopics) {
         Write-Error "FAIL: Specification missing required topic: $topic"
     }
 }
-Write-Host "  PASS: Specification contains all 9 core architectural sections and multi-phase roadmap." -ForegroundColor Green
+$PkgPath = Join-Path $ProjectRoot "apple\GlideCoreKit\Package.swift"
+if (-not (Test-Path $PkgPath)) {
+    Write-Error "FAIL: GlideCoreKit Package.swift not found at $PkgPath"
+}
+Write-Host "  PASS: Specification completeness and GlideCoreKit SPM package verified." -ForegroundColor Green
 
 # --- Check 4: Zero-Cloud & 100% Offline Invariants ---
 Write-Host "`n[Check 4/10] Auditing Zero-Cloud & 100% Offline Invariants..." -ForegroundColor Yellow
@@ -89,8 +93,8 @@ if ($SpecContent -notmatch "APNs" -or $SpecContent -notmatch "iCloud") {
 }
 Write-Host "  PASS: Zero-cloud, 100% offline, and zero-APNs/iCloud invariants verified." -ForegroundColor Green
 
-# --- Check 5: Apple Network.framework Wire Mapping ---
-Write-Host "`n[Check 5/10] Auditing Network.framework Wire Mapping & Framing..." -ForegroundColor Yellow
+# --- Check 5: Apple Network.framework Wire Mapping & LanRecord Codec ---
+Write-Host "`n[Check 5/10] Auditing Network.framework Wire Mapping & LanRecord Codec..." -ForegroundColor Yellow
 if ($SpecContent -notmatch "NWListener" -or $SpecContent -notmatch "42424") {
     Write-Error "FAIL: Specification missing NWListener port 42424 configuration."
 }
@@ -99,6 +103,17 @@ if ($SpecContent -notmatch "LanRecord" -or $SpecContent -notmatch "Protocol V1")
 }
 if ($SpecContent -notmatch "TLSv13") {
     Write-Error "FAIL: Specification must mandate TLS 1.3 protocol version."
+}
+$LanRecordPath = Join-Path $ProjectRoot "apple\GlideCoreKit\Sources\GlideCoreKit\Models\LanRecord.swift"
+$LanRecordTestPath = Join-Path $ProjectRoot "apple\GlideCoreKit\Tests\GlideCoreKitTests\LanRecordTests.swift"
+foreach ($f in @($LanRecordPath, $LanRecordTestPath)) {
+    if (-not (Test-Path $f)) {
+        Write-Error "FAIL: Missing LanRecord component: $f"
+    }
+}
+$LanContent = Get-Content $LanRecordPath -Raw
+if ($LanContent -notmatch "LanRecordCodec" -or $LanContent -notmatch "headerSize = 5" -or $LanContent -notmatch "maxRecordPayloadSize") {
+    Write-Error "FAIL: LanRecord.swift missing LanRecordCodec or framing bounds."
 }
 Write-Host "  PASS: Network.framework, port 42424, TLS 1.3, and LanRecord framing verified." -ForegroundColor Green
 
@@ -112,15 +127,32 @@ if ($SpecContent -notmatch "spki" -or $SpecContent -notmatch "presence") {
 }
 Write-Host "  PASS: Bonjour service type (_glide._tcp) and TXT record schema verified." -ForegroundColor Green
 
-# --- Check 7: Authentication & Pairing Parity ---
-Write-Host "`n[Check 7/10] Auditing Authentication & Pairing Parity..." -ForegroundColor Yellow
+# --- Check 7: Authentication & Pairing Parity (SAS & Invitation Codecs) ---
+Write-Host "`n[Check 7/10] Auditing Authentication & Pairing Parity (SAS & Invitation Codecs)..." -ForegroundColor Yellow
 if ($SpecContent -notmatch "HKDF-Extract" -or $SpecContent -notmatch "GLIDE-SAS-V1") {
     Write-Error "FAIL: Specification missing HKDF-SHA256 SAS calculation contract."
 }
 if ($SpecContent -notmatch "CIQRCodeGenerator" -or $SpecContent -notmatch "AVCaptureMetadataOutput") {
     Write-Error "FAIL: Specification missing CoreImage QR rendering and AVFoundation QR capture."
 }
-Write-Host "  PASS: 6-digit numeric SAS and out-of-band QR pairing contracts verified." -ForegroundColor Green
+$SasPath = Join-Path $ProjectRoot "apple\GlideCoreKit\Sources\GlideCoreKit\Security\SasCalculator.swift"
+$SasTestPath = Join-Path $ProjectRoot "apple\GlideCoreKit\Tests\GlideCoreKitTests\SasCalculatorTests.swift"
+$InvPath = Join-Path $ProjectRoot "apple\GlideCoreKit\Sources\GlideCoreKit\Security\InvitationCodec.swift"
+$InvTestPath = Join-Path $ProjectRoot "apple\GlideCoreKit\Tests\GlideCoreKitTests\InvitationCodecTests.swift"
+foreach ($f in @($SasPath, $SasTestPath, $InvPath, $InvTestPath)) {
+    if (-not (Test-Path $f)) {
+        Write-Error "FAIL: Missing security component: $f"
+    }
+}
+$SasContent = Get-Content $SasPath -Raw
+if ($SasContent -notmatch "extractDecimal6" -or $SasContent -notmatch "calculateSas") {
+    Write-Error "FAIL: SasCalculator.swift missing extractDecimal6 or calculateSas methods."
+}
+$InvContent = Get-Content $InvPath -Raw
+if ($InvContent -notmatch "glide://pair/v1#" -or $InvContent -notmatch "maxUriChars" -or $InvContent -notmatch "maxJsonBytes") {
+    Write-Error "FAIL: InvitationCodec.swift missing URI prefix or bounds."
+}
+Write-Host "  PASS: 6-digit numeric SAS, out-of-band QR pairing, and Swift codecs verified." -ForegroundColor Green
 
 # --- Check 8: iOS Lifecycle & macOS Companion Invariants ---
 Write-Host "`n[Check 8/10] Auditing iOS Lifecycle & macOS Companion Invariants..." -ForegroundColor Yellow
@@ -140,7 +172,18 @@ if ($SpecContent -notmatch "\.quarantine" -or $SpecContent -notmatch "CryptoKit\
 if ($SpecContent -notmatch "FileManager\.default\.moveItem" -or $SpecContent -notmatch "PHPhotoLibrary") {
     Write-Error "FAIL: Specification missing atomic commitment and PhotoLibrary export."
 }
-Write-Host "  PASS: Quarantine staging, incremental hashing, atomic move, and PhotoLibrary integration verified." -ForegroundColor Green
+$SanitizerPath = Join-Path $ProjectRoot "apple\GlideCoreKit\Sources\GlideCoreKit\Storage\DarwinPathSanitizer.swift"
+$SanitizerTestPath = Join-Path $ProjectRoot "apple\GlideCoreKit\Tests\GlideCoreKitTests\DarwinPathSanitizerTests.swift"
+foreach ($f in @($SanitizerPath, $SanitizerTestPath)) {
+    if (-not (Test-Path $f)) {
+        Write-Error "FAIL: Missing Darwin path sanitizer component: $f"
+    }
+}
+$SanitizerContent = Get-Content $SanitizerPath -Raw
+if ($SanitizerContent -notmatch "sanitizeFilename" -or $SanitizerContent -notmatch "precomposedStringWithCanonicalMapping" -or $SanitizerContent -notmatch "truncateToMaxBytes") {
+    Write-Error "FAIL: DarwinPathSanitizer missing sanitizeFilename or normalization methods."
+}
+Write-Host "  PASS: Quarantine staging, incremental hashing, atomic move, and Darwin path sanitizer verified." -ForegroundColor Green
 
 # --- Check 10: App Permissions & Privacy Declarations ---
 Write-Host "`n[Check 10/10] Auditing App Permissions & Privacy Declarations..." -ForegroundColor Yellow
