@@ -6,6 +6,7 @@ using System.Security.Cryptography;
 using System.Text.Json.Nodes;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media;
 using Glide.Core.Codec;
 using Glide.Core.Models;
 using Glide.Core.Pairing;
@@ -60,6 +61,9 @@ public class MainViewModel : ViewModelBase
     private bool _isWebShareModalVisible;
     private string _webShareUrl = "";
 
+    private ImageSource? _webShareQrImage;
+    private ImageSource? _pairingQrImage;
+
     public bool IsWebShareModalVisible
     {
         get => _isWebShareModalVisible;
@@ -69,7 +73,25 @@ public class MainViewModel : ViewModelBase
     public string WebShareUrl
     {
         get => _webShareUrl;
-        set => SetProperty(ref _webShareUrl, value);
+        set
+        {
+            if (SetProperty(ref _webShareUrl, value))
+            {
+                WebShareQrImage = QrImageHelper.GenerateQrImageSource(value);
+            }
+        }
+    }
+
+    public ImageSource? WebShareQrImage
+    {
+        get => _webShareQrImage;
+        set => SetProperty(ref _webShareQrImage, value);
+    }
+
+    public ImageSource? PairingQrImage
+    {
+        get => _pairingQrImage;
+        set => SetProperty(ref _pairingQrImage, value);
     }
 
     public ObservableCollection<TransferItemViewModel> SelectedFiles { get; } = [];
@@ -239,7 +261,13 @@ public class MainViewModel : ViewModelBase
     public string ActiveInvitationUri
     {
         get => _activeInvitationUri;
-        set => SetProperty(ref _activeInvitationUri, value);
+        set
+        {
+            if (SetProperty(ref _activeInvitationUri, value))
+            {
+                PairingQrImage = QrImageHelper.GenerateQrImageSource(value);
+            }
+        }
     }
 
     public string SasCode
