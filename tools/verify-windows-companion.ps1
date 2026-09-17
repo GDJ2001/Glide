@@ -21,9 +21,14 @@ if (-not (Test-Path $SolutionPath)) {
     Write-Error "FAIL: windows/Glide.slnx not found."
 }
 
+$UIProjPath = Join-Path $ProjectRoot "windows\Glide.Windows.UI\Glide.Windows.UI.csproj"
+if (-not (Test-Path $UIProjPath)) {
+    Write-Error "FAIL: windows/Glide.Windows.UI/Glide.Windows.UI.csproj not found."
+}
+
 $dotnetVersion = (dotnet --version).Trim()
 Write-Host "  PASS: .NET SDK version $dotnetVersion detected." -ForegroundColor Green
-Write-Host "  PASS: windows/Glide.slnx solution verified." -ForegroundColor Green
+Write-Host "  PASS: windows/Glide.slnx solution and Glide.Windows.UI verified." -ForegroundColor Green
 
 # --- Check 2: Solution Build (Release Configuration) ---
 Write-Host "`n[Check 2/6] Building windows/Glide.slnx in Release configuration..." -ForegroundColor Yellow
@@ -31,7 +36,13 @@ $buildOutput = dotnet build (Join-Path $ProjectRoot "windows\Glide.slnx") -c Rel
 if ($LASTEXITCODE -ne 0) {
     Write-Error "FAIL: dotnet build failed with exit code $LASTEXITCODE."
 }
-Write-Host "  PASS: Glide.Core, Glide.Transport, Glide.Tests, and Glide.App compiled with 0 errors." -ForegroundColor Green
+
+$UIDll = Join-Path $ProjectRoot "windows\Glide.Windows.UI\bin\Release\net10.0-windows\Glide.Windows.UI.dll"
+if (-not (Test-Path $UIDll)) {
+    Write-Error "FAIL: Glide.Windows.UI.dll not produced in bin/Release/net10.0-windows."
+}
+
+Write-Host "  PASS: Glide.Core, Glide.Transport, Glide.Tests, Glide.App, and Glide.Windows.UI compiled with 0 errors." -ForegroundColor Green
 
 # --- Check 3: Golden Protocol Fixture Conformance Suite ---
 Write-Host "`n[Check 3/6] Running cross-platform golden fixture conformance tests..." -ForegroundColor Yellow
