@@ -186,7 +186,31 @@ if ($SpecContent -notmatch "beginBackgroundTask" -or $SpecContent -notmatch "isI
 if ($SpecContent -notmatch "SYSTEM_CANCELLED" -or $SpecContent -notmatch "LSUIElement") {
     Write-Error "FAIL: Specification missing orderly cancellation and macOS LSUIElement menu bar mode."
 }
-Write-Host "  PASS: iOS background task limits and macOS menu bar lifecycle verified." -ForegroundColor Green
+$LifecyclePath = Join-Path $ProjectRoot "apple\GlideCoreKit\Sources\GlideCoreKit\Lifecycle\IosLifecycleCoordinator.swift"
+$LifecycleTestPath = Join-Path $ProjectRoot "apple\GlideCoreKit\Tests\GlideCoreKitTests\IosLifecycleCoordinatorTests.swift"
+$ThemePath = Join-Path $ProjectRoot "apple\GlideCoreKit\Sources\GlideCoreKit\UI\GlideTheme.swift"
+$ThemeTestPath = Join-Path $ProjectRoot "apple\GlideCoreKit\Tests\GlideCoreKitTests\GlideThemeTests.swift"
+$ShareCoordPath = Join-Path $ProjectRoot "apple\GlideCoreKit\Sources\GlideCoreKit\UI\ShareExtensionCoordinator.swift"
+$ShareCoordTestPath = Join-Path $ProjectRoot "apple\GlideCoreKit\Tests\GlideCoreKitTests\ShareExtensionCoordinatorTests.swift"
+
+foreach ($f in @($LifecyclePath, $LifecycleTestPath, $ThemePath, $ThemeTestPath, $ShareCoordPath, $ShareCoordTestPath)) {
+    if (-not (Test-Path $f)) {
+        Write-Error "FAIL: Missing iOS lifecycle or UI component: $f"
+    }
+}
+$LifecycleContent = Get-Content $LifecyclePath -Raw
+if ($LifecycleContent -notmatch "IosLifecycleCoordinator" -or $LifecycleContent -notmatch "beginBackgroundTask" -or $LifecycleContent -notmatch "isIdleTimerDisabled") {
+    Write-Error "FAIL: IosLifecycleCoordinator missing beginBackgroundTask or isIdleTimerDisabled."
+}
+$ThemeContent = Get-Content $ThemePath -Raw
+if ($ThemeContent -notmatch "GlideTheme" -or $ThemeContent -notmatch "brandBlueHex") {
+    Write-Error "FAIL: GlideTheme missing brand color definitions."
+}
+$ShareContent = Get-Content $ShareCoordPath -Raw
+if ($ShareContent -notmatch "ShareExtensionCoordinator" -or $ShareContent -notmatch "prepareBatch") {
+    Write-Error "FAIL: ShareExtensionCoordinator missing prepareBatch method."
+}
+Write-Host "  PASS: iOS background task limits, idle timer management, theme tokens, and Share Sheet coordinator verified." -ForegroundColor Green
 
 # --- Check 9: Quarantine Storage & Darwin Filesystem Sanitization ---
 Write-Host "`n[Check 9/10] Auditing Quarantine Storage & Darwin Filesystem Sanitization..." -ForegroundColor Yellow
