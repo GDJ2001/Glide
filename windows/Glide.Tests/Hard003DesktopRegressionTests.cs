@@ -118,6 +118,18 @@ public sealed class Hard003DesktopRegressionTests : IDisposable
     }
 
     [Fact]
+    public async Task Daemon_GenericAutoAcceptFlagWithoutTrustedPeer_MustFailClosed()
+    {
+        int exitCode =
+            await InvokeDaemonAsync(
+                "--accept-paired-offers",
+                "--max-offer-bytes",
+                "1024");
+
+        Assert.Equal(1, exitCode);
+    }
+
+    [Fact]
     public async Task Send_MoreThanOneOfferPage_MustAdvertiseCorrectPageCount()
     {
         var files = new List<string>();
@@ -477,6 +489,27 @@ public sealed class Hard003DesktopRegressionTests : IDisposable
             .. files
         ];
         return InvokeSendAsync(args);
+    }
+
+    private static async Task<int> InvokeDaemonAsync(
+        params string[] args)
+    {
+        MethodInfo method =
+            typeof(GlideAppProgram).GetMethod(
+                "RunDaemonAsync",
+                BindingFlags.NonPublic |
+                BindingFlags.Static)
+            ?? throw new MissingMethodException(
+                typeof(GlideAppProgram).FullName,
+                "RunDaemonAsync");
+
+        var task =
+            (Task<int>?)method.Invoke(
+                null,
+                new object?[] { args })
+            ?? throw new InvalidOperationException(
+                "RunDaemonAsync did not return Task<int>.");
+        return await task;
     }
 
     private static async Task<int> InvokeSendAsync(
