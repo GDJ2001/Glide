@@ -184,7 +184,7 @@ public sealed class DesktopTransferEngineTests : IDisposable
                     .ExportSubjectPublicKeyInfo()))
             .ToLowerInvariant();
 
-        return new LanInvitation(
+        var invitation = new LanInvitation(
             invitationId: Guid.NewGuid().ToString("D").ToLowerInvariant(),
             presence: Convert.ToHexString(
                     RandomNumberGenerator.GetBytes(16))
@@ -201,6 +201,9 @@ public sealed class DesktopTransferEngineTests : IDisposable
                 DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 120)
                 .ToString(),
             ttlSeconds: 120);
+
+        // The invitation hash is the canonical hash of the encoded QR payload.
+        return InvitationCodec.Decode(InvitationCodec.Encode(invitation));
     }
 
     private sealed class RecordingInteraction
