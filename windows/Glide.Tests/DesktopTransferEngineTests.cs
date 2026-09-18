@@ -359,6 +359,134 @@ public sealed class DesktopTransferEngineTests : IDisposable
     }
 
     [Fact]
+    public async Task SharedEngine_ExpectedTrustedPeer_RevokedBeforeHandshake_FailsClosed()
+    {
+        string sourcePath =
+            Path.Combine(
+                _sourceDir,
+                "revoked.bin");
+        await File.WriteAllBytesAsync(
+            sourcePath,
+            RandomNumberGenerator.GetBytes(
+                1024));
+
+        using var listener =
+            new TlsSocketListener(0);
+        var invitationAuthority =
+            new LanInvitationAuthority();
+        var invitation =
+            invitationAuthority.Publish(
+                CreateInvitation(listener));
+        var receiverStore =
+            new QuarantineStagingStore(
+                stagingRoot: _stagingDir,
+                destinationRoot:
+                    _destinationDir);
+
+        var senderIdentity =
+            new FakeDesktopIdentityStore(true);
+        var receiverIdentity =
+            new FakeDesktopIdentityStore(true);
+        var senderStore =
+            new DesktopTrustStore(
+                Path.Combine(
+                    _root,
+                    "revoked-sender-trust.json"));
+        var senderTrust =
+            new DesktopPersistentTrustManager(
+                senderIdentity,
+                senderStore);
+        senderTrust.Initialize();
+
+        long now =
+            DateTimeOffset.UtcNow
+                .ToUnixTimeMilliseconds();
+        string receiverFingerprint =
+            receiverIdentity
+                .GetFingerprintHex();
+        DesktopTrustDocument senderDocument =
+            senderStore.Load();
+        senderDocument.Peers.Add(
+            new DesktopTrustedPeer(
+                receiverFingerprint,
+                Convert.ToHexStringLower(
+                    receiverIdentity
+                        .GetOrCreatePublicKeyDer()),
+                "Revoked Receiver",
+                now,
+                now));
+        senderStore.Save(
+            senderDocument);
+        Assert.True(
+            senderTrust.RevokePeer(
+                receiverFingerprint));
+
+        var receiverTrust =
+            new DesktopPersistentTrustManager(
+                receiverIdentity,
+                new DesktopTrustStore(
+                    Path.Combine(
+                        _root,
+                        "revoked-receiver-trust.json")));
+        receiverTrust.Initialize();
+
+        var receiverTask = Task.Run(async () =>
+        {
+            await using var connection =
+                await listener
+                    .AcceptConnectionAsync();
+            return await new DesktopTransferEngine()
+                .ReceiveAsync(
+                    connection,
+                    new DesktopReceiveRequest(
+                        receiverStore,
+                        invitationAuthority,
+                        LocalDeviceName:
+                            "Revoked-Receiver",
+                        TrustManager:
+                            receiverTrust),
+                    new RecordingInteraction());
+        });
+
+        DesktopTransferResult senderResult =
+            await new DesktopTransferEngine()
+                .SendAsync(
+                    new DesktopSendRequest(
+                        "127.0.0.1",
+                        listener.BoundPort,
+                        [
+                            new DesktopTransferFile(
+                                sourcePath)
+                        ],
+                        invitation,
+                        LocalDeviceName:
+                            "Strict-Sender",
+                        TrustManager:
+                            senderTrust,
+                        ExpectedPeerFingerprintHex:
+                            receiverFingerprint),
+                    new RecordingInteraction());
+
+        DesktopTransferResult receiverResult =
+            await receiverTask.WaitAsync(
+                TimeSpan.FromSeconds(15));
+
+        Assert.False(
+            senderResult.Success);
+        Assert.Contains(
+            "not enrolled",
+            senderResult.Message,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.False(
+            receiverResult.Success);
+        Assert.Empty(
+            Directory.GetFiles(
+                _destinationDir,
+                "*",
+                SearchOption.AllDirectories));
+    }
+
+    [Fact]
     public async Task SharedEngine_CancelledSender_ReturnsCancelledWithoutStartingProtocol()
     {
         string sourcePath = Path.Combine(_sourceDir, "cancel.bin");
