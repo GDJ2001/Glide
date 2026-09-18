@@ -34,8 +34,29 @@ public sealed class TlsSocketConnection : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        await SslStream.DisposeAsync();
-        TcpClient.Dispose();
+        try
+        {
+            // A protocol session may already have reached a truthful terminal result while the
+            // remote peer immediately closes its TLS/TCP side. SslStream.DisposeAsync() can then
+            // surface a platform-specific IOException/SocketException while attempting close_notify.
+            // Cleanup failure must not overwrite the already-established transfer outcome.
+            try
+            {
+                await SslStream.DisposeAsync();
+            }
+            catch (IOException)
+            {
+                // Peer already closed/reset the transport during orderly local cleanup.
+            }
+            catch (SocketException)
+            {
+                // Peer already closed/reset the transport during orderly local cleanup.
+            }
+        }
+        finally
+        {
+            TcpClient.Dispose();
+        }
     }
 }
 
