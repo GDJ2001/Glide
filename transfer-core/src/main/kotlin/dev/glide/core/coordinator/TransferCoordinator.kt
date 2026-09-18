@@ -30,6 +30,10 @@ import dev.glide.core.protocol.IdentityResponseDto
 import dev.glide.core.protocol.MessageTypes
 import dev.glide.core.protocol.NegotiationConstants
 import dev.glide.core.protocol.ProtocolCodec
+import dev.glide.core.protocol.ResumeAcceptDto
+import dev.glide.core.protocol.ResumeRejectCodes
+import dev.glide.core.protocol.ResumeRejectDto
+import dev.glide.core.protocol.ResumeRequestDto
 import dev.glide.core.resume.ResumeAuthorityLookup
 import dev.glide.core.resume.ResumeReconnectPlan
 import dev.glide.core.resume.ResumeReconnectState
@@ -988,6 +992,579 @@ class TransferCoordinator(
             maybeStartReceiverResumeRequest()
         }
     }
+
+    private suspend fun maybeStartReceiverResumeRequest() {
+        val plan =
+            resumeReconnectPlan
+                as? ResumeReconnectPlan
+                    .Receiver
+                ?: return
+        if (_resumeReconnectState.value !is
+            ResumeReconnectState.Idle
+        ) {
+            return
+        }
+
+        if (!enableTrueResumeCapability ||
+            !isTrueResumeNegotiated()
+        ) {
+            _resumeReconnectState.value =
+                ResumeReconnectState.Rejected(
+                    ResumeRejectCodes
+                        .CAPABILITY_MISMATCH
+                )
+            return
+        }
+
+        val manager =
+            persistentTrustManager
+                ?: run {
+                    _resumeReconnectState.value =
+                        ResumeReconnectState
+                            .Rejected(
+                                ResumeRejectCodes
+                                    .UNAUTHORIZED
+                            )
+                    return
+                }
+        val peerFingerprint =
+            authenticatedPeerFingerprintHex
+                ?: run {
+                    _resumeReconnectState.value =
+                        ResumeReconnectState
+                            .Rejected(
+                                ResumeRejectCodes
+                                    .UNAUTHORIZED
+                            )
+                    return
+                }
+        if (peerFingerprint !=
+            plan.expectedPeerFingerprintHex
+        ) {
+            _resumeReconnectState.value =
+                ResumeReconnectState.Rejected(
+                    ResumeRejectCodes
+                        .UNAUTHORIZED
+                )
+            return
+        }
+
+        val loader =
+            loadReceiverResumeAuthority
+                ?: run {
+                    _resumeReconnectState.value =
+                        ResumeReconnectState
+                            .Rejected(
+                                ResumeRejectCodes
+                                    .JOURNAL_MISMATCH
+                            )
+                    return
+                }
+
+        val lookup =
+            loader(
+                plan.originalSessionId,
+                plan.itemId,
+                peerFingerprint
+            )
+        val journal =
+            when (lookup) {
+                is ResumeAuthorityLookup.Ready ->
+                    lookup.value
+                is ResumeAuthorityLookup.Rejected -> {
+                    _resumeReconnectState.value =
+                        ResumeReconnectState
+                            .Rejected(
+                                lookup.code
+                            )
+                    return
+                }
+            }
+
+        if (journal.originalSessionId !=
+                plan.originalSessionId ||
+            journal.itemId !=
+                plan.itemId
+        ) {
+            _resumeReconnectState.value =
+                ResumeReconnectState.Rejected(
+                    ResumeRejectCodes
+                        .JOURNAL_MISMATCH
+                )
+            return
+        }
+
+        val context =
+            activeResumeChannelContext()
+                ?: run {
+                    _resumeReconnectState.value =
+                        ResumeReconnectState
+                            .Rejected(
+                                ResumeRejectCodes
+                                    .UNAUTHORIZED
+                            )
+                    return
+                }
+
+        val request =
+            try {
+                ResumeRequestAuthority
+                    .createRequest(
+                        activeSessionId =
+                            sessionId,
+                        channelContext =
+                            context,
+                        negotiatedCapabilities =
+                            _state.value
+                                .negotiated
+                                ?.capabilities
+                                ?: emptySet(),
+                        trustManager =
+                            manager,
+                        responderFingerprintHex =
+                            peerFingerprint,
+                        journal =
+                            journal
+                    )
+            } catch (
+                rejected:
+                    ResumeRequestAuthority
+                        .Rejected
+            ) {
+                _resumeReconnectState.value =
+                    ResumeReconnectState
+                        .Rejected(
+                            rejected.code
+                        )
+                return
+            }
+
+        val envelope =
+            sendHandshakeControl(
+                MessageTypes.RESUME_REQUEST,
+                ProtocolCodec.encodeBody(
+                    request
+                )
+            )
+        pendingResumeRequest =
+            envelope
+        pendingReceiverResumeJournal =
+            journal
+        _resumeReconnectState.value =
+            ResumeReconnectState
+                .AwaitingResponse(
+                    requestMessageId =
+                        envelope
+                            .messageId
+                            .value,
+                    originalSessionId =
+                        journal
+                            .originalSessionId,
+                    itemId =
+                        journal.itemId,
+                    requestedChunkIndex =
+                        journal
+                            .verifiedChunkCount,
+                    requestedByteOffset =
+                        journal
+                            .contiguousByteOffset
+                )
+
+        resumeTimeoutJob?.cancel()
+        resumeTimeoutJob =
+            scope.launch {
+                kotlinx.coroutines.delay(
+                    30_000L
+                )
+                if (_resumeReconnectState
+                        .value is
+                    ResumeReconnectState
+                        .AwaitingResponse
+                ) {
+                    _resumeReconnectState.value =
+                        ResumeReconnectState
+                            .Failed("TIMEOUT")
+                    dispatch(
+                        ReducerEvent
+                            .TransportFailure(
+                                TransferFailure
+                                    .Timeout(
+                                        "resume-v1"
+                                    ),
+                                clock()
+                            )
+                    )
+                }
+            }
+    }
+
+    private suspend fun handleResumeRequest(
+        envelope: Envelope
+    ) {
+        val plan =
+            resumeReconnectPlan
+                as? ResumeReconnectPlan
+                    .Sender
+        val request =
+            ProtocolCodec
+                .decodeBody<
+                    ResumeRequestDto
+                >(envelope)
+
+        if (!enableTrueResumeCapability ||
+            !isTrueResumeNegotiated() ||
+            plan == null
+        ) {
+            sendResumeReject(
+                envelope,
+                request,
+                ResumeRejectCodes
+                    .CAPABILITY_MISMATCH
+            )
+            return
+        }
+
+        if (!identityReadyForOffers()) {
+            sendResumeReject(
+                envelope,
+                request,
+                ResumeRejectCodes
+                    .UNAUTHORIZED
+            )
+            return
+        }
+
+        val manager =
+            persistentTrustManager
+        val requesterFingerprint =
+            authenticatedPeerFingerprintHex
+        if (manager == null ||
+            requesterFingerprint == null ||
+            requesterFingerprint !=
+                plan.expectedPeerFingerprintHex
+        ) {
+            sendResumeReject(
+                envelope,
+                request,
+                ResumeRejectCodes
+                    .UNAUTHORIZED
+            )
+            return
+        }
+
+        if (request.originalSessionId !=
+                plan.originalSessionId
+                    .value ||
+            request.itemId !=
+                plan.itemId.value
+        ) {
+            sendResumeReject(
+                envelope,
+                request,
+                ResumeRejectCodes
+                    .JOURNAL_MISMATCH
+            )
+            return
+        }
+
+        val loader =
+            loadSenderResumeAuthority
+        if (loader == null) {
+            sendResumeReject(
+                envelope,
+                request,
+                ResumeRejectCodes
+                    .JOURNAL_MISMATCH
+            )
+            return
+        }
+
+        val lookup =
+            loader(
+                plan.originalSessionId,
+                plan.itemId,
+                requesterFingerprint
+            )
+        val ready =
+            when (lookup) {
+                is ResumeAuthorityLookup.Ready ->
+                    lookup.value
+                is ResumeAuthorityLookup.Rejected -> {
+                    sendResumeReject(
+                        envelope,
+                        request,
+                        lookup.code
+                    )
+                    return
+                }
+            }
+
+        val context =
+            activeResumeChannelContext()
+        if (context == null) {
+            sendResumeReject(
+                envelope,
+                request,
+                ResumeRejectCodes
+                    .UNAUTHORIZED
+            )
+            return
+        }
+
+        val verified =
+            try {
+                ResumeRequestAuthority
+                    .verifyRequest(
+                        activeSessionId =
+                            sessionId,
+                        channelContext =
+                            context,
+                        negotiatedCapabilities =
+                            _state.value
+                                .negotiated
+                                ?.capabilities
+                                ?: emptySet(),
+                        trustManager =
+                            manager,
+                        authenticatedRequesterFingerprintHex =
+                            requesterFingerprint,
+                        request =
+                            request,
+                        sourceAuthority =
+                            ready.authority
+                    )
+            } catch (
+                rejected:
+                    ResumeRequestAuthority
+                        .Rejected
+            ) {
+                sendResumeReject(
+                    envelope,
+                    request,
+                    rejected.code
+                )
+                return
+            }
+
+        val accept =
+            ResumeRequestAuthority
+                .createAccept(
+                    requestMessageId =
+                        envelope
+                            .messageId
+                            .value,
+                    verified =
+                        verified
+                )
+        sendHandshakeControl(
+            MessageTypes.RESUME_ACCEPT,
+            ProtocolCodec.encodeBody(
+                accept
+            )
+        )
+        _resumeReconnectState.value =
+            ResumeReconnectState
+                .SenderAccepted(
+                    originalSessionId =
+                        verified
+                            .originalSessionId,
+                    itemId =
+                        verified.itemId,
+                    startChunkIndex =
+                        verified
+                            .startChunkIndex,
+                    startByteOffset =
+                        verified
+                            .startByteOffset,
+                    sourceHandle =
+                        ready.sourceHandle,
+                    wholeFileSha256Hex =
+                        ready
+                            .wholeFileSha256Hex
+                )
+    }
+
+    private suspend fun handleResumeAccept(
+        envelope: Envelope
+    ) {
+        val plan =
+            resumeReconnectPlan
+                as? ResumeReconnectPlan
+                    .Receiver
+                ?: return
+        val pending =
+            pendingResumeRequest
+                ?: throw ResumeJournalException(
+                    "RESUME_ACCEPT arrived without an active resume request"
+                )
+        val journal =
+            pendingReceiverResumeJournal
+                ?: throw ResumeJournalException(
+                    "Receiver resume journal snapshot is unavailable"
+                )
+        val accept =
+            ProtocolCodec
+                .decodeBody<
+                    ResumeAcceptDto
+                >(envelope)
+
+        val startOffset =
+            try {
+                dev.glide.core.protocol
+                    .DecimalByteCount
+                    .parse(
+                        accept
+                            .startByteOffset
+                    )
+            } catch (
+                error:
+                    IllegalArgumentException
+            ) {
+                throw ResumeJournalException(
+                    error.message
+                        ?: "Invalid resume accept offset"
+                )
+            }
+
+        if (accept.requestMessageId !=
+                pending.messageId.value ||
+            accept.originalSessionId !=
+                plan.originalSessionId
+                    .value ||
+            accept.itemId !=
+                plan.itemId.value ||
+            accept.startChunkIndex !=
+                journal
+                    .verifiedChunkCount ||
+            startOffset !=
+                journal
+                    .contiguousByteOffset
+        ) {
+            _resumeReconnectState.value =
+                ResumeReconnectState
+                    .Failed(
+                        ResumeRejectCodes
+                            .JOURNAL_MISMATCH
+                    )
+            throw ResumeJournalException(
+                "RESUME_ACCEPT did not match the exact requested verified prefix"
+            )
+        }
+
+        resumeTimeoutJob?.cancel()
+        resumeTimeoutJob = null
+        pendingResumeRequest = null
+        pendingReceiverResumeJournal =
+            null
+        _resumeReconnectState.value =
+            ResumeReconnectState
+                .ReceiverAccepted(
+                    originalSessionId =
+                        journal
+                            .originalSessionId,
+                    itemId =
+                        journal.itemId,
+                    startChunkIndex =
+                        journal
+                            .verifiedChunkCount,
+                    startByteOffset =
+                        journal
+                            .contiguousByteOffset
+                )
+    }
+
+    private suspend fun handleResumeReject(
+        envelope: Envelope
+    ) {
+        val plan =
+            resumeReconnectPlan
+                as? ResumeReconnectPlan
+                    .Receiver
+                ?: return
+        val pending =
+            pendingResumeRequest
+                ?: throw ResumeJournalException(
+                    "RESUME_REJECT arrived without an active resume request"
+                )
+        val reject =
+            ProtocolCodec
+                .decodeBody<
+                    ResumeRejectDto
+                >(envelope)
+
+        if (reject.requestMessageId !=
+                pending.messageId.value ||
+            reject.originalSessionId !=
+                plan.originalSessionId
+                    .value ||
+            reject.itemId !=
+                plan.itemId.value
+        ) {
+            _resumeReconnectState.value =
+                ResumeReconnectState
+                    .Failed(
+                        ResumeRejectCodes
+                            .JOURNAL_MISMATCH
+                    )
+            throw ResumeJournalException(
+                "RESUME_REJECT did not correlate to the active request"
+            )
+        }
+
+        resumeTimeoutJob?.cancel()
+        resumeTimeoutJob = null
+        pendingResumeRequest = null
+        pendingReceiverResumeJournal =
+            null
+        _resumeReconnectState.value =
+            ResumeReconnectState
+                .Rejected(
+                    reject.code
+                )
+    }
+
+    private suspend fun sendResumeReject(
+        requestEnvelope: Envelope,
+        request: ResumeRequestDto,
+        code: String
+    ) {
+        val reject =
+            ResumeRequestAuthority
+                .createReject(
+                    requestMessageId =
+                        requestEnvelope
+                            .messageId
+                            .value,
+                    originalSessionId =
+                        request
+                            .originalSessionId,
+                    itemId =
+                        request.itemId,
+                    code = code
+                )
+        sendHandshakeControl(
+            MessageTypes.RESUME_REJECT,
+            ProtocolCodec.encodeBody(
+                reject
+            )
+        )
+        _resumeReconnectState.value =
+            ResumeReconnectState
+                .Rejected(code)
+    }
+
+    private fun activeResumeChannelContext():
+        dev.glide.core.ports
+            .AuthenticatedChannelContext? =
+        (transport as?
+            AuthenticatedChannelContextProvider)
+            ?.authenticatedChannelContext(
+                peerId
+            )
+            ?.takeIf {
+                it.sessionId ==
+                    sessionId
+            }
 
     private suspend fun executeEffects(effects: List<ReducerEffect>) {
         for (effect in effects) {
