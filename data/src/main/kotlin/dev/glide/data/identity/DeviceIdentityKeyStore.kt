@@ -16,7 +16,7 @@ interface DeviceIdentityKeyStore {
     fun getOrCreateKeyPair(): KeyPair
     fun getPublicKeyDer(): ByteArray
     fun getFingerprint(): String
-    fun signNonce(nonce: ByteArray): ByteArray
+    fun signTranscript(transcript: ByteArray): ByteArray
 }
 
 /**
@@ -65,9 +65,9 @@ class AndroidDeviceIdentityKeyStore(
         return PeerIdentityVerifier.deriveFingerprint(getPublicKeyDer())
     }
 
-    override fun signNonce(nonce: ByteArray): ByteArray {
+    override fun signTranscript(transcript: ByteArray): ByteArray {
         val privateKey = getOrCreateKeyPair().private
-        return PeerIdentityVerifier.signNonce(privateKey, nonce)
+        return PeerIdentityVerifier.signTranscript(privateKey, transcript)
     }
 
     companion object {
@@ -94,8 +94,8 @@ class JvmDeviceIdentityKeyStore : DeviceIdentityKeyStore {
 
     override fun getFingerprint(): String = PeerIdentityVerifier.deriveFingerprint(getPublicKeyDer())
 
-    override fun signNonce(nonce: ByteArray): ByteArray =
-        PeerIdentityVerifier.signNonce(keyPair.private, nonce)
+    override fun signTranscript(transcript: ByteArray): ByteArray =
+        PeerIdentityVerifier.signTranscript(keyPair.private, transcript)
 
     fun reset() {
         keyPair = generate()
