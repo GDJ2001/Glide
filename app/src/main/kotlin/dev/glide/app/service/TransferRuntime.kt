@@ -254,6 +254,7 @@ class TransferRuntime private constructor(
 
         discoveryController?.stopDiscovery()
         discoveryController?.stopAdvertising()
+        clearPairingBinding()
 
         val peerId = PeerId("lan-${command.invitation.invitationId}")
         _pairingState.value = PairingUiState.Connecting(
@@ -298,6 +299,7 @@ class TransferRuntime private constructor(
         val scope = synchronized(lock) { serviceScope } ?: return false
 
         discoveryController?.stopAdvertising()
+        clearPairingBinding()
         _pairingState.value = PairingUiState.Idle
 
         return controller.startReceiver(
@@ -324,7 +326,7 @@ class TransferRuntime private constructor(
 
     private fun stopLanReceiver(): Boolean {
         val controller = lanController ?: return false
-        controller.revokeReceiverInvitation(closeListener = true)
+        controller.stopAll()
         return true
     }
 
@@ -401,6 +403,15 @@ class TransferRuntime private constructor(
             }
         }
         return true
+    }
+
+    private fun clearPairingBinding() {
+        synchronized(lock) {
+            pairingJob?.cancel()
+            pairingJob = null
+            pairingTransport = null
+            pairingSuccessCallback = null
+        }
     }
 
     private fun failPairing(title: String, message: String): Boolean {
