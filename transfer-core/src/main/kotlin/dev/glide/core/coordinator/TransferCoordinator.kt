@@ -37,6 +37,7 @@ import dev.glide.core.protocol.ResumeRequestDto
 import dev.glide.core.protocol.ResumeResultDto
 import dev.glide.core.protocol.ResumeStreamReadyDto
 import dev.glide.core.protocol.ResumeStreamStartDto
+import dev.glide.core.protocol.WireErrorCodes
 import dev.glide.core.resume.ResumeAuthorityLookup
 import dev.glide.core.resume.ResumeReconnectPlan
 import dev.glide.core.resume.ResumeReconnectState
@@ -1615,6 +1616,534 @@ class TransferCoordinator(
                     sessionId
             }
 
+    private suspend fun prepareAndAnnounceResumeStream(
+        accepted:
+            ResumeReconnectState
+                .SenderAccepted
+    ) {
+        val remaining =
+            accepted.totalSizeBytes -
+                accepted.startByteOffset
+        if (remaining <= 0L) {
+            return
+        }
+
+        val prepared =
+            try {
+                withContext(
+                    ioDispatcher
+                ) {
+                    ResumeStreamSupport
+                        .openRemainingSource(
+                            sourceAccess =
+                                sourceAccess,
+                            handle =
+                                accepted
+                                    .sourceHandle,
+                            expectedTotalBytes =
+                                accepted
+                                    .totalSizeBytes,
+                            startByteOffset =
+                                accepted
+                                    .startByteOffset
+                        )
+                }
+            } catch (
+                error: Exception
+            ) {
+                _resumeReconnectState.value =
+                    ResumeReconnectState
+                        .Failed(
+                            WireErrorCodes
+                                .SOURCE_UNAVAILABLE
+                        )
+                dispatch(
+                    ReducerEvent
+                        .TransportFailure(
+                            TransferFailure
+                                .SourceUnavailable(
+                                    "Resume source could not be reopened at the accepted offset"
+                                ),
+                            clock()
+                        )
+                )
+                return
+            }
+
+        val bulkRef =
+            try {
+                transport.prepareStream(
+                    InputStreamProvider {
+                        prepared.stream
+                    }
+                )
+            } catch (
+                _: Exception
+            ) {
+                null
+            }
+
+        if (bulkRef == null) {
+            try {
+                prepared.stream.close()
+            } catch (_: Exception) {
+            }
+            _resumeReconnectState.value =
+                ResumeReconnectState
+                    .Failed(
+                        WireErrorCodes
+                            .TRANSFER_INTERRUPTED
+                    )
+            dispatch(
+                ReducerEvent
+                    .TransportFailure(
+                        TransferFailure
+                            .TransferInterrupted(
+                                "Transport could not prepare resumed payload"
+                            ),
+                        clock()
+                    )
+            )
+            return
+        }
+
+        synchronized(
+            preparedSourcesLock
+        ) {
+            preparedSources[bulkRef] =
+                PreparedSource(
+                    accepted.itemId,
+                    prepared.stream
+                )
+        }
+
+        val start =
+            ResumeStreamStartDto(
+                profile =
+                    dev.glide.core.protocol
+                        .IdentityResumeTranscript
+                        .RESUME_PROFILE,
+                requestMessageId =
+                    accepted
+                        .requestMessageId,
+                originalSessionId =
+                    accepted
+                        .originalSessionId
+                        .value,
+                itemId =
+                    accepted.itemId.value,
+                bulkRef =
+                    bulkRef.value,
+                startChunkIndex =
+                    accepted
+                        .startChunkIndex,
+                startByteOffset =
+                    dev.glide.core.protocol
+                        .DecimalByteCount
+                        .serialize(
+                            accepted
+                                .startByteOffset
+                        ),
+                remainingBytes =
+                    dev.glide.core.protocol
+                        .DecimalByteCount
+                        .serialize(
+                            remaining
+                        ),
+                chunkSize =
+                    accepted.chunkSize,
+                totalSizeBytes =
+                    dev.glide.core.protocol
+                        .DecimalByteCount
+                        .serialize(
+                            accepted
+                                .totalSizeBytes
+                        ),
+                chunkRootHashHex =
+                    accepted
+                        .chunkRootHashHex,
+                wholeFileSha256Hex =
+                    accepted
+                        .wholeFileSha256Hex
+            )
+
+        pendingSenderResumeStreamStart =
+            start
+        pendingResumeStreamBulkRef =
+            bulkRef
+        sendHandshakeControl(
+            MessageTypes.RESUME_STREAM_START,
+            ProtocolCodec.encodeBody(
+                start
+            )
+        )
+    }
+
+    private suspend fun handleResumeStreamStart(
+        envelope: Envelope
+    ) {
+        val plan =
+            resumeReconnectPlan
+                as? ResumeReconnectPlan
+                    .Receiver
+                ?: throw ResumeJournalException(
+                    "RESUME_STREAM_START arrived outside receiver reconnect mode"
+                )
+        val accepted =
+            _resumeReconnectState.value
+                as? ResumeReconnectState
+                    .ReceiverAccepted
+                ?: throw ResumeJournalException(
+                    "RESUME_STREAM_START arrived before RESUME_ACCEPT"
+                )
+        val start =
+            ProtocolCodec
+                .decodeBody<
+                    ResumeStreamStartDto
+                >(envelope)
+        val startOffset =
+            dev.glide.core.protocol
+                .DecimalByteCount
+                .parse(
+                    start
+                        .startByteOffset
+                )
+        val remaining =
+            dev.glide.core.protocol
+                .DecimalByteCount
+                .parse(
+                    start
+                        .remainingBytes
+                )
+        val total =
+            dev.glide.core.protocol
+                .DecimalByteCount
+                .parse(
+                    start
+                        .totalSizeBytes
+                )
+
+        if (start.requestMessageId !=
+                accepted.requestMessageId ||
+            start.originalSessionId !=
+                plan.originalSessionId
+                    .value ||
+            start.itemId !=
+                plan.itemId.value ||
+            start.startChunkIndex !=
+                accepted.startChunkIndex ||
+            startOffset !=
+                accepted.startByteOffset ||
+            start.chunkSize !=
+                accepted.chunkSize ||
+            total !=
+                accepted.totalSizeBytes ||
+            start.chunkRootHashHex !=
+                accepted.chunkRootHashHex ||
+            remaining !=
+                accepted.totalSizeBytes -
+                    accepted.startByteOffset
+        ) {
+            throw ResumeJournalException(
+                "RESUME_STREAM_START does not match the accepted prefix/source authority"
+            )
+        }
+
+        val bulkRef =
+            BulkRef(
+                start.bulkRef
+            )
+        transport.registerExpectedStream(
+            StreamExpectation(
+                sessionId =
+                    sessionId,
+                itemId =
+                    accepted.itemId,
+                bulkRef =
+                    bulkRef,
+                sizeBytes =
+                    remaining
+            )
+        )
+
+        pendingReceiverResumeStreamStart =
+            start
+        pendingResumeStreamBulkRef =
+            bulkRef
+
+        val ready =
+            ResumeStreamReadyDto(
+                profile =
+                    dev.glide.core.protocol
+                        .IdentityResumeTranscript
+                        .RESUME_PROFILE,
+                requestMessageId =
+                    accepted
+                        .requestMessageId,
+                originalSessionId =
+                    accepted
+                        .originalSessionId
+                        .value,
+                itemId =
+                    accepted.itemId.value,
+                bulkRef =
+                    bulkRef.value
+            )
+        sendHandshakeControl(
+            MessageTypes.RESUME_STREAM_READY,
+            ProtocolCodec.encodeBody(
+                ready
+            )
+        )
+    }
+
+    private suspend fun handleResumeStreamReady(
+        envelope: Envelope
+    ) {
+        resumeReconnectPlan
+            as? ResumeReconnectPlan
+                .Sender
+            ?: throw ResumeJournalException(
+                "RESUME_STREAM_READY arrived outside sender reconnect mode"
+            )
+        val accepted =
+            _resumeReconnectState.value
+                as? ResumeReconnectState
+                    .SenderAccepted
+                ?: throw ResumeJournalException(
+                    "RESUME_STREAM_READY arrived before resume acceptance"
+                )
+        val start =
+            pendingSenderResumeStreamStart
+                ?: throw ResumeJournalException(
+                    "Sender has no pending resume stream"
+                )
+        val bulkRef =
+            pendingResumeStreamBulkRef
+                ?: throw ResumeJournalException(
+                    "Sender has no prepared resume bulk reference"
+                )
+        val ready =
+            ProtocolCodec
+                .decodeBody<
+                    ResumeStreamReadyDto
+                >(envelope)
+
+        if (ready.requestMessageId !=
+                accepted.requestMessageId ||
+            ready.originalSessionId !=
+                accepted
+                    .originalSessionId
+                    .value ||
+            ready.itemId !=
+                accepted.itemId.value ||
+            ready.bulkRef !=
+                start.bulkRef ||
+            ready.bulkRef !=
+                bulkRef.value
+        ) {
+            throw ResumeJournalException(
+                "RESUME_STREAM_READY did not correlate to the prepared stream"
+            )
+        }
+
+        transport.markItemReady(
+            bulkRef
+        )
+        startSendingResumeRemainder(
+            accepted,
+            bulkRef
+        )
+    }
+
+    private fun startSendingResumeRemainder(
+        accepted:
+            ResumeReconnectState
+                .SenderAccepted,
+        bulkRef: BulkRef
+    ) {
+        scope.launch(
+            ioDispatcher
+        ) {
+            val prepared =
+                synchronized(
+                    preparedSourcesLock
+                ) {
+                    preparedSources
+                        .remove(
+                            bulkRef
+                        )
+                }
+            if (prepared == null) {
+                _resumeReconnectState.value =
+                    ResumeReconnectState
+                        .Failed(
+                            WireErrorCodes
+                                .TRANSFER_INTERRUPTED
+                        )
+                return@launch
+            }
+
+            val stream =
+                prepared.stream
+            try {
+                transport
+                    .sendStream(
+                        peerId,
+                        bulkRef
+                    )
+                    .collect {
+                        // The transport owns authenticated DATA/STREAM_END framing.
+                    }
+
+                stream.proveEof()
+                val expectedRemaining =
+                    accepted.totalSizeBytes -
+                        accepted.startByteOffset
+                if (stream.bytesRead !=
+                    expectedRemaining
+                ) {
+                    throw java.io.EOFException(
+                        "Resumed payload byte count differed from accepted remaining size"
+                    )
+                }
+            } catch (
+                error: Exception
+            ) {
+                _resumeReconnectState.value =
+                    ResumeReconnectState
+                        .Failed(
+                            WireErrorCodes
+                                .READ_FAILURE
+                        )
+                if (!_state.value
+                        .isTerminal
+                ) {
+                    dispatch(
+                        ReducerEvent
+                            .TransportFailure(
+                                TransferFailure
+                                    .ReadFailure(
+                                        "Resumed source stream failed: " +
+                                            (error.message
+                                                ?: "unknown")
+                                    ),
+                                clock()
+                            )
+                    )
+                }
+            } finally {
+                try {
+                    stream.close()
+                } catch (_: Exception) {
+                }
+            }
+        }
+    }
+
+    private suspend fun handleResumeResult(
+        envelope: Envelope
+    ) {
+        val plan =
+            resumeReconnectPlan
+                as? ResumeReconnectPlan
+                    .Sender
+                ?: throw ResumeJournalException(
+                    "RESUME_RESULT arrived outside sender reconnect mode"
+                )
+        val accepted =
+            _resumeReconnectState.value
+                as? ResumeReconnectState
+                    .SenderAccepted
+                ?: throw ResumeJournalException(
+                    "RESUME_RESULT arrived before resume acceptance"
+                )
+        val result =
+            ProtocolCodec
+                .decodeBody<
+                    ResumeResultDto
+                >(envelope)
+
+        if (result.requestMessageId !=
+                accepted.requestMessageId ||
+            result.originalSessionId !=
+                plan.originalSessionId
+                    .value ||
+            result.itemId !=
+                plan.itemId.value
+        ) {
+            throw ResumeJournalException(
+                "RESUME_RESULT did not correlate to the active resumed item"
+            )
+        }
+
+        if (result.status ==
+            "failed"
+        ) {
+            _resumeReconnectState.value =
+                ResumeReconnectState
+                    .Failed(
+                        result.code
+                            ?: WireErrorCodes
+                                .INTEGRITY_MISMATCH
+                    )
+            return
+        }
+
+        val size =
+            dev.glide.core.protocol
+                .DecimalByteCount
+                .parse(
+                    result.sizeBytes
+                        ?: throw ResumeJournalException(
+                            "Verified resume result is missing sizeBytes"
+                        )
+                )
+        val sha =
+            result.sha256
+                ?: throw ResumeJournalException(
+                    "Verified resume result is missing sha256"
+                )
+
+        if (size !=
+                accepted.totalSizeBytes ||
+            sha !=
+                accepted
+                    .wholeFileSha256Hex
+        ) {
+            throw ResumeJournalException(
+                "Verified RESUME_RESULT does not match sender source authority"
+            )
+        }
+
+        try {
+            purgeResumeItemAuthority
+                ?.invoke(
+                    accepted
+                        .originalSessionId,
+                    accepted.itemId
+                )
+        } catch (_: Exception) {
+            // A verified receiver result is authoritative; stale private sender state is TTL-bounded.
+        }
+
+        pendingSenderResumeStreamStart =
+            null
+        pendingResumeStreamBulkRef =
+            null
+        _resumeReconnectState.value =
+            ResumeReconnectState
+                .Verified(
+                    originalSessionId =
+                        accepted
+                            .originalSessionId,
+                    itemId =
+                        accepted.itemId,
+                    sizeBytes = size,
+                    sha256Hex = sha
+                )
+    }
+
     private suspend fun executeEffects(effects: List<ReducerEffect>) {
         for (effect in effects) {
             when (effect) {
@@ -1982,6 +2511,21 @@ class TransferCoordinator(
                         envelope
                     )
                 }
+                MessageTypes.RESUME_STREAM_START -> {
+                    handleResumeStreamStart(
+                        envelope
+                    )
+                }
+                MessageTypes.RESUME_STREAM_READY -> {
+                    handleResumeStreamReady(
+                        envelope
+                    )
+                }
+                MessageTypes.RESUME_RESULT -> {
+                    handleResumeResult(
+                        envelope
+                    )
+                }
                 MessageTypes.OFFER_BEGIN -> {
                     requireIdentityReadyForOffer()
                     val begin = ProtocolCodec.decodeBody<dev.glide.core.protocol.OfferBeginBody>(envelope)
@@ -2150,6 +2694,29 @@ class TransferCoordinator(
         transport.observeIncomingStream().collect { incoming ->
             if (incoming.peerId != peerId) {
                 try { incoming.stream.close() } catch (_: Exception) {}
+                return@collect
+            }
+
+            val resumeStart =
+                pendingReceiverResumeStreamStart
+            val resumeBulkRef =
+                pendingResumeStreamBulkRef
+            if (resumeStart != null &&
+                resumeBulkRef != null &&
+                incoming.bulkRef ==
+                    resumeBulkRef &&
+                resumeReconnectPlan is
+                    ResumeReconnectPlan
+                        .Receiver
+            ) {
+                scope.launch(
+                    ioDispatcher
+                ) {
+                    receiveResumeRemainder(
+                        incoming,
+                        resumeStart
+                    )
+                }
                 return@collect
             }
 
@@ -2330,6 +2897,208 @@ class TransferCoordinator(
                 } finally {
                     try { incoming.stream.close() } catch (_: Exception) {}
                 }
+            }
+        }
+    }
+
+    private suspend fun receiveResumeRemainder(
+        incoming: dev.glide.core.ports.IncomingStream,
+        start: ResumeStreamStartDto
+    ) {
+        val accepted =
+            _resumeReconnectState.value
+                as? ResumeReconnectState
+                    .ReceiverAccepted
+                ?: run {
+                    try {
+                        incoming.stream.close()
+                    } catch (_: Exception) {
+                    }
+                    return
+                }
+        val recorder =
+            recordReceiverResumeChunk
+                ?: run {
+                    try {
+                        incoming.stream.close()
+                    } catch (_: Exception) {
+                    }
+                    _resumeReconnectState.value =
+                        ResumeReconnectState
+                            .Failed(
+                                WireErrorCodes
+                                    .WRITE_FAILURE
+                            )
+                    return
+                }
+        val finalizer =
+            finalizeReceiverResumeItem
+                ?: run {
+                    try {
+                        incoming.stream.close()
+                    } catch (_: Exception) {
+                    }
+                    _resumeReconnectState.value =
+                        ResumeReconnectState
+                            .Failed(
+                                WireErrorCodes
+                                    .WRITE_FAILURE
+                            )
+                    return
+                }
+
+        val remaining =
+            dev.glide.core.protocol
+                .DecimalByteCount
+                .parse(
+                    start.remainingBytes
+                )
+
+        try {
+            StreamHasher
+                .copyAndHashWithChunks(
+                    inputStream =
+                        incoming.stream,
+                    outputStream = null,
+                    expectedBytes =
+                        remaining,
+                    chunkSize =
+                        start.chunkSize,
+                    startChunkIndex =
+                        start.startChunkIndex,
+                    onChunk = {
+                        chunkIndex,
+                        chunkData ->
+                        val recorded =
+                            recorder(
+                                accepted
+                                    .originalSessionId,
+                                accepted.itemId,
+                                chunkIndex,
+                                chunkData
+                            )
+                        if (!recorded) {
+                            throw ResumeJournalException(
+                                "Resume chunk could not atomically advance the durable journal"
+                            )
+                        }
+                    }
+                )
+
+            val committed =
+                finalizer(
+                    sessionId,
+                    accepted
+                        .originalSessionId,
+                    accepted.itemId,
+                    start
+                        .wholeFileSha256Hex
+                )
+            _committedFiles.add(
+                committed
+            )
+            _committedItemFiles[
+                accepted.itemId
+            ] = committed
+            lastCommittedFileHandle =
+                committed
+
+            val result =
+                ResumeResultDto(
+                    profile =
+                        dev.glide.core.protocol
+                            .IdentityResumeTranscript
+                            .RESUME_PROFILE,
+                    requestMessageId =
+                        accepted
+                            .requestMessageId,
+                    originalSessionId =
+                        accepted
+                            .originalSessionId
+                            .value,
+                    itemId =
+                        accepted.itemId.value,
+                    status = "verified",
+                    sizeBytes =
+                        dev.glide.core.protocol
+                            .DecimalByteCount
+                            .serialize(
+                                accepted
+                                    .totalSizeBytes
+                            ),
+                    sha256 =
+                        start
+                            .wholeFileSha256Hex
+                )
+            sendHandshakeControl(
+                MessageTypes.RESUME_RESULT,
+                ProtocolCodec.encodeBody(
+                    result
+                )
+            )
+
+            pendingReceiverResumeStreamStart =
+                null
+            pendingResumeStreamBulkRef =
+                null
+            _resumeReconnectState.value =
+                ResumeReconnectState
+                    .Verified(
+                        originalSessionId =
+                            accepted
+                                .originalSessionId,
+                        itemId =
+                            accepted.itemId,
+                        sizeBytes =
+                            accepted
+                                .totalSizeBytes,
+                        sha256Hex =
+                            start
+                                .wholeFileSha256Hex
+                    )
+        } catch (
+            error: Exception
+        ) {
+            val result =
+                ResumeResultDto(
+                    profile =
+                        dev.glide.core.protocol
+                            .IdentityResumeTranscript
+                            .RESUME_PROFILE,
+                    requestMessageId =
+                        accepted
+                            .requestMessageId,
+                    originalSessionId =
+                        accepted
+                            .originalSessionId
+                            .value,
+                    itemId =
+                        accepted.itemId.value,
+                    status = "failed",
+                    code =
+                        WireErrorCodes
+                            .INTEGRITY_MISMATCH
+                )
+            try {
+                sendHandshakeControl(
+                    MessageTypes.RESUME_RESULT,
+                    ProtocolCodec.encodeBody(
+                        result
+                    )
+                )
+            } catch (_: Exception) {
+            }
+
+            _resumeReconnectState.value =
+                ResumeReconnectState
+                    .Failed(
+                        WireErrorCodes
+                            .INTEGRITY_MISMATCH
+                    )
+        } finally {
+            try {
+                incoming.stream.close()
+            } catch (_: Exception) {
             }
         }
     }
