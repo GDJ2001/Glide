@@ -915,7 +915,8 @@ public sealed class DesktopTransferEngine
                         batchId,
                         peerName,
                         items,
-                        totalBytes),
+                        totalBytes,
+                        AuthenticatedPeerFingerprintHex: null),
                     cancellationToken);
 
             var decisionBody =
