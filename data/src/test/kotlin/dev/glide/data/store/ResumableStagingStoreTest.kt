@@ -47,35 +47,31 @@ class ResumableStagingStoreTest {
     }
 
     @Test
-    fun initSession_persistsCompositeAuthorityAndZeroPrefix() =
+    fun receiverInit_persistsCompositeAuthorityAndZeroPrefix() =
         runTest(testDispatcher) {
             val chunks =
-                listOf(
-                    "AAAA".toByteArray(),
-                    "BBBB".toByteArray()
-                )
+                chunks("AAAA", "BBBB")
             val tree =
                 digestTree(chunks)
 
             val sessionDir =
-                store.initSession(
+                store.initReceiverSession(
                     originalSessionId =
                         "session-1",
                     itemId = "item-1",
                     itemName = "big.bin",
                     peerFingerprintHex =
                         fingerprint('a'),
-                    sourceIdentity =
-                        "content://source/v1",
                     totalBytes = 8L,
                     chunkSize = 4,
-                    digestTree = tree,
-                    wholeFileSha256Hex =
-                        wholeDigest(chunks),
+                    chunkRootHashHex =
+                        tree.rootHashHex,
                     nowMs = 1_000L
                 )
 
-            assertTrue(sessionDir.isDirectory)
+            assertTrue(
+                sessionDir.isDirectory
+            )
             val entity =
                 fakeDao.get(
                     "session-1",
@@ -83,12 +79,24 @@ class ResumableStagingStoreTest {
                 )
             assertNotNull(entity)
             assertEquals(
+                ResumableSessionEntity
+                    .ROLE_RECEIVER,
+                entity?.journalRole
+            )
+            assertEquals(
                 fingerprint('a'),
                 entity?.peerFingerprintHex
             )
-            assertEquals(
-                "content://source/v1",
+            assertNull(
+                entity?.sourceHandle
+            )
+            assertNull(
                 entity?.sourceIdentity
+            )
+            assertEquals(
+                "",
+                entity
+                    ?.verifiedChunkHashesHex
             )
             assertEquals(
                 0L,
@@ -96,7 +104,8 @@ class ResumableStagingStoreTest {
             )
             assertEquals(
                 0L,
-                entity?.contiguousByteOffset
+                entity
+                    ?.contiguousByteOffset
             )
             assertEquals(
                 tree.rootHashHex,
@@ -105,23 +114,75 @@ class ResumableStagingStoreTest {
         }
 
     @Test
-    fun outOfOrderChunk_cannotAdvanceAcrossGap() =
+    fun senderInit_persistsSourceAuthorityWithoutReceiverStaging() =
         runTest(testDispatcher) {
             val chunks =
-                listOf(
-                    "0000".toByteArray(),
-                    "1111".toByteArray(),
-                    "2222".toByteArray()
+                chunks("AAAA", "BBBB")
+            val tree =
+                digestTree(chunks)
+            val whole =
+                wholeDigest(chunks)
+
+            val entity =
+                store.initSenderSession(
+                    originalSessionId =
+                        "send-session",
+                    itemId = "send-item",
+                    itemName = "send.bin",
+                    peerFingerprintHex =
+                        fingerprint('b'),
+                    sourceHandle =
+                        "content://source/42",
+                    sourceIdentity =
+                        fingerprint('c'),
+                    totalBytes = 8L,
+                    chunkSize = 4,
+                    chunkRootHashHex =
+                        tree.rootHashHex,
+                    wholeFileSha256Hex =
+                        whole,
+                    nowMs = 2_000L
                 )
-            init(
-                session = "gap-session",
-                item = "gap-item",
-                chunks = chunks,
-                nowMs = 1_000L
+
+            assertEquals(
+                ResumableSessionEntity
+                    .ROLE_SENDER,
+                entity.journalRole
+            )
+            assertEquals(
+                "content://source/42",
+                entity.sourceHandle
+            )
+            assertEquals(
+                fingerprint('c'),
+                entity.sourceIdentity
+            )
+            assertEquals(
+                whole,
+                entity.wholeFileSha256Hex
+            )
+            assertNull(
+                entity.stagingPath
+            )
+        }
+
+    @Test
+    fun outOfOrderReceiverChunk_cannotAdvanceAcrossGap() =
+        runTest(testDispatcher) {
+            val chunks =
+                chunks(
+                    "0000",
+                    "1111",
+                    "2222"
+                )
+            initReceiver(
+                "gap-session",
+                "gap-item",
+                chunks
             )
 
             assertFalse(
-                store.writeAndVerifyChunk(
+                store.recordReceiverChunk(
                     "gap-session",
                     "gap-item",
                     1L,
@@ -138,7 +199,7 @@ class ResumableStagingStoreTest {
             )
 
             assertTrue(
-                store.writeAndVerifyChunk(
+                store.recordReceiverChunk(
                     "gap-session",
                     "gap-item",
                     0L,
@@ -155,7 +216,7 @@ class ResumableStagingStoreTest {
             )
 
             assertFalse(
-                store.writeAndVerifyChunk(
+                store.recordReceiverChunk(
                     "gap-session",
                     "gap-item",
                     2L,
@@ -173,39 +234,42 @@ class ResumableStagingStoreTest {
         }
 
     @Test
-    fun corruptedChunk_isRejectedWithoutJournalAdvance() =
+    fun receiverReinit_doesNotResetExistingProgress() =
         runTest(testDispatcher) {
             val chunks =
-                listOf(
-                    "AAAA".toByteArray(),
-                    "BBBB".toByteArray()
+                chunks("AAAA", "BBBB")
+            val tree =
+                initReceiver(
+                    "same-session",
+                    "same-item",
+                    chunks
                 )
-            init(
-                "corrupt-session",
-                "corrupt-item",
-                chunks
-            )
-
             assertTrue(
-                store.writeAndVerifyChunk(
-                    "corrupt-session",
-                    "corrupt-item",
+                store.recordReceiverChunk(
+                    "same-session",
+                    "same-item",
                     0L,
                     chunks[0]
                 )
             )
-            assertFalse(
-                store.writeAndVerifyChunk(
-                    "corrupt-session",
-                    "corrupt-item",
-                    1L,
-                    "XXXX".toByteArray()
-                )
+
+            store.initReceiverSession(
+                originalSessionId =
+                    "same-session",
+                itemId = "same-item",
+                itemName = "same.bin",
+                peerFingerprintHex =
+                    fingerprint('a'),
+                totalBytes = 8L,
+                chunkSize = 4,
+                chunkRootHashHex =
+                    tree.rootHashHex
             )
+
             val entity =
                 store.getJournal(
-                    "corrupt-session",
-                    "corrupt-item"
+                    "same-session",
+                    "same-item"
                 )
             assertEquals(
                 1L,
@@ -213,7 +277,14 @@ class ResumableStagingStoreTest {
             )
             assertEquals(
                 4L,
-                entity?.contiguousByteOffset
+                entity
+                    ?.contiguousByteOffset
+            )
+            assertTrue(
+                entity
+                    ?.verifiedChunkHashesHex
+                    ?.isNotBlank() ==
+                    true
             )
         }
 
@@ -221,23 +292,22 @@ class ResumableStagingStoreTest {
     fun processDeathRevalidation_rewindsAtFirstCorruptRetainedChunk() =
         runTest(testDispatcher) {
             val chunks =
-                listOf(
-                    "AAAA".toByteArray(),
-                    "BBBB".toByteArray(),
-                    "CCCC".toByteArray()
+                chunks(
+                    "AAAA",
+                    "BBBB",
+                    "CCCC"
                 )
-            val tree =
-                init(
-                    "restart-session",
-                    "restart-item",
-                    chunks
-                )
+            initReceiver(
+                "restart-session",
+                "restart-item",
+                chunks
+            )
 
             chunks.forEachIndexed {
                 index,
                 bytes ->
                 assertTrue(
-                    store.writeAndVerifyChunk(
+                    store.recordReceiverChunk(
                         "restart-session",
                         "restart-item",
                         index.toLong(),
@@ -252,13 +322,12 @@ class ResumableStagingStoreTest {
                     "restart-item"
                 )!!
             File(
-                journal.stagingPath,
+                journal.stagingPath!!,
                 "chunk_000000000001.part"
             ).writeBytes(
                 "FAIL".toByteArray()
             )
 
-            // Simulate a process restart by constructing a new store over the same persisted DAO.
             val restarted =
                 ResumableStagingStore(
                     stagingDir,
@@ -266,30 +335,27 @@ class ResumableStagingStoreTest {
                     testDispatcher
                 )
             val result =
-                restarted.reconcileForResume(
-                    originalSessionId =
-                        "restart-session",
-                    itemId =
-                        "restart-item",
-                    authenticatedPeerFingerprintHex =
-                        fingerprint('a'),
-                    peerStillTrusted = true,
-                    sourceStillAvailable = true,
-                    currentSourceIdentity =
-                        "source:v1",
-                    currentTotalBytes =
-                        12L,
-                    currentChunkRootHashHex =
-                        tree.rootHashHex
-                )
+                restarted
+                    .reconcileReceiverForResume(
+                        originalSessionId =
+                            "restart-session",
+                        itemId =
+                            "restart-item",
+                        authenticatedPeerFingerprintHex =
+                            fingerprint('a'),
+                        peerStillTrusted =
+                            true
+                    )
 
             assertTrue(
                 result is
-                    ResumeRevalidationResult.Ready
+                    ResumeReceiverRevalidationResult
+                        .Ready
             )
             val ready =
                 result as
-                    ResumeRevalidationResult.Ready
+                    ResumeReceiverRevalidationResult
+                        .Ready
             assertEquals(
                 1L,
                 ready.verifiedChunks
@@ -297,6 +363,19 @@ class ResumableStagingStoreTest {
             assertEquals(
                 4L,
                 ready.contiguousByteOffset
+            )
+
+            val updated =
+                store.getJournal(
+                    "restart-session",
+                    "restart-item"
+                )!!
+            assertEquals(
+                1,
+                updated
+                    .verifiedChunkHashesHex
+                    .split(',')
+                    .size
             )
             assertFalse(
                 File(
@@ -313,20 +392,17 @@ class ResumableStagingStoreTest {
         }
 
     @Test
-    fun revokedOrDifferentPeer_cannotAuthorizeRetainedPrefix() =
+    fun revokedOrDifferentPeer_cannotAuthorizeReceiverPrefix() =
         runTest(testDispatcher) {
             val chunks =
-                listOf(
-                    "AAAA".toByteArray()
-                )
-            val tree =
-                init(
-                    "peer-session",
-                    "peer-item",
-                    chunks
-                )
+                chunks("AAAA")
+            initReceiver(
+                "peer-session",
+                "peer-item",
+                chunks
+            )
             assertTrue(
-                store.writeAndVerifyChunk(
+                store.recordReceiverChunk(
                     "peer-session",
                     "peer-item",
                     0L,
@@ -335,90 +411,139 @@ class ResumableStagingStoreTest {
             )
 
             val revoked =
-                store.reconcileForResume(
+                store.reconcileReceiverForResume(
                     "peer-session",
                     "peer-item",
                     fingerprint('a'),
-                    peerStillTrusted = false,
-                    sourceStillAvailable = true,
-                    currentSourceIdentity =
-                        "source:v1",
-                    currentTotalBytes = 4L,
-                    currentChunkRootHashHex =
-                        tree.rootHashHex
+                    peerStillTrusted =
+                        false
                 )
             assertTrue(
                 revoked is
-                    ResumeRevalidationResult.Unauthorized
+                    ResumeReceiverRevalidationResult
+                        .Unauthorized
             )
 
             val substituted =
-                store.reconcileForResume(
+                store.reconcileReceiverForResume(
                     "peer-session",
                     "peer-item",
                     fingerprint('b'),
-                    peerStillTrusted = true,
-                    sourceStillAvailable = true,
-                    currentSourceIdentity =
-                        "source:v1",
-                    currentTotalBytes = 4L,
-                    currentChunkRootHashHex =
-                        tree.rootHashHex
+                    peerStillTrusted =
+                        true
                 )
             assertTrue(
                 substituted is
-                    ResumeRevalidationResult.Unauthorized
+                    ResumeReceiverRevalidationResult
+                        .Unauthorized
             )
         }
 
     @Test
-    fun changedOrUnavailableSource_isRejected() =
+    fun senderRevalidation_rejectsSourceChangeAndPermissionLoss() =
         runTest(testDispatcher) {
             val chunks =
-                listOf(
-                    "AAAA".toByteArray()
-                )
+                chunks("AAAA", "BBBB")
             val tree =
-                init(
+                digestTree(chunks)
+            val whole =
+                wholeDigest(chunks)
+            store.initSenderSession(
+                originalSessionId =
                     "source-session",
-                    "source-item",
-                    chunks
-                )
+                itemId = "source-item",
+                itemName = "source.bin",
+                peerFingerprintHex =
+                    fingerprint('a'),
+                sourceHandle =
+                    "content://source/7",
+                sourceIdentity =
+                    fingerprint('c'),
+                totalBytes = 8L,
+                chunkSize = 4,
+                chunkRootHashHex =
+                    tree.rootHashHex,
+                wholeFileSha256Hex =
+                    whole
+            )
 
             val unavailable =
-                store.reconcileForResume(
-                    "source-session",
-                    "source-item",
-                    fingerprint('a'),
+                store.reconcileSenderForResume(
+                    originalSessionId =
+                        "source-session",
+                    itemId = "source-item",
+                    authenticatedPeerFingerprintHex =
+                        fingerprint('a'),
                     peerStillTrusted = true,
-                    sourceStillAvailable = false,
+                    sourceStillAvailable =
+                        false,
                     currentSourceIdentity =
-                        "source:v1",
-                    currentTotalBytes = 4L,
+                        fingerprint('c'),
+                    currentTotalBytes = 8L,
                     currentChunkRootHashHex =
-                        tree.rootHashHex
+                        tree.rootHashHex,
+                    currentWholeFileSha256Hex =
+                        whole
                 )
             assertTrue(
                 unavailable is
-                    ResumeRevalidationResult.SourceUnavailable
+                    ResumeSenderRevalidationResult
+                        .SourceUnavailable
             )
 
             val changed =
-                store.reconcileForResume(
-                    "source-session",
-                    "source-item",
-                    fingerprint('a'),
+                store.reconcileSenderForResume(
+                    originalSessionId =
+                        "source-session",
+                    itemId = "source-item",
+                    authenticatedPeerFingerprintHex =
+                        fingerprint('a'),
                     peerStillTrusted = true,
-                    sourceStillAvailable = true,
+                    sourceStillAvailable =
+                        true,
                     currentSourceIdentity =
-                        "source:v2",
-                    currentTotalBytes = 4L,
+                        fingerprint('d'),
+                    currentTotalBytes = 8L,
                     currentChunkRootHashHex =
-                        tree.rootHashHex
+                        tree.rootHashHex,
+                    currentWholeFileSha256Hex =
+                        whole
                 )
             assertTrue(
                 changed is
-                    ResumeRevalidationResult.SourceChanged
+                    ResumeSenderRevalidationResult
+                        .SourceChanged
+            )
+
+            val ready =
+                store.reconcileSenderForResume(
+                    originalSessionId =
+                        "source-session",
+                    itemId = "source-item",
+                    authenticatedPeerFingerprintHex =
+                        fingerprint('a'),
+                    peerStillTrusted = true,
+                    sourceStillAvailable =
+                        true,
+                    currentSourceIdentity =
+                        fingerprint('c'),
+                    currentTotalBytes = 8L,
+                    currentChunkRootHashHex =
+                        tree.rootHashHex,
+                    currentWholeFileSha256Hex =
+                        whole
+                )
+            assertTrue(
+                ready is
+                    ResumeSenderRevalidationResult
+                        .Ready
+            )
+            assertEquals(
+                "content://source/7",
+                (ready as
+                    ResumeSenderRevalidationResult
+                        .Ready)
+                    .sourceHandle
             )
         }
 
@@ -426,11 +551,9 @@ class ResumableStagingStoreTest {
     fun expiredJournal_isPurgedAtResumeBoundary() =
         runTest(testDispatcher) {
             val chunks =
-                listOf(
-                    "AAAA".toByteArray()
-                )
+                chunks("AAAA")
             val tree =
-                init(
+                initReceiver(
                     "expired-session",
                     "expired-item",
                     chunks,
@@ -438,26 +561,22 @@ class ResumableStagingStoreTest {
                 )
 
             val result =
-                store.reconcileForResume(
+                store.reconcileReceiverForResume(
                     "expired-session",
                     "expired-item",
                     fingerprint('a'),
                     peerStillTrusted = true,
-                    sourceStillAvailable = true,
-                    currentSourceIdentity =
-                        "source:v1",
-                    currentTotalBytes = 4L,
-                    currentChunkRootHashHex =
-                        tree.rootHashHex,
                     nowMs =
                         100L +
                             dev.glide.core.resume
                                 .ResumeToken
                                 .MAX_TTL_MILLIS
                 )
+
             assertTrue(
                 result is
-                    ResumeRevalidationResult.Expired
+                    ResumeReceiverRevalidationResult
+                        .Expired
             )
             assertNull(
                 fakeDao.get(
@@ -465,17 +584,18 @@ class ResumableStagingStoreTest {
                     "expired-item"
                 )
             )
+            assertEquals(
+                64,
+                tree.rootHashHex.length
+            )
         }
 
     @Test
-    fun assembly_requiresCompletePrefixAndWholeFileDigest() =
+    fun finalAssembly_requiresCompletePrefixMatchingRootAndWholeDigest() =
         runTest(testDispatcher) {
             val chunks =
-                listOf(
-                    "AAAA".toByteArray(),
-                    "BBBB".toByteArray()
-                )
-            init(
+                chunks("AAAA", "BBBB")
+            initReceiver(
                 "assemble-session",
                 "assemble-item",
                 chunks
@@ -487,7 +607,7 @@ class ResumableStagingStoreTest {
                 )
 
             assertTrue(
-                store.writeAndVerifyChunk(
+                store.recordReceiverChunk(
                     "assemble-session",
                     "assemble-item",
                     0L,
@@ -495,16 +615,20 @@ class ResumableStagingStoreTest {
                 )
             )
             assertFalse(
-                store.assembleVerifiedFile(
-                    "assemble-session",
-                    "assemble-item",
-                    destination
-                )
+                store
+                    .assembleVerifiedReceiverFile(
+                        "assemble-session",
+                        "assemble-item",
+                        wholeDigest(chunks),
+                        destination
+                    )
             )
-            assertFalse(destination.exists())
+            assertFalse(
+                destination.exists()
+            )
 
             assertTrue(
-                store.writeAndVerifyChunk(
+                store.recordReceiverChunk(
                     "assemble-session",
                     "assemble-item",
                     1L,
@@ -512,11 +636,13 @@ class ResumableStagingStoreTest {
                 )
             )
             assertTrue(
-                store.assembleVerifiedFile(
-                    "assemble-session",
-                    "assemble-item",
-                    destination
-                )
+                store
+                    .assembleVerifiedReceiverFile(
+                        "assemble-session",
+                        "assemble-item",
+                        wholeDigest(chunks),
+                        destination
+                    )
             )
             assertEquals(
                 chunks
@@ -529,22 +655,76 @@ class ResumableStagingStoreTest {
                     .readBytes()
                     .toList()
             )
+            assertNull(
+                store.getJournal(
+                    "assemble-session",
+                    "assemble-item"
+                )
+            )
+        }
+
+    @Test
+    fun finalAssembly_rejectsPrefixWhoseComputedRootDoesNotMatchOfferRoot() =
+        runTest(testDispatcher) {
+            val expectedChunks =
+                chunks("AAAA", "BBBB")
+            val actualChunks =
+                chunks("AAAA", "XXXX")
+            initReceiver(
+                "root-session",
+                "root-item",
+                expectedChunks
+            )
+            assertTrue(
+                store.recordReceiverChunk(
+                    "root-session",
+                    "root-item",
+                    0L,
+                    actualChunks[0]
+                )
+            )
+            assertTrue(
+                store.recordReceiverChunk(
+                    "root-session",
+                    "root-item",
+                    1L,
+                    actualChunks[1]
+                )
+            )
+
+            val destination =
+                File(
+                    tempFolder.root,
+                    "root-mismatch.bin"
+                )
+            assertFalse(
+                store
+                    .assembleVerifiedReceiverFile(
+                        "root-session",
+                        "root-item",
+                        wholeDigest(
+                            actualChunks
+                        ),
+                        destination
+                    )
+            )
+            assertFalse(
+                destination.exists()
+            )
         }
 
     @Test
     fun storagePressure_evictsOldestRetainedItemFirst() =
         runTest(testDispatcher) {
             val chunks =
-                listOf(
-                    "AAAA".toByteArray()
-                )
-            init(
+                chunks("AAAA")
+            initReceiver(
                 "old-session",
                 "old-item",
                 chunks,
                 nowMs = 1_000L
             )
-            init(
+            initReceiver(
                 "new-session",
                 "new-item",
                 chunks,
@@ -554,7 +734,8 @@ class ResumableStagingStoreTest {
             var call = 0
             val evicted =
                 store.evictUnderStoragePressure(
-                    minFreeBytes = 1_000L
+                    minFreeBytes =
+                        1_000L
                 ) {
                     call++
                     if (call == 1) {
@@ -564,7 +745,10 @@ class ResumableStagingStoreTest {
                     }
                 }
 
-            assertEquals(1, evicted)
+            assertEquals(
+                1,
+                evicted
+            )
             assertNull(
                 fakeDao.get(
                     "old-session",
@@ -579,7 +763,7 @@ class ResumableStagingStoreTest {
             )
         }
 
-    private suspend fun init(
+    private suspend fun initReceiver(
         session: String,
         item: String,
         chunks: List<ByteArray>,
@@ -587,27 +771,31 @@ class ResumableStagingStoreTest {
     ): ContentDigestTree {
         val tree =
             digestTree(chunks)
-        store.initSession(
+        store.initReceiverSession(
             originalSessionId = session,
             itemId = item,
             itemName = "$item.bin",
             peerFingerprintHex =
                 fingerprint('a'),
-            sourceIdentity =
-                "source:v1",
             totalBytes =
                 chunks.sumOf {
                     it.size.toLong()
                 },
             chunkSize =
                 chunks.first().size,
-            digestTree = tree,
-            wholeFileSha256Hex =
-                wholeDigest(chunks),
+            chunkRootHashHex =
+                tree.rootHashHex,
             nowMs = nowMs
         )
         return tree
     }
+
+    private fun chunks(
+        vararg values: String
+    ): List<ByteArray> =
+        values.map {
+            it.toByteArray()
+        }
 
     private fun digestTree(
         chunks: List<ByteArray>
@@ -686,6 +874,7 @@ class ResumableStagingStoreTest {
             expectedContiguousByteOffset: Long,
             newVerifiedChunks: Long,
             newContiguousByteOffset: Long,
+            newVerifiedChunkHashesHex: String,
             updatedAtMs: Long
         ): Int {
             val key =
@@ -708,6 +897,8 @@ class ResumableStagingStoreTest {
                         newVerifiedChunks,
                     contiguousByteOffset =
                         newContiguousByteOffset,
+                    verifiedChunkHashesHex =
+                        newVerifiedChunkHashesHex,
                     updatedAtMs =
                         updatedAtMs
                 )
@@ -719,6 +910,7 @@ class ResumableStagingStoreTest {
             itemId: String,
             verifiedChunks: Long,
             contiguousByteOffset: Long,
+            verifiedChunkHashesHex: String,
             updatedAtMs: Long
         ): Int {
             val key =
@@ -741,6 +933,8 @@ class ResumableStagingStoreTest {
                         verifiedChunks,
                     contiguousByteOffset =
                         contiguousByteOffset,
+                    verifiedChunkHashesHex =
+                        verifiedChunkHashesHex,
                     updatedAtMs =
                         updatedAtMs
                 )
