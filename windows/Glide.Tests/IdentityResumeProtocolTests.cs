@@ -206,6 +206,103 @@ public sealed class IdentityResumeProtocolTests
     }
 
     [Fact]
+    public void ResumeStreamStart_RoundTripsWithExactRemainingBytes()
+    {
+        JsonObject body =
+            new()
+            {
+                ["profile"] =
+                    IdentityResumeTranscript.ResumeProfile,
+                ["requestMessageId"] =
+                    "55555555-5555-4555-8555-555555555555",
+                ["originalSessionId"] =
+                    "33333333-3333-4333-8333-333333333333",
+                ["itemId"] =
+                    "44444444-4444-4444-8444-444444444444",
+                ["bulkRef"] = "resume-bulk-1",
+                ["startChunkIndex"] = 2,
+                ["startByteOffset"] = "2097152",
+                ["remainingBytes"] = "3145728",
+                ["chunkSize"] = 1048576,
+                ["totalSizeBytes"] = "5242880",
+                ["chunkRootHashHex"] = RootHash,
+                ["wholeFileSha256Hex"] = RootHash
+            };
+
+        Envelope decoded =
+            RoundTrip(
+                MessageTypes.ResumeStreamStart,
+                "66666666-6666-4666-8666-666666666666",
+                body);
+
+        Assert.Equal(
+            "3145728",
+            decoded.Body["remainingBytes"]!.ToString());
+    }
+
+    [Fact]
+    public void ResumeStreamStart_IncorrectRemainingBytes_IsRejected()
+    {
+        JsonObject body =
+            new()
+            {
+                ["profile"] =
+                    IdentityResumeTranscript.ResumeProfile,
+                ["requestMessageId"] =
+                    "55555555-5555-4555-8555-555555555555",
+                ["originalSessionId"] =
+                    "33333333-3333-4333-8333-333333333333",
+                ["itemId"] =
+                    "44444444-4444-4444-8444-444444444444",
+                ["bulkRef"] = "resume-bulk-2",
+                ["startChunkIndex"] = 2,
+                ["startByteOffset"] = "2097152",
+                ["remainingBytes"] = "1",
+                ["chunkSize"] = 1048576,
+                ["totalSizeBytes"] = "5242880",
+                ["chunkRootHashHex"] = RootHash,
+                ["wholeFileSha256Hex"] = RootHash
+            };
+
+        Assert.Throws<ProtocolViolationException>(
+            () =>
+                RoundTrip(
+                    MessageTypes.ResumeStreamStart,
+                    "77777777-7777-4777-8777-777777777777",
+                    body));
+    }
+
+    [Fact]
+    public void ResumeResult_VerifiedRequiresCanonicalDigest()
+    {
+        JsonObject body =
+            new()
+            {
+                ["profile"] =
+                    IdentityResumeTranscript.ResumeProfile,
+                ["requestMessageId"] =
+                    "55555555-5555-4555-8555-555555555555",
+                ["originalSessionId"] =
+                    "33333333-3333-4333-8333-333333333333",
+                ["itemId"] =
+                    "44444444-4444-4444-8444-444444444444",
+                ["status"] = "verified",
+                ["sizeBytes"] = "5242880",
+                ["sha256"] = RootHash
+            };
+
+        Envelope decoded =
+            RoundTrip(
+                MessageTypes.ResumeResult,
+                "88888888-8888-4888-8888-888888888888",
+                body);
+
+        Assert.Equal(
+            "verified",
+            decoded.Body["status"]!.ToString());
+    }
+
+    [Fact]
     public void ResumeCapability_RequiresIdentityCapability()
     {
         Assert.Throws<ProtocolViolationException>(
