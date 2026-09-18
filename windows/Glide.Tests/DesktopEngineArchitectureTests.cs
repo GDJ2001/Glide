@@ -33,6 +33,30 @@ public sealed class DesktopEngineArchitectureTests
     }
 
     [Fact]
+    public void SharedDesktopEngine_UsesBoundedHashAndCentralizedStorageBoundary()
+    {
+        string root = ResolveRepositoryRoot();
+        string enginePath = Path.Combine(
+            root,
+            "windows",
+            "Glide.Desktop",
+            "DesktopTransferEngine.cs");
+
+        string engine = File.ReadAllText(enginePath);
+
+        Assert.Contains("StreamingSha256", engine);
+        Assert.Contains("ReserveIncoming", engine);
+        Assert.Contains("QuarantineWriteSession", engine);
+
+        Assert.DoesNotContain("File.ReadAllBytesAsync", engine);
+        Assert.DoesNotContain("SHA256.HashData", engine);
+        Assert.DoesNotContain("IncrementalHash.CreateHash", engine);
+        Assert.DoesNotContain("File.Move(", engine);
+        Assert.DoesNotContain("ResolveCollision(", engine);
+        Assert.DoesNotContain("GetQuarantinePath(", engine);
+    }
+
+    [Fact]
     public void SolutionAndEntrypoints_ReferenceSharedDesktopProject()
     {
         string root = ResolveRepositoryRoot();
