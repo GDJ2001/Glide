@@ -115,6 +115,9 @@ object IdentityResumeTranscript {
         requireUuid(originalSessionId, "originalSessionId")
         requireUuid(itemId, "itemId")
         requireOppositeRoles(requesterRole, responderRole)
+        require(requesterRole == "receiver" && responderRole == "sender") {
+            "resume-v1 request roles must be receiver -> sender"
+        }
         requireLowerHex64(requesterFingerprintHex, "requesterFingerprintHex")
         requireLowerHex64(responderFingerprintHex, "responderFingerprintHex")
         requireLowerHex64(sessionNonceHex, "sessionNonceHex")
