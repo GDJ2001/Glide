@@ -30,6 +30,11 @@ import dev.glide.core.ports.TransferTransport
 import dev.glide.core.protocol.Envelope
 import dev.glide.core.protocol.MessageTypes
 import dev.glide.core.protocol.ProtocolCodec
+import dev.glide.core.resume.ResumeAuthorityLookup
+import dev.glide.core.resume.ResumeReconnectPlan
+import dev.glide.core.resume.ResumeReconnectState
+import dev.glide.core.resume.ResumeRequestAuthority
+import dev.glide.core.resume.ResumeSenderReadySource
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -247,6 +252,394 @@ class TrustedSessionCoordinatorTest {
                     receiverControls
                         .take(3)
                         .map { it.seq }
+                )
+
+                sender.stop()
+                receiver.stop()
+            }
+        }
+
+    @Test
+    fun resumeV1_enrolledReconnect_reachesExactAcceptedPrefixWithoutOrdinaryOffer() =
+        runBlocking {
+            withTimeout(10_000) {
+                val activeSession =
+                    SessionId(
+                        UUID.randomUUID()
+                            .toString()
+                    )
+                val originalSession =
+                    SessionId(
+                        UUID.randomUUID()
+                            .toString()
+                    )
+                val itemId =
+                    ItemId(
+                        UUID.randomUUID()
+                            .toString()
+                    )
+                val binding =
+                    "34".repeat(32)
+
+                val senderIdentity =
+                    TestPersistentIdentityStore()
+                val receiverIdentity =
+                    TestPersistentIdentityStore()
+                val senderFingerprint =
+                    senderIdentity
+                        .getFingerprint()
+                val receiverFingerprint =
+                    receiverIdentity
+                        .getFingerprint()
+
+                fun peerRecord(
+                    identity:
+                        TestPersistentIdentityStore,
+                    name: String
+                ) =
+                    TrustedPeerRecord(
+                        peerFingerprintHex =
+                            identity
+                                .getFingerprint(),
+                        publicKeyDerHex =
+                            with(
+                                PeerIdentityVerifier
+                            ) {
+                                identity
+                                    .getOrCreatePublicKeyDer()
+                                    .toHex()
+                            },
+                        displayName = name,
+                        pairedAtMs = 1L,
+                        lastSeenAtMs = 1L
+                    )
+
+                val senderTrust =
+                    newTrustManager(
+                        initialPeers =
+                            listOf(
+                                peerRecord(
+                                    receiverIdentity,
+                                    "Receiver"
+                                )
+                            ),
+                        identity =
+                            senderIdentity
+                    )
+                val receiverTrust =
+                    newTrustManager(
+                        initialPeers =
+                            listOf(
+                                peerRecord(
+                                    senderIdentity,
+                                    "Sender"
+                                )
+                            ),
+                        identity =
+                            receiverIdentity
+                    )
+
+                val senderPeer =
+                    PeerId(
+                        "resume-sender"
+                    )
+                val receiverPeer =
+                    PeerId(
+                        "resume-receiver"
+                    )
+                val senderTransport =
+                    TrustedControlTransport(
+                        senderPeer,
+                        activeSession,
+                        binding
+                    )
+                val receiverTransport =
+                    TrustedControlTransport(
+                        receiverPeer,
+                        activeSession,
+                        binding
+                    )
+                senderTransport.remote =
+                    receiverTransport
+                receiverTransport.remote =
+                    senderTransport
+
+                val root =
+                    "56".repeat(32)
+                val whole =
+                    "78".repeat(32)
+                val prefixChunks = 2L
+                val prefixBytes =
+                    2L * 1024 * 1024
+                val totalBytes =
+                    5L * 1024 * 1024
+
+                val sender =
+                    TransferCoordinator(
+                        sessionId =
+                            activeSession,
+                        role =
+                            DeviceRole.Sender,
+                        peerId =
+                            receiverPeer,
+                        transport =
+                            senderTransport,
+                        sourceAccess =
+                            FakeSourceAccess(),
+                        receiveStore =
+                            FakeReceiveStore(),
+                        historyStore =
+                            FakeHistoryStore(),
+                        scope = this,
+                        persistentTrustManager =
+                            senderTrust,
+                        expectedPeerFingerprintHex =
+                            receiverFingerprint,
+                        resumeReconnectPlan =
+                            ResumeReconnectPlan
+                                .Sender(
+                                    originalSessionId =
+                                        originalSession,
+                                    itemId =
+                                        itemId,
+                                    expectedPeerFingerprintHex =
+                                        receiverFingerprint
+                                ),
+                        loadSenderResumeAuthority = {
+                            requestedSession,
+                            requestedItem,
+                            peerFingerprint ->
+                            assertEquals(
+                                originalSession,
+                                requestedSession
+                            )
+                            assertEquals(
+                                itemId,
+                                requestedItem
+                            )
+                            assertEquals(
+                                receiverFingerprint,
+                                peerFingerprint
+                            )
+                            ResumeAuthorityLookup
+                                .Ready(
+                                    ResumeSenderReadySource(
+                                        authority =
+                                            ResumeRequestAuthority
+                                                .SenderSourceAuthority(
+                                                    originalSessionId =
+                                                        originalSession,
+                                                    itemId =
+                                                        itemId,
+                                                    chunkSize =
+                                                        1024 * 1024,
+                                                    totalSizeBytes =
+                                                        totalBytes,
+                                                    chunkRootHashHex =
+                                                        root
+                                                ),
+                                        sourceHandle =
+                                            SourceHandle(
+                                                "resume-source"
+                                            ),
+                                        wholeFileSha256Hex =
+                                            whole
+                                    )
+                                )
+                        },
+                        enableTrueResumeCapability =
+                            true
+                    )
+
+                val receiver =
+                    TransferCoordinator(
+                        sessionId =
+                            activeSession,
+                        role =
+                            DeviceRole.Receiver,
+                        peerId =
+                            senderPeer,
+                        transport =
+                            receiverTransport,
+                        sourceAccess =
+                            FakeSourceAccess(),
+                        receiveStore =
+                            FakeReceiveStore(),
+                        historyStore =
+                            FakeHistoryStore(),
+                        scope = this,
+                        persistentTrustManager =
+                            receiverTrust,
+                        expectedPeerFingerprintHex =
+                            senderFingerprint,
+                        resumeReconnectPlan =
+                            ResumeReconnectPlan
+                                .Receiver(
+                                    originalSessionId =
+                                        originalSession,
+                                    itemId =
+                                        itemId,
+                                    expectedPeerFingerprintHex =
+                                        senderFingerprint
+                                ),
+                        loadReceiverResumeAuthority = {
+                            requestedSession,
+                            requestedItem,
+                            peerFingerprint ->
+                            assertEquals(
+                                originalSession,
+                                requestedSession
+                            )
+                            assertEquals(
+                                itemId,
+                                requestedItem
+                            )
+                            assertEquals(
+                                senderFingerprint,
+                                peerFingerprint
+                            )
+                            ResumeAuthorityLookup
+                                .Ready(
+                                    ResumeRequestAuthority
+                                        .ReceiverJournal(
+                                            originalSessionId =
+                                                originalSession,
+                                            itemId =
+                                                itemId,
+                                            verifiedChunkCount =
+                                                prefixChunks,
+                                            contiguousByteOffset =
+                                                prefixBytes,
+                                            chunkSize =
+                                                1024 * 1024,
+                                            totalSizeBytes =
+                                                totalBytes,
+                                            chunkRootHashHex =
+                                                root
+                                        )
+                                )
+                        },
+                        enableTrueResumeCapability =
+                            true
+                    )
+
+                receiver.start()
+                sender.start()
+
+                while (
+                    sender
+                        .resumeReconnectState
+                        .value !is
+                        ResumeReconnectState
+                            .SenderAccepted ||
+                    receiver
+                        .resumeReconnectState
+                        .value !is
+                        ResumeReconnectState
+                            .ReceiverAccepted
+                ) {
+                    delay(10)
+                }
+
+                val senderAccepted =
+                    sender
+                        .resumeReconnectState
+                        .value as
+                        ResumeReconnectState
+                            .SenderAccepted
+                val receiverAccepted =
+                    receiver
+                        .resumeReconnectState
+                        .value as
+                        ResumeReconnectState
+                            .ReceiverAccepted
+
+                assertEquals(
+                    prefixChunks,
+                    senderAccepted
+                        .startChunkIndex
+                )
+                assertEquals(
+                    prefixBytes,
+                    senderAccepted
+                        .startByteOffset
+                )
+                assertEquals(
+                    prefixChunks,
+                    receiverAccepted
+                        .startChunkIndex
+                )
+                assertEquals(
+                    prefixBytes,
+                    receiverAccepted
+                        .startByteOffset
+                )
+
+                assertTrue(
+                    receiverTransport
+                        .sentControls
+                        .any {
+                            it.type ==
+                                MessageTypes
+                                    .RESUME_REQUEST
+                        }
+                )
+                assertTrue(
+                    senderTransport
+                        .sentControls
+                        .any {
+                            it.type ==
+                                MessageTypes
+                                    .RESUME_ACCEPT
+                        }
+                )
+                assertFalse(
+                    senderTransport
+                        .sentControls
+                        .any {
+                            it.type ==
+                                MessageTypes
+                                    .OFFER_BEGIN
+                        }
+                )
+                assertFalse(
+                    receiverTransport
+                        .sentControls
+                        .any {
+                            it.type ==
+                                MessageTypes
+                                    .OFFER_DECISION
+                        }
+                )
+
+                val receiverSequence =
+                    receiverTransport
+                        .sentControls
+                        .map {
+                            it.seq
+                        }
+                assertEquals(
+                    receiverSequence
+                        .indices
+                        .map {
+                            it.toLong() + 1L
+                        },
+                    receiverSequence
+                )
+
+                val senderSequence =
+                    senderTransport
+                        .sentControls
+                        .map {
+                            it.seq
+                        }
+                assertEquals(
+                    senderSequence
+                        .indices
+                        .map {
+                            it.toLong() + 1L
+                        },
+                    senderSequence
                 )
 
                 sender.stop()
