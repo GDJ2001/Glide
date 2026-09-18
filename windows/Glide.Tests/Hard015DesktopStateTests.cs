@@ -23,6 +23,16 @@ public sealed class Hard015DesktopStateTests : IDisposable
     }
 
     [Fact]
+    public void DesktopSettings_RelativeReceiveDirectory_IsRejected()
+    {
+        Assert.Throws<ArgumentException>(
+            () => new DesktopSettings(
+                "Desktop",
+                "relative/downloads",
+                20).Validate());
+    }
+
+    [Fact]
     public async Task JsonStateStore_SettingsAndHistorySurviveRestart()
     {
         string statePath =
