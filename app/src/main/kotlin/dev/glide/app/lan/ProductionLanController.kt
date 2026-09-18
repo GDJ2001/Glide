@@ -139,6 +139,7 @@ class ProductionLanController private constructor(
     private var receiverResources: ReceiverResources? = null
     private var senderResources: SenderResources? = null
     private var setupJob: Job? = null
+    private var lifecycleGeneration: Long = 0
 
     private val _receiverState =
         MutableStateFlow<LanReceiverRuntimeState>(LanReceiverRuntimeState.Idle)
@@ -156,6 +157,7 @@ class ProductionLanController private constructor(
         }
 
         stopAll()
+        val generation = synchronized(lock) { ++lifecycleGeneration }
         _receiverState.value = LanReceiverRuntimeState.Starting
 
         setupJob = ownerScope.launch {
@@ -216,6 +218,7 @@ class ProductionLanController private constructor(
                 lateinit var connectionJob: Job
                 connectionJob = activeTransportScope.launch {
                     activeTransport.observeConnectionEvents().collect { event ->
+                        if (!isCurrentGeneration(generation)) return@collect
                         when (event) {
                             is ConnectionEvent.Connected -> {
                                 authority.revokeActiveInvitation()
@@ -274,6 +277,7 @@ class ProductionLanController private constructor(
                 runCatching { networkScope?.close() }
                 listenerScope?.cancel()
                 transportScope?.cancel()
+                if (!isCurrentGeneration(generation)) return@launch
                 _receiverState.value = LanReceiverRuntimeState.Error(
                     message = error.message ?: "Unable to start LAN receiver."
                 )
@@ -296,6 +300,7 @@ class ProductionLanController private constructor(
         }
 
         stopAll()
+        val generation = synchronized(lock) { ++lifecycleGeneration }
 
         setupJob = ownerScope.launch {
             var networkScope: LanNetworkScope? = null
@@ -320,6 +325,7 @@ class ProductionLanController private constructor(
                 lateinit var connectionJob: Job
                 connectionJob = activeTransportScope.launch {
                     activeTransport.observeConnectionEvents().collect { event ->
+                        if (!isCurrentGeneration(generation)) return@collect
                         when (event) {
                             is ConnectionEvent.Connected ->
                                 onConnected(activeTransport, event.peer)
@@ -355,6 +361,7 @@ class ProductionLanController private constructor(
                 runCatching { transport?.close() }
                 runCatching { networkScope?.close() }
                 transportScope?.cancel()
+                if (!isCurrentGeneration(generation)) return@launch
                 onFailure(error.message ?: "Unable to connect to LAN invitation.")
             }
         }
@@ -378,6 +385,7 @@ class ProductionLanController private constructor(
         val receiver: ReceiverResources?
         val sender: SenderResources?
         synchronized(lock) {
+            lifecycleGeneration++
             setupJob?.cancel()
             setupJob = null
             receiver = receiverResources
@@ -406,6 +414,9 @@ class ProductionLanController private constructor(
 
         _receiverState.value = LanReceiverRuntimeState.Idle
     }
+
+    private fun isCurrentGeneration(generation: Long): Boolean =
+        synchronized(lock) { lifecycleGeneration == generation }
 
     private suspend fun awaitAvailableNetwork(
         networkScope: LanNetworkScope
