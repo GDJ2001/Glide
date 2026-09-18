@@ -39,11 +39,11 @@ Identity proof uses `SHA256withECDSA` over the canonical HARD-018 binary transcr
 
 `identity-v1` requires a 32-byte channel binding represented as 64 lowercase hexadecimal characters.
 
-For the native TLS LAN profile, HARD-021 must derive it from TLS exporter keying material using the label:
+For the native TLS LAN profile, the binding is the exact SHA-256 SPKI fingerprint of the TLS **server certificate actually used by the active pinned TLS connection**. The transcript labels this scheme `tls-server-spki-sha256-v1`.
 
-`EXPORTER-GLIDE-IDENTITY-V1`.
+This choice is portable across the supported Android/.NET TLS stacks while remaining tied to the authenticated TLS endpoint. The signed transcript also includes the fresh active session and challenge, so a proof cannot be replayed onto a different pinned server/channel or session.
 
-A transport that cannot produce an authenticated channel binding **must not negotiate `identity-v1`**. There is no zero-filled, connection-name, certificate-string, or other synthetic fallback.
+A transport that cannot expose the authenticated TLS server SPKI binding **must not negotiate `identity-v1`**. There is no zero-filled, connection-name, arbitrary certificate-string, or other synthetic fallback.
 
 ### First-use enrollment
 
