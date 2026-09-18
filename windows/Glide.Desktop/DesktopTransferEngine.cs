@@ -966,6 +966,18 @@ public sealed class DesktopTransferEngine
                             $"Duplicate offer itemId '{itemId}'.");
                     }
 
+                    bool carriesResumeMetadata =
+                        itemObject["rootHash"] != null ||
+                        itemObject["chunkSize"] != null;
+                    if (carriesResumeMetadata &&
+                        !negotiatedCapabilities.Contains(
+                            ProtocolCapabilities.ResumeV1))
+                    {
+                        throw new ProtocolViolationException(
+                            WireErrorCodes.UnsupportedProtocol,
+                            "OFFER_PAGE carried resume metadata without negotiated resume-v1.");
+                    }
+
                     string name =
                         itemObject["name"]!
                             .ToString();
