@@ -25,7 +25,8 @@ public sealed record DesktopOffer(
     string BatchId,
     string PeerName,
     IReadOnlyList<DesktopOfferItem> Items,
-    long TotalBytes);
+    long TotalBytes,
+    string? AuthenticatedPeerFingerprintHex = null);
 
 public sealed record DesktopTransferProgress(
     DesktopTransferDirection Direction,
