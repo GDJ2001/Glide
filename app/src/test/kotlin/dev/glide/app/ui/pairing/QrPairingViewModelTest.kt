@@ -260,12 +260,15 @@ class QrPairingViewModelTest {
         )
 
         viewModel.onQrCodeScanned(InvitationCodec.encode(validInvitation))
+        val eventDeferred = async(start = CoroutineStart.UNDISPATCHED) {
+            viewModel.events.first()
+        }
         viewModel.confirmConnection()
 
         val state = viewModel.scannerState.value
         assertTrue("State must become Connecting after explicit user confirmation", state is QrScannerUiState.Connecting)
 
-        val event = viewModel.events.first()
+        val event = eventDeferred.await()
         assertTrue("Event must be ConnectConfirmed", event is QrPairingEvent.ConnectConfirmed)
         assertEquals(validInvitation.invitationId, (event as QrPairingEvent.ConnectConfirmed).invitation.invitationId)
     }
