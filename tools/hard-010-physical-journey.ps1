@@ -147,7 +147,7 @@ function Get-PrivateState {
     $received = ""
     $staging = ""
     try {
-        $received = Invoke-AdbText $Serial shell run-as $PackageId sh -c "if [ -d files/received ]; then find files/received -maxdepth 1 -type f -exec sha256sum {} \;; fi"
+        $received = Invoke-AdbText $Serial shell run-as $PackageId sh -c "if [ -d files/received ]; then for f in files/received/*; do [ -f \"$f\" ] && sha256sum \"$f\"; done; fi"
     } catch { $received = "UNAVAILABLE: " + $_.Exception.Message }
     try {
         $staging = Invoke-AdbText $Serial shell run-as $PackageId sh -c "if [ -d files/receiving ]; then find files/receiving -maxdepth 1 -type f -print; fi"
@@ -275,14 +275,14 @@ switch ($Mode) {
         }
 
         $run.status="recorded"
-        $run | Add-Member endedAtUtc ((Get-Date).ToUniversalTime().ToString("o")) -Force
-        $run | Add-Member observedResult $(if ($ObservedResult) { $ObservedResult } else { "not-run" }) -Force
-        $run | Add-Member sasOrPinVerified ([bool]$SasOrPinVerified) -Force
-        $run | Add-Member offerConsentVerified ([bool]$OfferConsentVerified) -Force
-        $run | Add-Member openVerified ([bool]$OpenVerified) -Force
-        $run | Add-Member historyVerified ([bool]$HistoryVerified) -Force
-        $run | Add-Member receiverPrivateHashMatched $hashMatched -Force
-        $run | Add-Member notes $Notes -Force
+        $run | Add-Member -NotePropertyName endedAtUtc -NotePropertyValue ((Get-Date).ToUniversalTime().ToString("o")) -Force
+        $run | Add-Member -NotePropertyName observedResult -NotePropertyValue $(if ($ObservedResult) { $ObservedResult } else { "not-run" }) -Force
+        $run | Add-Member -NotePropertyName sasOrPinVerified -NotePropertyValue ([bool]$SasOrPinVerified) -Force
+        $run | Add-Member -NotePropertyName offerConsentVerified -NotePropertyValue ([bool]$OfferConsentVerified) -Force
+        $run | Add-Member -NotePropertyName openVerified -NotePropertyValue ([bool]$OpenVerified) -Force
+        $run | Add-Member -NotePropertyName historyVerified -NotePropertyValue ([bool]$HistoryVerified) -Force
+        $run | Add-Member -NotePropertyName receiverPrivateHashMatched -NotePropertyValue $hashMatched -Force
+        $run | Add-Member -NotePropertyName notes -NotePropertyValue $Notes -Force
         Write-Json $runPath $run
         Write-Host "Recorded $RunId. Receiver SHA-256 matched expected payload: $hashMatched"
     }
