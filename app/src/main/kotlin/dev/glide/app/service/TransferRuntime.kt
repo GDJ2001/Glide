@@ -721,9 +721,10 @@ class TransferRuntime private constructor(
             return true
         }
 
-        coordinator?.scope?.launch {
-            coordinator.cancelAndAwaitCleanup(reason)
-            finalizeTerminalCoordinator(coordinator)
+        val active = coordinator ?: return true
+        active.scope.launch {
+            active.cancelAndAwaitCleanup(reason)
+            finalizeTerminalCoordinator(active)
         }
         return true
     }
