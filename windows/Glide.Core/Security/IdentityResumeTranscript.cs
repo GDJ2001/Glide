@@ -17,9 +17,8 @@ public static class IdentityResumeTranscript
 {
     public const string IdentityProfile = "identity-v1";
     public const string ResumeProfile = "resume-v1";
-    public const string ChannelBindingScheme = "tls-exporter-v1";
-    public const string TlsExporterLabel = "EXPORTER-GLIDE-IDENTITY-V1";
-
+    public const string ChannelBindingScheme = "tls-server-spki-sha256-v1";
+    
     private const string SignDomain = "GLIDE-SIGN-V1";
     private const string CapabilityDomain = "GLIDE-CAPS-V1";
     private const byte PurposeIdentity = 1;
