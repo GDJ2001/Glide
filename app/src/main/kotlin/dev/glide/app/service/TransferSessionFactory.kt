@@ -17,7 +17,6 @@ import dev.glide.core.resume.ResumeSourcePreflight
 import dev.glide.data.source.ResumeSourceVerifier
 import dev.glide.data.store.ResumableStagingStore
 import kotlinx.coroutines.CoroutineScope
-import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
@@ -25,7 +24,7 @@ import javax.inject.Singleton
  * storage, history, and source ports under a caller-provided service execution scope (LAN-003).
  */
 @Singleton
-class TransferSessionFactory @Inject constructor(
+class TransferSessionFactory(
     val sourceAccess: SourceAccess,
     val receiveStore: ReceiveStore,
     val historyStore: HistoryStore,
