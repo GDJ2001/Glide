@@ -416,46 +416,87 @@ class PersistentIdentityComplianceTest {
 
     @Test
     fun test9_resumableStagingStore_lifecycleAndIntegrity() = kotlinx.coroutines.runBlocking {
-        val tempDir = java.nio.file.Files.createTempDirectory("glide-staging-compliance").toFile()
+        val tempDir =
+            java.nio.file.Files
+                .createTempDirectory(
+                    "glide-staging-compliance"
+                )
+                .toFile()
         try {
-            val dao = ComplianceResumableSessionDao()
-            val store = dev.glide.data.store.ResumableStagingStore(tempDir, dao)
-            val sessionId = "session-test-compliance"
+            val dao =
+                ComplianceResumableSessionDao()
+            val store =
+                dev.glide.data.store
+                    .ResumableStagingStore(
+                        tempDir,
+                        dao
+                    )
+            val sessionId =
+                "session-test-compliance"
             val fileId = "file-99"
 
-            val chunk0 = "Chunk zero content".toByteArray(Charsets.UTF_8)
-            val chunk1 = "Chunk one content".toByteArray(Charsets.UTF_8)
-            val digestTree =
-                dev.glide.core.resume.ContentDigestTree(
-                    listOf(
-                        dev.glide.core.resume.ContentDigestTree.sha256(chunk0),
-                        dev.glide.core.resume.ContentDigestTree.sha256(chunk1)
+            val chunk0 =
+                "Chunk-zero-content"
+                    .toByteArray(
+                        Charsets.UTF_8
                     )
-                )
+            val chunk1 =
+                "Chunk-one--content"
+                    .toByteArray(
+                        Charsets.UTF_8
+                    )
+            assertEquals(
+                chunk0.size,
+                chunk1.size
+            )
+
+            val digestTree =
+                dev.glide.core.resume
+                    .ContentDigestTree(
+                        listOf(
+                            dev.glide.core.resume
+                                .ContentDigestTree
+                                .sha256(chunk0),
+                            dev.glide.core.resume
+                                .ContentDigestTree
+                                .sha256(chunk1)
+                        )
+                    )
             val wholeDigest =
-                java.security.MessageDigest.getInstance("SHA-256")
+                java.security.MessageDigest
+                    .getInstance(
+                        "SHA-256"
+                    )
                     .apply {
                         update(chunk0)
                         update(chunk1)
                     }
                     .digest()
-                    .joinToString("") { "%02x".format(it) }
+                    .joinToString("") {
+                        "%02x".format(it)
+                    }
 
-            store.initSession(
-                originalSessionId = sessionId,
+            store.initReceiverSession(
+                originalSessionId =
+                    sessionId,
                 itemId = fileId,
                 itemName = "test.bin",
-                peerFingerprintHex = "a".repeat(64),
-                sourceIdentity = "compliance-source:v1",
-                totalBytes = (chunk0.size + chunk1.size).toLong(),
-                chunkSize = chunk0.size,
-                digestTree = digestTree,
-                wholeFileSha256Hex = wholeDigest
+                peerFingerprintHex =
+                    "a".repeat(64),
+                totalBytes =
+                    (
+                        chunk0.size +
+                            chunk1.size
+                        ).toLong(),
+                chunkSize =
+                    chunk0.size,
+                chunkRootHashHex =
+                    digestTree.rootHashHex
             )
 
             assertFalse(
                 "Out-of-order chunk must not skip the contiguous prefix",
-                store.writeAndVerifyChunk(
+                store.recordReceiverChunk(
                     sessionId,
                     fileId,
                     1L,
@@ -464,7 +505,7 @@ class PersistentIdentityComplianceTest {
             )
             assertTrue(
                 "Chunk 0 must write",
-                store.writeAndVerifyChunk(
+                store.recordReceiverChunk(
                     sessionId,
                     fileId,
                     0L,
@@ -473,7 +514,7 @@ class PersistentIdentityComplianceTest {
             )
             assertTrue(
                 "Chunk 1 must write",
-                store.writeAndVerifyChunk(
+                store.recordReceiverChunk(
                     sessionId,
                     fileId,
                     1L,
@@ -481,33 +522,44 @@ class PersistentIdentityComplianceTest {
                 )
             )
 
-            val corruptedChunk = "Tampered".toByteArray(Charsets.UTF_8)
+            val duplicateChunk =
+                "Tampered-duplicate"
+                    .toByteArray(
+                        Charsets.UTF_8
+                    )
             assertFalse(
-                "Already-verified/corrupt duplicate chunk must be rejected",
-                store.writeAndVerifyChunk(
+                "Already-verified duplicate chunk must be rejected",
+                store.recordReceiverChunk(
                     sessionId,
                     fileId,
                     1L,
-                    corruptedChunk
+                    duplicateChunk
                 )
             )
 
-            val destinationFile = File(tempDir, "assembled.bin")
+            val destinationFile =
+                File(
+                    tempDir,
+                    "assembled.bin"
+                )
             val assembled =
-                store.assembleVerifiedFile(
-                    sessionId,
-                    fileId,
-                    destinationFile
-                )
-            assertTrue("Assembled file must succeed", assembled)
-            assertEquals(
-                (chunk0.size + chunk1.size).toLong(),
-                destinationFile.length()
+                store
+                    .assembleVerifiedReceiverFile(
+                        sessionId,
+                        fileId,
+                        wholeDigest,
+                        destinationFile
+                    )
+            assertTrue(
+                "Assembled file must succeed",
+                assembled
             )
-
-            store.purgeSession(
-                sessionId,
-                fileId
+            assertEquals(
+                (
+                    chunk0.size +
+                        chunk1.size
+                    ).toLong(),
+                destinationFile.length()
             )
             assertEquals(
                 0,
@@ -593,15 +645,20 @@ class PersistentIdentityComplianceTest {
     }
 }
 
-private class ComplianceResumableSessionDao : dev.glide.data.db.ResumableSessionDao {
+private class ComplianceResumableSessionDao :
+    dev.glide.data.db.ResumableSessionDao {
+
     private val sessions =
         mutableMapOf<
             Pair<String, String>,
-            dev.glide.data.db.ResumableSessionEntity
+            dev.glide.data.db
+                .ResumableSessionEntity
         >()
 
     override suspend fun insertIfAbsent(
-        session: dev.glide.data.db.ResumableSessionEntity
+        session:
+            dev.glide.data.db
+                .ResumableSessionEntity
     ): Long {
         val key =
             session.originalSessionId to
@@ -616,14 +673,18 @@ private class ComplianceResumableSessionDao : dev.glide.data.db.ResumableSession
     override suspend fun get(
         originalSessionId: String,
         itemId: String
-    ): dev.glide.data.db.ResumableSessionEntity? =
+    ): dev.glide.data.db
+        .ResumableSessionEntity? =
         sessions[
             originalSessionId to
                 itemId
         ]
 
     override suspend fun getAllResumableSessions():
-        List<dev.glide.data.db.ResumableSessionEntity> =
+        List<
+            dev.glide.data.db
+                .ResumableSessionEntity
+        > =
         sessions.values.toList()
 
     override suspend fun compareAndAdvance(
@@ -633,6 +694,7 @@ private class ComplianceResumableSessionDao : dev.glide.data.db.ResumableSession
         expectedContiguousByteOffset: Long,
         newVerifiedChunks: Long,
         newContiguousByteOffset: Long,
+        newVerifiedChunkHashesHex: String,
         updatedAtMs: Long
     ): Int {
         val key =
@@ -655,6 +717,8 @@ private class ComplianceResumableSessionDao : dev.glide.data.db.ResumableSession
                     newVerifiedChunks,
                 contiguousByteOffset =
                     newContiguousByteOffset,
+                verifiedChunkHashesHex =
+                    newVerifiedChunkHashesHex,
                 updatedAtMs =
                     updatedAtMs
             )
@@ -666,6 +730,7 @@ private class ComplianceResumableSessionDao : dev.glide.data.db.ResumableSession
         itemId: String,
         verifiedChunks: Long,
         contiguousByteOffset: Long,
+        verifiedChunkHashesHex: String,
         updatedAtMs: Long
     ): Int {
         val key =
@@ -688,6 +753,8 @@ private class ComplianceResumableSessionDao : dev.glide.data.db.ResumableSession
                     verifiedChunks,
                 contiguousByteOffset =
                     contiguousByteOffset,
+                verifiedChunkHashesHex =
+                    verifiedChunkHashesHex,
                 updatedAtMs =
                     updatedAtMs
             )
@@ -706,9 +773,13 @@ private class ComplianceResumableSessionDao : dev.glide.data.db.ResumableSession
 
     override suspend fun getExpiredSessions(
         currentMs: Long
-    ): List<dev.glide.data.db.ResumableSessionEntity> =
+    ): List<
+        dev.glide.data.db
+            .ResumableSessionEntity
+        > =
         sessions.values.filter {
-            it.expiresAtMs <= currentMs
+            it.expiresAtMs <=
+                currentMs
         }
 
     override suspend fun deleteExpired(
@@ -717,7 +788,8 @@ private class ComplianceResumableSessionDao : dev.glide.data.db.ResumableSession
         val expiredKeys =
             sessions
                 .filterValues {
-                    it.expiresAtMs <= currentMs
+                    it.expiresAtMs <=
+                        currentMs
                 }
                 .keys
                 .toList()
@@ -727,6 +799,7 @@ private class ComplianceResumableSessionDao : dev.glide.data.db.ResumableSession
         return expiredKeys.size
     }
 
-    override suspend fun getSessionCount(): Int =
+    override suspend fun getSessionCount():
+        Int =
         sessions.size
 }
