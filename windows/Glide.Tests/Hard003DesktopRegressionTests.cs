@@ -89,60 +89,14 @@ public sealed class Hard003DesktopRegressionTests : IDisposable
     }
 
     [Fact]
-    public async Task DirectUnpairedTransfer_BothProductionPaths_MustDisplaySameSas()
+    public async Task DirectUnpairedTransfer_ProductionSendPath_MustFailClosed()
     {
-        string file = Path.Combine(_root, "sas.txt");
-        await File.WriteAllTextAsync(file, "HARD-003 SAS runtime regression");
+        string file = Path.Combine(_root, "unpaired.txt");
+        await File.WriteAllTextAsync(file, "HARD-012 unpaired transport rejection");
 
-        using var listener = new TlsSocketListener(port: 0);
-        var store = CreateStore("sas");
+        int result = await InvokeSendAsync("127.0.0.1", "42424", file);
 
-        var originalOut = Console.Out;
-        var capture = new StringWriter();
-        Console.SetOut(TextWriter.Synchronized(capture));
-
-        Task<bool>? serverTask = null;
-        try
-        {
-            serverTask = Task.Run(async () =>
-            {
-                await using var serverConnection = await listener.AcceptConnectionAsync();
-                return await InvokeReceiveHandlerAsync(serverConnection, store, invitation: null, isDaemon: false);
-            });
-
-            try
-            {
-                await InvokeSendAsync("127.0.0.1", listener.BoundPort.ToString(), file);
-            }
-            catch
-            {
-                // This regression only needs the two production SAS values. Later protocol defects
-                // may terminate the transfer after both values have already been displayed.
-            }
-
-            if (serverTask != null)
-            {
-                try
-                {
-                    await serverTask.WaitAsync(TimeSpan.FromSeconds(5));
-                }
-                catch
-                {
-                    // Same rationale: ignore later transfer/protocol failure after SAS emission.
-                }
-            }
-        }
-        finally
-        {
-            Console.SetOut(originalOut);
-        }
-
-        MatchCollection codes = Regex.Matches(capture.ToString(), @"6-DIGIT VERIFICATION CODE: \[ (\d{6}) \]");
-        Assert.True(codes.Count >= 2, $"Expected both sender and receiver SAS output, got {codes.Count}. Output: {capture}");
-
-        string first = codes[0].Groups[1].Value;
-        string second = codes[1].Groups[1].Value;
-        Assert.Equal(first, second);
+        Assert.Equal(1, result);
     }
 
     [Fact]
@@ -157,6 +111,7 @@ public sealed class Hard003DesktopRegressionTests : IDisposable
         }
 
         using var listener = new TlsSocketListener(port: 0);
+        LanInvitation invitation = CreateInvitation(listener);
         long observedPageCount = -1;
 
         var serverTask = Task.Run(async () =>
@@ -164,6 +119,7 @@ public sealed class Hard003DesktopRegressionTests : IDisposable
             await using var connection = await listener.AcceptConnectionAsync();
             using var channel = new LanRecordChannel(connection.SslStream);
 
+            await AcceptBootstrapAsync(channel, invitation);
             Envelope hello = await channel.ReadEnvelopeAsync();
             await channel.WriteEnvelopeAsync(CreateHelloAck(hello.SessionId));
 
@@ -171,7 +127,7 @@ public sealed class Hard003DesktopRegressionTests : IDisposable
             observedPageCount = offerBegin.Body["pageCount"]?.GetValue<long>() ?? -1L;
         });
 
-        string[] sendArgs = ["127.0.0.1", listener.BoundPort.ToString(), .. files];
+        string[] sendArgs = CreatePairedSendArgs(invitation, files);
         try
         {
             await InvokeSendAsync(sendArgs);
@@ -195,6 +151,7 @@ public sealed class Hard003DesktopRegressionTests : IDisposable
         await File.WriteAllBytesAsync(secondFile, new byte[] { 0x22 });
 
         using var listener = new TlsSocketListener(port: 0);
+        LanInvitation invitation = CreateInvitation(listener);
         long firstItemEndSeq = -1;
         long secondItemStartSeq = -1;
 
@@ -203,6 +160,7 @@ public sealed class Hard003DesktopRegressionTests : IDisposable
             await using var connection = await listener.AcceptConnectionAsync();
             using var channel = new LanRecordChannel(connection.SslStream);
 
+            await AcceptBootstrapAsync(channel, invitation);
             Envelope hello = await channel.ReadEnvelopeAsync();
             await channel.WriteEnvelopeAsync(CreateHelloAck(hello.SessionId));
 
@@ -248,7 +206,7 @@ public sealed class Hard003DesktopRegressionTests : IDisposable
 
         try
         {
-            await InvokeSendAsync("127.0.0.1", listener.BoundPort.ToString(), firstFile, secondFile);
+            await InvokeSendAsync(CreatePairedSendArgs(invitation, [firstFile, secondFile]));
         }
         catch
         {
@@ -280,6 +238,7 @@ public sealed class Hard003DesktopRegressionTests : IDisposable
         long before = GC.GetTotalAllocatedBytes(precise: true);
 
         using var listener = new TlsSocketListener(port: 0);
+        LanInvitation invitation = CreateInvitation(listener);
         long allocationAtOfferPage = -1;
 
         var serverTask = Task.Run(async () =>
@@ -287,6 +246,7 @@ public sealed class Hard003DesktopRegressionTests : IDisposable
             await using var connection = await listener.AcceptConnectionAsync();
             using var channel = new LanRecordChannel(connection.SslStream);
 
+            await AcceptBootstrapAsync(channel, invitation);
             Envelope hello = await channel.ReadEnvelopeAsync();
             await channel.WriteEnvelopeAsync(CreateHelloAck(hello.SessionId));
             await channel.ReadEnvelopeAsync(); // OFFER_BEGIN
@@ -296,7 +256,7 @@ public sealed class Hard003DesktopRegressionTests : IDisposable
 
         try
         {
-            await InvokeSendAsync("127.0.0.1", listener.BoundPort.ToString(), largeFile);
+            await InvokeSendAsync(CreatePairedSendArgs(invitation, [largeFile]));
         }
         catch
         {
@@ -309,6 +269,46 @@ public sealed class Hard003DesktopRegressionTests : IDisposable
             allocationAtOfferPage,
             0L,
             allocationBudget);
+    }
+
+    private static LanInvitation CreateInvitation(TlsSocketListener listener)
+    {
+        var unsigned = new LanInvitation(
+            invitationId: NewUuid(),
+            presence: Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant(),
+            name: "HARD-003 Test Receiver",
+            platform: "windows",
+            endpoints: [new LanEndpoint("127.0.0.1", listener.BoundPort)],
+            spkiSha256: listener.LocalSpkiSha256,
+            token: NewToken(),
+            expiresAt: DateTimeOffset.UtcNow.AddMinutes(2).ToUnixTimeSeconds().ToString(),
+            ttlSeconds: 120);
+
+        // Decode the canonical URI so the server-side authority has the exact invitationHash
+        // that production senders derive from the QR payload.
+        return InvitationCodec.Decode(InvitationCodec.Encode(unsigned));
+    }
+
+    private static string[] CreatePairedSendArgs(
+        LanInvitation invitation,
+        IReadOnlyList<string> files) =>
+        ["--pair", InvitationCodec.Encode(invitation), .. files];
+
+    private static async Task AcceptBootstrapAsync(
+        LanRecordChannel channel,
+        LanInvitation invitation)
+    {
+        LanRecord? record = await channel.ReadRecordAsync();
+        var bootstrapRecord = Assert.IsType<LanRecord.Bootstrap>(record);
+        LanBootstrapMessage bootstrap = LanBootstrapCodec.DecodeBootstrap(
+            bootstrapRecord.JsonBytes);
+
+        Assert.Equal(invitation.InvitationId, bootstrap.InvitationId);
+        Assert.Equal(invitation.Token, bootstrap.Token);
+        Assert.Equal(invitation.InvitationHash, bootstrap.InvitationHash);
+
+        await channel.WriteBootstrapResultAsync(
+            LanBootstrapResult.Accepted(bootstrap.SessionId));
     }
 
     private QuarantineStagingStore CreateStore(string name)
