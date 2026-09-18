@@ -70,17 +70,15 @@ public static class Program
         Console.WriteLine("      Defaults to port 42424 (or dynamic ephemeral port if unavailable).");
         Console.WriteLine("      Outputs a pairing invitation link and UTF-8 QR code for instant pairing.\n");
         Console.WriteLine("  glide daemon [--port <port>]");
-        Console.WriteLine("      Run headless background daemon listening continuously for incoming transfers.");
-        Console.WriteLine("      Ideal for systemd user services, home servers, and NAS appliances.\n");
-        Console.WriteLine("  glide send <peer-host> <peer-port> <file-paths...>");
+        Console.WriteLine("      Run a long-lived listener that rotates one-use authenticated pairing invitations.");
+        Console.WriteLine("      Headless auto-consent remains disabled until an explicit trusted-peer policy is configured.\n");
         Console.WriteLine("  glide send --pair <pairing-invitation-uri> <file-paths...>");
-        Console.WriteLine("      Connect to a Glide peer and send files over authenticated TLS 1.3.\n");
+        Console.WriteLine("      Connect to a Glide peer with pinned TLS 1.3 and one-use invitation authentication.\n");
         Console.WriteLine("  glide web [--port <port>] <file-paths...>");
         Console.WriteLine("      Start zero-install web gateway to share files with any browser (iOS, Mac, Linux).\n");
         Console.WriteLine("Examples:");
         Console.WriteLine("  glide receive");
         Console.WriteLine("  glide daemon");
-        Console.WriteLine("  glide send 192.168.1.50 42424 \"C:\\Photos\\vacation.jpg\"");
         Console.WriteLine("  glide send --pair glide://pair/v1#... \"C:\\Photos\\vacation.jpg\"");
         Console.WriteLine("  glide web \"C:\\Photos\\vacation.jpg\"\n");
     }
@@ -205,34 +203,13 @@ public static class Program
                 .Select(ip => ip.ToString())
                 .ToList();
 
-            string presence = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
-            byte[] tokenBytes = RandomNumberGenerator.GetBytes(32);
-            string token = Convert.ToBase64String(tokenBytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
-            byte[] spkiHashBytes = SHA256.HashData(listener.ServerCertificate.PublicKey.ExportSubjectPublicKeyInfo());
-            string spkiSha256 = Convert.ToHexString(spkiHashBytes).ToLowerInvariant();
-            long expiresAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 120;
-
-            var endpoints = ips
-                .Select(ip => new LanEndpoint(ip, boundPort))
-                .Take(4)
-                .ToList();
-            if (endpoints.Count == 0)
-            {
-                endpoints.Add(new LanEndpoint("127.0.0.1", boundPort));
-            }
-
             var stagingStore = new QuarantineStagingStore();
-            var invitation = new LanInvitation(
-                invitationId: Guid.NewGuid().ToString().ToLowerInvariant(),
-                presence: presence,
-                name: Environment.MachineName,
-                platform: GetCurrentPlatform(),
-                endpoints: endpoints,
-                spkiSha256: spkiSha256,
-                token: token,
-                expiresAt: expiresAt.ToString(),
-                ttlSeconds: 120);
-
+            var invitationAuthority = new LanInvitationAuthority();
+            LanInvitation invitation = CreateReceiverInvitation(
+                listener,
+                boundPort,
+                ips,
+                invitationAuthority);
             string pairingUri = InvitationCodec.Encode(invitation);
 
             Console.ForegroundColor = ConsoleColor.Green;
@@ -259,8 +236,7 @@ public static class Program
                 connection,
                 new DesktopReceiveRequest(
                     stagingStore,
-                    invitation,
-                    AllowBootstrapWithoutInvitation: false,
+                    invitationAuthority,
                     LocalDeviceName: Environment.MachineName),
                 interaction);
 
@@ -296,9 +272,16 @@ public static class Program
         using (listener)
         {
             int boundPort = listener.BoundPort;
+            string hostName = Dns.GetHostName();
+            var ips = Dns.GetHostAddresses(hostName)
+                .Where(ip => ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                .Select(ip => ip.ToString())
+                .ToList();
+
             var stagingStore = new QuarantineStagingStore();
             var engine = new DesktopTransferEngine();
             var interaction = new ConsoleDesktopTransferInteraction(isDaemon: true);
+            var invitationAuthority = new LanInvitationAuthority();
 
             Console.ForegroundColor = ConsoleColor.Green;
             Console.WriteLine($"[{DateTime.UtcNow:O}] [DAEMON READY] Glide daemon listening on port {boundPort}");
@@ -327,19 +310,33 @@ public static class Program
                 {
                     try
                     {
-                        var acceptTask = listener.AcceptConnectionAsync(cts.Token);
-                        await using var connection = await acceptTask;
+                        LanInvitation invitation = CreateReceiverInvitation(
+                            listener,
+                            boundPort,
+                            ips,
+                            invitationAuthority);
+                        string pairingUri = InvitationCodec.Encode(invitation);
+
+                        Console.ForegroundColor = ConsoleColor.Cyan;
+                        Console.WriteLine($"[{DateTime.UtcNow:O}] [DAEMON AUTH] One-use pairing invitation (120 s):");
+                        Console.WriteLine(pairingUri);
+                        Console.ResetColor();
+
+                        await using var connection =
+                            await listener.AcceptConnectionAsync(cts.Token);
                         Console.WriteLine($"[{DateTime.UtcNow:O}] [DAEMON] Connection established from {connection.TcpClient.Client.RemoteEndPoint}");
 
                         await engine.ReceiveAsync(
                             connection,
                             new DesktopReceiveRequest(
                                 stagingStore,
-                                Invitation: null,
-                                AllowBootstrapWithoutInvitation: true,
+                                invitationAuthority,
                                 LocalDeviceName: Environment.MachineName),
                             interaction,
                             cts.Token);
+
+                        // A connection attempt consumes or invalidates the current authorization.
+                        invitationAuthority.RevokeActive();
                     }
                     catch (OperationCanceledException) when (cts.IsCancellationRequested)
                     {
@@ -347,6 +344,7 @@ public static class Program
                     }
                     catch (Exception ex)
                     {
+                        invitationAuthority.RevokeActive();
                         Console.ForegroundColor = ConsoleColor.Red;
                         Console.WriteLine($"[{DateTime.UtcNow:O}] [DAEMON ERROR] Connection error: {ex.Message}");
                         Console.ResetColor();
@@ -355,6 +353,7 @@ public static class Program
             }
             finally
             {
+                invitationAuthority.RevokeAll();
                 sigTerm?.Dispose();
             }
 
@@ -365,60 +364,20 @@ public static class Program
 
 
 
-    private static async Task<bool> HandleConnectionTransferAsync(
-        TlsSocketConnection connection,
-        QuarantineStagingStore stagingStore,
-        LanInvitation? invitation,
-        bool isDaemon)
-    {
-        var engine = new DesktopTransferEngine();
-        var result = await engine.ReceiveAsync(
-            connection,
-            new DesktopReceiveRequest(
-                stagingStore,
-                invitation,
-                AllowBootstrapWithoutInvitation: isDaemon,
-                LocalDeviceName: Environment.MachineName),
-            new ConsoleDesktopTransferInteraction(isDaemon));
-
-        return result.Success;
-    }
-
     private static async Task<int> RunSendAsync(string[] args)
     {
-        string? pairUri = null;
-        string host = "127.0.0.1";
-        int port = LanDiscoveryConstants.DefaultPort;
-        var fileArgs = new List<string>();
-
-        if (args.Length >= 2 && args[0] is "--pair" or "-p")
-        {
-            pairUri = args[1];
-            fileArgs.AddRange(args[2..]);
-        }
-        else if (args.Length >= 3)
-        {
-            host = args[0];
-            if (!int.TryParse(args[1], out port))
-            {
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine($"[ERROR] Invalid port: '{args[1]}'");
-                Console.ResetColor();
-                return 1;
-            }
-
-            fileArgs.AddRange(args[2..]);
-        }
-        else
+        if (args.Length < 3 || args[0] is not ("--pair" or "-p"))
         {
             Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine("[ERROR] Insufficient arguments for send.");
+            Console.WriteLine(
+                "[ERROR] Authenticated pairing is required. Use: glide send --pair <pairing-invitation-uri> <file-paths...>");
             Console.ResetColor();
-            PrintUsage();
             return 1;
         }
 
-        if (fileArgs.Count == 0)
+        string pairUri = args[1];
+        var fileArgs = args[2..];
+        if (fileArgs.Length == 0)
         {
             Console.ForegroundColor = ConsoleColor.Red;
             Console.WriteLine("[ERROR] Please provide at least one file path to send.");
@@ -440,40 +399,37 @@ public static class Program
             files.Add(new DesktopTransferFile(filePath));
         }
 
-        LanInvitation? invitation = null;
-        if (pairUri != null)
+        LanInvitation invitation;
+        try
         {
-            try
-            {
-                invitation = InvitationCodec.Decode(pairUri);
-                if (invitation.IsExpired())
-                {
-                    Console.ForegroundColor = ConsoleColor.Red;
-                    Console.WriteLine("[ERROR] Pairing invitation has expired. Request a new QR/pairing link.");
-                    Console.ResetColor();
-                    return 1;
-                }
-
-                var endpoint = invitation.Endpoints.First();
-                host = endpoint.Address;
-                port = endpoint.Port;
-                Console.WriteLine($"[INFO] Decoded pairing invitation for '{invitation.Name}' ({host}:{port})");
-            }
-            catch (Exception ex)
+            invitation = InvitationCodec.Decode(pairUri);
+            if (invitation.IsExpired())
             {
                 Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine($"[ERROR] Invalid pairing link: {ex.Message}");
+                Console.WriteLine(
+                    "[ERROR] Pairing invitation has expired. Request a new QR/pairing link.");
                 Console.ResetColor();
                 return 1;
             }
         }
+        catch (Exception ex)
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"[ERROR] Invalid pairing link: {ex.Message}");
+            Console.ResetColor();
+            return 1;
+        }
+
+        var endpoint = invitation.Endpoints.First();
+        Console.WriteLine(
+            $"[INFO] Authenticated pairing invitation for '{invitation.Name}' ({endpoint.Address}:{endpoint.Port})");
 
         var engine = new DesktopTransferEngine();
         var interaction = new ConsoleDesktopTransferInteraction(isDaemon: false);
         var result = await engine.SendAsync(
             new DesktopSendRequest(
-                host,
-                port,
+                endpoint.Address,
+                endpoint.Port,
                 files,
                 invitation,
                 Environment.MachineName),
@@ -563,6 +519,48 @@ public static class Program
                 Console.ResetColor();
             }
         }
+    }
+
+    private static LanInvitation CreateReceiverInvitation(
+        TlsSocketListener listener,
+        int boundPort,
+        IReadOnlyList<string> localIps,
+        LanInvitationAuthority authority)
+    {
+        byte[] tokenBytes = RandomNumberGenerator.GetBytes(32);
+        string token = Convert.ToBase64String(tokenBytes)
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
+
+        byte[] spkiHashBytes = SHA256.HashData(
+            listener.ServerCertificate.PublicKey.ExportSubjectPublicKeyInfo());
+        string spkiSha256 =
+            Convert.ToHexString(spkiHashBytes).ToLowerInvariant();
+
+        var endpoints = localIps
+            .Select(ip => new LanEndpoint(ip, boundPort))
+            .Take(LanInvitation.MaxEndpoints)
+            .ToList();
+        if (endpoints.Count == 0)
+        {
+            endpoints.Add(new LanEndpoint("127.0.0.1", boundPort));
+        }
+
+        var invitation = new LanInvitation(
+            invitationId: Guid.NewGuid().ToString("D").ToLowerInvariant(),
+            presence: LanDiscoveryConstants.GeneratePresenceId(),
+            name: Environment.MachineName,
+            platform: GetCurrentPlatform(),
+            endpoints: endpoints,
+            spkiSha256: spkiSha256,
+            token: token,
+            expiresAt: (
+                DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 120)
+                .ToString(),
+            ttlSeconds: 120);
+
+        return authority.Publish(invitation);
     }
 
     private static string GetCurrentPlatform() =>
