@@ -21,6 +21,9 @@ import dev.glide.core.domain.PeerId
 import dev.glide.core.domain.SessionId
 import dev.glide.core.domain.SourceHandle
 import dev.glide.core.domain.TransferBatch
+import dev.glide.core.identity.LocalIdentityInitialization
+import dev.glide.core.identity.PersistentTrustManager
+import dev.glide.core.identity.VerifiedPeerIdentity
 import dev.glide.core.pairing.LanInvitation
 import dev.glide.core.ports.ConnectionEvent
 import dev.glide.core.ports.TransferTransport
@@ -47,6 +50,7 @@ class TransferRuntime private constructor(
     private val sessionFactory: TransferSessionFactory?,
     private val discoveryController: ProductionDiscoveryController?,
     private val lanController: ProductionLanController?,
+    private val persistentTrustManager: PersistentTrustManager?,
     @Suppress("unused") private val testInstance: Boolean
 ) {
 
@@ -54,8 +58,15 @@ class TransferRuntime private constructor(
     constructor(
         sessionFactory: TransferSessionFactory,
         discoveryController: ProductionDiscoveryController,
-        lanController: ProductionLanController
-    ) : this(sessionFactory, discoveryController, lanController, false)
+        lanController: ProductionLanController,
+        persistentTrustManager: PersistentTrustManager
+    ) : this(
+        sessionFactory,
+        discoveryController,
+        lanController,
+        persistentTrustManager,
+        false
+    )
 
     private val lock = Any()
 
@@ -69,6 +80,11 @@ class TransferRuntime private constructor(
     private var pairingTransport: TransferTransport? = null
     private var pairingJob: Job? = null
     private var pairingSuccessCallback: ((PeerId) -> Unit)? = null
+
+    private var trustObservationJob: Job? = null
+    private var pendingVerifiedPeer: VerifiedPeerIdentity? = null
+    private val _trustState = MutableStateFlow(TrustRuntimeState())
+    val trustState: StateFlow<TrustRuntimeState> = _trustState.asStateFlow()
 
     private val _transferState = MutableStateFlow<TransferUiState>(TransferUiState.Idle)
     val transferState: StateFlow<TransferUiState> = _transferState.asStateFlow()
@@ -136,6 +152,8 @@ class TransferRuntime private constructor(
             serviceScope = scope
             terminalCallback = onTerminal
         }
+
+        startTrustObservation(scope)
     }
 
     /**
@@ -155,6 +173,10 @@ class TransferRuntime private constructor(
             pairingJob = null
             pairingTransport = null
             pairingSuccessCallback = null
+            trustObservationJob?.cancel()
+            trustObservationJob = null
+            pendingVerifiedPeer = null
+            _trustState.value = _trustState.value.copy(pendingEnrollment = null)
 
             if (coordinatorToStop != null) {
                 captureTerminalSnapshot(coordinatorToStop)
@@ -240,6 +262,14 @@ class TransferRuntime private constructor(
             is TransferRuntimeCommand.RejectOffer -> rejectOffer(command.sessionId, command.reason)
             is TransferRuntimeCommand.Cancel -> cancel(command.sessionId, command.reason)
             is TransferRuntimeCommand.Resume -> resume(command.sessionId)
+            is TransferRuntimeCommand.ApprovePeerEnrollment ->
+                approvePeerEnrollment(command.fingerprintHex)
+            is TransferRuntimeCommand.RejectPeerEnrollment ->
+                rejectPeerEnrollment(command.fingerprintHex)
+            is TransferRuntimeCommand.RevokeTrustedPeer ->
+                revokeTrustedPeer(command.fingerprintHex)
+            TransferRuntimeCommand.RotateLocalIdentity ->
+                rotateLocalIdentity()
             TransferRuntimeCommand.StartDiscovery -> startDiscovery()
             TransferRuntimeCommand.StopDiscovery -> stopDiscovery()
             is TransferRuntimeCommand.NearbyPermissionDenied ->
@@ -886,6 +916,10 @@ class TransferRuntime private constructor(
         pairingTransport = null
         pairingJob = null
         pairingSuccessCallback = null
+        trustObservationJob?.cancel()
+        trustObservationJob = null
+        pendingVerifiedPeer = null
+        _trustState.value = TrustRuntimeState()
         terminalCallback = null
         serviceScope = null
         activePeerDisplayName = "Nearby device"
@@ -919,9 +953,16 @@ class TransferRuntime private constructor(
         internal fun forTesting(
             sessionFactory: TransferSessionFactory? = null,
             discoveryController: ProductionDiscoveryController? = null,
-            lanController: ProductionLanController? = null
+            lanController: ProductionLanController? = null,
+            persistentTrustManager: PersistentTrustManager? = null
         ): TransferRuntime {
-            return TransferRuntime(sessionFactory, discoveryController, lanController, true)
+            return TransferRuntime(
+                sessionFactory,
+                discoveryController,
+                lanController,
+                persistentTrustManager,
+                true
+            )
         }
     }
 }
@@ -980,6 +1021,21 @@ sealed interface TransferRuntimeCommand {
         val reason: String = "USER_CANCELLED"
     ) : TransferRuntimeCommand
     data class Resume(val sessionId: String) : TransferRuntimeCommand
+
+    data class ApprovePeerEnrollment(
+        val fingerprintHex: String
+    ) : TransferRuntimeCommand
+
+    data class RejectPeerEnrollment(
+        val fingerprintHex: String
+    ) : TransferRuntimeCommand
+
+    data class RevokeTrustedPeer(
+        val fingerprintHex: String
+    ) : TransferRuntimeCommand
+
+    data object RotateLocalIdentity : TransferRuntimeCommand
+
     data object StartDiscovery : TransferRuntimeCommand
     data object StopDiscovery : TransferRuntimeCommand
     data class NearbyPermissionDenied(val receiveMode: Boolean) : TransferRuntimeCommand
