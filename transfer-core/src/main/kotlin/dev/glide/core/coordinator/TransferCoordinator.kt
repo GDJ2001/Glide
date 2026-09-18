@@ -91,8 +91,30 @@ class TransferCoordinator(
             String,
             ResumeSourcePreflight
         ) -> Unit)? = null,
+    val persistReceiverResumeAuthority:
+        (suspend (
+            SessionId,
+            dev.glide.core.domain.TransferItem,
+            String
+        ) -> Unit)? = null,
+    val recordReceiverResumeChunk:
+        (suspend (
+            SessionId,
+            ItemId,
+            Long,
+            ByteArray
+        ) -> Boolean)? = null,
+    val purgeResumeItemAuthority:
+        (suspend (
+            SessionId,
+            ItemId
+        ) -> Unit)? = null,
     val enableTrueResumeCapability: Boolean = false
 ) {
+    private class ResumeJournalException(
+        message: String
+    ) : IllegalStateException(message)
+
     @Volatile
     private var boundSessionId: SessionId? = sessionId
 
@@ -254,22 +276,102 @@ class TransferCoordinator(
      */
      fun acceptOffer() {
         scope.launch {
-            val batch = _state.value.batch
+            val batch =
+                _state.value.batch
             if (batch != null) {
-                val hasSpace = withContext(ioDispatcher) {
-                    receiveStore.hasAvailableSpace(batch.totalBytes)
-                }
+                val hasSpace =
+                    withContext(
+                        ioDispatcher
+                    ) {
+                        receiveStore
+                            .hasAvailableSpace(
+                                batch.totalBytes
+                            )
+                    }
                 if (!hasSpace) {
                     dispatch(
-                        ReducerEvent.SubmitOfferDecision(
-                            accepted = false,
-                            rejectionCode = "INSUFFICIENT_STORAGE",
-                            timestampMs = clock()
-                        )
+                        ReducerEvent
+                            .SubmitOfferDecision(
+                                accepted = false,
+                                rejectionCode =
+                                    "INSUFFICIENT_STORAGE",
+                                timestampMs =
+                                    clock()
+                            )
                     )
                     return@launch
                 }
+
+                if (isTrueResumeNegotiated()) {
+                    val persist =
+                        persistReceiverResumeAuthority
+                    if (persist == null ||
+                        recordReceiverResumeChunk ==
+                            null
+                    ) {
+                        dispatch(
+                            ReducerEvent.TransportFailure(
+                                TransferFailure
+                                    .UnsupportedProtocol(
+                                        "resume-v1 was negotiated without receiver journal authority"
+                                    ),
+                                clock()
+                            )
+                        )
+                        return@launch
+                    }
+
+                    val peerFingerprint =
+                        authenticatedPeerFingerprintHex
+                    if (peerFingerprint == null) {
+                        dispatch(
+                            ReducerEvent.TransportFailure(
+                                TransferFailure
+                                    .AuthenticationMismatch(
+                                        "resume-v1 requires a mutually authenticated persistent peer"
+                                    ),
+                                clock()
+                            )
+                        )
+                        return@launch
+                    }
+
+                    try {
+                        for (item in
+                            batch.items
+                        ) {
+                            if (itemHasResumeMetadata(
+                                    item
+                                )
+                            ) {
+                                persist(
+                                    sessionId,
+                                    item,
+                                    peerFingerprint
+                                )
+                            }
+                        }
+                    } catch (error: Exception) {
+                        dispatch(
+                            ReducerEvent.TransportFailure(
+                                TransferFailure
+                                    .WriteFailure(
+                                        "Failed to initialize durable resume journal: " +
+                                            (
+                                                error.message
+                                                    ?: error
+                                                        .javaClass
+                                                        .simpleName
+                                                )
+                                    ),
+                                clock()
+                            )
+                        )
+                        return@launch
+                    }
+                }
             }
+
             dispatch(
                 ReducerEvent.SubmitOfferDecision(
                     accepted = true,
@@ -436,9 +538,22 @@ class TransferCoordinator(
                         .toList()
                 ).toMutableSet()
 
+        val resumeRuntimeAvailable =
+            when (role) {
+                DeviceRole.Sender ->
+                    resumeSourcePreflight !=
+                        null &&
+                        persistSenderResumeAuthority !=
+                        null
+                DeviceRole.Receiver ->
+                    persistReceiverResumeAuthority !=
+                        null &&
+                        recordReceiverResumeChunk !=
+                        null
+            }
+
         if (enableTrueResumeCapability &&
-            resumeSourcePreflight != null &&
-            persistSenderResumeAuthority != null &&
+            resumeRuntimeAvailable &&
             NegotiationConstants
                 .CAPABILITY_PERSISTENT_IDENTITY_V1 in
                 optional
@@ -450,6 +565,23 @@ class TransferCoordinator(
 
         return optional.sorted()
     }
+
+    private fun isTrueResumeNegotiated(): Boolean =
+        NegotiationConstants
+            .CAPABILITY_TRUE_RESUME_V1 in
+            (
+                _state.value.negotiated
+                    ?.capabilities
+                    ?: emptySet()
+                )
+
+    private fun itemHasResumeMetadata(
+        item:
+            dev.glide.core.domain.TransferItem
+    ): Boolean =
+        item.resumeChunkSize != null &&
+            item.resumeChunkRootHashHex !=
+                null
 
     private fun identityReadyForOffers(): Boolean {
         if (expectedPeerFingerprintHex != null &&
@@ -1106,8 +1238,38 @@ class TransferCoordinator(
                 }
                 MessageTypes.OFFER_PAGE -> {
                     requireIdentityReadyForOffer()
-                    val page = ProtocolCodec.decodeBody<dev.glide.core.protocol.OfferPageBody>(envelope)
-                    dispatch(ReducerEvent.OfferPageReceived(page, envelope.messageId, envelope.seq, now))
+                    val page =
+                        ProtocolCodec
+                            .decodeBody<
+                                dev.glide.core.protocol
+                                    .OfferPageBody
+                                >(envelope)
+                    val carriesResumeMetadata =
+                        page.items.any {
+                            it.rootHash != null ||
+                                it.chunkSize !=
+                                    null
+                        }
+                    if (carriesResumeMetadata &&
+                        !isTrueResumeNegotiated()
+                    ) {
+                        throw dev.glide.core.protocol
+                            .ProtocolViolationException(
+                                TransferFailure
+                                    .UnsupportedProtocol(
+                                        "OFFER_PAGE carried resume metadata without negotiated resume-v1"
+                                    )
+                            )
+                    }
+                    dispatch(
+                        ReducerEvent
+                            .OfferPageReceived(
+                                page,
+                                envelope.messageId,
+                                envelope.seq,
+                                now
+                            )
+                    )
                 }
                 MessageTypes.OFFER_END -> {
                     requireIdentityReadyForOffer()
