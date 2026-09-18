@@ -458,7 +458,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         }
     }
 
-    private async Task ExecuteSaveSettingsAsync()
+    internal async Task ExecuteSaveSettingsAsync()
     {
         try
         {
@@ -495,7 +495,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         }
     }
 
-    private async Task ExecuteClearHistoryAsync()
+    internal async Task ExecuteClearHistoryAsync()
     {
         try
         {
