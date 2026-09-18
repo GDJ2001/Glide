@@ -42,6 +42,12 @@ data class ResumableSessionEntity(
     @ColumnInfo(name = "item_name")
     val itemName: String,
 
+    @ColumnInfo(name = "mime_type")
+    val mimeType: String,
+
+    @ColumnInfo(name = "relative_path")
+    val relativePath: String?,
+
     @ColumnInfo(name = "peer_fingerprint")
     val peerFingerprintHex: String,
 
