@@ -335,6 +335,172 @@ public sealed class Hard013DesktopSessionTests : IDisposable
         await serverTask.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
+    [Fact]
+    public async Task Receiver_InboundSequenceGap_FailsClosedBeforeConsent()
+    {
+        using var listener = new TlsSocketListener(0);
+        LanInvitation invitation = CreateInvitation(listener);
+        var interaction = new CountingInteraction();
+        var store = new QuarantineStagingStore(
+            stagingRoot: Path.Combine(_root, "gap-staging"),
+            destinationRoot: Path.Combine(_root, "gap-downloads"));
+
+        var receiverTask = Task.Run(async () =>
+        {
+            await using var connection = await listener.AcceptConnectionAsync();
+            return await new DesktopTransferEngine().ReceiveAsync(
+                connection,
+                new DesktopReceiveRequest(
+                    store,
+                    new LanInvitationAuthority(invitation),
+                    "Gap Receiver"),
+                interaction);
+        });
+
+        var client = new TlsSocketClient();
+        await using var senderConnection = await client.ConnectAsync(
+            "127.0.0.1",
+            listener.BoundPort,
+            invitation.SpkiSha256);
+        using var channel = new LanRecordChannel(senderConnection.SslStream);
+
+        string sessionId = NewUuid();
+        await channel.WriteBootstrapAsync(new LanBootstrapMessage(
+            invitation.InvitationId,
+            invitation.Token,
+            invitation.InvitationHash,
+            sessionId));
+        Assert.True((await channel.ReadBootstrapResultAsync()).IsAccepted);
+
+        await channel.WriteEnvelopeAsync(CreateHello(sessionId, 1));
+        await channel.ReadEnvelopeAsync(); // HELLO_ACK seq=1
+
+        await channel.WriteEnvelopeAsync(
+            new Envelope(
+                1,
+                MessageTypes.OfferBegin,
+                new SessionId(sessionId),
+                NewMessageId(),
+                3,
+                new JsonObject
+                {
+                    ["batchId"] = NewUuid(),
+                    ["itemCount"] = 1,
+                    ["totalBytes"] = "0",
+                    ["pageCount"] = 1
+                }));
+
+        DesktopTransferResult receiverResult =
+            await receiverTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.False(receiverResult.Success);
+        Assert.Equal(0, interaction.ConfirmOfferCalls);
+        Assert.Contains("Expected inbound seq 2", receiverResult.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Sender_LostBatchResult_UsesTerminalReceiptDeadline()
+    {
+        string path = Path.Combine(_root, "terminal-timeout.bin");
+        await File.WriteAllBytesAsync(path, Array.Empty<byte>());
+
+        using var listener = new TlsSocketListener(0);
+        LanInvitation invitation = CreateInvitation(listener);
+
+        var serverTask = Task.Run(async () =>
+        {
+            await using var connection = await listener.AcceptConnectionAsync();
+            using var channel = new LanRecordChannel(connection.SslStream);
+            LanBootstrapMessage bootstrap = await AcceptBootstrapAsync(channel);
+
+            await channel.ReadEnvelopeAsync(); // HELLO
+            await channel.WriteEnvelopeAsync(CreateHelloAck(bootstrap.SessionId, 1));
+
+            Envelope begin = await channel.ReadEnvelopeAsync();
+            await channel.ReadEnvelopeAsync(); // OFFER_PAGE
+            await channel.ReadEnvelopeAsync(); // OFFER_END
+            string batchId = begin.Body["batchId"]!.ToString();
+
+            await channel.WriteEnvelopeAsync(
+                new Envelope(
+                    1,
+                    MessageTypes.OfferDecision,
+                    new SessionId(bootstrap.SessionId),
+                    NewMessageId(),
+                    2,
+                    new JsonObject
+                    {
+                        ["batchId"] = batchId,
+                        ["accepted"] = true
+                    }));
+
+            Envelope itemStart = await channel.ReadEnvelopeAsync();
+            string itemId = itemStart.Body["itemId"]!.ToString();
+
+            await channel.WriteEnvelopeAsync(
+                new Envelope(
+                    1,
+                    MessageTypes.ItemReady,
+                    new SessionId(bootstrap.SessionId),
+                    NewMessageId(),
+                    3,
+                    new JsonObject
+                    {
+                        ["batchId"] = batchId,
+                        ["itemId"] = itemId
+                    }));
+
+            LanRecord? streamEnd = await channel.ReadRecordAsync();
+            Assert.IsType<LanRecord.StreamEnd>(streamEnd);
+
+            Envelope itemEnd = await channel.ReadEnvelopeAsync();
+            Assert.Equal(MessageTypes.ItemEnd, itemEnd.Type);
+
+            await channel.WriteEnvelopeAsync(
+                new Envelope(
+                    1,
+                    MessageTypes.ItemResult,
+                    new SessionId(bootstrap.SessionId),
+                    NewMessageId(),
+                    4,
+                    new JsonObject
+                    {
+                        ["batchId"] = batchId,
+                        ["itemId"] = itemId,
+                        ["status"] = "verified",
+                        ["sizeBytes"] = "0",
+                        ["sha256"] = itemEnd.Body["sha256"]!.ToString()
+                    }));
+
+            Envelope batchEnd = await channel.ReadEnvelopeAsync();
+            Assert.Equal(MessageTypes.BatchEnd, batchEnd.Type);
+
+            // Intentionally omit BATCH_RESULT to prove the terminal receipt deadline.
+            await Task.Delay(TimeSpan.FromSeconds(2));
+        });
+
+        var deadlines = DesktopProtocolDeadlines.Default with
+        {
+            BatchResult = TimeSpan.FromMilliseconds(200)
+        };
+
+        DesktopTransferResult result =
+            await new DesktopTransferEngine(deadlines).SendAsync(
+                new DesktopSendRequest(
+                    "127.0.0.1",
+                    listener.BoundPort,
+                    [new DesktopTransferFile(path)],
+                    invitation,
+                    "Terminal Timeout Sender"),
+                new PassiveInteraction());
+
+        Assert.False(result.Success);
+        Assert.Contains("BATCH_RESULT", result.Message, StringComparison.Ordinal);
+        Assert.Contains("deadline", result.Message, StringComparison.OrdinalIgnoreCase);
+
+        await serverTask.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
     private static async Task<LanBootstrapMessage> AcceptBootstrapAsync(
         LanRecordChannel channel)
     {
