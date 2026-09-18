@@ -160,6 +160,14 @@ function Expected-Pair([string]$Pair) {
     return @($Pair -split "-")
 }
 
+function Get-RunProperty($Run,[string]$Name,[string]$Context) {
+    if ($null -eq $Run.PSObject.Properties[$Name]) {
+        Add-Failure "$Context missing property '$Name'."
+        return $null
+    }
+    return $Run.$Name
+}
+
 function Verify-LogPaths($Run,[string]$Context) {
     if ($null -eq $Run.PSObject.Properties["logs"]) {
         Add-Failure "$Context has no logs array."
@@ -219,8 +227,8 @@ foreach ($case in $required) {
         }
     }
     else {
-        $actualPair = @($sender,$receiver | Sort-Object)
-        $expectedPair = @(Expected-Pair $case.pair | Sort-Object)
+        $actualPair = @(@($sender,$receiver) | Sort-Object)
+        $expectedPair = @(@(Expected-Pair $case.pair) | Sort-Object)
         if (($actualPair -join ",") -ne ($expectedPair -join ",")) {
             Add-Failure "$ctx must exercise platform pair $($case.pair), found $sender -> $receiver."
         }
@@ -249,67 +257,67 @@ foreach ($case in $required) {
     Verify-LogPaths $run $ctx
 
     if ($case.kind -eq "success") {
-        if ($run.corpusManifestSha256 -ne $corpusSha) {
+        if ((Get-RunProperty $run "corpusManifestSha256" $ctx) -ne $corpusSha) {
             Add-Failure "$ctx corpus manifest hash does not match the audited corpus."
         }
-        if ([int]$run.itemCount -lt 35 -or [int]$run.offerPageCount -lt 2) {
+        if ([int](Get-RunProperty $run "itemCount" $ctx) -lt 35 -or [int](Get-RunProperty $run "offerPageCount" $ctx) -lt 2) {
             Add-Failure "$ctx did not prove a >32-item multi-page batch."
         }
-        if ($run.allItemHashesMatch -ne $true) {
+        if ((Get-RunProperty $run "allItemHashesMatch" $ctx) -ne $true) {
             Add-Failure "$ctx does not prove byte-identical per-item hashes."
         }
-        if ($run.terminalBatchStatus -ne "success") {
+        if ((Get-RunProperty $run "terminalBatchStatus" $ctx) -ne "success") {
             Add-Failure "$ctx terminal batch status is not success."
         }
     }
 
     if ($case.kind -eq "reject") {
-        if ($run.offerRejected -ne $true) {
+        if ((Get-RunProperty $run "offerRejected" $ctx) -ne $true) {
             Add-Failure "$ctx does not prove explicit offer rejection."
         }
-        if ($run.terminalBatchStatus -eq "success") {
+        if ((Get-RunProperty $run "terminalBatchStatus" $ctx) -eq "success") {
             Add-Failure "$ctx falsely reports successful batch status after rejection."
         }
-        if ($run.noUnverifiedCommit -ne $true) {
+        if ((Get-RunProperty $run "noUnverifiedCommit" $ctx) -ne $true) {
             Add-Failure "$ctx does not prove no unverified file was committed."
         }
     }
 
     if ($case.kind -eq "cancel") {
-        if ($run.cancelObserved -ne $true) {
+        if ((Get-RunProperty $run "cancelObserved" $ctx) -ne $true) {
             Add-Failure "$ctx does not prove active-transfer cancellation."
         }
-        if ($run.terminalBatchStatus -eq "success") {
+        if ((Get-RunProperty $run "terminalBatchStatus" $ctx) -eq "success") {
             Add-Failure "$ctx falsely reports successful batch status after cancellation."
         }
-        if ($run.noUnverifiedCommit -ne $true) {
+        if ((Get-RunProperty $run "noUnverifiedCommit" $ctx) -ne $true) {
             Add-Failure "$ctx does not prove partial/unverified output was withheld."
         }
     }
 
     if ($case.kind -eq "wrong-auth") {
-        if ($run.authenticationRejected -ne $true) {
+        if ((Get-RunProperty $run "authenticationRejected" $ctx) -ne $true) {
             Add-Failure "$ctx does not prove authentication rejection."
         }
-        if ($run.terminalBatchStatus -eq "success") {
+        if ((Get-RunProperty $run "terminalBatchStatus" $ctx) -eq "success") {
             Add-Failure "$ctx falsely reports successful batch status after authentication failure."
         }
-        if ([long]$run.payloadBytesAuthorized -ne 0) {
+        if ([long](Get-RunProperty $run "payloadBytesAuthorized" $ctx) -ne 0) {
             Add-Failure "$ctx authorized payload bytes despite failed authentication."
         }
     }
 
     if ($case.kind -eq "reconnect") {
-        if ($run.freshInvitation -ne $true) {
+        if ((Get-RunProperty $run "freshInvitation" $ctx) -ne $true) {
             Add-Failure "$ctx did not use a fresh invitation after the prior terminal failure."
         }
-        if ($run.previousSessionTerminalNotSuccess -ne $true) {
+        if ((Get-RunProperty $run "previousSessionTerminalNotSuccess" $ctx) -ne $true) {
             Add-Failure "$ctx does not bind reconnect proof to a previously non-successful session."
         }
-        if ($run.terminalBatchStatus -ne "success") {
+        if ((Get-RunProperty $run "terminalBatchStatus" $ctx) -ne "success") {
             Add-Failure "$ctx reconnect did not reach truthful success."
         }
-        if ($run.allItemHashesMatch -ne $true) {
+        if ((Get-RunProperty $run "allItemHashesMatch" $ctx) -ne $true) {
             Add-Failure "$ctx reconnect does not prove byte-identical output."
         }
     }
