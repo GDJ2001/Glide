@@ -55,6 +55,8 @@
                                 Command="{Binding SwitchTabCommand}" CommandParameter="Receive" Width="90" />
                         <Button Style="{StaticResource SecondaryButtonStyle}" Margin="4,0" Content="History"
                                 Command="{Binding SwitchTabCommand}" CommandParameter="History" Width="90" />
+                        <Button Style="{StaticResource SecondaryButtonStyle}" Margin="4,0" Content="Settings"
+                                Command="{Binding SwitchTabCommand}" CommandParameter="Settings" Width="90" />
                     </StackPanel>
 
                     <!-- Quick Action: Downloads Folder -->
@@ -326,8 +328,13 @@
                                 <RowDefinition Height="*" />
                             </Grid.RowDefinitions>
 
-                            <TextBlock Grid.Row="0" Text="Transfer History" FontSize="16" FontWeight="Bold"
-                                       Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,12" />
+                            <DockPanel Grid.Row="0" Margin="0,0,0,12">
+                                <TextBlock Text="Transfer History" FontSize="16" FontWeight="Bold"
+                                           Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center" />
+                                <Button Style="{StaticResource SecondaryButtonStyle}" Content="Clear History"
+                                        Command="{Binding ClearHistoryCommand}" HorizontalAlignment="Right"
+                                        Padding="10,4" />
+                            </DockPanel>
 
                             <ListBox Grid.Row="1" ItemsSource="{Binding HistoryItems}" Background="Transparent"
                                      BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
@@ -365,6 +372,64 @@
                         </Grid>
                     </Border>
                 </Grid>
+
+                <!-- SETTINGS VIEW -->
+                <Grid x:Name="SettingsView">
+                    <Grid.Style>
+                        <Style TargetType="Grid">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding CurrentTab}" Value="Settings">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Grid.Style>
+
+                    <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource CardBorderBrush}"
+                            BorderThickness="1" CornerRadius="12" Padding="20">
+                        <StackPanel MaxWidth="620" HorizontalAlignment="Center" VerticalAlignment="Top">
+                            <TextBlock Text="Desktop Settings" FontSize="18" FontWeight="Bold"
+                                       Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,6" />
+                            <TextBlock Text="These preferences are stored locally on this device."
+                                       Foreground="{StaticResource TextSecondaryBrush}" FontSize="12"
+                                       Margin="0,0,0,20" />
+
+                            <TextBlock Text="Device name" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,6" />
+                            <TextBox Style="{StaticResource ModernTextBoxStyle}"
+                                     Text="{Binding DeviceName, UpdateSourceTrigger=PropertyChanged}"
+                                     Margin="0,0,0,16" />
+
+                            <TextBlock Text="Receive directory" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,6" />
+                            <TextBox Style="{StaticResource ModernTextBoxStyle}"
+                                     Text="{Binding ReceiveDirectory, UpdateSourceTrigger=PropertyChanged}"
+                                     Margin="0,0,0,6" />
+                            <TextBlock Text="Verified incoming files are committed here. The folder must be an absolute local path."
+                                       Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"
+                                       TextWrapping="Wrap" Margin="0,0,0,16" />
+
+                            <TextBlock Text="History retention (items)" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,6" />
+                            <TextBox Style="{StaticResource ModernTextBoxStyle}" Width="140"
+                                     HorizontalAlignment="Left"
+                                     Text="{Binding HistoryLimit, UpdateSourceTrigger=PropertyChanged}"
+                                     Margin="0,0,0,6" />
+                            <TextBlock Text="Allowed range: 1–1000 verified items."
+                                       Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"
+                                       Margin="0,0,0,20" />
+
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                <Button Style="{StaticResource SecondaryButtonStyle}" Content="Clear History"
+                                        Command="{Binding ClearHistoryCommand}" Margin="0,0,10,0"
+                                        Padding="14,8" />
+                                <Button Style="{StaticResource PrimaryButtonStyle}" Content="Save Settings"
+                                        Command="{Binding SaveSettingsCommand}" Padding="18,8" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </Grid>
             </Grid>
 
             <!-- 3. Active Transfer Monitoring Bottom Bar -->
@@ -395,6 +460,79 @@
                 </Grid>
             </Border>
         </Grid>
+
+        <!-- Explicit Incoming Offer Consent Modal -->
+        <Border Background="#CC070B16"
+                Visibility="{Binding IsIncomingOfferModalVisible, Converter={StaticResource BoolToVis}}"
+                HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+            <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource CardBorderBrush}"
+                    BorderThickness="1" CornerRadius="16" Padding="26" Width="520"
+                    MaxHeight="560" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Margin="0,0,0,12">
+                        <TextBlock Text="Incoming file offer" FontSize="18" FontWeight="Bold"
+                                   Foreground="{StaticResource TextPrimaryBrush}" HorizontalAlignment="Center" />
+                        <TextBlock Text="{Binding IncomingOfferPeerName}" FontSize="13"
+                                   Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Center"
+                                   Margin="0,4,0,0" />
+                    </StackPanel>
+
+                    <TextBlock Grid.Row="1" Text="{Binding IncomingOfferSummary}" FontSize="13"
+                               Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center"
+                               Margin="0,0,0,12" />
+
+                    <ListBox Grid.Row="2" ItemsSource="{Binding IncomingOfferItems}" MaxHeight="280"
+                             Background="Transparent" BorderThickness="0"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled" Margin="0,0,0,18">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="{StaticResource SurfaceHighBrush}" CornerRadius="7"
+                                        Padding="10,7" Margin="0,3">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold"
+                                                       Foreground="{StaticResource TextPrimaryBrush}"
+                                                       TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding RelativePath}" FontSize="10"
+                                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                                       TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="1" Text="{Binding FormattedSize}"
+                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   VerticalAlignment="Center" Margin="12,0,0,0" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <Grid Grid.Row="3">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="14" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Button Grid.Column="0" Style="{StaticResource SecondaryButtonStyle}"
+                                Content="Reject" Command="{Binding RejectIncomingOfferCommand}"
+                                Padding="0,10" />
+                        <Button Grid.Column="2" Style="{StaticResource PrimaryButtonStyle}"
+                                Content="Accept &amp; Receive" Command="{Binding AcceptIncomingOfferCommand}"
+                                Padding="0,10" />
+                    </Grid>
+                </Grid>
+            </Border>
+        </Border>
 
         <!-- SAS Mutual Verification Modal Overlay -->
         <Border Background="#CC070B16" Visibility="{Binding IsSasModalVisible, Converter={StaticResource BoolToVis}}"
