@@ -12,12 +12,11 @@ class LanFramingAndSecurityTest {
 
     @Test
     fun testMdnsRecordAttributes() {
+        val presenceId = "00112233445566778899aabbccddeeff"
         val attrs = LanMdnsRecord.createTxtAttributes(
-            version = 1,
+            presenceId = presenceId,
             deviceName = "Bob's Workstation",
-            deviceType = "desktop",
-            certFingerprintPrefix = "a1b2c3d4e5f6",
-            capabilityMask = 0x07
+            deviceType = "desktop"
         )
 
         val record = LanMdnsRecord(
@@ -28,10 +27,15 @@ class LanFramingAndSecurityTest {
         )
 
         assertEquals(1, record.protocolVersion)
+        assertEquals(1, record.transportProfileVersion)
+        assertTrue(record.invitationRequired)
+        assertEquals(presenceId, record.presenceId)
         assertEquals("Bob's Workstation", record.deviceName)
         assertEquals("desktop", record.deviceType)
-        assertEquals("a1b2c3d4", record.certFingerprintPrefix) // Capped at 8 chars
-        assertEquals(0x07, record.capabilityMask)
+        assertEquals(setOf("v", "tv", "q", "p", "dn", "dt"), attrs.keys)
+        assertTrue("fp" !in attrs)
+        assertTrue("cap" !in attrs)
+        assertTrue("alpn" !in attrs)
     }
 
     @Test
