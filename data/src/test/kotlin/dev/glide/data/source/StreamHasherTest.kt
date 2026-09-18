@@ -166,4 +166,135 @@ class StreamHasherTest {
         assertEquals(expectedDigest, result.digest)
         assertArrayEquals(payload, outputStream.toByteArray())
     }
+
+
+    @Test
+    fun copyAndHashWithChunks_recordsExactContiguousChunksInSinglePass() =
+        runTest {
+            val payload =
+                "ABCDEFGHIJ"
+                    .toByteArray(
+                        Charsets.UTF_8
+                    )
+            val output =
+                ByteArrayOutputStream()
+            val chunks =
+                mutableListOf<
+                    Pair<Long, ByteArray>
+                >()
+
+            val result =
+                StreamHasher
+                    .copyAndHashWithChunks(
+                        inputStream =
+                            ByteArrayInputStream(
+                                payload
+                            ),
+                        outputStream =
+                            output,
+                        expectedBytes =
+                            payload.size.toLong(),
+                        chunkSize = 4,
+                        bufferSize = 3,
+                        onChunk = {
+                            index,
+                            bytes ->
+                            chunks +=
+                                index to
+                                    bytes.copyOf()
+                        }
+                    )
+
+            assertEquals(
+                Sha256Digest.compute(
+                    payload
+                ),
+                result.digest
+            )
+            assertEquals(
+                payload.size.toLong(),
+                result.sizeBytes
+            )
+            assertArrayEquals(
+                payload,
+                output.toByteArray()
+            )
+            assertEquals(
+                listOf(
+                    0L,
+                    1L,
+                    2L
+                ),
+                chunks.map {
+                    it.first
+                }
+            )
+            assertArrayEquals(
+                "ABCD".toByteArray(),
+                chunks[0].second
+            )
+            assertArrayEquals(
+                "EFGH".toByteArray(),
+                chunks[1].second
+            )
+            assertArrayEquals(
+                "IJ".toByteArray(),
+                chunks[2].second
+            )
+        }
+
+    @Test
+    fun copyAndHashWithChunks_callbackFailure_closesInputAndStopsBeforeSuccess() =
+        runTest {
+            var closed = false
+            val input =
+                object :
+                    ByteArrayInputStream(
+                        ByteArray(16) {
+                            it.toByte()
+                        }
+                    ) {
+                    override fun close() {
+                        closed = true
+                        super.close()
+                    }
+                }
+
+            var failed = false
+            try {
+                StreamHasher
+                    .copyAndHashWithChunks(
+                        inputStream = input,
+                        outputStream =
+                            ByteArrayOutputStream(),
+                        expectedBytes = 16L,
+                        chunkSize = 4,
+                        bufferSize = 4,
+                        onChunk = {
+                            index,
+                            _ ->
+                            if (index == 1L) {
+                                error(
+                                    "journal failure"
+                                )
+                            }
+                        }
+                    )
+            } catch (
+                error: IllegalStateException
+            ) {
+                failed =
+                    error.message ==
+                        "journal failure"
+            }
+
+            assertTrue(
+                "Chunk callback failure must propagate",
+                failed
+            )
+            assertTrue(
+                "Input must close on chunk journal failure",
+                closed
+            )
+        }
 }
