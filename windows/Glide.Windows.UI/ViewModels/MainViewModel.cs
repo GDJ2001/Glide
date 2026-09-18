@@ -46,6 +46,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     private int _listenerPortPreference = LanDiscoveryConstants.DefaultPort;
 
     private TlsSocketListener? _listener;
+    private CancellationTokenSource? _invitationRotationCts;
 
     private readonly MdnsDiscoveryService _mdnsService = new();
     public ObservableCollection<DiscoveredPeerViewModel> DiscoveredPeers { get; } = [];
@@ -441,6 +442,9 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     {
         if (IsListening)
         {
+            _invitationRotationCts?.Cancel();
+            _invitationRotationCts?.Dispose();
+            _invitationRotationCts = null;
             _mdnsService.StopAdvertising();
             _invitationAuthority.RevokeActive();
             ActiveInvitationUri = "";
@@ -465,9 +469,47 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         IsListening = true;
 
         RefreshReceiverInvitation();
+        _invitationRotationCts?.Dispose();
+        _invitationRotationCts =
+            new CancellationTokenSource();
 
         StatusMessage = $"Listening on port {ListeningPort}";
+        _ = Task.Run(
+            async () =>
+                await RunInvitationRotationLoopAsync(
+                    _invitationRotationCts.Token));
         _ = Task.Run(async () => await RunListenerLoopAsync());
+    }
+
+    private async Task RunInvitationRotationLoopAsync(
+        CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(
+                    TimeSpan.FromSeconds(100),
+                    cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+
+            RunOnUi(() =>
+            {
+                if (IsListening &&
+                    _listener != null &&
+                    !IsTransferActive)
+                {
+                    _invitationAuthority.RevokeActive();
+                    RefreshReceiverInvitation();
+                    StatusMessage =
+                        "Pairing invitation rotated.";
+                }
+            });
+        }
     }
 
     private async Task RunListenerLoopAsync()
