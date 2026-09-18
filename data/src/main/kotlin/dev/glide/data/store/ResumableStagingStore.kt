@@ -595,16 +595,23 @@ class ResumableStagingStore(
                     }
                 }
 
-            promoteVerifiedFile(
-                source = assembled,
-                destination =
-                    destinationFile,
-                expectedSize =
-                    journal.totalBytes,
-                expectedSha256Hex =
+            val promoted =
+                promoteVerifiedFile(
+                    source = assembled,
+                    destination =
+                        destinationFile,
+                    expectedSize =
+                        journal.totalBytes,
+                    expectedSha256Hex =
+                        journal
+                            .wholeFileSha256Hex
+                )
+            if (promoted) {
+                purgeInternal(
                     journal
-                        .wholeFileSha256Hex
-            )
+                )
+            }
+            promoted
         } finally {
             if (assembled.exists()) {
                 assembled.delete()
@@ -623,6 +630,49 @@ class ResumableStagingStore(
             purgeInternal(it)
         }
     }
+
+    suspend fun purgeOriginalSession(
+        originalSessionId: String
+    ): Int = withContext(ioDispatcher) {
+        val matching =
+            resumableSessionDao
+                .getAllResumableSessions()
+                .filter {
+                    it.originalSessionId ==
+                        originalSessionId
+                }
+        matching.forEach {
+            purgeInternal(it)
+        }
+        matching.size
+    }
+
+    suspend fun purgeForPeer(
+        peerFingerprintHex: String
+    ): Int = withContext(ioDispatcher) {
+        val matching =
+            resumableSessionDao
+                .getAllResumableSessions()
+                .filter {
+                    it.peerFingerprintHex ==
+                        peerFingerprintHex
+                }
+        matching.forEach {
+            purgeInternal(it)
+        }
+        matching.size
+    }
+
+    suspend fun purgeAll(): Int =
+        withContext(ioDispatcher) {
+            val all =
+                resumableSessionDao
+                    .getAllResumableSessions()
+            all.forEach {
+                purgeInternal(it)
+            }
+            all.size
+        }
 
     suspend fun purgeExpiredSessions(
         currentMs: Long =
