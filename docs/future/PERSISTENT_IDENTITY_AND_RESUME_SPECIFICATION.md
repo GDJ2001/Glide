@@ -325,6 +325,76 @@ Stable codes:
 
 Free-form remote rejection reasons are not protocol authority.
 
+### 7.4 Remaining-byte stream after `RESUME_ACCEPT`
+
+Resume does **not** synthesize an `OFFER_BEGIN`/batch or reuse ordinary `ITEM_START` reducer
+state. After an exact `RESUME_ACCEPT`, the existing authenticated bulk-stream transport is reused
+with resume-specific control messages in the same active-session sequence space.
+
+#### `RESUME_STREAM_START`
+
+Sender -> receiver:
+
+- `profile`: `resume-v1`
+- `requestMessageId`: exact accepted `RESUME_REQUEST` message ID
+- `originalSessionId`
+- `itemId`
+- `bulkRef`
+- `startChunkIndex`
+- `startByteOffset`: decimal string
+- `remainingBytes`: decimal string; exactly `totalSizeBytes - startByteOffset`
+- `chunkSize`
+- `totalSizeBytes`: decimal string
+- `chunkRootHashHex`
+- `wholeFileSha256Hex`: sender's freshly revalidated complete-source digest
+
+The receiver requires every authority field to match the accepted request and its revalidated
+journal. A stream start is invalid when no bytes remain; a completely retained item is finalized
+locally without opening a new bulk stream.
+
+#### `RESUME_STREAM_READY`
+
+Receiver -> sender after it has registered the exact expected bulk reference and remaining byte
+count:
+
+- `profile`
+- `requestMessageId`
+- `originalSessionId`
+- `itemId`
+- `bulkRef`
+
+The sender MUST NOT deliver payload bytes before this control is received and correlated.
+
+The bulk stream then carries **only** bytes in `[startByteOffset, totalSizeBytes)`. The normal
+transport's authenticated DATA/STREAM_END framing, byte-count limits, cancellation, and backpressure
+remain authoritative.
+
+#### `RESUME_RESULT`
+
+Receiver -> sender after retained-prefix revalidation, resumed-chunk verification, complete chunk-root
+recomputation, and whole-file SHA-256 verification.
+
+Verified result:
+
+- `profile`
+- `requestMessageId`
+- `originalSessionId`
+- `itemId`
+- `status`: `verified`
+- `sizeBytes`: complete file size
+- `sha256`: complete verified digest
+
+Failed result:
+
+- same correlation fields;
+- `status`: `failed`;
+- `code`: a stable protocol wire-error code;
+- no `sizeBytes` or `sha256`.
+
+A verified result permits the original sender journal to be purged. Disconnect or failure before a
+verified result leaves only the still-valid bounded journal, subject to TTL/trust/storage-pressure
+rules.
+
 ---
 
 ## 8. Chunk integrity and final verification
