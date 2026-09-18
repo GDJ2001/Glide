@@ -179,6 +179,7 @@ class TransferRuntime private constructor(
             rateTracker.reset()
         }
         coordinatorToStop?.stop()
+        discoveryController?.stopAdvertising()
     }
 
     fun isServiceAttached(): Boolean = synchronized(lock) { serviceScope != null }
@@ -629,6 +630,7 @@ class TransferRuntime private constructor(
         _pairingState.value = PairingUiState.Idle
 
         val bound = bindPairingTransport(transport) { connectedPeerId ->
+            controller.stopAdvertising()
             val connectedPeer = (_pairingState.value as? PairingUiState.Connected)?.peer
             val started = startReceiver(
                 TransferRuntimeCommand.StartReceiver(
