@@ -417,56 +417,56 @@ public sealed class DesktopTransferEngine
                 prepared.ItemId.Value);
 
             long actualBytes = 0;
-            byte[] digestBytes;
-            using (var hash =
+            using var hash =
                 IncrementalHash.CreateHash(
-                    HashAlgorithmName.SHA256))
-            await using (var stream = new FileStream(
-                file.FilePath,
-                FileMode.Open,
-                FileAccess.Read,
-                FileShare.Read,
-                StreamBufferBytes,
-                useAsync: true))
+                    HashAlgorithmName.SHA256);
+            await using var stream =
+                new FileStream(
+                    file.FilePath,
+                    FileMode.Open,
+                    FileAccess.Read,
+                    FileShare.Read,
+                    StreamBufferBytes,
+                    useAsync: true);
+
+            byte[] buffer =
+                new byte[StreamBufferBytes];
+            int read;
+            while ((read = await stream.ReadAsync(
+                buffer.AsMemory(0, buffer.Length),
+                cancellationToken)) > 0)
             {
-                byte[] buffer =
-                    new byte[StreamBufferBytes];
-                int read;
-                while ((read = await stream.ReadAsync(
-                    buffer.AsMemory(0, buffer.Length),
-                    cancellationToken)) > 0)
+                actualBytes = checked(
+                    actualBytes + read);
+                if (actualBytes >
+                    prepared.DeclaredSize)
                 {
-                    actualBytes = checked(
-                        actualBytes + read);
-                    if (actualBytes >
-                        prepared.DeclaredSize)
-                    {
-                        throw new ProtocolViolationException(
-                            WireErrorCodes.SourceUnavailable,
-                            $"Source '{file.Name}' grew while it was being transferred.");
-                    }
-
-                    hash.AppendData(
-                        buffer,
-                        0,
-                        read);
-                    await channel.WriteDataChunkAsync(
-                        bulkRef,
-                        buffer.AsMemory(0, read),
-                        cancellationToken);
-
-                    cumulativeTransferred += read;
-                    interaction.OnProgress(
-                        new DesktopTransferProgress(
-                            DesktopTransferDirection.Send,
-                            peerName,
-                            file.Name,
-                            cumulativeTransferred,
-                            totalBytes));
+                    throw new ProtocolViolationException(
+                        WireErrorCodes.SourceUnavailable,
+                        $"Source '{file.Name}' grew while it was being transferred.");
                 }
 
-                digestBytes = hash.GetHashAndReset();
+                hash.AppendData(
+                    buffer,
+                    0,
+                    read);
+                await channel.WriteDataChunkAsync(
+                    bulkRef,
+                    buffer.AsMemory(0, read),
+                    cancellationToken);
+
+                cumulativeTransferred += read;
+                interaction.OnProgress(
+                    new DesktopTransferProgress(
+                        DesktopTransferDirection.Send,
+                        peerName,
+                        file.Name,
+                        cumulativeTransferred,
+                        totalBytes));
             }
+
+            byte[] digestBytes =
+                hash.GetHashAndReset();
 
             if (actualBytes != prepared.DeclaredSize)
             {
