@@ -141,24 +141,41 @@ sealed interface ResumeReconnectState {
     ) : ResumeReconnectState
 
     data class ReceiverAccepted(
-        val originalSessionId:
-            dev.glide.core.domain.SessionId,
-        val itemId:
-            dev.glide.core.domain.ItemId,
-        val startChunkIndex: Long,
-        val startByteOffset: Long
-    ) : ResumeReconnectState
-
-    data class SenderAccepted(
+        val requestMessageId: String,
         val originalSessionId:
             dev.glide.core.domain.SessionId,
         val itemId:
             dev.glide.core.domain.ItemId,
         val startChunkIndex: Long,
         val startByteOffset: Long,
+        val chunkSize: Int,
+        val totalSizeBytes: Long,
+        val chunkRootHashHex: String
+    ) : ResumeReconnectState
+
+    data class SenderAccepted(
+        val requestMessageId: String,
+        val originalSessionId:
+            dev.glide.core.domain.SessionId,
+        val itemId:
+            dev.glide.core.domain.ItemId,
+        val startChunkIndex: Long,
+        val startByteOffset: Long,
+        val chunkSize: Int,
+        val totalSizeBytes: Long,
+        val chunkRootHashHex: String,
         val sourceHandle:
             dev.glide.core.domain.SourceHandle,
         val wholeFileSha256Hex: String
+    ) : ResumeReconnectState
+
+    data class Verified(
+        val originalSessionId:
+            dev.glide.core.domain.SessionId,
+        val itemId:
+            dev.glide.core.domain.ItemId,
+        val sizeBytes: Long,
+        val sha256Hex: String
     ) : ResumeReconnectState
 
     data class Rejected(
