@@ -30,6 +30,7 @@ import dev.glide.core.protocol.IdentityResponseDto
 import dev.glide.core.protocol.MessageTypes
 import dev.glide.core.protocol.NegotiationConstants
 import dev.glide.core.protocol.ProtocolCodec
+import dev.glide.core.resume.ResumeSourcePreflight
 import dev.glide.core.security.ProtocolRateLimiter
 import dev.glide.core.security.ProtocolSequencer
 import dev.glide.core.security.RateLimitResult
@@ -79,7 +80,18 @@ class TransferCoordinator(
     val sequencer: ProtocolSequencer = ProtocolSequencer(clock = clock),
     val persistentTrustManager: PersistentTrustManager? = null,
     val expectedPeerFingerprintHex: String? = null,
-    val onVerifiedPeerIdentity: ((VerifiedPeerIdentity) -> Unit)? = null
+    val onVerifiedPeerIdentity: ((VerifiedPeerIdentity) -> Unit)? = null,
+    val resumeSourcePreflight:
+        (suspend (SourceHandle) -> ResumeSourcePreflight)? = null,
+    val persistSenderResumeAuthority:
+        (suspend (
+            SessionId,
+            dev.glide.core.domain.TransferItem,
+            SourceHandle,
+            String,
+            ResumeSourcePreflight
+        ) -> Unit)? = null,
+    val enableTrueResumeCapability: Boolean = false
 ) {
     @Volatile
     private var boundSessionId: SessionId? = sessionId
@@ -414,12 +426,30 @@ class TransferCoordinator(
         maybeSubmitSenderOffer()
     }
 
-    private fun localOptionalCapabilities(): List<String> =
-        trustedSessionHandshake
-            ?.localOptionalCapabilities()
-            ?: NegotiationConstants
-                .OPTIONAL_CAPABILITIES
-                .toList()
+    private fun localOptionalCapabilities(): List<String> {
+        val optional =
+            (
+                trustedSessionHandshake
+                    ?.localOptionalCapabilities()
+                    ?: NegotiationConstants
+                        .OPTIONAL_CAPABILITIES
+                        .toList()
+                ).toMutableSet()
+
+        if (enableTrueResumeCapability &&
+            resumeSourcePreflight != null &&
+            persistSenderResumeAuthority != null &&
+            NegotiationConstants
+                .CAPABILITY_PERSISTENT_IDENTITY_V1 in
+                optional
+        ) {
+            optional +=
+                NegotiationConstants
+                    .CAPABILITY_TRUE_RESUME_V1
+        }
+
+        return optional.sorted()
+    }
 
     private fun identityReadyForOffers(): Boolean {
         if (expectedPeerFingerprintHex != null &&
@@ -434,21 +464,133 @@ class TransferCoordinator(
     }
 
     private suspend fun maybeSubmitSenderOffer() {
-        val batch = senderBatch ?: return
-        if (_state.value.role != DeviceRole.Sender ||
-            _state.value.phase != SessionPhase.Offering ||
+        val batch =
+            senderBatch ?: return
+        if (_state.value.role !=
+                DeviceRole.Sender ||
+            _state.value.phase !=
+                SessionPhase.Offering ||
             _state.value.batch != null ||
             !identityReadyForOffers()
         ) {
             return
         }
 
-        recordInitialHistory(batch)
+        val negotiatedCapabilities =
+            _state.value.negotiated
+                ?.capabilities
+                ?: emptySet()
+        val offerBatch =
+            if (NegotiationConstants
+                    .CAPABILITY_TRUE_RESUME_V1 in
+                negotiatedCapabilities
+            ) {
+                try {
+                    prepareResumeCapableSenderBatch(
+                        batch
+                    )
+                } catch (error: Exception) {
+                    dispatch(
+                        ReducerEvent.TransportFailure(
+                            TransferFailure
+                                .SourceUnavailable(
+                                    "Resume source preflight failed: " +
+                                        (
+                                            error.message
+                                                ?: error
+                                                    ::class
+                                                    .java
+                                                    .simpleName
+                                            )
+                                ),
+                            clock()
+                        )
+                    )
+                    return
+                }
+            } else {
+                batch
+            }
+
+        recordInitialHistory(
+            offerBatch
+        )
         dispatch(
             ReducerEvent.SubmitOffer(
-                batch,
+                offerBatch,
                 clock()
             )
+        )
+    }
+
+    private suspend fun prepareResumeCapableSenderBatch(
+        batch: TransferBatch
+    ): TransferBatch {
+        if (!enableTrueResumeCapability) {
+            throw IllegalStateException(
+                "resume-v1 was negotiated while the local runtime gate is disabled"
+            )
+        }
+
+        val preflight =
+            resumeSourcePreflight
+                ?: throw IllegalStateException(
+                    "resume-v1 source preflight authority is unavailable"
+                )
+        val persist =
+            persistSenderResumeAuthority
+                ?: throw IllegalStateException(
+                    "resume-v1 durable sender journal authority is unavailable"
+                )
+        val peerFingerprint =
+            authenticatedPeerFingerprintHex
+                ?: throw IllegalStateException(
+                    "resume-v1 requires a mutually authenticated persistent peer"
+                )
+
+        val enriched =
+            mutableListOf<
+                dev.glide.core.domain.TransferItem
+            >()
+
+        for (item in batch.items) {
+            val handle =
+                sourceMap[item.id]
+                    ?: throw IllegalStateException(
+                        "Source handle missing for resumable item ${item.id.value}"
+                    )
+            val snapshot =
+                preflight(handle)
+            if (snapshot.totalBytes !=
+                item.sizeBytes
+            ) {
+                throw IllegalStateException(
+                    "Source size changed before resumable offer for ${item.name}"
+                )
+            }
+
+            val resumableItem =
+                item.copy(
+                    resumeChunkSize =
+                        snapshot.chunkSize,
+                    resumeChunkRootHashHex =
+                        snapshot
+                            .chunkRootHashHex
+                )
+
+            persist(
+                sessionId,
+                resumableItem,
+                handle,
+                peerFingerprint,
+                snapshot
+            )
+            enriched +=
+                resumableItem
+        }
+
+        return batch.copy(
+            items = enriched
         )
     }
 
