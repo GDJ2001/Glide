@@ -170,12 +170,12 @@ public sealed class Hard003DesktopRegressionTests : IDisposable
 
             string batchId = offerBegin.Body["batchId"]!.ToString();
             var decisionBody = new JsonObject { ["batchId"] = batchId, ["accepted"] = true };
-            await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.OfferDecision, hello.SessionId, NewMessageId(), 3, decisionBody));
+            await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.OfferDecision, hello.SessionId, NewMessageId(), 2, decisionBody));
 
             Envelope itemStart = await channel.ReadEnvelopeAsync();
             string itemId = itemStart.Body["itemId"]!.ToString();
             var readyBody = new JsonObject { ["batchId"] = batchId, ["itemId"] = itemId };
-            await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.ItemReady, hello.SessionId, NewMessageId(), 4, readyBody));
+            await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.ItemReady, hello.SessionId, NewMessageId(), 3, readyBody));
 
             while (true)
             {
@@ -198,7 +198,7 @@ public sealed class Hard003DesktopRegressionTests : IDisposable
                 ["sizeBytes"] = itemEnd.Body["actualBytes"]!.ToString(),
                 ["sha256"] = itemEnd.Body["sha256"]!.ToString()
             };
-            await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.ItemResult, hello.SessionId, NewMessageId(), 5, resultBody));
+            await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.ItemResult, hello.SessionId, NewMessageId(), 4, resultBody));
 
             Envelope nextItemStart = await channel.ReadEnvelopeAsync();
             secondItemStartSeq = nextItemStart.Seq;
@@ -332,12 +332,12 @@ public sealed class Hard003DesktopRegressionTests : IDisposable
         var body = new JsonObject
         {
             ["selectedMajor"] = 1,
-            ["capabilities"] = new JsonArray("lan-v1"),
+            ["capabilities"] = new JsonArray("stream-v1", "sha256"),
             ["ephemeralPeerId"] = NewUuid(),
             ["displayName"] = "HARD-003 Test Receiver",
             ["limits"] = limits
         };
-        return new Envelope(1, MessageTypes.HelloAck, sessionId, NewMessageId(), 2, body);
+        return new Envelope(1, MessageTypes.HelloAck, sessionId, NewMessageId(), 1, body);
     }
 
     private static MessageId NewMessageId() => new(NewUuid());
