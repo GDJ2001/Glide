@@ -3,6 +3,7 @@ package dev.glide.data.maintenance
 import dev.glide.core.ports.HistoryStore
 import dev.glide.data.db.ReceiveJournalDao
 import dev.glide.data.db.ReceivedFileDao
+import dev.glide.data.store.ResumableStagingStore
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -15,10 +16,16 @@ data class OrphanMaintenanceResult(
     val purgedStagingPartials: Int = 0,
     val purgedStagedSources: Int = 0,
     val missingCatalogFilesMarkedDeleted: Int = 0,
-    val trimmedHistorySessions: Int = 0
+    val trimmedHistorySessions: Int = 0,
+    val expiredResumeItemsPurged: Int = 0
 ) {
     val totalCleaned: Int
-        get() = purgedStagingPartials + purgedStagedSources + missingCatalogFilesMarkedDeleted + trimmedHistorySessions
+        get() =
+            purgedStagingPartials +
+                purgedStagedSources +
+                missingCatalogFilesMarkedDeleted +
+                trimmedHistorySessions +
+                expiredResumeItemsPurged
 }
 
 /**
@@ -33,7 +40,8 @@ data class OrphanMaintenanceResult(
  *    is missing are marked deleted.
  * 4. History retention trimming: Terminal sessions exceeding 10,000 count or 90 days are trimmed via [historyStore],
  *    safely detaching verified files in the catalog without deleting them.
- * 5. Storage unavailable & cancellation safety: Storage unavailability (unmounted, permission denied, I/O failure)
+ * 5. HARD-022 retained resume state is purged once its 24-hour journal TTL expires.
+ * 6. Storage unavailable & cancellation safety: Storage unavailability (unmounted, permission denied, I/O failure)
  *    is handled gracefully without crashing, and cooperative cancellation ([isCancelled]) aborts immediately.
  */
 class OrphanMaintenanceCleaner(
@@ -43,6 +51,7 @@ class OrphanMaintenanceCleaner(
     private val receiveJournalDao: ReceiveJournalDao? = null,
     private val receivedFileDao: ReceivedFileDao? = null,
     private val historyStore: HistoryStore? = null,
+    private val resumableStagingStore: ResumableStagingStore? = null,
     private val clock: () -> Long = System::currentTimeMillis,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) {
@@ -61,6 +70,7 @@ class OrphanMaintenanceCleaner(
         var purgedStagedSources = 0
         var missingCatalogFilesMarkedDeleted = 0
         var trimmedHistorySessions = 0
+        var expiredResumeItemsPurged = 0
 
         val nowMs = clock()
         val orphanCutoffMs = nowMs - ORPHAN_AGE_THRESHOLD_MS
@@ -191,7 +201,31 @@ class OrphanMaintenanceCleaner(
             )
         }
 
-        // 5. History retention trimming:
+        // 5. HARD-022 resume TTL cleanup. Journal expiry is authoritative; the store
+        // confines deletion to its private resume root and removes the matching Room row.
+        try {
+            if (resumableStagingStore != null) {
+                expiredResumeItemsPurged =
+                    resumableStagingStore
+                        .purgeExpiredSessions(
+                            currentMs = nowMs
+                        )
+            }
+        } catch (_: Exception) {
+            // Resume cleanup failure must not turn ordinary maintenance into destructive fallback.
+        }
+
+        if (isCancelled()) {
+            return@withContext OrphanMaintenanceResult(
+                purgedStagingPartials,
+                purgedStagedSources,
+                missingCatalogFilesMarkedDeleted,
+                trimmedHistorySessions,
+                expiredResumeItemsPurged
+            )
+        }
+
+        // 6. History retention trimming:
         // Trim terminal sessions exceeding 10,000 or 90 days.
         try {
             if (historyStore != null) {
@@ -209,7 +243,8 @@ class OrphanMaintenanceCleaner(
             purgedStagingPartials = purgedStagingPartials,
             purgedStagedSources = purgedStagedSources,
             missingCatalogFilesMarkedDeleted = missingCatalogFilesMarkedDeleted,
-            trimmedHistorySessions = trimmedHistorySessions
+            trimmedHistorySessions = trimmedHistorySessions,
+            expiredResumeItemsPurged = expiredResumeItemsPurged
         )
     }
 }
