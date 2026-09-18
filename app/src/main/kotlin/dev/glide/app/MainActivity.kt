@@ -454,12 +454,19 @@ class MainActivity : ComponentActivity() {
                     db.itemDao(),
                     db.receivedFileDao()
                 )
+                val resumableStagingStore =
+                    dev.glide.app.di.DatabaseModule
+                        .provideResumableStagingStore(
+                            applicationContext,
+                            db.resumableSessionDao()
+                        )
                 val cleaner = dev.glide.app.di.DatabaseModule.provideOrphanMaintenanceCleaner(
                     applicationContext,
                     receiveStore,
                     db.receiveJournalDao(),
                     db.receivedFileDao(),
-                    historyStore
+                    historyStore,
+                    resumableStagingStore
                 )
 
                 kotlinx.coroutines.runBlocking {
