@@ -42,7 +42,8 @@ public sealed class DesktopTransferEngineTests : IDisposable
         await File.WriteAllBytesAsync(secondPath, secondPayload);
 
         using var listener = new TlsSocketListener(0);
-        var invitation = CreateInvitation(listener);
+        var invitationAuthority = new LanInvitationAuthority();
+        var invitation = invitationAuthority.Publish(CreateInvitation(listener));
         var receiverStore = new QuarantineStagingStore(
             stagingRoot: _stagingDir,
             destinationRoot: _destinationDir);
@@ -60,8 +61,7 @@ public sealed class DesktopTransferEngineTests : IDisposable
                 connection,
                 new DesktopReceiveRequest(
                     receiverStore,
-                    invitation,
-                    AllowBootstrapWithoutInvitation: false,
+                    invitationAuthority,
                     LocalDeviceName: "Receiver-Desktop"),
                 receiverInteraction);
         });
@@ -147,7 +147,8 @@ public sealed class DesktopTransferEngineTests : IDisposable
             RandomNumberGenerator.GetBytes(4096));
 
         using var listener = new TlsSocketListener(0);
-        var invitation = CreateInvitation(listener);
+        var invitationAuthority = new LanInvitationAuthority();
+        var invitation = invitationAuthority.Publish(CreateInvitation(listener));
         var receiverStore = new QuarantineStagingStore(
             stagingRoot: _stagingDir,
             destinationRoot: _destinationDir);
@@ -168,8 +169,7 @@ public sealed class DesktopTransferEngineTests : IDisposable
                 connection,
                 new DesktopReceiveRequest(
                     receiverStore,
-                    invitation,
-                    false,
+                    invitationAuthority,
                     "Rejecting-Receiver"),
                 receiverInteraction);
         });
@@ -194,6 +194,52 @@ public sealed class DesktopTransferEngineTests : IDisposable
             SearchOption.AllDirectories));
         Assert.Empty(senderInteraction.History);
         Assert.Empty(receiverInteraction.History);
+    }
+
+    [Fact]
+    public async Task SharedEngine_UnpairedSend_FailsClosedBeforeConnecting()
+    {
+        string sourcePath = Path.Combine(_sourceDir, "unpaired.bin");
+        await File.WriteAllBytesAsync(sourcePath, [0x01, 0x02, 0x03]);
+
+        var engine = new DesktopTransferEngine();
+        var result = await engine.SendAsync(
+            new DesktopSendRequest(
+                "127.0.0.1",
+                9,
+                [new DesktopTransferFile(sourcePath)],
+                Invitation: null,
+                LocalDeviceName: "Unpaired-Sender"),
+            new RecordingInteraction());
+
+        Assert.False(result.Success);
+        Assert.Contains(
+            "Authenticated pairing invitation required",
+            result.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void InvitationAuthority_ConsumesExactlyOnce()
+    {
+        using var listener = new TlsSocketListener(0);
+        var authority = new LanInvitationAuthority();
+        var invitation = authority.Publish(CreateInvitation(listener));
+        string sessionId = Guid.NewGuid().ToString("D").ToLowerInvariant();
+        var bootstrap = new LanBootstrapMessage(
+            invitation.InvitationId,
+            invitation.Token,
+            invitation.InvitationHash,
+            sessionId);
+
+        var first = authority.Consume(bootstrap);
+        var replay = authority.Consume(bootstrap);
+
+        Assert.True(first.IsAccepted);
+        Assert.False(replay.IsAccepted);
+        Assert.Equal(
+            LanBootstrapFailureCode.INVITATION_USED.ToString(),
+            replay.Code);
     }
 
     private static LanInvitation CreateInvitation(
