@@ -174,7 +174,17 @@ class RoomMigrationTest {
         )
         assertTrue(
             sqlOutput.contains(
-                "`source_identity` TEXT NOT NULL"
+                "`journal_role` TEXT NOT NULL"
+            )
+        )
+        assertTrue(
+            sqlOutput.contains(
+                "`source_handle` TEXT"
+            )
+        )
+        assertTrue(
+            sqlOutput.contains(
+                "`source_identity` TEXT"
             )
         )
         assertTrue(
@@ -184,12 +194,17 @@ class RoomMigrationTest {
         )
         assertTrue(
             sqlOutput.contains(
-                "`chunk_hashes_hex` TEXT NOT NULL"
+                "`verified_chunk_hashes_hex` TEXT NOT NULL"
             )
         )
         assertTrue(
             sqlOutput.contains(
-                "`whole_file_sha256_hex` TEXT NOT NULL"
+                "`whole_file_sha256_hex` TEXT"
+            )
+        )
+        assertTrue(
+            sqlOutput.contains(
+                "`staging_path` TEXT"
             )
         )
     }
@@ -246,7 +261,22 @@ class RoomMigrationTest {
         )
         assertTrue(
             schema5Content.contains(
+                "\"columnName\": \"journal_role\""
+            )
+        )
+        assertTrue(
+            schema5Content.contains(
+                "\"columnName\": \"source_handle\""
+            )
+        )
+        assertTrue(
+            schema5Content.contains(
                 "\"columnName\": \"contiguous_byte_offset\""
+            )
+        )
+        assertTrue(
+            schema5Content.contains(
+                "\"columnName\": \"verified_chunk_hashes_hex\""
             )
         )
     }
