@@ -28,6 +28,7 @@ import dev.glide.core.pairing.LanInvitation
 import dev.glide.core.ports.AuthenticatedChannelContextProvider
 import dev.glide.core.ports.ConnectionEvent
 import dev.glide.core.ports.TransferTransport
+import dev.glide.data.store.ResumableStagingStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -52,6 +53,7 @@ class TransferRuntime private constructor(
     private val discoveryController: ProductionDiscoveryController?,
     private val lanController: ProductionLanController?,
     private val persistentTrustManager: PersistentTrustManager?,
+    private val resumableStagingStore: ResumableStagingStore?,
     @Suppress("unused") private val testInstance: Boolean
 ) {
 
@@ -60,12 +62,14 @@ class TransferRuntime private constructor(
         sessionFactory: TransferSessionFactory,
         discoveryController: ProductionDiscoveryController,
         lanController: ProductionLanController,
-        persistentTrustManager: PersistentTrustManager
+        persistentTrustManager: PersistentTrustManager,
+        resumableStagingStore: ResumableStagingStore
     ) : this(
         sessionFactory,
         discoveryController,
         lanController,
         persistentTrustManager,
+        resumableStagingStore,
         false
     )
 
@@ -780,9 +784,11 @@ class TransferRuntime private constructor(
 
     private fun cancel(sessionId: String, reason: String): Boolean {
         val coordinator: TransferCoordinator?
+        val ownerScope: CoroutineScope?
         synchronized(lock) {
             if (_activeSessionId.value != sessionId) return false
             coordinator = activeCoordinator
+            ownerScope = serviceScope
             if (coordinator == null) {
                 val current = _transferState.value
                 _transferState.value = TransferUiState.Cancelled(
@@ -793,9 +799,22 @@ class TransferRuntime private constructor(
                 _isSessionActive.value = false
                 _activeSessionId.value = null
                 terminalCallback?.invoke()
-                return true
             }
         }
+
+        // Explicit user cancellation invalidates retained resume authority for this transfer.
+        // Service/process interruption deliberately does not call this path.
+        if (ownerScope != null &&
+            resumableStagingStore != null
+        ) {
+            ownerScope.launch {
+                resumableStagingStore
+                    .purgeOriginalSession(
+                        sessionId
+                    )
+            }
+        }
+
         coordinator?.cancel(reason)
         return true
     }
@@ -860,6 +879,10 @@ class TransferRuntime private constructor(
         val manager = persistentTrustManager ?: return false
         return try {
             manager.revokePeer(fingerprintHex)
+            resumableStagingStore
+                ?.purgeForPeer(
+                    fingerprintHex
+                )
             _trustState.value = _trustState.value.copy(
                 trustedPeers = manager.trustedPeerSnapshot(),
                 securityNotice = "Device trust revoked.",
@@ -887,6 +910,8 @@ class TransferRuntime private constructor(
 
         return try {
             val result = manager.rotateLocalIdentity()
+            resumableStagingStore
+                ?.purgeAll()
             _trustState.value = _trustState.value.copy(
                 isInitialized = true,
                 localFingerprintHex = result.localFingerprintHex,
@@ -1224,13 +1249,15 @@ class TransferRuntime private constructor(
             sessionFactory: TransferSessionFactory? = null,
             discoveryController: ProductionDiscoveryController? = null,
             lanController: ProductionLanController? = null,
-            persistentTrustManager: PersistentTrustManager? = null
+            persistentTrustManager: PersistentTrustManager? = null,
+            resumableStagingStore: ResumableStagingStore? = null
         ): TransferRuntime {
             return TransferRuntime(
                 sessionFactory,
                 discoveryController,
                 lanController,
                 persistentTrustManager,
+                resumableStagingStore,
                 true
             )
         }
