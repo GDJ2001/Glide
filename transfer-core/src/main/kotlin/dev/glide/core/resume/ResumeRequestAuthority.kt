@@ -12,7 +12,7 @@ import dev.glide.core.protocol.ResumeAcceptDto
 import dev.glide.core.protocol.ResumeRejectCodes
 import dev.glide.core.protocol.ResumeRejectDto
 import dev.glide.core.protocol.ResumeRequestDto
-import dev.glide.core.protocol.isValidUuidV4
+import dev.glide.core.domain.isValidUuidV4
 
 /**
  * Pure protocol authority for HARD-022 reconnect resume.
