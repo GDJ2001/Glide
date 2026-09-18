@@ -22,6 +22,7 @@ import dev.glide.core.protocol.ItemReadyBody
 import dev.glide.core.protocol.ItemResultBody
 import dev.glide.core.protocol.ItemStartBody
 import dev.glide.core.protocol.MessageTypes
+import dev.glide.core.protocol.NegotiationConstants
 import dev.glide.core.protocol.NegotiationValidator
 import dev.glide.core.protocol.OfferAssembler
 import dev.glide.core.protocol.OfferDecisionBody
@@ -137,8 +138,24 @@ object TransferReducer {
         if (state.role != DeviceRole.Sender || state.phase != SessionPhase.Offering) {
             return ReducerResult(state, emptyList())
         }
-        val limits = state.negotiated?.effectiveLimits ?: EffectiveLimits()
-        val paged = OfferPaginator.paginate(event.batch, limits)
+        val limits =
+            state.negotiated
+                ?.effectiveLimits
+                ?: EffectiveLimits()
+        val resumeNegotiated =
+            state.negotiated
+                ?.capabilities
+                ?.contains(
+                    NegotiationConstants
+                        .CAPABILITY_TRUE_RESUME_V1
+                ) == true
+        val paged =
+            OfferPaginator.paginate(
+                batch = event.batch,
+                effectiveLimits = limits,
+                allowResumeMetadata =
+                    resumeNegotiated
+            )
 
         val effects = mutableListOf<ReducerEffect>()
         var curState = state
@@ -171,8 +188,24 @@ object TransferReducer {
         if (state.role != DeviceRole.Receiver || state.phase != SessionPhase.Offering) {
             return ReducerResult(state, emptyList())
         }
-        val limits = state.negotiated?.effectiveLimits ?: EffectiveLimits()
-        val assembler = OfferAssembler(event.begin, limits)
+        val limits =
+            state.negotiated
+                ?.effectiveLimits
+                ?: EffectiveLimits()
+        val resumeNegotiated =
+            state.negotiated
+                ?.capabilities
+                ?.contains(
+                    NegotiationConstants
+                        .CAPABILITY_TRUE_RESUME_V1
+                ) == true
+        val assembler =
+            OfferAssembler(
+                begin = event.begin,
+                effectiveLimits = limits,
+                allowResumeMetadata =
+                    resumeNegotiated
+            )
         return ReducerResult(
             state.copy(offerAssembler = assembler, lastActivityMonotonicMs = event.timestampMs),
             emptyList()
