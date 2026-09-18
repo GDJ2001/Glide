@@ -1,22 +1,26 @@
 using System.Collections.Concurrent;
 using System.Net;
-using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text;
 
 namespace Glide.Transport.Discovery;
 
 /// <summary>
-/// Lightweight, zero-dependency mDNS / DNS-SD service for local network peer discovery (RFC 6762 / 6763).
-/// Announces the Glide Windows service and discovers nearby Android and Windows peers broadcasting _glide._tcp.local.
+/// Lightweight, zero-dependency mDNS / DNS-SD service for Glide LAN availability.
+///
+/// This implementation follows the canonical Android availability profile:
+/// v=1, tv=1, q=1, p=&lt;128-bit presence id&gt;, dn=&lt;bounded display name&gt;,
+/// dt=phone|tablet|desktop|unknown. Discovery is not an authentication channel and therefore
+/// never advertises invitation tokens, certificate fingerprints, or trust/resume capabilities.
 /// </summary>
 public sealed class MdnsDiscoveryService : IDisposable
 {
     private static readonly IPAddress MulticastAddress = IPAddress.Parse("224.0.0.251");
     private const int MulticastPort = 5353;
-    private const string ServiceType = "_glide._tcp.local";
+    private const string ServiceType = LanDiscoveryConstants.ServiceTypeWithoutTrailingDot;
 
-    private readonly ConcurrentDictionary<string, (DiscoveredPeer Peer, DateTime LastSeen)> _peers = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, (DiscoveredPeer Peer, DateTime LastSeen)> _peers =
+        new(StringComparer.OrdinalIgnoreCase);
     private readonly Lock _advertisementLock = new();
 
     private UdpClient? _udpClient;
@@ -25,16 +29,15 @@ public sealed class MdnsDiscoveryService : IDisposable
     private Task? _queryLoopTask;
 
     private bool _isAdvertising;
-    private string _advertisedDeviceName = Environment.MachineName;
+    private string _advertisedDeviceName = LanDiscoveryConstants.NormalizeDeviceName(Environment.MachineName);
     private int _advertisedPort = LanDiscoveryConstants.DefaultPort;
-    private string _advertisedFp = "";
-    private byte _advertisedCap = LanDiscoveryConstants.DefaultCapabilities;
+    private string _advertisedPresenceId = string.Empty;
 
     public event Action<DiscoveredPeer>? PeerDiscovered;
     public event Action<DiscoveredPeer>? PeerLost;
 
     public IReadOnlyCollection<DiscoveredPeer> ActivePeers =>
-        _peers.Values.Select(v => v.Peer).ToList();
+        _peers.Values.Select(static value => value.Peer).ToList();
 
     public void Start(bool enableBrowsing = true)
     {
@@ -45,13 +48,15 @@ public sealed class MdnsDiscoveryService : IDisposable
         try
         {
             _udpClient = new UdpClient();
-            _udpClient.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+            _udpClient.Client.SetSocketOption(
+                SocketOptionLevel.Socket,
+                SocketOptionName.ReuseAddress,
+                true);
             _udpClient.Client.Bind(new IPEndPoint(IPAddress.Any, MulticastPort));
             _udpClient.JoinMulticastGroup(MulticastAddress);
         }
         catch (SocketException)
         {
-            // If port 5353 is already exclusively held, fall back to ephemeral port for browsing
             _udpClient = new UdpClient(0);
             try
             {
@@ -59,26 +64,39 @@ public sealed class MdnsDiscoveryService : IDisposable
             }
             catch
             {
-                // Ignored if multicast join fails on ephemeral
+                // Browsing will fail closed if multicast is unavailable.
             }
         }
 
         _listenTask = Task.Run(() => ListenLoopAsync(_cts.Token));
-
         if (enableBrowsing)
         {
             _queryLoopTask = Task.Run(() => QueryLoopAsync(_cts.Token));
         }
     }
 
-    public void StartAdvertising(string deviceName, int port, string certFingerprintPrefix = "", byte capabilities = LanDiscoveryConstants.DefaultCapabilities)
+    public void StartAdvertising(
+        string deviceName,
+        int port,
+        string presenceId)
     {
+        if (port is < 1 or > 65535)
+        {
+            throw new ArgumentOutOfRangeException(nameof(port));
+        }
+
+        if (!LanDiscoveryConstants.IsValidPresenceId(presenceId))
+        {
+            throw new ArgumentException(
+                "Presence id must be exactly 32 lowercase hexadecimal characters.",
+                nameof(presenceId));
+        }
+
         lock (_advertisementLock)
         {
-            _advertisedDeviceName = string.IsNullOrWhiteSpace(deviceName) ? Environment.MachineName : deviceName;
+            _advertisedDeviceName = LanDiscoveryConstants.NormalizeDeviceName(deviceName);
             _advertisedPort = port;
-            _advertisedFp = certFingerprintPrefix.Length > 8 ? certFingerprintPrefix[..8] : certFingerprintPrefix;
-            _advertisedCap = capabilities;
+            _advertisedPresenceId = presenceId;
             _isAdvertising = true;
         }
 
@@ -93,7 +111,6 @@ public sealed class MdnsDiscoveryService : IDisposable
             _isAdvertising = false;
         }
 
-        // Send goodbye with TTL 0
         SendGoodbye();
     }
 
@@ -103,24 +120,29 @@ public sealed class MdnsDiscoveryService : IDisposable
         try
         {
             byte[] queryPacket = BuildPtrQueryPacket(ServiceType);
-            _udpClient.Send(queryPacket, queryPacket.Length, new IPEndPoint(MulticastAddress, MulticastPort));
+            _udpClient.Send(
+                queryPacket,
+                queryPacket.Length,
+                new IPEndPoint(MulticastAddress, MulticastPort));
         }
         catch
         {
-            // Suppress send errors if network drops
+            // Network loss simply ends the current observation attempt.
         }
     }
 
-    private async Task QueryLoopAsync(CancellationToken ct)
+    private async Task QueryLoopAsync(CancellationToken cancellationToken)
     {
-        while (!ct.IsCancellationRequested)
+        while (!cancellationToken.IsCancellationRequested)
         {
             QueryPeers();
             PruneStalePeers();
 
             try
             {
-                await Task.Delay(TimeSpan.FromSeconds(5), ct).ConfigureAwait(false);
+                await Task.Delay(
+                    TimeSpan.FromSeconds(5),
+                    cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -129,13 +151,15 @@ public sealed class MdnsDiscoveryService : IDisposable
         }
     }
 
-    private async Task ListenLoopAsync(CancellationToken ct)
+    private async Task ListenLoopAsync(CancellationToken cancellationToken)
     {
-        while (!ct.IsCancellationRequested && _udpClient != null)
+        while (!cancellationToken.IsCancellationRequested && _udpClient != null)
         {
             try
             {
-                var result = await _udpClient.ReceiveAsync(ct).ConfigureAwait(false);
+                var result = await _udpClient
+                    .ReceiveAsync(cancellationToken)
+                    .ConfigureAwait(false);
                 ProcessIncomingPacket(result.Buffer, result.RemoteEndPoint);
             }
             catch (OperationCanceledException)
@@ -144,7 +168,7 @@ public sealed class MdnsDiscoveryService : IDisposable
             }
             catch
             {
-                if (ct.IsCancellationRequested) break;
+                if (cancellationToken.IsCancellationRequested) break;
             }
         }
     }
@@ -159,16 +183,14 @@ public sealed class MdnsDiscoveryService : IDisposable
         if (isResponse)
         {
             ParseDnsResponse(buffer, remoteEndPoint);
+            return;
         }
-        else
+
+        lock (_advertisementLock)
         {
-            // It's a query: check if someone is querying for _glide._tcp.local
-            lock (_advertisementLock)
+            if (_isAdvertising)
             {
-                if (_isAdvertising)
-                {
-                    SendAnnouncement();
-                }
+                SendAnnouncement();
             }
         }
     }
@@ -179,41 +201,57 @@ public sealed class MdnsDiscoveryService : IDisposable
 
         try
         {
-            string devName;
+            string deviceName;
             int port;
-            string fp;
-            byte cap;
+            string presenceId;
 
             lock (_advertisementLock)
             {
                 if (!_isAdvertising) return;
-                devName = _advertisedDeviceName;
+                deviceName = _advertisedDeviceName;
                 port = _advertisedPort;
-                fp = _advertisedFp;
-                cap = _advertisedCap;
+                presenceId = _advertisedPresenceId;
             }
 
-            byte[] responsePacket = BuildResponsePacket(devName, port, fp, cap, ttlSeconds: 120);
-            _udpClient.Send(responsePacket, responsePacket.Length, new IPEndPoint(MulticastAddress, MulticastPort));
+            byte[] responsePacket = BuildResponsePacket(
+                deviceName,
+                port,
+                presenceId,
+                ttlSeconds: 120);
+            _udpClient.Send(
+                responsePacket,
+                responsePacket.Length,
+                new IPEndPoint(MulticastAddress, MulticastPort));
         }
         catch
         {
-            // Ignored
+            // Advertising failure is surfaced by absence from discovery; no insecure fallback.
         }
     }
 
     private void SendGoodbye()
     {
-        if (_udpClient == null) return;
+        if (_udpClient == null ||
+            !LanDiscoveryConstants.IsValidPresenceId(_advertisedPresenceId))
+        {
+            return;
+        }
 
         try
         {
-            byte[] goodbyePacket = BuildResponsePacket(_advertisedDeviceName, _advertisedPort, _advertisedFp, _advertisedCap, ttlSeconds: 0);
-            _udpClient.Send(goodbyePacket, goodbyePacket.Length, new IPEndPoint(MulticastAddress, MulticastPort));
+            byte[] packet = BuildResponsePacket(
+                _advertisedDeviceName,
+                _advertisedPort,
+                _advertisedPresenceId,
+                ttlSeconds: 0);
+            _udpClient.Send(
+                packet,
+                packet.Length,
+                new IPEndPoint(MulticastAddress, MulticastPort));
         }
         catch
         {
-            // Ignored
+            // Best-effort DNS-SD goodbye.
         }
     }
 
@@ -221,292 +259,381 @@ public sealed class MdnsDiscoveryService : IDisposable
     {
         try
         {
-            int offset = 12; // Skip 12-byte header
-            ushort qdCount = (ushort)((buffer[4] << 8) | buffer[5]);
-            ushort anCount = (ushort)((buffer[6] << 8) | buffer[7]);
+            int offset = 12;
+            ushort questionCount = (ushort)((buffer[4] << 8) | buffer[5]);
+            ushort answerCount = (ushort)((buffer[6] << 8) | buffer[7]);
 
-            // Skip questions
-            for (int i = 0; i < qdCount; i++)
+            for (int i = 0; i < questionCount; i++)
             {
                 SkipDnsName(buffer, ref offset);
-                offset += 4; // QTYPE (2) + QCLASS (2)
+                if (offset + 4 > buffer.Length) return;
+                offset += 4;
             }
 
             string? instanceName = null;
             int port = LanDiscoveryConstants.DefaultPort;
-            var txtAttrs = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var txtAttributes = new Dictionary<string, string>(StringComparer.Ordinal);
+            int txtWireBytes = 0;
 
-            // Read answers & additional records
-            int totalRecords = anCount + ((buffer[10] << 8) | buffer[11]); // ANCOUNT + ARCOUNT
+            int additionalCount = (buffer[10] << 8) | buffer[11];
+            int totalRecords = answerCount + additionalCount;
+
             for (int i = 0; i < totalRecords && offset < buffer.Length; i++)
             {
-                string name = ReadDnsName(buffer, ref offset);
+                _ = ReadDnsName(buffer, ref offset);
                 if (offset + 10 > buffer.Length) break;
 
                 ushort type = (ushort)((buffer[offset] << 8) | buffer[offset + 1]);
-                ushort rdLength = (ushort)((buffer[offset + 8] << 8) | buffer[offset + 9]);
+                ushort dataLength = (ushort)((buffer[offset + 8] << 8) | buffer[offset + 9]);
                 offset += 10;
 
-                int rdEnd = offset + rdLength;
-                if (rdEnd > buffer.Length) break;
+                int dataEnd = offset + dataLength;
+                if (dataEnd > buffer.Length) break;
 
-                if (type == 12) // PTR
+                if (type == 12)
                 {
                     int ptrOffset = offset;
                     instanceName = ReadDnsName(buffer, ref ptrOffset);
                 }
-                else if (type == 33) // SRV
+                else if (type == 33 && dataLength >= 6)
                 {
-                    if (rdLength >= 6)
-                    {
-                        port = (buffer[offset + 4] << 8) | buffer[offset + 5];
-                    }
+                    port = (buffer[offset + 4] << 8) | buffer[offset + 5];
                 }
-                else if (type == 16) // TXT
+                else if (type == 16)
                 {
                     int txtOffset = offset;
-                    while (txtOffset < rdEnd)
+                    while (txtOffset < dataEnd)
                     {
-                        int len = buffer[txtOffset++];
-                        if (txtOffset + len > rdEnd) break;
-                        string attr = Encoding.UTF8.GetString(buffer, txtOffset, len);
-                        txtOffset += len;
-                        int eq = attr.IndexOf('=');
-                        if (eq > 0)
+                        int length = buffer[txtOffset++];
+                        if (txtOffset + length > dataEnd) return;
+
+                        txtWireBytes = checked(txtWireBytes + 1 + length);
+                        if (txtWireBytes > LanDiscoveryConstants.MaxTxtBudgetBytes)
                         {
-                            txtAttrs[attr[..eq]] = attr[(eq + 1)..];
+                            return;
                         }
+
+                        string attribute = Encoding.UTF8.GetString(
+                            buffer,
+                            txtOffset,
+                            length);
+                        txtOffset += length;
+
+                        int equalsIndex = attribute.IndexOf('=');
+                        if (equalsIndex <= 0) continue;
+
+                        string key = attribute[..equalsIndex];
+                        string value = attribute[(equalsIndex + 1)..];
+                        txtAttributes[key] = value;
                     }
                 }
 
-                offset = rdEnd;
+                offset = dataEnd;
             }
 
-            if (instanceName != null && instanceName.Contains("_glide", StringComparison.OrdinalIgnoreCase))
+            if (instanceName == null ||
+                !instanceName.Contains("_glide", StringComparison.OrdinalIgnoreCase))
             {
-                string devName = txtAttrs.GetValueOrDefault("dn", instanceName.Split('.')[0]);
-                string devType = txtAttrs.GetValueOrDefault("dt", LanDiscoveryConstants.DeviceTypeDesktop);
-                string fp = txtAttrs.GetValueOrDefault("fp", "");
-                byte cap = LanDiscoveryConstants.DefaultCapabilities;
-                if (txtAttrs.TryGetValue("cap", out var capStr) && capStr.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
-                {
-                    _ = byte.TryParse(capStr[2..], System.Globalization.NumberStyles.HexNumber, null, out cap);
-                }
+                return;
+            }
 
-                string hostIp = remoteEndPoint.Address.ToString();
+            if (!IsCompatibleAvailabilityRecord(txtAttributes))
+            {
+                return;
+            }
 
-                // Skip our own advertised self if device name and port match
-                if (_isAdvertising && devName == _advertisedDeviceName && port == _advertisedPort)
+            string presenceId = txtAttributes["p"];
+            string deviceName = txtAttributes["dn"];
+            string deviceType = txtAttributes.GetValueOrDefault(
+                "dt",
+                LanDiscoveryConstants.DeviceTypeUnknown);
+            string hostIp = remoteEndPoint.Address.ToString();
+
+            lock (_advertisementLock)
+            {
+                if (_isAdvertising &&
+                    string.Equals(
+                        presenceId,
+                        _advertisedPresenceId,
+                        StringComparison.Ordinal) &&
+                    port == _advertisedPort)
                 {
                     return;
                 }
+            }
 
-                var peer = new DiscoveredPeer(devName, hostIp, port, fp, cap, devType);
-                string key = $"{hostIp}:{port}";
+            var peer = new DiscoveredPeer(
+                deviceName,
+                hostIp,
+                port,
+                presenceId,
+                deviceType);
+            string cacheKey = $"{hostIp}:{port}:{presenceId}";
 
-                bool isNew = !_peers.ContainsKey(key);
-                _peers[key] = (peer, DateTime.UtcNow);
-
-                if (isNew)
-                {
-                    PeerDiscovered?.Invoke(peer);
-                }
+            bool isNew = !_peers.ContainsKey(cacheKey);
+            _peers[cacheKey] = (peer, DateTime.UtcNow);
+            if (isNew)
+            {
+                PeerDiscovered?.Invoke(peer);
             }
         }
         catch
         {
-            // Ignore malformed incoming packets
+            // Malformed or hostile discovery packets are ignored.
         }
+    }
+
+    internal static bool IsCompatibleAvailabilityRecord(
+        IReadOnlyDictionary<string, string> attributes)
+    {
+        if (!attributes.TryGetValue("v", out string? v) || v != "1") return false;
+        if (!attributes.TryGetValue("tv", out string? tv) || tv != "1") return false;
+        if (!attributes.TryGetValue("q", out string? q) || q != "1") return false;
+        if (!attributes.TryGetValue("p", out string? presenceId) ||
+            !LanDiscoveryConstants.IsValidPresenceId(presenceId))
+        {
+            return false;
+        }
+
+        if (!attributes.TryGetValue("dn", out string? deviceName) ||
+            !LanDiscoveryConstants.IsValidDeviceName(deviceName))
+        {
+            return false;
+        }
+
+        string deviceType = attributes.GetValueOrDefault(
+            "dt",
+            LanDiscoveryConstants.DeviceTypeUnknown);
+        return LanDiscoveryConstants.IsValidDeviceType(deviceType);
     }
 
     private void PruneStalePeers()
     {
-        var now = DateTime.UtcNow;
-        var staleTimeout = TimeSpan.FromSeconds(15);
+        DateTime now = DateTime.UtcNow;
+        TimeSpan staleTimeout = TimeSpan.FromSeconds(15);
 
-        foreach (var (key, (peer, lastSeen)) in _peers)
+        foreach (var (key, (_, lastSeen)) in _peers)
         {
-            if (now - lastSeen > staleTimeout)
+            if (now - lastSeen <= staleTimeout) continue;
+            if (_peers.TryRemove(key, out var removed))
             {
-                if (_peers.TryRemove(key, out var removed))
-                {
-                    PeerLost?.Invoke(removed.Peer);
-                }
+                PeerLost?.Invoke(removed.Peer);
             }
         }
     }
 
     private static byte[] BuildPtrQueryPacket(string service)
     {
-        var ms = new MemoryStream();
-        using var w = new BinaryWriter(ms);
+        var stream = new MemoryStream();
+        using var writer = new BinaryWriter(stream);
 
-        // Header: ID = 0, Flags = 0x0000, QDCOUNT = 1, ANCOUNT = 0, NSCOUNT = 0, ARCOUNT = 0
-        w.Write((ushort)0);
-        w.Write((byte)0x00); w.Write((byte)0x00);
-        w.Write((byte)0x00); w.Write((byte)0x01); // QDCOUNT = 1
-        w.Write((ushort)0); // ANCOUNT
-        w.Write((ushort)0); // NSCOUNT
-        w.Write((ushort)0); // ARCOUNT
+        writer.Write((ushort)0);
+        writer.Write((byte)0x00);
+        writer.Write((byte)0x00);
+        writer.Write((byte)0x00);
+        writer.Write((byte)0x01);
+        writer.Write((ushort)0);
+        writer.Write((ushort)0);
+        writer.Write((ushort)0);
 
-        // Question: QNAME
-        WriteDnsName(w, service);
-        w.Write((byte)0x00); w.Write((byte)0x0C); // QTYPE = PTR (12)
-        w.Write((byte)0x80); w.Write((byte)0x01); // QCLASS = IN (1) with unicast-response bit (0x8000)
+        WriteDnsName(writer, service);
+        writer.Write((byte)0x00);
+        writer.Write((byte)0x0C);
+        writer.Write((byte)0x80);
+        writer.Write((byte)0x01);
 
-        return ms.ToArray();
+        return stream.ToArray();
     }
 
-    private static byte[] BuildResponsePacket(string deviceName, int port, string fp, byte cap, uint ttlSeconds)
+    internal static byte[] BuildResponsePacketForTesting(
+        string deviceName,
+        int port,
+        string presenceId,
+        uint ttlSeconds = 120) =>
+        BuildResponsePacket(deviceName, port, presenceId, ttlSeconds);
+
+    private static byte[] BuildResponsePacket(
+        string deviceName,
+        int port,
+        string presenceId,
+        uint ttlSeconds)
     {
-        var ms = new MemoryStream();
-        using var w = new BinaryWriter(ms);
-
-        string serviceInstance = $"{deviceName}.{ServiceType}";
-
-        // Header: ID = 0, Flags = 0x8400 (Response, Authoritative), QDCOUNT = 0, ANCOUNT = 3, ARCOUNT = 0
-        w.Write((ushort)0);
-        w.Write((byte)0x84); w.Write((byte)0x00);
-        w.Write((ushort)0); // QDCOUNT
-        w.Write((byte)0x00); w.Write((byte)0x03); // ANCOUNT = 3 (PTR, SRV, TXT)
-        w.Write((ushort)0); // NSCOUNT
-        w.Write((ushort)0); // ARCOUNT
-
-        // Answer 1: PTR Record (_glide._tcp.local -> deviceName._glide._tcp.local)
-        WriteDnsName(w, ServiceType);
-        w.Write((byte)0x00); w.Write((byte)0x0C); // TYPE = PTR
-        w.Write((byte)0x00); w.Write((byte)0x01); // CLASS = IN
-        WriteUInt32BigEndian(w, ttlSeconds); // TTL
-        byte[] ptrTarget = EncodeDnsName(serviceInstance);
-        WriteUInt16BigEndian(w, (ushort)ptrTarget.Length);
-        w.Write(ptrTarget);
-
-        // Answer 2: SRV Record (Priority=0, Weight=0, Port, Target=hostname.local)
-        WriteDnsName(w, serviceInstance);
-        w.Write((byte)0x00); w.Write((byte)0x21); // TYPE = SRV (33)
-        w.Write((byte)0x80); w.Write((byte)0x01); // CLASS = IN | Flush (0x8001)
-        WriteUInt32BigEndian(w, ttlSeconds); // TTL
-        byte[] srvHost = EncodeDnsName($"{Environment.MachineName.ToLowerInvariant()}.local");
-        WriteUInt16BigEndian(w, (ushort)(6 + srvHost.Length));
-        w.Write((ushort)0); // Priority
-        w.Write((ushort)0); // Weight
-        WriteUInt16BigEndian(w, (ushort)port); // Port
-        w.Write(srvHost);
-
-        // Answer 3: TXT Record (v=1, dn=..., dt=desktop, alpn=glide-v1, fp=..., cap=0x07)
-        WriteDnsName(w, serviceInstance);
-        w.Write((byte)0x00); w.Write((byte)0x10); // TYPE = TXT (16)
-        w.Write((byte)0x80); w.Write((byte)0x01); // CLASS = IN | Flush (0x8001)
-        WriteUInt32BigEndian(w, ttlSeconds); // TTL
-
-        var txtParts = new List<string>
+        string normalizedDeviceName =
+            LanDiscoveryConstants.NormalizeDeviceName(deviceName);
+        if (!LanDiscoveryConstants.IsValidPresenceId(presenceId))
         {
-            "v=1",
-            $"dn={deviceName}",
-            "dt=desktop",
-            "alpn=glide-v1",
-            $"cap=0x{cap:X2}"
-        };
-        if (!string.IsNullOrEmpty(fp))
-        {
-            txtParts.Add($"fp={fp}");
+            throw new ArgumentException("Invalid presence id.", nameof(presenceId));
         }
 
-        var txtStream = new MemoryStream();
+        var stream = new MemoryStream();
+        using var writer = new BinaryWriter(stream);
+
+        string serviceInstance = $"Glide-{presenceId[..8]}.{ServiceType}";
+
+        writer.Write((ushort)0);
+        writer.Write((byte)0x84);
+        writer.Write((byte)0x00);
+        writer.Write((ushort)0);
+        writer.Write((byte)0x00);
+        writer.Write((byte)0x03);
+        writer.Write((ushort)0);
+        writer.Write((ushort)0);
+
+        WriteDnsName(writer, ServiceType);
+        writer.Write((byte)0x00);
+        writer.Write((byte)0x0C);
+        writer.Write((byte)0x00);
+        writer.Write((byte)0x01);
+        WriteUInt32BigEndian(writer, ttlSeconds);
+        byte[] ptrTarget = EncodeDnsName(serviceInstance);
+        WriteUInt16BigEndian(writer, (ushort)ptrTarget.Length);
+        writer.Write(ptrTarget);
+
+        WriteDnsName(writer, serviceInstance);
+        writer.Write((byte)0x00);
+        writer.Write((byte)0x21);
+        writer.Write((byte)0x80);
+        writer.Write((byte)0x01);
+        WriteUInt32BigEndian(writer, ttlSeconds);
+        byte[] serverHost = EncodeDnsName(
+            $"{Environment.MachineName.ToLowerInvariant()}.local");
+        WriteUInt16BigEndian(writer, (ushort)(6 + serverHost.Length));
+        writer.Write((ushort)0);
+        writer.Write((ushort)0);
+        WriteUInt16BigEndian(writer, (ushort)port);
+        writer.Write(serverHost);
+
+        WriteDnsName(writer, serviceInstance);
+        writer.Write((byte)0x00);
+        writer.Write((byte)0x10);
+        writer.Write((byte)0x80);
+        writer.Write((byte)0x01);
+        WriteUInt32BigEndian(writer, ttlSeconds);
+
+        string[] txtParts =
+        [
+            "v=1",
+            "tv=1",
+            "q=1",
+            $"p={presenceId}",
+            $"dn={normalizedDeviceName}",
+            $"dt={LanDiscoveryConstants.DeviceTypeDesktop}"
+        ];
+
+        using var txtStream = new MemoryStream();
         foreach (string part in txtParts)
         {
             byte[] partBytes = Encoding.UTF8.GetBytes(part);
+            if (partBytes.Length > byte.MaxValue)
+            {
+                throw new InvalidOperationException(
+                    "DNS-SD TXT attribute exceeds the 255-byte record limit.");
+            }
+
             txtStream.WriteByte((byte)partBytes.Length);
             txtStream.Write(partBytes);
         }
+
         byte[] txtPayload = txtStream.ToArray();
-        WriteUInt16BigEndian(w, (ushort)txtPayload.Length);
-        w.Write(txtPayload);
+        if (txtPayload.Length > LanDiscoveryConstants.MaxTxtBudgetBytes)
+        {
+            throw new InvalidOperationException(
+                $"DNS-SD TXT payload exceeds {LanDiscoveryConstants.MaxTxtBudgetBytes} bytes.");
+        }
 
-        return ms.ToArray();
+        WriteUInt16BigEndian(writer, (ushort)txtPayload.Length);
+        writer.Write(txtPayload);
+
+        return stream.ToArray();
     }
 
-    private static void WriteDnsName(BinaryWriter w, string name)
-    {
-        byte[] encoded = EncodeDnsName(name);
-        w.Write(encoded);
-    }
+    private static void WriteDnsName(BinaryWriter writer, string name) =>
+        writer.Write(EncodeDnsName(name));
 
     private static byte[] EncodeDnsName(string name)
     {
-        var ms = new MemoryStream();
-        string[] parts = name.Split('.', StringSplitOptions.RemoveEmptyEntries);
-        foreach (string part in parts)
+        var stream = new MemoryStream();
+        foreach (string part in name.Split('.', StringSplitOptions.RemoveEmptyEntries))
         {
-            byte[] b = Encoding.UTF8.GetBytes(part);
-            ms.WriteByte((byte)b.Length);
-            ms.Write(b);
+            byte[] bytes = Encoding.UTF8.GetBytes(part);
+            if (bytes.Length > 63)
+            {
+                throw new InvalidOperationException(
+                    "DNS label exceeds RFC 1035 63-byte limit.");
+            }
+
+            stream.WriteByte((byte)bytes.Length);
+            stream.Write(bytes);
         }
-        ms.WriteByte(0x00);
-        return ms.ToArray();
+
+        stream.WriteByte(0x00);
+        return stream.ToArray();
     }
 
     private static string ReadDnsName(byte[] buffer, ref int offset)
     {
-        var sb = new StringBuilder();
+        var builder = new StringBuilder();
         int visited = 0;
         int current = offset;
 
         while (current < buffer.Length && visited < 10)
         {
-            byte len = buffer[current++];
-            if (len == 0)
+            byte length = buffer[current++];
+            if (length == 0)
             {
                 offset = current;
                 break;
             }
 
-            if ((len & 0xC0) == 0xC0) // Compression pointer
+            if ((length & 0xC0) == 0xC0)
             {
                 if (current >= buffer.Length) break;
-                int pointerOffset = ((len & 0x3F) << 8) | buffer[current++];
-                offset = current; // Return original flow after first pointer
+                int pointerOffset =
+                    ((length & 0x3F) << 8) | buffer[current++];
+                offset = current;
                 current = pointerOffset;
                 visited++;
                 continue;
             }
 
-            if (current + len > buffer.Length) break;
-            if (sb.Length > 0) sb.Append('.');
-            sb.Append(Encoding.UTF8.GetString(buffer, current, len));
-            current += len;
+            if (current + length > buffer.Length) break;
+            if (builder.Length > 0) builder.Append('.');
+            builder.Append(
+                Encoding.UTF8.GetString(buffer, current, length));
+            current += length;
         }
 
-        return sb.ToString();
+        return builder.ToString();
     }
 
     private static void SkipDnsName(byte[] buffer, ref int offset)
     {
         while (offset < buffer.Length)
         {
-            byte len = buffer[offset++];
-            if (len == 0) break;
-            if ((len & 0xC0) == 0xC0)
+            byte length = buffer[offset++];
+            if (length == 0) break;
+            if ((length & 0xC0) == 0xC0)
             {
-                offset++; // Skip 2nd byte of pointer
+                offset++;
                 break;
             }
-            offset += len;
+
+            offset += length;
         }
     }
 
-    private static void WriteUInt16BigEndian(BinaryWriter w, ushort val)
+    private static void WriteUInt16BigEndian(BinaryWriter writer, ushort value)
     {
-        w.Write((byte)((val >> 8) & 0xFF));
-        w.Write((byte)(val & 0xFF));
+        writer.Write((byte)((value >> 8) & 0xFF));
+        writer.Write((byte)(value & 0xFF));
     }
 
-    private static void WriteUInt32BigEndian(BinaryWriter w, uint val)
+    private static void WriteUInt32BigEndian(BinaryWriter writer, uint value)
     {
-        w.Write((byte)((val >> 24) & 0xFF));
-        w.Write((byte)((val >> 16) & 0xFF));
-        w.Write((byte)((val >> 8) & 0xFF));
-        w.Write((byte)(val & 0xFF));
+        writer.Write((byte)((value >> 24) & 0xFF));
+        writer.Write((byte)((value >> 16) & 0xFF));
+        writer.Write((byte)((value >> 8) & 0xFF));
+        writer.Write((byte)(value & 0xFF));
     }
 
     public void Dispose()
