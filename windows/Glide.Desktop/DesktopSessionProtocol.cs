@@ -118,12 +118,17 @@ internal sealed class DesktopSessionProtocol
         string operationName,
         CancellationToken cancellationToken)
     {
+        using var deadlineCts =
+            CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadlineCts.CancelAfter(timeout);
+
         try
         {
-            return await operation(cancellationToken)
-                .WaitAsync(timeout, cancellationToken);
+            return await operation(deadlineCts.Token);
         }
-        catch (TimeoutException ex)
+        catch (OperationCanceledException ex)
+            when (!cancellationToken.IsCancellationRequested &&
+                  deadlineCts.IsCancellationRequested)
         {
             throw new ProtocolViolationException(
                 WireErrorCodes.Timeout,
