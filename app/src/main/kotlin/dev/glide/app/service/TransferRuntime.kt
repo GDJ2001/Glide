@@ -760,6 +760,181 @@ class TransferRuntime private constructor(
         return true
     }
 
+    private fun startTrustObservation(scope: CoroutineScope) {
+        val manager = persistentTrustManager ?: run {
+            _trustState.value = TrustRuntimeState(
+                errorMessage = "Persistent trust service is unavailable"
+            )
+            return
+        }
+
+        synchronized(lock) {
+            trustObservationJob?.cancel()
+            trustObservationJob = scope.launch {
+                try {
+                    val initialization = manager.initialize()
+                    val notice = when (initialization) {
+                        is LocalIdentityInitialization.Ready -> null
+                        is LocalIdentityInitialization.ResetAfterKeyLoss ->
+                            "Local identity key was unavailable. " +
+                                "${initialization.revokedPeerCount} trusted peer record(s) were revoked and re-enrollment is required."
+                    }
+
+                    _trustState.value = _trustState.value.copy(
+                        isInitialized = true,
+                        localFingerprintHex = initialization.localFingerprintHex,
+                        securityNotice = notice,
+                        errorMessage = null
+                    )
+
+                    manager.trustedPeers.collect { peers ->
+                        _trustState.value = _trustState.value.copy(
+                            isInitialized = true,
+                            trustedPeers = peers,
+                            errorMessage = null
+                        )
+                    }
+                } catch (t: Throwable) {
+                    _trustState.value = _trustState.value.copy(
+                        errorMessage =
+                            "Persistent identity initialization failed: " +
+                                (t.message ?: t::class.java.simpleName)
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * HARD-021 calls this only after IdentityProofVerifier has validated the live channel-bound
+     * proof. UI code may approve or reject the pending identity but cannot create it.
+     */
+    internal fun stageVerifiedPeerForEnrollment(
+        peer: VerifiedPeerIdentity
+    ): Boolean {
+        if (persistentTrustManager == null) return false
+
+        synchronized(lock) {
+            pendingVerifiedPeer = peer
+            _trustState.value = _trustState.value.copy(
+                pendingEnrollment = PendingTrustEnrollment(
+                    fingerprintHex = peer.fingerprintHex,
+                    displayName = peer.displayName
+                ),
+                securityNotice = null,
+                errorMessage = null
+            )
+        }
+        return true
+    }
+
+    private fun approvePeerEnrollment(
+        fingerprintHex: String
+    ): Boolean {
+        val manager = persistentTrustManager ?: return false
+        val scope = synchronized(lock) { serviceScope } ?: return false
+        val peer = synchronized(lock) {
+            val pending = pendingVerifiedPeer ?: return false
+            if (pending.fingerprintHex != fingerprintHex) return false
+
+            pendingVerifiedPeer = null
+            _trustState.value = _trustState.value.copy(
+                pendingEnrollment = null
+            )
+            pending
+        }
+
+        scope.launch {
+            try {
+                manager.enrollVerifiedPeer(
+                    verifiedPeer = peer,
+                    userApproved = true
+                )
+                _trustState.value = _trustState.value.copy(
+                    securityNotice = "Trusted device enrolled: ${peer.displayName}",
+                    errorMessage = null
+                )
+            } catch (t: Throwable) {
+                _trustState.value = _trustState.value.copy(
+                    errorMessage =
+                        "Could not enroll trusted device: " +
+                            (t.message ?: t::class.java.simpleName)
+                )
+            }
+        }
+        return true
+    }
+
+    private fun rejectPeerEnrollment(
+        fingerprintHex: String
+    ): Boolean = synchronized(lock) {
+        val pending = pendingVerifiedPeer ?: return false
+        if (pending.fingerprintHex != fingerprintHex) return false
+
+        pendingVerifiedPeer = null
+        _trustState.value = _trustState.value.copy(
+            pendingEnrollment = null,
+            securityNotice = "Device trust enrollment declined."
+        )
+        true
+    }
+
+    private fun revokeTrustedPeer(
+        fingerprintHex: String
+    ): Boolean {
+        val manager = persistentTrustManager ?: return false
+        val scope = synchronized(lock) { serviceScope } ?: return false
+
+        scope.launch {
+            try {
+                manager.revokePeer(fingerprintHex)
+                _trustState.value = _trustState.value.copy(
+                    securityNotice = "Device trust revoked.",
+                    errorMessage = null
+                )
+            } catch (t: Throwable) {
+                _trustState.value = _trustState.value.copy(
+                    errorMessage =
+                        "Could not revoke trusted device: " +
+                            (t.message ?: t::class.java.simpleName)
+                )
+            }
+        }
+        return true
+    }
+
+    private fun rotateLocalIdentity(): Boolean {
+        val manager = persistentTrustManager ?: return false
+        val scope = synchronized(lock) { serviceScope } ?: return false
+
+        synchronized(lock) {
+            pendingVerifiedPeer = null
+            _trustState.value = _trustState.value.copy(
+                pendingEnrollment = null
+            )
+        }
+
+        scope.launch {
+            try {
+                val result = manager.rotateLocalIdentity()
+                _trustState.value = _trustState.value.copy(
+                    isInitialized = true,
+                    localFingerprintHex = result.localFingerprintHex,
+                    securityNotice =
+                        "Local identity rotated. " +
+                            "${result.revokedPeerCount} trusted peer record(s) were revoked.",
+                    errorMessage = null
+                )
+            } catch (t: Throwable) {
+                _trustState.value = _trustState.value.copy(
+                    errorMessage =
+                        "Could not rotate local identity: " +
+                            (t.message ?: t::class.java.simpleName)
+                )
+            }
+        }
+        return true
+    }
     private fun startDiscovery(): Boolean {
         val controller = discoveryController ?: run {
             _fallbackDiscoveryState.value = DiscoveryUiState.Blocked(
