@@ -68,12 +68,6 @@ public sealed record DesktopTransferResult(
 
 public interface IDesktopTransferInteraction
 {
-    Task<bool> ConfirmSasAsync(
-        DesktopTransferDirection direction,
-        string peerName,
-        int sixDigitCode,
-        CancellationToken cancellationToken);
-
     Task<bool> ConfirmOfferAsync(
         DesktopOffer offer,
         CancellationToken cancellationToken);
@@ -88,12 +82,6 @@ public interface IDesktopTransferInteraction
 
 public abstract class DesktopTransferInteractionBase : IDesktopTransferInteraction
 {
-    public virtual Task<bool> ConfirmSasAsync(
-        DesktopTransferDirection direction,
-        string peerName,
-        int sixDigitCode,
-        CancellationToken cancellationToken) => Task.FromResult(true);
-
     public virtual Task<bool> ConfirmOfferAsync(
         DesktopOffer offer,
         CancellationToken cancellationToken) => Task.FromResult(true);
