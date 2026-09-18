@@ -22,7 +22,8 @@ object OfferPaginator {
         batch: TransferBatch,
         effectiveLimits: EffectiveLimits = EffectiveLimits(),
         maxItemsPerPage: Int = ProtocolLimits.MAX_OFFER_PAGE_ITEMS,
-        safePagePayloadCeilingBytes: Int = SAFE_PAGE_PAYLOAD_CEILING_BYTES
+        safePagePayloadCeilingBytes: Int = SAFE_PAGE_PAYLOAD_CEILING_BYTES,
+        allowResumeMetadata: Boolean = false
     ): PagedOffer {
         require(batch.items.isNotEmpty()) { "Cannot paginate an empty batch" }
         require(maxItemsPerPage in 1..ProtocolLimits.MAX_OFFER_PAGE_ITEMS) {
@@ -34,6 +35,19 @@ object OfferPaginator {
         var currentPageEstimatedBytes = 256 // Base JSON envelope overhead
 
         for (item in batch.items) {
+            val carriesResumeMetadata =
+                item.resumeChunkSize != null ||
+                    item.resumeChunkRootHashHex != null
+            if (carriesResumeMetadata &&
+                !allowResumeMetadata
+            ) {
+                throw ProtocolViolationException(
+                    TransferFailure.UnsupportedProtocol(
+                        "Offer item carries resume metadata without negotiated resume-v1"
+                    )
+                )
+            }
+
             val itemDto = OfferItemDto(
                 itemId = item.id,
                 name = item.name,
