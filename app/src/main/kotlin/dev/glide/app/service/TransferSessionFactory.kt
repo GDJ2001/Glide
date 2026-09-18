@@ -13,6 +13,9 @@ import dev.glide.core.ports.HistoryStore
 import dev.glide.core.ports.ReceiveStore
 import dev.glide.core.ports.SourceAccess
 import dev.glide.core.ports.TransferTransport
+import dev.glide.core.resume.ResumeSourcePreflight
+import dev.glide.data.source.ResumeSourceVerifier
+import dev.glide.data.store.ResumableStagingStore
 import kotlinx.coroutines.CoroutineScope
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -25,7 +28,11 @@ import javax.inject.Singleton
 class TransferSessionFactory @Inject constructor(
     val sourceAccess: SourceAccess,
     val receiveStore: ReceiveStore,
-    val historyStore: HistoryStore
+    val historyStore: HistoryStore,
+    val resumeSourceVerifier:
+        ResumeSourceVerifier? = null,
+    val resumableStagingStore:
+        ResumableStagingStore? = null
 ) {
     /**
      * Constructs a sender-role [TransferCoordinator] bound to an explicit [sessionId], batch, and source map.
@@ -59,7 +66,74 @@ class TransferSessionFactory @Inject constructor(
             expectedPeerFingerprintHex =
                 expectedPeerFingerprintHex,
             onVerifiedPeerIdentity =
-                onVerifiedPeerIdentity
+                onVerifiedPeerIdentity,
+            resumeSourcePreflight =
+                resumeSourceVerifier
+                    ?.let { verifier ->
+                        { handle ->
+                            val snapshot =
+                                verifier.snapshot(
+                                    handle
+                                )
+                            ResumeSourcePreflight(
+                                sourceIdentity =
+                                    snapshot
+                                        .sourceIdentity,
+                                totalBytes =
+                                    snapshot.totalBytes,
+                                chunkSize =
+                                    snapshot.chunkSize,
+                                chunkRootHashHex =
+                                    snapshot
+                                        .chunkRootHashHex,
+                                wholeFileSha256Hex =
+                                    snapshot
+                                        .wholeFileSha256Hex
+                            )
+                        }
+                    },
+            persistSenderResumeAuthority =
+                resumableStagingStore
+                    ?.let { store ->
+                        {
+                            originalSessionId,
+                            item,
+                            handle,
+                            peerFingerprintHex,
+                            snapshot ->
+                            store.initSenderSession(
+                                originalSessionId =
+                                    originalSessionId
+                                        .value,
+                                itemId =
+                                    item.id.value,
+                                itemName =
+                                    item.name,
+                                peerFingerprintHex =
+                                    peerFingerprintHex,
+                                sourceHandle =
+                                    handle.value,
+                                sourceIdentity =
+                                    snapshot
+                                        .sourceIdentity,
+                                totalBytes =
+                                    snapshot
+                                        .totalBytes,
+                                chunkSize =
+                                    snapshot
+                                        .chunkSize,
+                                chunkRootHashHex =
+                                    snapshot
+                                        .chunkRootHashHex,
+                                wholeFileSha256Hex =
+                                    snapshot
+                                        .wholeFileSha256Hex
+                            )
+                            Unit
+                        }
+                    },
+            enableTrueResumeCapability =
+                false
         )
     }
 
