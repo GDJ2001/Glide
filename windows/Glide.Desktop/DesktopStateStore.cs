@@ -42,16 +42,19 @@ public sealed record DesktopSettings(
                 nameof(ReceiveDirectory));
         }
 
-        string normalizedDirectory = Path.GetFullPath(
+        string expandedDirectory =
             Environment.ExpandEnvironmentVariables(
-                ReceiveDirectory.Trim()));
+                ReceiveDirectory.Trim());
 
-        if (!Path.IsPathFullyQualified(normalizedDirectory))
+        if (!Path.IsPathFullyQualified(expandedDirectory))
         {
             throw new ArgumentException(
                 "Receive directory must be an absolute path.",
                 nameof(ReceiveDirectory));
         }
+
+        string normalizedDirectory =
+            Path.GetFullPath(expandedDirectory);
 
         if (HistoryLimit is < MinHistoryLimit or > MaxHistoryLimit)
         {
@@ -283,7 +286,6 @@ public sealed class JsonDesktopStateStore : IDesktopStateStore, IDisposable
                 SchemaVersion,
                 validated,
                 decoded.History
-                    .Where(static entry => entry != null)
                     .OrderByDescending(static entry => entry.Timestamp)
                     .Take(validated.HistoryLimit)
                     .ToList());
