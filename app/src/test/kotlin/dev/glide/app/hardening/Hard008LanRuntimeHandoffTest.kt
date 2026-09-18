@@ -17,6 +17,7 @@ import dev.glide.core.domain.SourceHandle
 import dev.glide.core.domain.StagingHandle
 import dev.glide.core.domain.TransferBatch
 import dev.glide.core.domain.TransferItem
+import dev.glide.core.ports.AuthenticatedChannelContextProvider
 import dev.glide.core.ports.HistoryStore
 import dev.glide.core.ports.ItemRecord
 import dev.glide.core.ports.ReceiveStore
@@ -157,6 +158,18 @@ class Hard008LanRuntimeHandoffTest {
                 assertEquals(DeviceRole.Sender, coordinator!!.role)
                 assertEquals(2, coordinator.senderBatch?.items?.size)
                 assertEquals(2, coordinator.sourceMap.size)
+
+                val authenticated =
+                    (coordinator.transport as
+                        AuthenticatedChannelContextProvider)
+                        .authenticatedChannelContext(
+                            coordinator.peerId
+                        )
+                assertNotNull(authenticated)
+                assertEquals(
+                    authenticated!!.sessionId,
+                    coordinator.sessionId
+                )
             } finally {
                 runtime.detachServiceScope()
                 receiverController.stopAll()
@@ -210,6 +223,18 @@ class Hard008LanRuntimeHandoffTest {
 
             assertNotNull(coordinator)
             assertEquals(DeviceRole.Receiver, coordinator!!.role)
+
+            val authenticated =
+                (coordinator.transport as
+                    AuthenticatedChannelContextProvider)
+                    .authenticatedChannelContext(
+                        coordinator.peerId
+                    )
+            assertNotNull(authenticated)
+            assertEquals(
+                authenticated!!.sessionId,
+                coordinator.sessionId
+            )
             assertTrue(runtime.lanReceiverState.value is LanReceiverRuntimeState.Connected)
         } finally {
             runtime.detachServiceScope()
