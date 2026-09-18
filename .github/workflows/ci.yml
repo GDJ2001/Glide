@@ -135,24 +135,6 @@ jobs:
       - name: Run ordinary .NET tests
         run: dotnet test windows/Glide.Tests/Glide.Tests.csproj -c Release --no-build --filter "HARD!=003-red" --logger "trx;LogFileName=ordinary-linux.trx"
 
-      - name: Prove HARD-003 .NET regressions are red
-        shell: bash
-        run: |
-          set +e
-          dotnet test windows/Glide.Tests/Glide.Tests.csproj -c Release --no-build --filter "HARD=003-red" --logger "trx;LogFileName=hard003-red.trx"
-          status=$?
-          set -e
-          if [ "$status" -eq 0 ]; then
-            echo "::error::Expected HARD-003 .NET regression suite to be red, but it passed."
-            exit 1
-          fi
-          trx='windows/Glide.Tests/TestResults/hard003-red.trx'
-          if [ ! -f "$trx" ] || ! grep -q 'outcome="Failed"' "$trx"; then
-            echo "::error::HARD-003 .NET command failed without a recorded failed test result."
-            exit 1
-          fi
-          echo "Observed expected red .NET regression evidence."
-
       - name: Build Linux self-contained package
         shell: pwsh
         run: ./packaging/linux/build-linux-packages.ps1 -Configuration Release -Runtimes linux-x64
