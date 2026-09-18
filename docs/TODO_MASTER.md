@@ -7,7 +7,7 @@ Plan: [`planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md`](planning/CODE_R
 Latest reconciliation: [`planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md`](planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md)  
 Review baseline: `ea2e811a7f2d8aaddc552e894fe04782cd08a499`  
 HARD-002 captured source boundary: `12681eabba26387fe7d1bbaf309971f345642e41`  
-**Next recommended task: restore current-head CI and review HARD-008/HARD-009/HARD-011/HARD-012/HARD-013/HARD-014/HARD-015. HARD-015 is prepared as a stacked branch on HARD-014, but the M2 chain cannot satisfy its completion gates while Actions remains unscheduled and physical interoperability evidence is unavailable. HARD-010 still requires two physical Android devices.**
+**Next recommended task: restore current-head CI and review HARD-008/HARD-009/HARD-011/HARD-012/HARD-013/HARD-014/HARD-015/HARD-016. HARD-016 is prepared as a stacked branch on HARD-015, but the M2 chain cannot satisfy its completion gates while Actions remains unscheduled and physical interoperability evidence is unavailable. HARD-010 still requires two physical Android devices.**
 
 Source/configuration commits after the HARD-002 captured boundary are not silently certified by HARD-002; the task that consumes them must inspect/reconcile them before relying on their claims.
 
@@ -74,7 +74,7 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 | HARD-013 | M2 | REVIEW_REQUIRED | Implement strict desktop session/protocol state machine |
 | HARD-014 | M2 | REVIEW_REQUIRED | Make desktop hashing/storage bounded and shared |
 | HARD-015 | M2 | REVIEW_REQUIRED | Complete desktop consent/history/settings/state |
-| HARD-016 | M2 | NOT_STARTED | Harden Linux CLI/daemon receiving lifecycle |
+| HARD-016 | M2 | REVIEW_REQUIRED | Harden Linux CLI/daemon receiving lifecycle |
 | HARD-017 | M2 | NOT_STARTED | Prove native cross-platform interoperability |
 | HARD-018 | M3 | NOT_STARTED | Finalize identity/resume protocol extension |
 | HARD-019 | M3 | NOT_STARTED | Integrate Android persistent identity/trust |
@@ -261,10 +261,15 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 <a id="hard-016"></a>
 ## HARD-016 — Harden Linux CLI/daemon receiving lifecycle
 
-- **Milestone / status:** M2 / NOT_STARTED.
-- **Dependencies:** HARD-013, HARD-014.
-- **Acceptance:** Missing/invalid enrollment is rejected; daemon cannot auto-authorize arbitrary offers; headless receive requires explicit peer/destination/size policy; shutdown/cancel cleans resources.
-- **Tests/evidence:** No invitation, wrong peer, unauthorized offer, SIGTERM/shutdown and disk-limit runtime/systemd traces.
+- **Milestone / status:** M2 / REVIEW_REQUIRED.
+- **Dependencies:** HARD-013, HARD-014; both remain REVIEW_REQUIRED. The implementation is stacked on HARD-015.
+- **Implementation state:** Prepared on `hardening/hard-016-linux-daemon-policy`. Unattended startup now requires `--policy`; missing/invalid policy fails before listening. Policy binds a one-use invitation to an exact remote-IP allowlist, absolute destination, item/batch/count limits, invitation TTL and device name. Bearer invitation material is written to a protected enrollment file rather than logs and is removed on use/rotation/shutdown.
+- **Authorization/runtime:** Daemon connections from non-allowlisted IPs are rejected before bootstrap. Shared receiver limits are advertised and independently enforced before consent/storage. Daemon offers must satisfy the explicit policy; interactive CLI receive retains explicit y/yes consent. TLS/connection setup failures are isolated so a hostile connection does not kill the service.
+- **Shutdown/packaging:** Ctrl+C and SIGTERM feed one cancellation-driven lifecycle. The packaged systemd unit requires the policy file, uses SIGTERM with a 15-second stop budget, `UMask=0077`, `NoNewPrivileges`, `PrivateTmp`, strict filesystem protection and explicit write paths. A policy template is included in Linux packages.
+- **Tests prepared:** no-policy startup, empty/null allowlist, wrong remote IP, oversize offer, protected enrollment-file lifecycle, cancellation cleanup, server-side receive-limit enforcement and systemd-policy assertions. Existing HARD-012 tests retain wrong-token/replay/single-use authority coverage.
+- **Verification blocker:** GitHub Actions still schedules no current-head runs/statuses and this execution environment has no .NET SDK. Real systemd/SIGTERM, low-disk and physical cross-host traces remain required.
+- **Evidence:** [HARD-016 Linux daemon lifecycle hardening](development/sessions/2026-09-18-hard-016.md).
+- **Completion gate:** current-head Linux build/tests/package/verifier, dependency certification, real systemd shutdown/no-stale-enrollment trace, wrong-host/auth/disk-limit evidence, and valid Android/Windows→Linux transfers.
 
 <a id="hard-017"></a>
 ## HARD-017 — Prove native cross-platform interoperability
