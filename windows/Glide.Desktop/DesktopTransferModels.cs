@@ -1,5 +1,6 @@
 using Glide.Core.Pairing;
 using Glide.Core.Storage;
+using Glide.Core.Security;
 
 namespace Glide.Desktop;
 
@@ -73,6 +74,10 @@ public interface IDesktopTransferInteraction
         DesktopOffer offer,
         CancellationToken cancellationToken);
 
+    Task<bool> ConfirmPeerEnrollmentAsync(
+        VerifiedDesktopPeerIdentity peer,
+        CancellationToken cancellationToken);
+
     void OnInvitationConsumed(DesktopTransferDirection direction);
     void OnPeerIdentified(DesktopTransferDirection direction, string peerName);
     void OnStatus(DesktopTransferDirection direction, string message);
@@ -86,6 +91,10 @@ public abstract class DesktopTransferInteractionBase : IDesktopTransferInteracti
     public virtual Task<bool> ConfirmOfferAsync(
         DesktopOffer offer,
         CancellationToken cancellationToken) => Task.FromResult(true);
+
+    public virtual Task<bool> ConfirmPeerEnrollmentAsync(
+        VerifiedDesktopPeerIdentity peer,
+        CancellationToken cancellationToken) => Task.FromResult(false);
 
     public virtual void OnInvitationConsumed(DesktopTransferDirection direction) { }
     public virtual void OnPeerIdentified(DesktopTransferDirection direction, string peerName) { }
@@ -101,9 +110,13 @@ public sealed record DesktopSendRequest(
     int Port,
     IReadOnlyList<DesktopTransferFile> Files,
     LanInvitation? Invitation = null,
-    string LocalDeviceName = "");
+    string LocalDeviceName = "",
+    DesktopPersistentTrustManager? TrustManager = null,
+    string? ExpectedPeerFingerprintHex = null);
 
 public sealed record DesktopReceiveRequest(
     QuarantineStagingStore StagingStore,
     LanInvitationAuthority InvitationAuthority,
-    string LocalDeviceName = "");
+    string LocalDeviceName = "",
+    DesktopPersistentTrustManager? TrustManager = null,
+    string? ExpectedPeerFingerprintHex = null);
