@@ -7,7 +7,7 @@ Plan: [`planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md`](planning/CODE_R
 Latest reconciliation: [`planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md`](planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md)  
 Review baseline: `ea2e811a7f2d8aaddc552e894fe04782cd08a499`  
 HARD-002 captured source boundary: `12681eabba26387fe7d1bbaf309971f345642e41`  
-**Next recommended verification action: restore current-head CI for the continuation branch, then review HARD-008/HARD-009/HARD-011–015 and HARD-018. HARD-010 and HARD-017 remain blocked on real-device/platform evidence. HARD-016 is IN_PROGRESS until peer-specific headless authorization can bind to persistent identities in HARD-020/HARD-021. HARD-019 source inspection is the next safe development step; identity-v1/resume-v1 must remain disabled in production until HARD-019–021 are complete.**
+**Next recommended verification action: restore current-head CI for the continuation branch, then review HARD-008/HARD-009/HARD-011–015 and HARD-018–019. HARD-010 and HARD-017 remain blocked on real-device/platform evidence. HARD-016 is IN_PROGRESS until peer-specific headless authorization binds to persistent identities in HARD-020/HARD-021. HARD-020 source preparation is the next safe development step; identity-v1/resume-v1 must remain disabled in production until HARD-019–021 are complete and verified.**
 
 Source/configuration commits after the HARD-002 captured boundary are not silently certified by HARD-002; the task that consumes them must inspect/reconcile them before relying on their claims.
 
@@ -77,7 +77,7 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 | HARD-016 | M2 | IN_PROGRESS | Harden Linux CLI/daemon receiving lifecycle |
 | HARD-017 | M2 | BLOCKED | Prove native cross-platform interoperability |
 | HARD-018 | M3 | REVIEW_REQUIRED | Finalize identity/resume protocol extension |
-| HARD-019 | M3 | NOT_STARTED | Integrate Android persistent identity/trust |
+| HARD-019 | M3 | REVIEW_REQUIRED | Integrate Android persistent identity/trust |
 | HARD-020 | M3 | NOT_STARTED | Integrate Windows/Linux persistent identity/trust |
 | HARD-021 | M3 | NOT_STARTED | Integrate mutually authenticated trusted sessions |
 | HARD-022 | M3 | NOT_STARTED | Implement Android durable true-resume journals |
@@ -280,10 +280,13 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 <a id="hard-019"></a>
 ## HARD-019 — Integrate Android persistent identity/trust
 
-- **Milestone / status:** M3 / NOT_STARTED.
-- **Dependencies:** HARD-018.
-- **Acceptance:** Explicit enrollment, protected Android key, peer key/fingerprint persistence, revocation and trusted-peer presentation are wired to production runtime.
-- **Tests/evidence:** Key loss/rotation, revoke, duplicate enrollment and restored DB without key; Keystore/trust lifecycle evidence.
+- **Milestone / status:** M3 / REVIEW_REQUIRED (pre-gate implementation).
+- **Dependencies:** HARD-018 is REVIEW_REQUIRED; HARD-017 remains blocked, so this does not open trusted-session production capability negotiation.
+- **Implementation state:** Android Keystore implements the platform-neutral persistent-identity port; Room implements the trusted-peer store; `PersistentTrustManager` owns initialization, verified enrollment, duplicate refresh, revocation, key rotation and restored-DB-without-key invalidation. `TransferRuntime` exposes trust state plus explicit approve/reject/revoke operations. Settings uses the runtime trust authority in production, and Transfer UI contains an explicit verified-device enrollment prompt.
+- **Safety state:** UI/discovery code cannot manufacture `VerifiedPeerIdentity`; enrollment requires successful HARD-018 transcript verification. Trust never auto-accepts file offers. `identity-v1`/`resume-v1` remain disabled by default until HARD-021.
+- **Tests prepared:** key loss/database restore, rotation, duplicate enrollment, decline, revoke, wrong approval fingerprint, channel-binding replay failure, runtime service-independent trust management and Settings runtime authority.
+- **Verification blocker:** current branch head has no GitHub Actions/check suite; real Android Keystore/device evidence is still required.
+- **Evidence:** [HARD-019 Android trust preparation](development/sessions/2026-09-18-hard-019.md).
 
 <a id="hard-020"></a>
 ## HARD-020 — Integrate Windows/Linux persistent identity/trust
