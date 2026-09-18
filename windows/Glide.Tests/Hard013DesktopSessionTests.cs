@@ -127,7 +127,7 @@ public sealed class Hard013DesktopSessionTests : IDisposable
 
         await serverTask.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.False(result.Success);
-        Assert.Contains("does not match expected", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.True(result.Message.Contains("does not match expected", StringComparison.OrdinalIgnoreCase), result.Message);
     }
 
     [Fact]
@@ -202,7 +202,7 @@ public sealed class Hard013DesktopSessionTests : IDisposable
 
         Assert.False(receiverResult.Success);
         Assert.Equal(0, interaction.ConfirmOfferCalls);
-        Assert.Contains("page index", receiverResult.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.True(receiverResult.Message.Contains("page index", StringComparison.OrdinalIgnoreCase), receiverResult.Message);
     }
 
     [Fact]
@@ -292,7 +292,7 @@ public sealed class Hard013DesktopSessionTests : IDisposable
 
         await serverTask.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.False(result.Success);
-        Assert.Contains(WireErrorCodes.WriteFailure, result.Message, StringComparison.Ordinal);
+        Assert.True(result.Message.Contains(WireErrorCodes.WriteFailure, StringComparison.Ordinal), result.Message);
         Assert.Null(recordAfterFailure);
     }
 
@@ -329,8 +329,8 @@ public sealed class Hard013DesktopSessionTests : IDisposable
                 new PassiveInteraction());
 
         Assert.False(result.Success);
-        Assert.Contains("HELLO_ACK", result.Message, StringComparison.Ordinal);
-        Assert.Contains("deadline", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.True(result.Message.Contains("HELLO_ACK", StringComparison.Ordinal), result.Message);
+        Assert.True(result.Message.Contains("deadline", StringComparison.OrdinalIgnoreCase), result.Message);
 
         await serverTask.WaitAsync(TimeSpan.FromSeconds(5));
     }
@@ -395,7 +395,72 @@ public sealed class Hard013DesktopSessionTests : IDisposable
 
         Assert.False(receiverResult.Success);
         Assert.Equal(0, interaction.ConfirmOfferCalls);
-        Assert.Contains("Expected inbound seq 2", receiverResult.Message, StringComparison.Ordinal);
+        Assert.True(receiverResult.Message.Contains("Expected inbound seq 2", StringComparison.Ordinal), receiverResult.Message);
+    }
+
+    [Fact]
+    public async Task Receiver_DuplicateSequenceReplay_FailsClosedBeforeConsent()
+    {
+        using var listener = new TlsSocketListener(0);
+        LanInvitation invitation = CreateInvitation(listener);
+        var interaction = new CountingInteraction();
+        var store = new QuarantineStagingStore(
+            stagingRoot: Path.Combine(_root, "replay-staging"),
+            destinationRoot: Path.Combine(_root, "replay-downloads"));
+
+        var receiverTask = Task.Run(async () =>
+        {
+            await using var connection = await listener.AcceptConnectionAsync();
+            return await new DesktopTransferEngine().ReceiveAsync(
+                connection,
+                new DesktopReceiveRequest(
+                    store,
+                    new LanInvitationAuthority(invitation),
+                    "Replay Receiver"),
+                interaction);
+        });
+
+        var client = new TlsSocketClient();
+        await using var senderConnection = await client.ConnectAsync(
+            "127.0.0.1",
+            listener.BoundPort,
+            invitation.SpkiSha256);
+        using var channel = new LanRecordChannel(senderConnection.SslStream);
+
+        string sessionId = NewUuid();
+        await channel.WriteBootstrapAsync(new LanBootstrapMessage(
+            invitation.InvitationId,
+            invitation.Token,
+            invitation.InvitationHash,
+            sessionId));
+        Assert.True((await channel.ReadBootstrapResultAsync()).IsAccepted);
+
+        await channel.WriteEnvelopeAsync(CreateHello(sessionId, 1));
+        await channel.ReadEnvelopeAsync(); // HELLO_ACK seq=1
+
+        await channel.WriteEnvelopeAsync(
+            new Envelope(
+                1,
+                MessageTypes.OfferBegin,
+                new SessionId(sessionId),
+                NewMessageId(),
+                1, // replay the already-consumed sender seq
+                new JsonObject
+                {
+                    ["batchId"] = NewUuid(),
+                    ["itemCount"] = 1,
+                    ["totalBytes"] = "0",
+                    ["pageCount"] = 1
+                }));
+
+        DesktopTransferResult receiverResult =
+            await receiverTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.False(receiverResult.Success);
+        Assert.Equal(0, interaction.ConfirmOfferCalls);
+        Assert.True(
+            receiverResult.Message.Contains("Expected inbound seq 2", StringComparison.Ordinal),
+            receiverResult.Message);
     }
 
     [Fact]
@@ -495,8 +560,8 @@ public sealed class Hard013DesktopSessionTests : IDisposable
                 new PassiveInteraction());
 
         Assert.False(result.Success);
-        Assert.Contains("BATCH_RESULT", result.Message, StringComparison.Ordinal);
-        Assert.Contains("deadline", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.True(result.Message.Contains("BATCH_RESULT", StringComparison.Ordinal), result.Message);
+        Assert.True(result.Message.Contains("deadline", StringComparison.OrdinalIgnoreCase), result.Message);
 
         await serverTask.WaitAsync(TimeSpan.FromSeconds(5));
     }
