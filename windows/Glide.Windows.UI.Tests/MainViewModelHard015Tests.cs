@@ -165,6 +165,38 @@ public sealed class MainViewModelHard015Tests
     }
 
     [Fact]
+    public async Task SettingsSave_AreReloadedByNewViewModel()
+    {
+        var store = new FakeStateStore();
+
+        var first = new MainViewModel(
+            store,
+            new RecordingDispatcher(),
+            startDiscovery: false);
+        await first.InitializationTask;
+
+        first.DeviceName = "Studio Desktop";
+        first.ReceiveDirectory = "C:\\GlideReceived";
+        first.HistoryLimit = 33;
+
+        await first.ExecuteSaveSettingsAsync();
+
+        Assert.Equal("Studio Desktop", store.State.Settings.DeviceName);
+        Assert.Equal("C:\\GlideReceived", store.State.Settings.ReceiveDirectory);
+        Assert.Equal(33, store.State.Settings.HistoryLimit);
+
+        var second = new MainViewModel(
+            store,
+            new RecordingDispatcher(),
+            startDiscovery: false);
+        await second.InitializationTask;
+
+        Assert.Equal("Studio Desktop", second.DeviceName);
+        Assert.Equal("C:\\GlideReceived", second.ReceiveDirectory);
+        Assert.Equal(33, second.HistoryLimit);
+    }
+
+    [Fact]
     public async Task Startup_LoadsPersistedSettingsAndHistory()
     {
         var persistedEntry = new DesktopHistoryEntry(
