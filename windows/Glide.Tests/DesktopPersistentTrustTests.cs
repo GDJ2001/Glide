@@ -275,6 +275,93 @@ public sealed class DesktopPersistentTrustTests : IDisposable
     }
 
     [Fact]
+    public void IdentityProof_StaleChallengeResponse_IsRejected()
+    {
+        using ECDsa signer =
+            ECDsa.Create(
+                ECCurve.NamedCurves.nistP256);
+        using ECDsa verifier =
+            ECDsa.Create(
+                ECCurve.NamedCurves.nistP256);
+
+        byte[] publicDer =
+            signer.ExportSubjectPublicKeyInfo();
+        string signerFingerprint =
+            Convert.ToHexStringLower(
+                SHA256.HashData(
+                    publicDer));
+        string verifierFingerprint =
+            Convert.ToHexStringLower(
+                SHA256.HashData(
+                    verifier
+                        .ExportSubjectPublicKeyInfo()));
+
+        IReadOnlyCollection<string> capabilities =
+        [
+            ProtocolCapabilities.StreamV1,
+            ProtocolCapabilities.Sha256,
+            ProtocolCapabilities.FolderV1,
+            ProtocolCapabilities.IdentityV1
+        ];
+
+        var original =
+            new DesktopIdentityProofContext(
+                "11111111-1111-4111-8111-111111111111",
+                "22222222-2222-4222-8222-222222222222",
+                "receiver",
+                "sender",
+                verifierFingerprint,
+                "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
+                "ffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221100",
+                capabilities);
+
+        byte[] transcript =
+            IdentityResumeTranscript
+                .IdentityProofBytes(
+                    original.ActiveSessionId,
+                    original.ChallengeMessageId,
+                    original.SignerRole,
+                    original.VerifierRole,
+                    signerFingerprint,
+                    original.VerifierFingerprintHex,
+                    original.ChallengeNonceHex,
+                    original.ChannelBindingHex,
+                    IdentityResumeTranscript
+                        .CapabilityHashHex(
+                            capabilities));
+        byte[] signature =
+            signer.SignData(
+                transcript,
+                HashAlgorithmName.SHA256,
+                DSASignatureFormat.Rfc3279DerSequence);
+
+        var freshChallenge =
+            original with
+            {
+                ChallengeMessageId =
+                    "33333333-3333-4333-8333-333333333333",
+                ChallengeNonceHex =
+                    "11223344556677889900aabbccddeeff11223344556677889900aabbccddeeff"
+            };
+
+        Assert.Throws<CryptographicException>(
+            () =>
+                DesktopIdentityProofVerifier
+                    .Verify(
+                        freshChallenge,
+                        IdentityResumeTranscript
+                            .IdentityProfile,
+                        original.ChallengeMessageId,
+                        original.ChallengeNonceHex,
+                        signerFingerprint,
+                        Convert.ToHexStringLower(
+                            publicDer),
+                        Convert.ToHexStringLower(
+                            signature),
+                        "Peer"));
+    }
+
+    [Fact]
     public void RotateIdentity_RevokesPeersAndPolicies()
     {
         var identity =
