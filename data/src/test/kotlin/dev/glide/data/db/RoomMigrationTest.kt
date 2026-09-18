@@ -211,11 +211,27 @@ class RoomMigrationTest {
 
     @Test
     fun schemaFiles_version1Through5ExistAndV5ContainsHardenedResumeAuthority() {
+        val schemaDir =
+            listOf(
+                File(
+                    "data/schemas/dev.glide.data.db.GlideDatabase"
+                ),
+                File(
+                    "schemas/dev.glide.data.db.GlideDatabase"
+                ),
+                File(
+                    "../data/schemas/dev.glide.data.db.GlideDatabase"
+                )
+            ).firstOrNull {
+                it.exists()
+            } ?: error(
+                "Could not locate exported Room schema directory"
+            )
         val schemaFiles =
             (1..5).map { version ->
                 File(
-                    "schemas/dev.glide.data.db.GlideDatabase/" +
-                        version +
+                    schemaDir,
+                    version.toString() +
                         ".json"
                 )
             }
