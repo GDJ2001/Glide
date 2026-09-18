@@ -255,6 +255,15 @@ class PersistentTrustManager(
         return PeerEnrollmentResult.Enrolled(record)
     }
 
+    suspend fun trustedPeerSnapshot(): List<TrustedPeerRecord> =
+        trustedPeerStore.getAll()
+
+    suspend fun trustedPeerByFingerprint(
+        fingerprintHex: String
+    ): TrustedPeerRecord? =
+        trustedPeerStore.getByFingerprint(
+            fingerprintHex
+        )
     suspend fun markSeen(
         fingerprintHex: String
     ) {
