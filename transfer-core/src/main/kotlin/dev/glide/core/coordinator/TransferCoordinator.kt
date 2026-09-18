@@ -34,12 +34,16 @@ import dev.glide.core.protocol.ResumeAcceptDto
 import dev.glide.core.protocol.ResumeRejectCodes
 import dev.glide.core.protocol.ResumeRejectDto
 import dev.glide.core.protocol.ResumeRequestDto
+import dev.glide.core.protocol.ResumeResultDto
+import dev.glide.core.protocol.ResumeStreamReadyDto
+import dev.glide.core.protocol.ResumeStreamStartDto
 import dev.glide.core.resume.ResumeAuthorityLookup
 import dev.glide.core.resume.ResumeReconnectPlan
 import dev.glide.core.resume.ResumeReconnectState
 import dev.glide.core.resume.ResumeRequestAuthority
 import dev.glide.core.resume.ResumeSenderReadySource
 import dev.glide.core.resume.ResumeSourcePreflight
+import dev.glide.core.resume.ResumeStreamSupport
 import dev.glide.core.security.ProtocolRateLimiter
 import dev.glide.core.security.ProtocolSequencer
 import dev.glide.core.security.RateLimitResult
@@ -137,6 +141,13 @@ class TransferCoordinator(
         ) -> ResumeAuthorityLookup<
             ResumeSenderReadySource
         >)? = null,
+    val finalizeReceiverResumeItem:
+        (suspend (
+            SessionId,
+            SessionId,
+            ItemId,
+            String
+        ) -> CommittedFileHandle)? = null,
     val enableTrueResumeCapability: Boolean = false
 ) {
     private class ResumeJournalException(
@@ -233,6 +244,12 @@ class TransferCoordinator(
     private var pendingReceiverResumeJournal:
         ResumeRequestAuthority
             .ReceiverJournal? = null
+    private var pendingSenderResumeStreamStart:
+        ResumeStreamStartDto? = null
+    private var pendingReceiverResumeStreamStart:
+        ResumeStreamStartDto? = null
+    private var pendingResumeStreamBulkRef:
+        BulkRef? = null
 
     private val _resumeReconnectState =
         MutableStateFlow<
@@ -616,6 +633,10 @@ class TransferCoordinator(
                     role ==
                         DeviceRole.Receiver &&
                         loadReceiverResumeAuthority !=
+                            null &&
+                        recordReceiverResumeChunk !=
+                            null &&
+                        finalizeReceiverResumeItem !=
                             null
                 null ->
                     when (role) {
@@ -1362,9 +1383,11 @@ class TransferCoordinator(
                 accept
             )
         )
-        _resumeReconnectState.value =
+        val acceptedState =
             ResumeReconnectState
                 .SenderAccepted(
+                    requestMessageId =
+                        envelope.messageId.value,
                     originalSessionId =
                         verified
                             .originalSessionId,
@@ -1376,12 +1399,30 @@ class TransferCoordinator(
                     startByteOffset =
                         verified
                             .startByteOffset,
+                    chunkSize =
+                        ready.authority
+                            .chunkSize,
+                    totalSizeBytes =
+                        ready.authority
+                            .totalSizeBytes,
+                    chunkRootHashHex =
+                        ready.authority
+                            .chunkRootHashHex,
                     sourceHandle =
                         ready.sourceHandle,
                     wholeFileSha256Hex =
                         ready
                             .wholeFileSha256Hex
                 )
+        _resumeReconnectState.value =
+            acceptedState
+        if (acceptedState.startByteOffset <
+            acceptedState.totalSizeBytes
+        ) {
+            prepareAndAnnounceResumeStream(
+                acceptedState
+            )
+        }
     }
 
     private suspend fun handleResumeAccept(
@@ -1459,6 +1500,8 @@ class TransferCoordinator(
         _resumeReconnectState.value =
             ResumeReconnectState
                 .ReceiverAccepted(
+                    requestMessageId =
+                        pending.messageId.value,
                     originalSessionId =
                         journal
                             .originalSessionId,
@@ -1469,7 +1512,13 @@ class TransferCoordinator(
                             .verifiedChunkCount,
                     startByteOffset =
                         journal
-                            .contiguousByteOffset
+                            .contiguousByteOffset,
+                    chunkSize =
+                        journal.chunkSize,
+                    totalSizeBytes =
+                        journal.totalSizeBytes,
+                    chunkRootHashHex =
+                        journal.chunkRootHashHex
                 )
     }
 
