@@ -28,7 +28,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
 {
     private string _currentTab = "Send";
     private string _peerHost = "127.0.0.1";
-    private int _peerPort = LanDiscoveryConstants.DefaultPort;
+    private int _peerPort;
     private bool _isListening;
     private int _listeningPort;
     private string _statusMessage = "Ready";
