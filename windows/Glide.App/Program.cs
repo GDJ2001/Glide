@@ -365,6 +365,25 @@ public static class Program
 
 
 
+    private static async Task<bool> HandleConnectionTransferAsync(
+        TlsSocketConnection connection,
+        QuarantineStagingStore stagingStore,
+        LanInvitation? invitation,
+        bool isDaemon)
+    {
+        var engine = new DesktopTransferEngine();
+        var result = await engine.ReceiveAsync(
+            connection,
+            new DesktopReceiveRequest(
+                stagingStore,
+                invitation,
+                AllowBootstrapWithoutInvitation: isDaemon,
+                LocalDeviceName: Environment.MachineName),
+            new ConsoleDesktopTransferInteraction(isDaemon));
+
+        return result.Success;
+    }
+
     private static async Task<int> RunSendAsync(string[] args)
     {
         string? pairUri = null;
@@ -472,9 +491,21 @@ public static class Program
             int sixDigitCode,
             CancellationToken cancellationToken)
         {
-            string prefix = isDaemon ? $"[{DateTime.UtcNow:O}] " : string.Empty;
             Console.ForegroundColor = ConsoleColor.Magenta;
-            Console.WriteLine($"{prefix}[SAS] 6-digit verification code: {sixDigitCode:D6}");
+            if (isDaemon)
+            {
+                Console.WriteLine(
+                    $"[{DateTime.UtcNow:O}] [DAEMON SAS] 6-digit verification code: {sixDigitCode:D6}");
+            }
+            else
+            {
+                Console.WriteLine("-----------------------------------------------------------------");
+                Console.WriteLine(
+                    $"  *** 6-DIGIT VERIFICATION CODE: [ {sixDigitCode:D6} ] ***");
+                Console.WriteLine(
+                    "  Verify that this code matches on the other device screen.");
+                Console.WriteLine("-----------------------------------------------------------------");
+            }
             Console.ResetColor();
 
             // Preserve current CLI behavior: display the code and continue.
