@@ -12,6 +12,9 @@ import dev.glide.core.domain.SourceHandle
 import dev.glide.core.domain.StagingHandle
 import dev.glide.core.domain.TransferBatch
 import dev.glide.core.domain.TransferFailure
+import dev.glide.core.identity.PersistentTrustManager
+import dev.glide.core.identity.VerifiedPeerIdentity
+import dev.glide.core.ports.AuthenticatedChannelContextProvider
 import dev.glide.core.ports.ConnectionEvent
 import dev.glide.core.ports.HistoryStore
 import dev.glide.core.ports.ItemRecord
@@ -22,7 +25,10 @@ import dev.glide.core.ports.StreamExpectation
 import dev.glide.core.ports.SourceAccess
 import dev.glide.core.ports.TransferTransport
 import dev.glide.core.protocol.Envelope
+import dev.glide.core.protocol.IdentityChallengeDto
+import dev.glide.core.protocol.IdentityResponseDto
 import dev.glide.core.protocol.MessageTypes
+import dev.glide.core.protocol.NegotiationConstants
 import dev.glide.core.protocol.ProtocolCodec
 import dev.glide.core.security.ProtocolRateLimiter
 import dev.glide.core.security.ProtocolSequencer
@@ -41,6 +47,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonObject
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.Collections
@@ -69,7 +76,10 @@ class TransferCoordinator(
     val clock: () -> Long = System::currentTimeMillis,
     val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     val rateLimiter: ProtocolRateLimiter? = ProtocolRateLimiter(clock = clock),
-    val sequencer: ProtocolSequencer = ProtocolSequencer(clock = clock)
+    val sequencer: ProtocolSequencer = ProtocolSequencer(clock = clock),
+    val persistentTrustManager: PersistentTrustManager? = null,
+    val expectedPeerFingerprintHex: String? = null,
+    val onVerifiedPeerIdentity: ((VerifiedPeerIdentity) -> Unit)? = null
 ) {
     @Volatile
     private var boundSessionId: SessionId? = sessionId
@@ -97,6 +107,45 @@ class TransferCoordinator(
         )
     )
     val state: StateFlow<SessionState> = _state.asStateFlow()
+
+    @Volatile
+    var authenticatedPeerFingerprintHex: String? = null
+        private set
+
+    @Volatile
+    private var remoteDisplayName: String = "Glide Device"
+
+    private val trustedSessionHandshake: TrustedSessionHandshake? by lazy {
+        persistentTrustManager?.let { manager ->
+            TrustedSessionHandshake(
+                role = role,
+                sessionId = { sessionId },
+                trustManager = manager,
+                expectedPeerFingerprintHex =
+                    expectedPeerFingerprintHex,
+                channelContext = {
+                    (transport as?
+                        AuthenticatedChannelContextProvider)
+                        ?.authenticatedChannelContext(
+                            peerId
+                        )
+                },
+                negotiatedCapabilities = {
+                    _state.value
+                        .negotiated
+                        ?.capabilities
+                        ?: emptySet()
+                },
+                remoteDisplayName = {
+                    remoteDisplayName
+                },
+                onVerifiedPeerIdentity =
+                    onVerifiedPeerIdentity
+            )
+        }
+    }
+
+    private var identityTimeoutJob: Job? = null
 
     private val stagingHandles: MutableMap<ItemId, StagingHandle> = Collections.synchronizedMap(mutableMapOf())
     private var currentStagingHandle: StagingHandle? = null
@@ -179,7 +228,9 @@ class TransferCoordinator(
                     ReducerEvent.StartNegotiation(
                         ephemeralPeerId = UUID.randomUUID().toString(),
                         displayName = localDisplayName,
-                        timestampMs = clock()
+                        timestampMs = clock(),
+                        optionalCapabilities =
+                            localOptionalCapabilities()
                     )
                 )
             }
@@ -327,6 +378,8 @@ class TransferCoordinator(
      * Cleanly stops all background jobs and releases coordinator resources.
      */
     fun stop() {
+        identityTimeoutJob?.cancel()
+        identityTimeoutJob = null
         activeJobs.forEach { it.cancel() }
         activeJobs.clear()
         closePreparedSources()
@@ -358,15 +411,7 @@ class TransferCoordinator(
             terminalBarrierForThisDispatch?.complete(Unit)
         }
 
-        // Automatic offer submission when sender reaches Offering phase
-        if (_state.value.role == DeviceRole.Sender &&
-            _state.value.phase == SessionPhase.Offering &&
-            _state.value.batch == null &&
-            senderBatch != null
-        ) {
-            recordInitialHistory(senderBatch)
-            dispatch(ReducerEvent.SubmitOffer(senderBatch, clock()))
-        }
+        maybeSubmitSenderOffer()
     }
 
     private suspend fun executeEffects(effects: List<ReducerEffect>) {
