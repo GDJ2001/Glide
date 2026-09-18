@@ -379,9 +379,14 @@ public static class Program
                             invitationCts.Token);
                     var engine =
                         new DesktopTransferEngine();
+                    var trustManager =
+                        CreateDesktopTrustManager();
+                    trustManager.Initialize();
                     var interaction =
                         new ConsoleDesktopTransferInteraction(
-                            isDaemon: false);
+                            isDaemon: false,
+                            trustManager:
+                                trustManager);
 
                     var result =
                         await engine.ReceiveAsync(
@@ -390,7 +395,9 @@ public static class Program
                                 stagingStore,
                                 invitationAuthority,
                                 LocalDeviceName:
-                                    Environment.MachineName),
+                                    Environment.MachineName,
+                                TrustManager:
+                                    trustManager),
                             interaction);
 
                     return result.Success ? 0 : 1;
@@ -598,7 +605,10 @@ public static class Program
                             new DesktopReceiveRequest(
                                 stagingStore,
                                 invitationAuthority,
-                                LocalDeviceName: Environment.MachineName),
+                                LocalDeviceName: Environment.MachineName,
+                                TrustManager: trustManager,
+                                ExpectedPeerFingerprintHex:
+                                    trustedPeer.FingerprintHex),
                             interaction,
                             cts.Token);
 
@@ -701,14 +711,21 @@ public static class Program
             $"[INFO] Authenticated pairing invitation for '{invitation.Name}' ({endpoint.Address}:{endpoint.Port})");
 
         var engine = new DesktopTransferEngine();
-        var interaction = new ConsoleDesktopTransferInteraction(isDaemon: false);
+        var trustManager =
+            CreateDesktopTrustManager();
+        trustManager.Initialize();
+        var interaction =
+            new ConsoleDesktopTransferInteraction(
+                isDaemon: false,
+                trustManager: trustManager);
         var result = await engine.SendAsync(
             new DesktopSendRequest(
                 endpoint.Address,
                 endpoint.Port,
                 files,
                 invitation,
-                Environment.MachineName),
+                Environment.MachineName,
+                TrustManager: trustManager),
             interaction);
 
         return result.Success ? 0 : 1;
@@ -757,7 +774,7 @@ public static class Program
                 if (offer.AuthenticatedPeerFingerprintHex == null)
                 {
                     Console.WriteLine(
-                        $"{prefix}[AUTH] Offer rejected: no live persistent identity proof is attached to this session. HARD-021 must authenticate the peer before headless acceptance can be enabled.");
+                        $"{prefix}[AUTH] Offer rejected: this session has no verified persistent peer identity.");
                 }
                 else
                 {
@@ -784,6 +801,37 @@ public static class Program
                     answer?.Trim(),
                     "yes",
                     StringComparison.OrdinalIgnoreCase));
+        }
+
+        public override Task<bool> ConfirmPeerEnrollmentAsync(
+            VerifiedDesktopPeerIdentity peer,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (isDaemon)
+            {
+                return Task.FromResult(false);
+            }
+
+            Console.WriteLine(
+                $"[IDENTITY] Verified peer fingerprint: {peer.FingerprintHex}");
+            Console.Write(
+                "Trust this device for future authenticated sessions? [y/N]: ");
+            string? answer =
+                Console.ReadLine();
+            bool approved =
+                string.Equals(
+                    answer?.Trim(),
+                    "y",
+                    StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(
+                    answer?.Trim(),
+                    "yes",
+                    StringComparison.OrdinalIgnoreCase);
+
+            return Task.FromResult(
+                approved);
         }
 
         public override void OnInvitationConsumed(DesktopTransferDirection direction)
