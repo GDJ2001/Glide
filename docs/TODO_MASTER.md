@@ -7,7 +7,7 @@ Plan: [`planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md`](planning/CODE_R
 Latest reconciliation: [`planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md`](planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md)  
 Review baseline: `ea2e811a7f2d8aaddc552e894fe04782cd08a499`  
 HARD-002 captured source boundary: `12681eabba26387fe7d1bbaf309971f345642e41`  
-**Next recommended verification action: restore current-head CI for the continuation branch, then review HARD-008/HARD-009/HARD-011–015 and HARD-018–019. HARD-010 and HARD-017 remain blocked on real-device/platform evidence. HARD-016 is IN_PROGRESS until peer-specific headless authorization binds to persistent identities in HARD-020/HARD-021. HARD-020 source preparation is the next safe development step; identity-v1/resume-v1 must remain disabled in production until HARD-019–021 are complete and verified.**
+**Next recommended verification action: restore current-head CI for the continuation branch, then review HARD-008/HARD-009/HARD-011–015 and HARD-018–020. HARD-010 and HARD-017 remain blocked on real-device/platform evidence. HARD-016 is IN_PROGRESS: peer-specific policy storage now exists, but live sender identity must still be bound by HARD-021. HARD-021 source preparation is the next safe development step; identity-v1/resume-v1 must remain disabled in production until HARD-019–021 are complete and verified.**
 
 Source/configuration commits after the HARD-002 captured boundary are not silently certified by HARD-002; the task that consumes them must inspect/reconcile them before relying on their claims.
 
@@ -78,7 +78,7 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 | HARD-017 | M2 | BLOCKED | Prove native cross-platform interoperability |
 | HARD-018 | M3 | REVIEW_REQUIRED | Finalize identity/resume protocol extension |
 | HARD-019 | M3 | REVIEW_REQUIRED | Integrate Android persistent identity/trust |
-| HARD-020 | M3 | NOT_STARTED | Integrate Windows/Linux persistent identity/trust |
+| HARD-020 | M3 | REVIEW_REQUIRED | Integrate Windows/Linux persistent identity/trust |
 | HARD-021 | M3 | NOT_STARTED | Integrate mutually authenticated trusted sessions |
 | HARD-022 | M3 | NOT_STARTED | Implement Android durable true-resume journals |
 | HARD-023 | M3 | NOT_STARTED | Implement desktop durable true-resume storage |
@@ -252,9 +252,9 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 ## HARD-016 — Harden Linux CLI/daemon receiving lifecycle
 
 - **Milestone / status:** M2 / IN_PROGRESS.
-- **Dependencies:** HARD-013, HARD-014; persistent peer identity binding is completed by HARD-020/HARD-021.
-- **Implemented now:** CLI send requires an authenticated pairing invitation; interactive receive asks before accepting an offer; daemon startup fails closed unless `--accept-paired-offers` is explicitly supplied; daemon policy has a configured destination and byte ceiling; invitations rotate before expiry; Ctrl+C/SIGTERM cancellation is bounded through linked cancellation tokens.
-- **Remaining acceptance gap:** current initial-pairing profile authenticates the receiver but does not yet give the receiver a persistent cryptographic sender identity, so headless authorization cannot honestly be called peer-specific. HARD-020/HARD-021 must bind this policy to an enrolled peer before HARD-016 can complete.
+- **Dependencies:** HARD-013, HARD-014; persistent peer identity storage/policy is prepared by HARD-020 and live session binding is completed by HARD-021.
+- **Implemented now:** CLI send requires an authenticated pairing invitation; interactive receive asks before accepting an offer; daemon startup fails closed unless `--accept-paired-offers` plus an enrolled `--trusted-peer` are supplied; HARD-020 binds stored headless policy to that peer, an exact destination and a byte ceiling; invitations rotate before expiry; Ctrl+C/SIGTERM cancellation is bounded through linked cancellation tokens.
+- **Remaining acceptance gap:** the current initial-pairing profile still does not prove the sender's persistent identity on the live session. `AuthenticatedPeerFingerprintHex` therefore remains unset and daemon offers fail closed. HARD-021 must provide mutually authenticated channel-bound proof before HARD-016 can complete.
 - **Tests prepared:** daemon-without-explicit-policy fails closed; invitation/no-authority rejection; authenticated receive behavior.
 - **Evidence:** [HARD-016 implementation record](development/sessions/2026-09-18-hard-016.md).
 
@@ -291,10 +291,14 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 <a id="hard-020"></a>
 ## HARD-020 — Integrate Windows/Linux persistent identity/trust
 
-- **Milestone / status:** M3 / NOT_STARTED.
-- **Dependencies:** HARD-018.
-- **Acceptance:** Protected persistent keys, explicit enrollment/revocation and peer-specific headless policy work on supported desktop OSes.
-- **Tests/evidence:** Permission failure, revoke, migration and wrong peer with platform storage/permission evidence.
+- **Milestone / status:** M3 / REVIEW_REQUIRED (pre-gate implementation).
+- **Dependencies:** HARD-018 is REVIEW_REQUIRED; HARD-017 remains blocked, so this source work does not open trusted-session production negotiation.
+- **Implementation state:** Windows uses a non-exportable current-user CNG P-256 identity; Linux uses an owner-only P-256 PKCS#8 identity file with permission/symlink checks. A versioned trust store persists verified peer public identities and peer-specific headless policies. Restore without the protected key or a changed local identity revokes all peer trust/policies. CLI identity/trust inspection, rotation and revocation are wired. Manual fingerprint enrollment is prohibited; enrollment authority accepts only HARD-018 channel-bound verified identity proofs.
+- **Headless safety:** daemon configuration now requires an already-enrolled `--trusted-peer`, exact destination and byte ceiling. Runtime offer identity is intentionally still unset, so headless acceptance fails closed until HARD-021 authenticates the live sender and supplies `AuthenticatedPeerFingerprintHex`.
+- **Migration rule:** no prior supported desktop trust schema exists; unknown or missing versioned fields fail closed instead of silently importing legacy/manual trust state.
+- **Tests prepared:** protected identity signing/persistence, Windows non-exportability, Linux owner-only permissions, permission failure, restored DB without key, verified enrollment, revoke/rotation, wrong peer/destination/size, channel-binding mismatch, unknown schema and missing-version legacy rejection.
+- **Verification blocker:** continuation-branch/current-head GitHub Actions runs and commit statuses remain absent; no current-head .NET compile/test or real Windows/Linux platform pass is claimed.
+- **Evidence:** [HARD-020 desktop trust preparation](development/sessions/2026-09-18-hard-020.md).
 
 <a id="hard-021"></a>
 ## HARD-021 — Integrate mutually authenticated trusted sessions
