@@ -14,6 +14,7 @@ import dev.glide.data.source.AndroidContentResolverWrapper
 import dev.glide.data.source.AndroidSourceAccess
 import dev.glide.data.source.BoundedSourceStager
 import dev.glide.data.source.ContentResolverWrapper
+import dev.glide.data.source.ResumeSourceVerifier
 import dev.glide.data.store.AndroidReceiveStore
 import dev.glide.data.store.RoomHistoryStore
 import java.io.File
@@ -57,6 +58,15 @@ object TransferModule {
             stager = stager
         )
     }
+
+    @Provides
+    @Singleton
+    fun provideResumeSourceVerifier(
+        sourceAccess: SourceAccess
+    ): ResumeSourceVerifier =
+        ResumeSourceVerifier(
+            sourceAccess
+        )
 
     @Provides
     @Singleton
