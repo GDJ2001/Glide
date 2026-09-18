@@ -19,7 +19,9 @@ import dev.glide.core.ports.InputStreamProvider
 import dev.glide.core.ports.TransferTransport
 import dev.glide.transport.nearby.NearbyAvailabilityChecker
 import dev.glide.transport.nearby.NearbyHardwareStatus
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -232,6 +234,30 @@ class ProductionDiscoveryControllerTest {
 
         assertTrue(controller.discoveryState.value is DiscoveryUiState.TimedOut)
         assertTrue(transport.discoveryStops >= 1)
+    }
+
+    @Test
+    fun serviceSessionTransport_isRecreatedWhenForegroundServiceScopeChanges() = runTest(dispatcher) {
+        val created = mutableListOf<FakeNearbyTransport>()
+        val controller = ProductionDiscoveryController.forTesting(
+            runtimeScope = backgroundScope,
+            transportFactory = {
+                FakeNearbyTransport().also(created::add)
+            }
+        )
+        val serviceScopeA = CoroutineScope(SupervisorJob() + dispatcher)
+        val serviceScopeB = CoroutineScope(SupervisorJob() + dispatcher)
+
+        val first = controller.acquireSessionTransport(serviceScopeA)
+        val same = controller.acquireSessionTransport(serviceScopeA)
+        val second = controller.acquireSessionTransport(serviceScopeB)
+
+        assertTrue(first === same)
+        assertFalse(first === second)
+        assertEquals(2, created.size)
+
+        serviceScopeA.coroutineContext[kotlinx.coroutines.Job]?.cancel()
+        serviceScopeB.coroutineContext[kotlinx.coroutines.Job]?.cancel()
     }
 
     @Test
