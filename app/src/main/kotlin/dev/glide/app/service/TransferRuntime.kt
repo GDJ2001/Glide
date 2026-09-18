@@ -478,6 +478,18 @@ class TransferRuntime private constructor(
             (command.transport as? AuthenticatedChannelContextProvider)
                 ?.authenticatedChannelContext(command.peerId)
                 ?.sessionId
+        val sessionTrustManager =
+            persistentTrustManager
+                ?.takeIf {
+                    _trustState.value
+                        .isInitialized
+                }
+        if (command.expectedPeerFingerprintHex != null &&
+            sessionTrustManager == null
+        ) {
+            return false
+        }
+
         val coordinator = factory.createSenderSession(
             sessionId =
                 authenticatedSessionId
@@ -489,7 +501,7 @@ class TransferRuntime private constructor(
             transport = command.transport,
             scope = scope,
             persistentTrustManager =
-                persistentTrustManager,
+                sessionTrustManager,
             expectedPeerFingerprintHex =
                 command.expectedPeerFingerprintHex,
             onVerifiedPeerIdentity = { peer ->
@@ -508,6 +520,18 @@ class TransferRuntime private constructor(
             (command.transport as? AuthenticatedChannelContextProvider)
                 ?.authenticatedChannelContext(command.peerId)
                 ?.sessionId
+        val sessionTrustManager =
+            persistentTrustManager
+                ?.takeIf {
+                    _trustState.value
+                        .isInitialized
+                }
+        if (command.expectedPeerFingerprintHex != null &&
+            sessionTrustManager == null
+        ) {
+            return false
+        }
+
         val coordinator = factory.createReceiverSession(
             peerId = command.peerId,
             peerDisplayName = command.peerDisplayName,
@@ -517,7 +541,7 @@ class TransferRuntime private constructor(
             transport = command.transport,
             scope = scope,
             persistentTrustManager =
-                persistentTrustManager,
+                sessionTrustManager,
             expectedPeerFingerprintHex =
                 command.expectedPeerFingerprintHex,
             onVerifiedPeerIdentity = { peer ->
