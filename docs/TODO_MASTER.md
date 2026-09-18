@@ -7,7 +7,7 @@ Plan: [`planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md`](planning/CODE_R
 Latest reconciliation: [`planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md`](planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md)  
 Review baseline: `ea2e811a7f2d8aaddc552e894fe04782cd08a499`  
 HARD-002 captured source boundary: `12681eabba26387fe7d1bbaf309971f345642e41`  
-**Next recommended verification action: restore current-head CI for the continuation branch, then review HARD-008/HARD-009/HARD-011–015. HARD-010 and HARD-017 remain blocked on real-device/platform evidence. HARD-016 is IN_PROGRESS until peer-specific headless authorization can bind to persistent identities in HARD-020/HARD-021.**
+**Next recommended verification action: restore current-head CI for the continuation branch, then review HARD-008/HARD-009/HARD-011–015 and HARD-018. HARD-010 and HARD-017 remain blocked on real-device/platform evidence. HARD-016 is IN_PROGRESS until peer-specific headless authorization can bind to persistent identities in HARD-020/HARD-021. HARD-019 source inspection is the next safe development step; identity-v1/resume-v1 must remain disabled in production until HARD-019–021 are complete.**
 
 Source/configuration commits after the HARD-002 captured boundary are not silently certified by HARD-002; the task that consumes them must inspect/reconcile them before relying on their claims.
 
@@ -30,7 +30,7 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 | M0 Honest baseline | HARD-001–004 | 4 / 4 | COMPLETE |
 | M1 Android production flow | HARD-005–010 | 3 / 6 | IN PROGRESS |
 | M2 Desktop/native interoperability | HARD-011–017 | 0 / 7 | IN PROGRESS |
-| M3 Trust, folders and true resume | HARD-018–024 | 0 / 7 | NOT STARTED |
+| M3 Trust, folders and true resume | HARD-018–024 | 0 / 7 | IN PROGRESS |
 | M4 Secure browser sharing | HARD-025–030 | 0 / 6 | NOT STARTED |
 | M5 Structure/developer experience | HARD-031–035 | 0 / 5 | NOT STARTED |
 | M6 Product quality/hardening | HARD-036–040 | 0 / 5 | NOT STARTED |
@@ -76,7 +76,7 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 | HARD-015 | M2 | REVIEW_REQUIRED | Complete desktop consent/history/settings/state |
 | HARD-016 | M2 | IN_PROGRESS | Harden Linux CLI/daemon receiving lifecycle |
 | HARD-017 | M2 | BLOCKED | Prove native cross-platform interoperability |
-| HARD-018 | M3 | NOT_STARTED | Finalize identity/resume protocol extension |
+| HARD-018 | M3 | REVIEW_REQUIRED | Finalize identity/resume protocol extension |
 | HARD-019 | M3 | NOT_STARTED | Integrate Android persistent identity/trust |
 | HARD-020 | M3 | NOT_STARTED | Integrate Windows/Linux persistent identity/trust |
 | HARD-021 | M3 | NOT_STARTED | Integrate mutually authenticated trusted sessions |
@@ -269,10 +269,13 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 <a id="hard-018"></a>
 ## HARD-018 — Finalize identity/resume protocol extension
 
-- **Milestone / status:** M3 / NOT_STARTED.
-- **Dependencies:** HARD-017.
-- **Acceptance:** Versioned identity/resume messages, canonical signature inputs, peer/role/session/channel binding, capabilities and shared vectors are cross-language compatible.
-- **Tests/evidence:** Replay, downgrade, role swap, changed key and malformed signatures; reviewed spec/ADR and golden vectors.
+- **Milestone / status:** M3 / REVIEW_REQUIRED (pre-gate implementation).
+- **Dependencies:** HARD-017 remains BLOCKED; this source work does not open the M3 release gate.
+- **Implementation state:** `identity-v1`/`resume-v1` now have explicit versioned control schemas; canonical binary signature transcripts bind active/original session, peer fingerprints, roles, fresh nonces, negotiated capability hash and an active secure-channel binding. Kotlin and .NET implementations share `protocol/fixtures/identity_resume_v1_vectors.json`. Raw nonce-only signing was removed. `resume-v1` requires `identity-v1`, and neither trust extension is advertised by default before HARD-019–021.
+- **Additional repair:** desktop HELLO/HELLO_ACK capability negotiation was corrected to `stream-v1` + `sha256` with `folder-v1` optional instead of the incompatible empty/`lan-v1` shape.
+- **Tests prepared:** shared Kotlin/.NET golden bytes; version/profile validation; role swap; capability downgrade/dependency; changed known key; malformed canonical hashes/signatures; invalid resume offset/chunk-count math.
+- **Verification blocker:** GitHub Actions still schedules no current-head run/check, and HARD-017 physical/native interoperability is unproven. No compile/test or runtime channel-binding claim is made.
+- **Evidence:** [HARD-018 protocol preparation](development/sessions/2026-09-18-hard-018.md).
 
 <a id="hard-019"></a>
 ## HARD-019 — Integrate Android persistent identity/trust
