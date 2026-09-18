@@ -7,7 +7,7 @@ Plan: [`planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md`](planning/CODE_R
 Latest reconciliation: [`planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md`](planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md)  
 Review baseline: `ea2e811a7f2d8aaddc552e894fe04782cd08a499`  
 HARD-002 captured source boundary: `12681eabba26387fe7d1bbaf309971f345642e41`  
-**Next recommended task: restore current-head CI and review HARD-008/HARD-009/HARD-011/HARD-012/HARD-013. HARD-013 is prepared as a stacked branch on HARD-012, but neither task can satisfy its completion gate while Actions remains unscheduled and physical interoperability evidence is unavailable. HARD-010 still requires two physical Android devices.**
+**Next recommended task: restore current-head CI and review HARD-008/HARD-009/HARD-011/HARD-012/HARD-013/HARD-014. HARD-014 is prepared as a stacked branch on HARD-013, but the M2 chain cannot satisfy its completion gates while Actions remains unscheduled and physical interoperability evidence is unavailable. HARD-010 still requires two physical Android devices.**
 
 Source/configuration commits after the HARD-002 captured boundary are not silently certified by HARD-002; the task that consumes them must inspect/reconcile them before relying on their claims.
 
@@ -72,7 +72,7 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 | HARD-011 | M2 | REVIEW_REQUIRED | Extract shared desktop transfer engine |
 | HARD-012 | M2 | REVIEW_REQUIRED | Align native LAN discovery/TLS/bootstrap profile |
 | HARD-013 | M2 | REVIEW_REQUIRED | Implement strict desktop session/protocol state machine |
-| HARD-014 | M2 | NOT_STARTED | Make desktop hashing/storage bounded and shared |
+| HARD-014 | M2 | REVIEW_REQUIRED | Make desktop hashing/storage bounded and shared |
 | HARD-015 | M2 | NOT_STARTED | Complete desktop consent/history/settings/state |
 | HARD-016 | M2 | NOT_STARTED | Harden Linux CLI/daemon receiving lifecycle |
 | HARD-017 | M2 | NOT_STARTED | Prove native cross-platform interoperability |
@@ -235,10 +235,15 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 <a id="hard-014"></a>
 ## HARD-014 — Make desktop hashing/storage bounded and shared
 
-- **Milestone / status:** M2 / NOT_STARTED.
-- **Dependencies:** HARD-011.
-- **Acceptance:** Production sender hashing/transfer is streaming and bounded; no whole-file production digest read; safe paths, reservations, quarantine cleanup and commit are centralized.
-- **Tests/evidence:** Empty/10 MB/1 GB/5+ GB, cancel, disk full, duplicate names, traversal/reparse; memory must not scale with file size.
+- **Milestone / status:** M2 / REVIEW_REQUIRED.
+- **Dependencies:** HARD-011; implementation is stacked on the unverified HARD-012/HARD-013 chain.
+- **Implementation state:** Prepared on `hardening/hard-014-bounded-desktop-storage`. Sender pre-hashing is removed; exact transmitted bytes are hashed with shared `StreamingSha256` in one bounded pass. Receiver storage now uses cumulative pre-accept reservations and `QuarantineWriteSession`; safe path/reparse checks, byte bounds, streaming digest, quarantine cleanup, collision-safe commit and session cleanup are centralized in `QuarantineStagingStore`.
+- **Wire/storage behavior:** The full accepted batch must reserve before `OFFER_DECISION accepted`; `ITEM_READY` is emitted only after the current quarantine writer opens; known disk-space/path failures reject before payload; failed/cancelled writers purge partials; verified items alone are published; already committed items are preserved if a later item fails.
+- **Tests prepared:** empty and real 10 MiB paths, 1 GiB and 5+ GiB `Int64` streaming/hash-reservation arithmetic, bounded allocation, cancellation, disk full, source mutation, duplicate names across independent store instances, traversal and reparse/symlink rejection, plus architecture guards preventing whole-file hashing or receiver-side storage reimplementation.
+- **HARD-003 progression:** the 32 MiB desktop hashing regression is expected to turn green. The `.NET` expected-red gate remains valid because the separate browser security regressions are still deferred to HARD-025–030.
+- **Verification blocker:** GitHub Actions still schedules no current-head runs/statuses and this execution environment has no `.NET` SDK. No current-head compile/test or physical large-file claim is made.
+- **Evidence:** [HARD-014 bounded/shared desktop hashing and storage](development/sessions/2026-09-18-hard-014.md).
+- **Completion gate:** current-head Windows/Linux build/tests and Windows verifier, HARD-003 attribution, and real Android↔desktop empty/large/cancel/disk-full/duplicate-path evidence with observed bounded memory.
 
 <a id="hard-015"></a>
 ## HARD-015 — Complete desktop consent/history/settings/state
