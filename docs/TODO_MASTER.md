@@ -7,7 +7,7 @@ Plan: [`planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md`](planning/CODE_R
 Latest reconciliation: [`planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md`](planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md)  
 Review baseline: `ea2e811a7f2d8aaddc552e894fe04782cd08a499`  
 HARD-002 captured source boundary: `12681eabba26387fe7d1bbaf309971f345642e41`  
-**Next recommended task: HARD-011 (REVIEW_REQUIRED). Restore current-head CI and verify the shared desktop engine before activating HARD-012. M1 still has HARD-008/HARD-009 CI review blockers and HARD-010 physical-device evidence blocked.**
+**Next recommended task: restore current-head CI and review HARD-008/HARD-009/HARD-011/HARD-012. HARD-012 implementation is prepared on `hardening/hard-012-native-lan-profile`, but it cannot satisfy its HARD-011 dependency or interoperability evidence gate while Actions remains unscheduled. HARD-010 still requires two physical Android devices.**
 
 Source/configuration commits after the HARD-002 captured boundary are not silently certified by HARD-002; the task that consumes them must inspect/reconcile them before relying on their claims.
 
@@ -70,7 +70,7 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 | HARD-009 | M1 | REVIEW_REQUIRED | Complete service/session/background lifecycle |
 | HARD-010 | M1 | BLOCKED | Prove two-device Android production journey |
 | HARD-011 | M2 | REVIEW_REQUIRED | Extract shared desktop transfer engine |
-| HARD-012 | M2 | NOT_STARTED | Align native LAN discovery/TLS/bootstrap profile |
+| HARD-012 | M2 | REVIEW_REQUIRED | Align native LAN discovery/TLS/bootstrap profile |
 | HARD-013 | M2 | NOT_STARTED | Implement strict desktop session/protocol state machine |
 | HARD-014 | M2 | NOT_STARTED | Make desktop hashing/storage bounded and shared |
 | HARD-015 | M2 | NOT_STARTED | Complete desktop consent/history/settings/state |
@@ -211,10 +211,14 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 <a id="hard-012"></a>
 ## HARD-012 — Align native LAN discovery/TLS/bootstrap profile
 
-- **Milestone / status:** M2 / NOT_STARTED.
-- **Dependencies:** HARD-011.
-- **Acceptance:** One DNS-SD TXT contract, ALPN, certificate/client-auth expectation, invitation format, 5-byte LAN framing and authenticated bootstrap works Android↔desktop; unpaired SAS is removed or repaired around one exchanged/bound nonce and explicit confirmation.
-- **Tests/evidence:** Cross-language bootstrap/golden vectors, wrong pin/cert/ALPN/replay cases and actual interoperability traces.
+- **Milestone / status:** M2 / REVIEW_REQUIRED.
+- **Dependencies:** HARD-011, which is still REVIEW_REQUIRED.
+- **Implementation state:** Prepared on `hardening/hard-012-native-lan-profile`. Windows DNS-SD now matches Android's bounded `v/tv/q/p/dn/dt` invitation record and actual SRV port; TLS is 1.3 with only `glide-lan/1`; initial QR receiving does not require a client certificate; sender SPKI pinning remains mandatory; direct/unpaired SAS production transfer is disabled; CLI/WPF require QR authority; desktop invitations are atomically one-use with constant-time token/hash checks and replay rejection.
+- **Security correction:** CLI daemon no longer opts into invitation-less bootstrap. Unattended trusted receiving remains disabled until HARD-016 supplies an explicit peer/destination/size policy.
+- **Tests prepared:** canonical/malformed discovery, certificate-less QR TLS, legacy ALPN rejection, concurrent one-use redemption, bad-token non-consumption, and QR-aware preservation of the HARD-013/HARD-014 red regressions.
+- **Verification blocker:** Current-head GitHub Actions remains unscheduled, including the independent pull-request CI trigger. No current-head compile/test claim is made, and no Android↔desktop physical interoperability trace exists yet.
+- **Evidence:** [HARD-012 native LAN profile implementation record](development/sessions/2026-09-18-hard-012.md).
+- **Completion gate:** HARD-011 current-head verification, Windows/Linux/Android current-head test gates, and real Android↔desktop discovery/TLS/bootstrap negative/positive interoperability evidence.
 
 <a id="hard-013"></a>
 ## HARD-013 — Implement strict desktop session/protocol state machine
