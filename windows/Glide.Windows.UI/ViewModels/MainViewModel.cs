@@ -48,6 +48,8 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     private CancellationTokenSource? _activeTransferCts;
     private readonly DesktopTransferEngine _desktopTransferEngine = new();
     private readonly Stopwatch _transferStopwatch = new();
+    private readonly IDesktopStateStore _stateStore;
+    private readonly IUiDispatcher _uiDispatcher;
 
     private TlsSocketListener? _listener;
 
@@ -60,6 +62,17 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     private LanInvitation? _activeInvitation;
     private LanInvitationAuthority? _activeInvitationAuthority;
     private LanInvitation? _pairedInvitation;
+
+    private bool _isIncomingOfferModalVisible;
+    private string _incomingOfferPeerName = "";
+    private string _incomingOfferSummary = "";
+    private TaskCompletionSource<bool>? _incomingOfferConfirmationTcs;
+
+    private string _deviceName = Environment.MachineName;
+    private string _receiveDirectory = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+        "Downloads");
+    private int _historyLimit = 200;
 
     private GlideWebGateway? _webGateway;
     private bool _isWebShareModalVisible;
@@ -100,6 +113,9 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
 
     public ObservableCollection<TransferItemViewModel> SelectedFiles { get; } = [];
     public ObservableCollection<HistoryItemViewModel> HistoryItems { get; } = [];
+    public ObservableCollection<IncomingOfferItemViewModel> IncomingOfferItems { get; } = [];
+
+    internal Task InitializationTask { get; private set; } = Task.CompletedTask;
 
     public RelayCommand SwitchTabCommand { get; }
     public RelayCommand AddFilesCommand { get; }
@@ -120,9 +136,28 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     public RelayCommand StartWebShareCommand { get; }
     public RelayCommand StopWebShareCommand { get; }
     public RelayCommand CopyWebShareLinkCommand { get; }
+    public RelayCommand AcceptIncomingOfferCommand { get; }
+    public RelayCommand RejectIncomingOfferCommand { get; }
+    public RelayCommand SaveSettingsCommand { get; }
+    public RelayCommand ClearHistoryCommand { get; }
 
     public MainViewModel()
+        : this(
+            new JsonDesktopStateStore(),
+            new WpfUiDispatcher(),
+            startDiscovery: true)
     {
+    }
+
+    internal MainViewModel(
+        IDesktopStateStore stateStore,
+        IUiDispatcher uiDispatcher,
+        bool startDiscovery)
+    {
+        _stateStore = stateStore
+            ?? throw new ArgumentNullException(nameof(stateStore));
+        _uiDispatcher = uiDispatcher
+            ?? throw new ArgumentNullException(nameof(uiDispatcher));
         SwitchTabCommand = new RelayCommand(param => CurrentTab = param?.ToString() ?? "Send");
         AddFilesCommand = new RelayCommand(ExecuteAddFiles);
         RemoveFileCommand = new RelayCommand(param =>
@@ -174,24 +209,43 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             }
         });
 
-        SelectedFiles.CollectionChanged += (_, _) => CommandManager.InvalidateRequerySuggested();
+        AcceptIncomingOfferCommand =
+            new RelayCommand(
+                () => _incomingOfferConfirmationTcs?.TrySetResult(true),
+                () => IsIncomingOfferModalVisible);
+        RejectIncomingOfferCommand =
+            new RelayCommand(
+                () => _incomingOfferConfirmationTcs?.TrySetResult(false),
+                () => IsIncomingOfferModalVisible);
+        SaveSettingsCommand =
+            new RelayCommand(async () => await ExecuteSaveSettingsAsync());
+        ClearHistoryCommand =
+            new RelayCommand(async () => await ExecuteClearHistoryAsync());
+
+        SelectedFiles.CollectionChanged += (_, _) =>
+            CommandManager.InvalidateRequerySuggested();
 
         _mdnsService.PeerDiscovered += peer =>
         {
-            Application.Current?.Dispatcher?.Invoke(() =>
+            RunOnUi(() =>
             {
-                if (!DiscoveredPeers.Any(p => p.Host == peer.Host && p.Port == peer.Port))
+                if (!DiscoveredPeers.Any(
+                        p => p.Host == peer.Host &&
+                             p.Port == peer.Port))
                 {
-                    DiscoveredPeers.Add(new DiscoveredPeerViewModel(peer));
+                    DiscoveredPeers.Add(
+                        new DiscoveredPeerViewModel(peer));
                 }
             });
         };
 
         _mdnsService.PeerLost += peer =>
         {
-            Application.Current?.Dispatcher?.Invoke(() =>
+            RunOnUi(() =>
             {
-                var existing = DiscoveredPeers.FirstOrDefault(p => p.Host == peer.Host && p.Port == peer.Port);
+                var existing = DiscoveredPeers.FirstOrDefault(
+                    p => p.Host == peer.Host &&
+                         p.Port == peer.Port);
                 if (existing != null)
                 {
                     DiscoveredPeers.Remove(existing);
@@ -199,8 +253,13 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             });
         };
 
-        _mdnsService.Start(enableBrowsing: true);
-        RefreshNetworkInfo();
+        InitializationTask = InitializePersistentStateAsync();
+
+        if (startDiscovery)
+        {
+            _mdnsService.Start(enableBrowsing: true);
+            RefreshNetworkInfo();
+        }
     }
 
     public string CurrentTab
