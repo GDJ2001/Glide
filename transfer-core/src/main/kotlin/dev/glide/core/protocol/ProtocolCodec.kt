@@ -551,56 +551,180 @@ object ProtocolCodec {
     }
 
     private fun validateIdentityChallenge(body: JsonObject) {
-        val nonce = requireString(body, "nonceHex")
-        if (nonce.length != 64 || !nonce.all { it.isDigit() || it in 'a'..'f' || it in 'A'..'F' }) {
-            throw ProtocolViolationException(TransferFailure.MalformedMessage("nonceHex must be 64-char hex string"))
+        requireProfile(body, IdentityResumeTranscript.IDENTITY_PROFILE)
+        requireLowerHex64(body, "challengeNonceHex")
+        requireLowerHex64(body, "verifierFingerprintHex")
+        val verifierRole = requireRole(body, "verifierRole")
+        val signerRole = requireRole(body, "signerRole")
+        if (verifierRole == signerRole) {
+            throw ProtocolViolationException(
+                TransferFailure.MalformedMessage("IDENTITY_CHALLENGE roles must be opposite")
+            )
         }
+        requireLowerHex64(body, "channelBindingHex")
+        requireLowerHex64(body, "capabilityHashHex")
     }
 
     private fun validateIdentityResponse(body: JsonObject) {
-        val sig = requireString(body, "signatureHex")
-        if (sig.isBlank()) {
-            throw ProtocolViolationException(TransferFailure.MalformedMessage("signatureHex cannot be blank"))
-        }
-        val key = requireString(body, "publicKeyDerHex")
-        if (key.isBlank()) {
-            throw ProtocolViolationException(TransferFailure.MalformedMessage("publicKeyDerHex cannot be blank"))
-        }
+        requireProfile(body, IdentityResumeTranscript.IDENTITY_PROFILE)
+        requireUuid(body, "challengeMessageId")
+        requireLowerHex64(body, "challengeNonceHex")
+        requireLowerHex64(body, "signerFingerprintHex")
+        requireEvenLowerHex(body, "publicKeyDerHex", maxChars = 4096)
+        requireEvenLowerHex(body, "signatureHex", maxChars = 1024)
     }
 
     private fun validateResumeRequest(body: JsonObject) {
-        requireString(body, "sessionId")
-        requireString(body, "itemId")
-        requireLong(body, "verifiedChunkCount", min = 0)
-        requireLong(body, "contiguousByteOffset", min = 0)
-        val root = requireString(body, "chunkRootHashHex")
-        if (root.length != 64) {
-            throw ProtocolViolationException(TransferFailure.MalformedMessage("chunkRootHashHex must be 64-char hex string"))
+        requireProfile(body, IdentityResumeTranscript.RESUME_PROFILE)
+        requireUuid(body, "originalSessionId")
+        requireUuid(body, "itemId")
+        requireLowerHex64(body, "requesterFingerprintHex")
+        requireLowerHex64(body, "responderFingerprintHex")
+
+        val requesterRole = requireRole(body, "requesterRole")
+        val responderRole = requireRole(body, "responderRole")
+        if (requesterRole != "receiver" || responderRole != "sender") {
+            throw ProtocolViolationException(
+                TransferFailure.MalformedMessage("RESUME_REQUEST must be receiver -> sender")
+            )
         }
-        val nonce = requireString(body, "sessionNonceHex")
-        if (nonce.length != 64) {
-            throw ProtocolViolationException(TransferFailure.MalformedMessage("sessionNonceHex must be 64-char hex string"))
+
+        val verifiedChunkCount = requireLong(body, "verifiedChunkCount", min = 0)
+        val contiguousByteOffset =
+            requireByteCount(body, "contiguousByteOffset", MAX_ITEM_BYTES)
+
+        val chunkSizeElement = body["chunkSize"] as? JsonPrimitive
+            ?: throw ProtocolViolationException(
+                TransferFailure.MalformedMessage("RESUME_REQUEST requires integer 'chunkSize'")
+            )
+        if (chunkSizeElement.isString) {
+            throw ProtocolViolationException(
+                TransferFailure.MalformedMessage("RESUME_REQUEST 'chunkSize' must be an integer")
+            )
         }
-        val sig = requireString(body, "signatureHex")
-        if (sig.isBlank()) {
-            throw ProtocolViolationException(TransferFailure.MalformedMessage("signatureHex cannot be blank"))
+        val chunkSize = chunkSizeElement.content.toIntOrNull()
+            ?: throw ProtocolViolationException(
+                TransferFailure.MalformedMessage("RESUME_REQUEST 'chunkSize' must be an integer")
+            )
+        if (chunkSize !in 1..16_777_216) {
+            throw ProtocolViolationException(
+                TransferFailure.LimitExceeded("RESUME_REQUEST 'chunkSize' must be in 1..16777216")
+            )
         }
+
+        val totalSizeBytes =
+            requireByteCount(body, "totalSizeBytes", MAX_ITEM_BYTES)
+        if (contiguousByteOffset > totalSizeBytes) {
+            throw ProtocolViolationException(
+                TransferFailure.MalformedMessage("RESUME_REQUEST offset exceeds totalSizeBytes")
+            )
+        }
+        if (contiguousByteOffset % chunkSize != 0L &&
+            contiguousByteOffset != totalSizeBytes
+        ) {
+            throw ProtocolViolationException(
+                TransferFailure.MalformedMessage("RESUME_REQUEST offset is not chunk-aligned")
+            )
+        }
+
+        val expectedChunkCount =
+            if (contiguousByteOffset == totalSizeBytes &&
+                totalSizeBytes % chunkSize != 0L
+            ) {
+                (totalSizeBytes + chunkSize - 1L) / chunkSize
+            } else {
+                contiguousByteOffset / chunkSize
+            }
+        if (verifiedChunkCount != expectedChunkCount) {
+            throw ProtocolViolationException(
+                TransferFailure.MalformedMessage(
+                    "RESUME_REQUEST verifiedChunkCount does not match offset/chunkSize"
+                )
+            )
+        }
+
+        requireLowerHex64(body, "chunkRootHashHex")
+        requireLowerHex64(body, "sessionNonceHex")
+        requireLowerHex64(body, "channelBindingHex")
+        requireLowerHex64(body, "capabilityHashHex")
+        requireEvenLowerHex(body, "signatureHex", maxChars = 1024)
     }
 
     private fun validateResumeAccept(body: JsonObject) {
-        requireString(body, "sessionId")
-        requireString(body, "itemId")
+        requireProfile(body, IdentityResumeTranscript.RESUME_PROFILE)
+        requireUuid(body, "requestMessageId")
+        requireUuid(body, "originalSessionId")
+        requireUuid(body, "itemId")
         requireLong(body, "startChunkIndex", min = 0)
-        requireLong(body, "startByteOffset", min = 0)
+        requireByteCount(body, "startByteOffset", MAX_ITEM_BYTES)
     }
 
     private fun validateResumeReject(body: JsonObject) {
-        requireString(body, "sessionId")
-        requireString(body, "itemId")
-        val reason = requireString(body, "reason")
-        if (reason.isBlank() || reason.length > 256) {
-            throw ProtocolViolationException(TransferFailure.MalformedMessage("reason must be 1..256 characters"))
+        requireProfile(body, IdentityResumeTranscript.RESUME_PROFILE)
+        requireUuid(body, "requestMessageId")
+        requireUuid(body, "originalSessionId")
+        requireUuid(body, "itemId")
+        val code = requireString(body, "code")
+        if (code !in ResumeRejectCodes.ALL) {
+            throw ProtocolViolationException(
+                TransferFailure.MalformedMessage("Unknown RESUME_REJECT code '$code'")
+            )
         }
+    }
+
+    private fun requireProfile(body: JsonObject, expected: String) {
+        val profile = requireString(body, "profile")
+        if (profile != expected) {
+            throw ProtocolViolationException(
+                TransferFailure.UnsupportedProtocol(
+                    "Unsupported extension profile '$profile', expected '$expected'"
+                )
+            )
+        }
+    }
+
+    private fun requireRole(body: JsonObject, key: String): String {
+        val role = requireString(body, key)
+        if (role != "sender" && role != "receiver") {
+            throw ProtocolViolationException(
+                TransferFailure.MalformedMessage("$key must be 'sender' or 'receiver'")
+            )
+        }
+        return role
+    }
+
+    private fun requireLowerHex64(body: JsonObject, key: String): String {
+        val value = requireString(body, key)
+        if (value.length != 64 ||
+            value.any { it !in '0'..'9' && it !in 'a'..'f' }
+        ) {
+            throw ProtocolViolationException(
+                TransferFailure.MalformedMessage(
+                    "$key must be exactly 64 lowercase hexadecimal characters"
+                )
+            )
+        }
+        return value
+    }
+
+    private fun requireEvenLowerHex(
+        body: JsonObject,
+        key: String,
+        maxChars: Int
+    ): String {
+        val value = requireString(body, key)
+        if (value.isEmpty() ||
+            value.length > maxChars ||
+            value.length % 2 != 0 ||
+            value.any { it !in '0'..'9' && it !in 'a'..'f' }
+        ) {
+            throw ProtocolViolationException(
+                TransferFailure.MalformedMessage(
+                    "$key must be non-empty even-length lowercase hexadecimal (max $maxChars chars)"
+                )
+            )
+        }
+        return value
     }
 
     private fun requireLong(obj: JsonObject, key: String, min: Long = 0): Long {
