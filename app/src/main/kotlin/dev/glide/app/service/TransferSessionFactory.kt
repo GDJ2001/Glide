@@ -116,6 +116,10 @@ class TransferSessionFactory(
                                     item.id.value,
                                 itemName =
                                     item.name,
+                                mimeType =
+                                    item.mimeType,
+                                relativePath =
+                                    item.relativePath,
                                 peerFingerprintHex =
                                     peerFingerprintHex,
                                 sourceHandle =
@@ -201,6 +205,10 @@ class TransferSessionFactory(
                                     item.id.value,
                                 itemName =
                                     item.name,
+                                mimeType =
+                                    item.mimeType,
+                                relativePath =
+                                    item.relativePath,
                                 peerFingerprintHex =
                                     peerFingerprintHex,
                                 totalBytes =
