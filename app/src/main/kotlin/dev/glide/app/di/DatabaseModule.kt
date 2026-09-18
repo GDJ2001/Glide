@@ -38,7 +38,8 @@ object DatabaseModule {
             .addMigrations(
                 GlideDatabase.MIGRATION_1_2,
                 GlideDatabase.MIGRATION_2_3,
-                GlideDatabase.MIGRATION_3_4
+                GlideDatabase.MIGRATION_3_4,
+                GlideDatabase.MIGRATION_4_5
             )
             .build()
     }
