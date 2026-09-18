@@ -20,6 +20,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayInputStream
@@ -139,6 +140,29 @@ class LanTransferTransportTest {
             val serverConnection = withTimeout(5_000) { serverConnectionDeferred.await() }
             assertTrue(serverConnection is ConnectionEvent.Connected)
             val receiverConnectedPeer = (serverConnection as ConnectionEvent.Connected).peer
+
+            val senderChannel =
+                senderTransport.authenticatedChannelContext(
+                    serverPeerId
+                )
+            val receiverChannel =
+                receiverTransport.authenticatedChannelContext(
+                    receiverConnectedPeer.id
+                )
+            assertNotNull(senderChannel)
+            assertNotNull(receiverChannel)
+            assertEquals(
+                senderChannel!!.sessionId,
+                receiverChannel!!.sessionId
+            )
+            assertEquals(
+                identity.spkiSha256,
+                senderChannel.channelBindingHex
+            )
+            assertEquals(
+                identity.spkiSha256,
+                receiverChannel.channelBindingHex
+            )
 
             clientConnJob.cancel()
             serverConnJob.cancel()
