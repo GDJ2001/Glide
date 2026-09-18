@@ -449,24 +449,77 @@ class PersistentIdentityComplianceTest {
     }
 
     @Test
-    fun test10_settingsUi_trustedDevicesSectionAndDialogEnforcement() {
+    fun test10_androidTrustUi_requiresExplicitEnrollmentAndRuntimeRevocation() {
         val root = resolveProjectRoot()
-        val settingsScreenFile = File(root, "app/src/main/kotlin/dev/glide/app/ui/settings/SettingsScreen.kt")
-        assertTrue("SettingsScreen.kt must exist", settingsScreenFile.exists())
+        val settingsScreenFile =
+            File(
+                root,
+                "app/src/main/kotlin/dev/glide/app/ui/settings/SettingsScreen.kt"
+            )
+        val transferScreenFile =
+            File(
+                root,
+                "app/src/main/kotlin/dev/glide/app/ui/TransferScreen.kt"
+            )
+        val runtimeFile =
+            File(
+                root,
+                "app/src/main/kotlin/dev/glide/app/service/TransferRuntime.kt"
+            )
 
-        val screenContent = settingsScreenFile.readText()
-        assertTrue("SettingsScreen must render TrustedDevicesSection", screenContent.contains("TrustedDevicesSection"))
-        assertTrue("SettingsScreen must render TrustedDevicesDialog", screenContent.contains("TrustedDevicesDialog"))
-        assertTrue("SettingsScreen must allow revoking peer trust", screenContent.contains("onRevokePeer"))
+        assertTrue(settingsScreenFile.exists())
+        assertTrue(transferScreenFile.exists())
+        assertTrue(runtimeFile.exists())
+
+        val settingsContent = settingsScreenFile.readText()
+        assertTrue(
+            "Settings must render trusted devices management",
+            settingsContent.contains("TrustedDevicesDialog") &&
+                settingsContent.contains("onRevokePeer")
+        )
+        assertFalse(
+            "Hardened trust UI must not claim legacy PIN enrollment",
+            settingsContent.contains("mutual PIN", ignoreCase = true)
+        )
+
+        val transferContent = transferScreenFile.readText()
+        assertTrue(
+            "Transfer UI must ask for explicit trust approval",
+            transferContent.contains("Trust this device?") &&
+                transferContent.contains("Trust device")
+        )
+        assertTrue(
+            "Enrollment UI must state that trust does not auto-accept files",
+            transferContent.contains("does not automatically accept future file offers")
+        )
+
+        val runtimeContent = runtimeFile.readText()
+        assertTrue(
+            "Runtime must expose explicit approve/reject trust commands",
+            runtimeContent.contains("ApprovePeerEnrollment") &&
+                runtimeContent.contains("RejectPeerEnrollment")
+        )
+        assertTrue(
+            "Runtime must expose revocation through the trust manager",
+            runtimeContent.contains("revokeTrustedPeerNow")
+        )
 
         val uiState = dev.glide.app.ui.settings.SettingsUiState()
-        assertFalse("Trusted devices dialog must be closed by default", uiState.isTrustedDevicesDialogOpen)
-        assertTrue("Trusted peers list must default to empty", uiState.trustedPeers.isEmpty())
+        assertFalse(
+            "Trusted devices dialog must be closed by default",
+            uiState.isTrustedDevicesDialogOpen
+        )
+        assertTrue(
+            "Trusted peers list must default to empty",
+            uiState.trustedPeers.isEmpty()
+        )
 
-        // Ensure TrustedPeerDao is exposed on GlideDatabase
         val dbClass = dev.glide.data.db.GlideDatabase::class.java
         val method = dbClass.methods.find { it.name == "trustedPeerDao" }
-        assertNotNull("GlideDatabase must provide trustedPeerDao()", method)
+        assertNotNull(
+            "GlideDatabase must provide trustedPeerDao()",
+            method
+        )
     }
 }
 
