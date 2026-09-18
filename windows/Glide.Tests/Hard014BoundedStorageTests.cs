@@ -372,20 +372,40 @@ public sealed class Hard014BoundedStorageTests : IDisposable
     [Fact]
     public async Task ConcurrentDuplicateNames_CommitToDistinctCollisionSafePaths()
     {
-        var store = CreateStore(
-            "duplicates",
-            () => 1024 * 1024);
+        string scope =
+            Path.Combine(
+                _root,
+                "duplicates");
+        string staging =
+            Path.Combine(
+                scope,
+                "staging");
+        string destination =
+            Path.Combine(
+                scope,
+                "destination");
+
+        var firstStore =
+            new QuarantineStagingStore(
+                staging,
+                destination,
+                () => 1024 * 1024);
+        var secondStore =
+            new QuarantineStagingStore(
+                staging,
+                destination,
+                () => 1024 * 1024);
 
         SessionId session = NewSessionId();
 
         using IncomingFileReservation firstReservation =
-            store.ReserveIncoming(
+            firstStore.ReserveIncoming(
                 session,
                 NewItemId(),
                 "report.txt",
                 1);
         using IncomingFileReservation secondReservation =
-            store.ReserveIncoming(
+            secondStore.ReserveIncoming(
                 session,
                 NewItemId(),
                 "report.txt",
@@ -435,7 +455,8 @@ public sealed class Hard014BoundedStorageTests : IDisposable
                 "report.txt"
             },
             names);
-        Assert.Equal(0L, store.ReservedBytes);
+        Assert.Equal(0L, firstStore.ReservedBytes);
+        Assert.Equal(0L, secondStore.ReservedBytes);
     }
 
     private QuarantineStagingStore CreateStore(
