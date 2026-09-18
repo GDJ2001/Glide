@@ -830,7 +830,7 @@ class TransferRuntime private constructor(
                 }
             }
             coordinator.stop()
-            return true
+            return false
         }
 
         coordinator.cancel(reason)
