@@ -58,6 +58,7 @@ object StreamHasher {
         outputStream: OutputStream?,
         expectedBytes: Long,
         chunkSize: Int,
+        startChunkIndex: Long = 0L,
         bufferSize: Int =
             DEFAULT_BUFFER_SIZE,
         onChunk:
@@ -90,6 +91,12 @@ object StreamHasher {
             "Resume chunk size must be in 1..16 MiB, got: $chunkSize"
         }
 
+        require(
+            startChunkIndex >= 0L
+        ) {
+            "startChunkIndex cannot be negative"
+        }
+
         val digest =
             MessageDigest.getInstance(
                 "SHA-256"
@@ -99,7 +106,8 @@ object StreamHasher {
         var chunkBuffer =
             ByteArray(chunkSize)
         var chunkUsed = 0
-        var chunkIndex = 0L
+        var chunkIndex =
+            startChunkIndex
         var totalBytes = 0L
 
         suspend fun commitChunk() {
