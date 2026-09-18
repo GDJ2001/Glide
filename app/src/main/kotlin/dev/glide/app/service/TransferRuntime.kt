@@ -190,6 +190,8 @@ class TransferRuntime private constructor(
         return when (command) {
             is TransferRuntimeCommand.StartSender -> startSender(command)
             is TransferRuntimeCommand.StartReceiver -> startReceiver(command)
+            is TransferRuntimeCommand.StartNearbySenderPairing ->
+                startNearbySenderPairing(command)
             is TransferRuntimeCommand.BindPairingTransport -> bindPairingTransport(
                 command.transport,
                 command.onPairingSuccess
@@ -208,6 +210,85 @@ class TransferRuntime private constructor(
                 startReceiveAvailability(command.localDeviceName)
             TransferRuntimeCommand.StopReceiveAvailability -> stopReceiveAvailability()
         }
+    }
+
+    private fun startNearbySenderPairing(
+        command: TransferRuntimeCommand.StartNearbySenderPairing
+    ): Boolean {
+        val controller = discoveryController ?: return failPairing(
+            "Nearby unavailable",
+            "Production Nearby transport is unavailable."
+        )
+        val scope = synchronized(lock) { serviceScope } ?: return failPairing(
+            "Transfer service unavailable",
+            "Foreground transfer service is not attached."
+        )
+        val prepared = SelectedTransferStore.get(command.selectionId) ?: return failPairing(
+            "Selection unavailable",
+            "The selected files are no longer available. Choose them again."
+        )
+        if (prepared.batch.items.isEmpty() || prepared.sourceMap.isEmpty()) {
+            return failPairing(
+                "Selection unavailable",
+                "No selected files are available for transfer."
+            )
+        }
+
+        val transport = controller.acquireSessionTransport(scope) ?: return failPairing(
+            "Nearby unavailable",
+            "Nearby permissions or required radios are unavailable."
+        )
+
+        controller.stopDiscovery()
+        controller.stopAdvertising()
+        _pairingState.value = PairingUiState.Connecting(
+            peerId = command.peerId,
+            peerName = command.peerDisplayName,
+            deviceType = DeviceType.fromDeviceName(command.peerDisplayName)
+        )
+
+        val bound = bindPairingTransport(transport) { connectedPeerId ->
+            val connectedPeer = (_pairingState.value as? PairingUiState.Connected)?.peer
+            val started = startSender(
+                TransferRuntimeCommand.StartSender(
+                    selectionId = command.selectionId,
+                    transport = transport,
+                    peerId = connectedPeerId,
+                    peerDisplayName = connectedPeer?.displayName ?: command.peerDisplayName
+                )
+            )
+            if (!started) {
+                failPairing(
+                    "Transfer could not start",
+                    "The selected files or transfer runtime became unavailable after pairing."
+                )
+                terminalCallback?.invoke()
+            }
+        }
+        if (!bound) {
+            return failPairing(
+                "Pairing unavailable",
+                "Unable to bind the Nearby authentication lifecycle."
+            )
+        }
+
+        scope.launch {
+            try {
+                transport.initiateConnection(command.peerId, command.localDeviceName)
+            } catch (error: Throwable) {
+                failPairing(
+                    "Connection failed",
+                    error.message ?: "Unable to request a Nearby connection."
+                )
+                terminalCallback?.invoke()
+            }
+        }
+        return true
+    }
+
+    private fun failPairing(title: String, message: String): Boolean {
+        _pairingState.value = PairingUiState.Failed(title = title, message = message)
+        return false
     }
 
     private fun startSender(command: TransferRuntimeCommand.StartSender): Boolean {
@@ -373,19 +454,30 @@ class TransferRuntime private constructor(
                                 title = "Connection Rejected",
                                 message = "The connection was rejected by the peer."
                             )
+                            if (activeCoordinator == null) {
+                                terminalCallback?.invoke()
+                            }
                         }
                         is ConnectionEvent.Failed -> {
                             _pairingState.value = PairingUiState.Failed(
                                 title = "Connection Failed",
                                 message = event.reason
                             )
+                            if (activeCoordinator == null) {
+                                terminalCallback?.invoke()
+                            }
                         }
                         is ConnectionEvent.Disconnected -> {
-                            if (_pairingState.value is PairingUiState.Verifying) {
+                            if (_pairingState.value is PairingUiState.Verifying ||
+                                _pairingState.value is PairingUiState.Connecting
+                            ) {
                                 _pairingState.value = PairingUiState.Failed(
                                     title = "Disconnected",
                                     message = "Remote peer disconnected."
                                 )
+                                if (activeCoordinator == null) {
+                                    terminalCallback?.invoke()
+                                }
                             }
                         }
                     }
@@ -525,7 +617,40 @@ class TransferRuntime private constructor(
             )
             return false
         }
-        return controller.startAdvertising(localDeviceName)
+
+        val scope = synchronized(lock) { serviceScope }
+        if (scope == null) {
+            // Test/preview compatibility. Production Navigation3 starts receive availability through
+            // TransferService so authenticated connection work is service-owned.
+            return controller.startAdvertising(localDeviceName)
+        }
+
+        val transport = controller.acquireSessionTransport(scope) ?: return false
+        _pairingState.value = PairingUiState.Idle
+
+        val bound = bindPairingTransport(transport) { connectedPeerId ->
+            val connectedPeer = (_pairingState.value as? PairingUiState.Connected)?.peer
+            val started = startReceiver(
+                TransferRuntimeCommand.StartReceiver(
+                    transport = transport,
+                    peerId = connectedPeerId,
+                    peerDisplayName = connectedPeer?.displayName ?: "Nearby device"
+                )
+            )
+            if (!started) {
+                failPairing(
+                    "Transfer could not start",
+                    "Receiver session could not start after authenticated pairing."
+                )
+                terminalCallback?.invoke()
+            }
+        }
+        if (!bound) return false
+
+        return controller.startAdvertising(
+            localDeviceName = localDeviceName,
+            transportOverride = transport
+        )
     }
 
     private fun stopReceiveAvailability(): Boolean {
@@ -654,6 +779,13 @@ sealed interface TransferRuntimeCommand {
         val peerId: PeerId,
         val peerDisplayName: String,
         val sessionId: SessionId? = null
+    ) : TransferRuntimeCommand
+
+    data class StartNearbySenderPairing(
+        val selectionId: BatchId? = null,
+        val peerId: PeerId,
+        val peerDisplayName: String,
+        val localDeviceName: String = "Glide Device"
     ) : TransferRuntimeCommand
 
     data class BindPairingTransport(
