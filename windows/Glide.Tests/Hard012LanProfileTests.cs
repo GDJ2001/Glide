@@ -1,6 +1,8 @@
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Authentication;
+using System.Security.Cryptography;
+using Glide.Core.Pairing;
 using Glide.Transport.Discovery;
 using Glide.Transport.Sockets;
 
@@ -72,6 +74,65 @@ public sealed class Hard012LanProfileTests
     }
 
     [Fact]
+    public async Task InvitationAuthority_ConcurrentReplay_AllowsExactlyOneConsumer()
+    {
+        LanInvitation invitation = CreateCanonicalInvitation();
+        var authority = new LanInvitationAuthority(invitation);
+        var bootstrap = new LanBootstrapMessage(
+            invitation.InvitationId,
+            invitation.Token,
+            invitation.InvitationHash,
+            Guid.NewGuid().ToString("D").ToLowerInvariant());
+
+        Task<LanBootstrapResult>[] attempts = Enumerable.Range(0, 24)
+            .Select(_ => Task.Run(() => authority.Consume(bootstrap)))
+            .ToArray();
+
+        LanBootstrapResult[] results = await Task.WhenAll(attempts);
+
+        Assert.Single(results, result => result.IsAccepted);
+        Assert.All(
+            results.Where(result => !result.IsAccepted),
+            result => Assert.Equal(
+                LanBootstrapFailureCode.INVITATION_USED.ToString(),
+                result.Code));
+        Assert.True(authority.IsConsumed);
+    }
+
+    [Fact]
+    public void InvitationAuthority_BadTokenDoesNotConsumeValidInvitation()
+    {
+        LanInvitation invitation = CreateCanonicalInvitation();
+        var authority = new LanInvitationAuthority(invitation);
+
+        string wrongToken = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
+
+        var rejected = authority.Consume(new LanBootstrapMessage(
+            invitation.InvitationId,
+            wrongToken,
+            invitation.InvitationHash,
+            Guid.NewGuid().ToString("D").ToLowerInvariant()));
+
+        Assert.False(rejected.IsAccepted);
+        Assert.Equal(
+            LanBootstrapFailureCode.AUTHENTICATION_FAILED.ToString(),
+            rejected.Code);
+        Assert.False(authority.IsConsumed);
+
+        var accepted = authority.Consume(new LanBootstrapMessage(
+            invitation.InvitationId,
+            invitation.Token,
+            invitation.InvitationHash,
+            Guid.NewGuid().ToString("D").ToLowerInvariant()));
+
+        Assert.True(accepted.IsAccepted);
+        Assert.True(authority.IsConsumed);
+    }
+
+    [Fact]
     public async Task Listener_AcceptsCertificateLessQrClient_WithCanonicalAlpn()
     {
         using var listener = new TlsSocketListener(port: 0);
@@ -138,5 +199,25 @@ public sealed class Hard012LanProfileTests
         }
 
         await Assert.ThrowsAnyAsync<AuthenticationException>(async () => await serverTask);
+    }
+    private static LanInvitation CreateCanonicalInvitation()
+    {
+        string token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
+
+        var draft = new LanInvitation(
+            invitationId: Guid.NewGuid().ToString("D").ToLowerInvariant(),
+            presence: Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant(),
+            name: "Profile Test Receiver",
+            platform: "windows",
+            endpoints: [new LanEndpoint("127.0.0.1", 42424)],
+            spkiSha256: new string('a', 64),
+            token: token,
+            expiresAt: DateTimeOffset.UtcNow.AddMinutes(2).ToUnixTimeSeconds().ToString(),
+            ttlSeconds: 120);
+
+        return InvitationCodec.Decode(InvitationCodec.Encode(draft));
     }
 }
