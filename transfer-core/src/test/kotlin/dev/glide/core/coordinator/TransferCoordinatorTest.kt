@@ -38,6 +38,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
@@ -1027,18 +1028,18 @@ class TransferCoordinatorTest {
             // Simulate disconnect / link failure while awaiting receipt
             rTransport.disconnect(sTransport.localPeerId)
 
-            // Wait for the specific required terminal outcome. Waiting only for isTerminal can
-            // observe a concurrent terminal publication before the exact phase is stable.
-            while (senderCoordinator.state.value.phase != SessionPhase.DeliveryUnconfirmed) {
-                kotlinx.coroutines.delay(20)
+            // Capture the exact terminal state emission before cleanup can close the
+            // observation window and leave only the final snapshot.
+            val terminalState = senderCoordinator.state.first {
+                it.phase == SessionPhase.DeliveryUnconfirmed
             }
 
             // Sender transitions to DeliveryUnconfirmed
-            assertEquals(SessionPhase.DeliveryUnconfirmed, senderCoordinator.state.value.phase)
-            assertTrue(senderCoordinator.state.value.failure is TransferFailure.DeliveryUnconfirmed)
+            assertEquals(SessionPhase.DeliveryUnconfirmed, terminalState.phase)
+            assertTrue(terminalState.failure is TransferFailure.DeliveryUnconfirmed)
 
             // Both files on sender were verified
-            assertEquals(2, senderCoordinator.state.value.verifiedCount)
+            assertEquals(2, terminalState.verifiedCount)
             val sItems = sHistory.getItemsForSession(sessionId)
             assertEquals(2, sItems.size)
             assertTrue(sItems.all { it.outcome == "Verified" })
