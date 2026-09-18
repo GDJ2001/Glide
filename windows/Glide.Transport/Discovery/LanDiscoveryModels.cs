@@ -48,9 +48,14 @@ public static class LanDiscoveryTxtCodec
         ValidatePresenceId(presenceId);
 
         string safeName = ValidateDeviceName(deviceName);
-        string safeDeviceType = AllowedDeviceTypes.Contains(deviceType)
-            ? deviceType
-            : "unknown";
+        if (!AllowedDeviceTypes.Contains(deviceType))
+        {
+            throw new ArgumentException(
+                $"Unsupported DNS-SD device type '{deviceType}'.",
+                nameof(deviceType));
+        }
+
+        string safeDeviceType = deviceType;
 
         var attributes = new Dictionary<string, string>(StringComparer.Ordinal)
         {
@@ -106,9 +111,16 @@ public static class LanDiscoveryTxtCodec
             return false;
         }
 
-        string deviceType = attributes.TryGetValue("dt", out string? dt) && AllowedDeviceTypes.Contains(dt)
-            ? dt
-            : "unknown";
+        string deviceType = "unknown";
+        if (attributes.TryGetValue("dt", out string? dt))
+        {
+            if (!AllowedDeviceTypes.Contains(dt))
+            {
+                return false;
+            }
+
+            deviceType = dt;
+        }
 
         try
         {
