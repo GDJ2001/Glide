@@ -92,6 +92,7 @@ class Hard007NearbyProductionFlowTest {
         val sentControls = mutableListOf<ByteArray>()
 
         var advertisingStarts = 0
+        var advertisingStops = 0
         var streamStarts = 0
         var preparedStreams = 0
 
@@ -106,7 +107,7 @@ class Hard007NearbyProductionFlowTest {
             return advertisingEvents.asSharedFlow()
         }
 
-        override suspend fun stopAdvertising() {}
+        override suspend fun stopAdvertising() { advertisingStops++ }
 
         override suspend fun initiateConnection(peerId: PeerId, localDeviceName: String) {
             initiated += peerId to localDeviceName
@@ -391,6 +392,7 @@ class Hard007NearbyProductionFlowTest {
             val coordinator = runtime.activeCoordinatorForTesting()
             assertNotNull(coordinator)
             assertEquals(DeviceRole.Receiver, coordinator!!.role)
+            assertTrue(transport.advertisingStops >= 1)
             assertEquals(0, transport.streamStarts)
             assertEquals(0, receiveStore.prepareCount)
 
