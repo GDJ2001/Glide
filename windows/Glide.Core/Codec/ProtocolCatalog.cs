@@ -63,6 +63,21 @@ public static class ProtocolCatalog
         [
             "profile", "requestMessageId", "originalSessionId", "itemId", "code"
         ],
+        [MessageTypes.ResumeStreamStart] =
+        [
+            "profile", "requestMessageId", "originalSessionId", "itemId",
+            "bulkRef", "startChunkIndex", "startByteOffset", "remainingBytes",
+            "chunkSize", "totalSizeBytes", "chunkRootHashHex", "wholeFileSha256Hex"
+        ],
+        [MessageTypes.ResumeStreamReady] =
+        [
+            "profile", "requestMessageId", "originalSessionId", "itemId", "bulkRef"
+        ],
+        [MessageTypes.ResumeResult] =
+        [
+            "profile", "requestMessageId", "originalSessionId", "itemId",
+            "status", "sizeBytes", "sha256", "code"
+        ],
     };
 
     public static readonly HashSet<string> AllowedLimitsKeys = ["maxItems", "maxItemBytes", "maxBatchBytes", "maxControlBytes"];
