@@ -19,16 +19,7 @@ public sealed class DiscoveredPeerViewModel : ViewModelBase
         _ => "💻"
     };
 
-    public string CapabilitiesText
-    {
-        get
-        {
-            var caps = new List<string>();
-            if ((Peer.Capabilities & LanDiscoveryConstants.CapFolderTransfer) != 0) caps.Add("Folders");
-            if ((Peer.Capabilities & LanDiscoveryConstants.CapTrueResume) != 0) caps.Add("Resume");
-            return caps.Count > 0 ? string.Join(" • ", caps) : "Glide v1";
-        }
-    }
+    public string CapabilitiesText => "Pairing required • Glide LAN";
 
     public DiscoveredPeerViewModel(DiscoveredPeer peer)
     {
