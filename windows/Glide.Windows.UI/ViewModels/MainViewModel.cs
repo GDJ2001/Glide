@@ -459,8 +459,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             _mdnsService.StartAdvertising(
                 deviceName: Environment.MachineName,
                 port: ListeningPort,
-                certFingerprintPrefix: spkiSha256[..8],
-                capabilities: LanDiscoveryConstants.DefaultCapabilities);
+                presenceId: presence);
         }
         catch (Exception ex)
         {
