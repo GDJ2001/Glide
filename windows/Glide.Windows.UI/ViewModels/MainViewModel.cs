@@ -13,6 +13,7 @@ using Glide.Core.Pairing;
 using Glide.Core.Security;
 using Glide.Core.Storage;
 using Glide.Core.Transport.Lan;
+using Glide.Desktop;
 using Glide.Transport.Discovery;
 using Glide.Transport.Framing;
 using Glide.Transport.Sockets;
@@ -23,7 +24,7 @@ using ProtocolViolationException = Glide.Core.Models.ProtocolViolationException;
 
 namespace Glide.Windows.UI.ViewModels;
 
-public class MainViewModel : ViewModelBase
+public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
 {
     private string _currentTab = "Send";
     private string _peerHost = "127.0.0.1";
@@ -45,6 +46,8 @@ public class MainViewModel : ViewModelBase
     private string _transferredBytesText = "";
     private string _currentFileName = "";
     private CancellationTokenSource? _activeTransferCts;
+    private readonly DesktopTransferEngine _desktopTransferEngine = new();
+    private readonly Stopwatch _transferStopwatch = new();
 
     private TlsSocketListener? _listener;
 
@@ -488,489 +491,251 @@ public class MainViewModel : ViewModelBase
     {
         await using (conn)
         {
+            _activeTransferCts?.Dispose();
             _activeTransferCts = new CancellationTokenSource();
-            var ct = _activeTransferCts.Token;
+            var cancellationToken = _activeTransferCts.Token;
 
             try
             {
-                IsTransferActive = true;
-                TransferTitle = "Incoming Connection...";
-
-                var channel = new LanRecordChannel(conn.SslStream);
-                var stagingStore = new QuarantineStagingStore();
-
-                // Read first record: may be BOOTSTRAP or CONTROL (HELLO)
-                var firstRecord = await channel.ReadRecordAsync(ct);
-                if (firstRecord == null) return;
-
-                Envelope helloEnv;
-                if (firstRecord is LanRecord.Bootstrap bootstrapRecord)
+                RunOnUi(() =>
                 {
-                    var bootstrap = LanBootstrapCodec.DecodeBootstrap(bootstrapRecord.JsonBytes);
-                    bool isValid = _activeInvitation != null &&
-                        string.Equals(_activeInvitation.InvitationId, bootstrap.InvitationId, StringComparison.OrdinalIgnoreCase) &&
-                        string.Equals(_activeInvitation.Token, bootstrap.Token, StringComparison.Ordinal) &&
-                        string.Equals(_activeInvitation.InvitationHash, bootstrap.InvitationHash, StringComparison.OrdinalIgnoreCase) &&
-                        !_activeInvitation.IsExpired();
+                    IsTransferActive = true;
+                    TransferTitle = "Incoming Connection...";
+                    TotalProgress = 0;
+                    _transferStopwatch.Restart();
+                });
 
-                    if (!isValid)
-                    {
-                        var failCode = (_activeInvitation?.IsExpired() ?? false)
-                            ? LanBootstrapFailureCode.INVITATION_EXPIRED
-                            : LanBootstrapFailureCode.AUTHENTICATION_FAILED;
-                        await channel.WriteBootstrapResultAsync(LanBootstrapResult.Rejected(failCode), ct);
-                        StatusMessage = "Rejected inbound transfer: Invalid or expired pairing token.";
-                        return;
-                    }
+                var result = await _desktopTransferEngine.ReceiveAsync(
+                    conn,
+                    new DesktopReceiveRequest(
+                        new QuarantineStagingStore(),
+                        _activeInvitation,
+                        AllowBootstrapWithoutInvitation: false,
+                        LocalDeviceName: Environment.MachineName),
+                    this,
+                    cancellationToken);
 
-                    // Acknowledge bootstrap acceptance
-                    await channel.WriteBootstrapResultAsync(LanBootstrapResult.Accepted(bootstrap.SessionId), ct);
-                    _activeInvitation = null; // One-use token consumed
-                    ActiveInvitationUri = "";
-
-                    // Read subsequent HELLO envelope
-                    helloEnv = await channel.ReadEnvelopeAsync(ct);
-                }
-                else if (firstRecord is LanRecord.Control controlRecord)
-                {
-                    // Fallback to SAS verification for direct / un-paired LAN connections
-                    byte[] sessionNonce = RandomNumberGenerator.GetBytes(32);
-                    int sas = SasCalculator.CalculateSas(conn.RemotePublicKeyBytes, conn.LocalPublicKeyBytes, sessionNonce);
-
-                    SasCode = $"{sas:D6}";
-                    SasPeerName = "Remote Peer";
-                    IsSasModalVisible = true;
-
-                    _sasConfirmationTcs = new TaskCompletionSource<bool>();
-                    bool sasConfirmed = await _sasConfirmationTcs.Task;
-                    IsSasModalVisible = false;
-
-                    if (!sasConfirmed)
-                    {
-                        StatusMessage = "Transfer rejected by user.";
-                        return;
-                    }
-
-                    helloEnv = ProtocolCodec.Decode(controlRecord.Payload);
-                }
-                else
-                {
-                    throw new ProtocolViolationException(WireErrorCodes.ProtocolOrder, $"Unexpected first record kind: {firstRecord.Kind}");
-                }
-
-                SasPeerName = helloEnv.Body["displayName"]?.ToString() ?? "Remote Peer";
-
-                // 2. HELLO_ACK
-                var limits = new JsonObject
-                {
-                    ["maxItems"] = 1000,
-                    ["maxItemBytes"] = ProtocolCatalog.MaxItemBytes.ToString(),
-                    ["maxBatchBytes"] = ProtocolCatalog.MaxBatchBytes.ToString(),
-                    ["maxControlBytes"] = ProtocolCatalog.MaxControlBytes
-                };
-                var ackBody = new JsonObject
-                {
-                    ["selectedMajor"] = 1,
-                    ["capabilities"] = new JsonArray("lan-v1", "folder-v1"),
-                    ["ephemeralPeerId"] = Guid.NewGuid().ToString("D").ToLowerInvariant(),
-                    ["displayName"] = Environment.MachineName,
-                    ["limits"] = limits
-                };
-                await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.HelloAck, helloEnv.SessionId, new MessageId(Guid.NewGuid().ToString("D").ToLowerInvariant()), 2, ackBody), ct);
-
-                // 3. OFFER_BEGIN
-                var offerBegin = await channel.ReadEnvelopeAsync(ct);
-                int itemCount = offerBegin.Body["itemCount"]?.GetValue<int>() ?? 0;
-                long totalBytes = long.Parse(offerBegin.Body["totalBytes"]?.ToString() ?? "0");
-
-                // 4. OFFER_PAGE
-                var offerPage = await channel.ReadEnvelopeAsync(ct);
-                var items = new List<(string id, string name, long size, string relPath)>();
-                if (offerPage.Body["items"] is JsonArray arr)
-                {
-                    foreach (var n in arr)
-                    {
-                        if (n is JsonObject obj)
-                        {
-                            items.Add((obj["itemId"]!.ToString(), obj["name"]!.ToString(), long.Parse(obj["sizeBytes"]!.ToString()), obj.TryGetPropertyValue("relativePath", out var r) && r != null ? r.ToString() : obj["name"]!.ToString()));
-                        }
-                    }
-                }
-
-                // 5. OFFER_END
-                await channel.ReadEnvelopeAsync(ct);
-
-                // 6. OFFER_DECISION
-                var decBody = new JsonObject
-                {
-                    ["batchId"] = offerBegin.Body["batchId"]!.ToString(),
-                    ["accepted"] = true
-                };
-                await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.OfferDecision, helloEnv.SessionId, new MessageId(Guid.NewGuid().ToString("D").ToLowerInvariant()), 3, decBody), ct);
-
-                TransferTitle = $"Receiving {itemCount} file(s) from {SasPeerName}";
-                long cumulativeTransferred = 0;
-                var sw = Stopwatch.StartNew();
-
-                foreach (var item in items)
-                {
-                    CurrentFileName = item.name;
-                    var itemStart = await channel.ReadEnvelopeAsync(ct); // ITEM_START
-                    string bulkRef = itemStart.Body["bulkRef"]?.ToString() ?? Guid.NewGuid().ToString("D").ToLowerInvariant();
-
-                    var readyBody = new JsonObject { ["batchId"] = offerBegin.Body["batchId"]!.ToString(), ["itemId"] = item.id };
-                    await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.ItemReady, helloEnv.SessionId, new MessageId(Guid.NewGuid().ToString("D").ToLowerInvariant()), 4, readyBody), ct);
-
-                    // Bulk ingestion via LanRecord.Data and LanRecord.StreamEnd
-                    string qPath = stagingStore.GetQuarantinePath(helloEnv.SessionId, new ItemId(item.id));
-                    var qDir = Path.GetDirectoryName(qPath);
-                    if (qDir != null && !Directory.Exists(qDir)) Directory.CreateDirectory(qDir);
-
-                    byte[] hash;
-                    using (var fs = new FileStream(qPath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, true))
-                    using (var sha256 = IncrementalHash.CreateHash(HashAlgorithmName.SHA256))
-                    {
-                        long receivedBytes = 0;
-                        while (true)
-                        {
-                            var rec = await channel.ReadRecordAsync(ct);
-                            if (rec == null) throw new EndOfStreamException("Connection terminated during payload transfer.");
-
-                            if (rec is LanRecord.Data dataRec)
-                            {
-                                if (!string.Equals(dataRec.BulkRef.Value, bulkRef, StringComparison.OrdinalIgnoreCase))
-                                {
-                                    throw new ProtocolViolationException(WireErrorCodes.MalformedMessage, "Unmatched bulkRef in DATA record");
-                                }
-                                await fs.WriteAsync(dataRec.Chunk.AsMemory(), ct);
-                                sha256.AppendData(dataRec.Chunk);
-                                receivedBytes += dataRec.Chunk.Length;
-                                cumulativeTransferred += dataRec.Chunk.Length;
-
-                                TotalProgress = totalBytes > 0 ? (cumulativeTransferred * 100.0) / totalBytes : 100;
-                                double mbps = (cumulativeTransferred / (1024.0 * 1024.0)) / Math.Max(0.01, sw.Elapsed.TotalSeconds);
-                                TransferRateText = $"{mbps:F1} MB/s";
-                                TransferredBytesText = $"{TransferItemViewModel.FormatSize(cumulativeTransferred)} / {TransferItemViewModel.FormatSize(totalBytes)}";
-                            }
-                            else if (rec is LanRecord.StreamEnd streamEndRec)
-                            {
-                                if (!string.Equals(streamEndRec.BulkRef.Value, bulkRef, StringComparison.OrdinalIgnoreCase))
-                                {
-                                    throw new ProtocolViolationException(WireErrorCodes.MalformedMessage, "Unmatched bulkRef in STREAM_END record");
-                                }
-                                if (streamEndRec.ActualBytes != receivedBytes || receivedBytes != item.size)
-                                {
-                                    throw new ProtocolViolationException(WireErrorCodes.IntegrityMismatch, $"STREAM_END actualBytes {streamEndRec.ActualBytes} does not match expected {item.size}");
-                                }
-                                break;
-                            }
-                            else
-                            {
-                                throw new ProtocolViolationException(WireErrorCodes.ProtocolOrder, $"Unexpected record kind during data stream: {rec.Kind}");
-                            }
-                        }
-                        hash = sha256.GetHashAndReset();
-                    }
-
-                    var itemEnd = await channel.ReadEnvelopeAsync(ct);
-                    string expectedSha = itemEnd.Body["sha256"]!.ToString();
-                    string actualSha = Convert.ToHexStringLower(hash);
-
-                    if (!string.Equals(actualSha, expectedSha, StringComparison.OrdinalIgnoreCase))
-                    {
-                        stagingStore.PurgeQuarantine(helloEnv.SessionId, new ItemId(item.id));
-                        throw new ProtocolViolationException(WireErrorCodes.IntegrityMismatch, $"Digest mismatch for {item.name}");
-                    }
-
-                    string destDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
-                    string finalPath = QuarantineStagingStore.ResolveCollision(Path.Combine(destDir, item.relPath.Replace('/', Path.DirectorySeparatorChar)));
-                    var td = Path.GetDirectoryName(finalPath);
-                    if (td != null && !Directory.Exists(td)) Directory.CreateDirectory(td);
-                    File.Move(qPath, finalPath, false);
-
-                    var verResult = new JsonObject
-                    {
-                        ["batchId"] = offerBegin.Body["batchId"]!.ToString(),
-                        ["itemId"] = item.id,
-                        ["status"] = "verified",
-                        ["sizeBytes"] = item.size.ToString(),
-                        ["sha256"] = actualSha
-                    };
-                    await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.ItemResult, helloEnv.SessionId, new MessageId(Guid.NewGuid().ToString("D").ToLowerInvariant()), 5, verResult), ct);
-
-                    Application.Current?.Dispatcher.Invoke(() =>
-                    {
-                        HistoryItems.Insert(0, new HistoryItemViewModel
-                        {
-                            Direction = "Received",
-                            ItemName = item.name,
-                            FormattedSize = TransferItemViewModel.FormatSize(item.size),
-                            TargetPath = finalPath,
-                            PeerName = SasPeerName,
-                            Timestamp = DateTime.Now
-                        });
-                    });
-                }
-
-                await channel.ReadEnvelopeAsync(ct); // BATCH_END
-                var bRes = new JsonObject
-                {
-                    ["batchId"] = offerBegin.Body["batchId"]!.ToString(),
-                    ["status"] = "completed",
-                    ["verifiedCount"] = items.Count,
-                    ["totalVerifiedBytes"] = totalBytes.ToString()
-                };
-                await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.BatchResult, helloEnv.SessionId, new MessageId(Guid.NewGuid().ToString("D").ToLowerInvariant()), 6, bRes), ct);
-
-                StatusMessage = $"Successfully received {items.Count} file(s)!";
-            }
-            catch (Exception ex)
-            {
-                StatusMessage = $"Receive failed: {ex.Message}";
+                RunOnUi(() => StatusMessage = result.Message);
             }
             finally
             {
-                IsTransferActive = false;
-                IsSasModalVisible = false;
+                RunOnUi(() =>
+                {
+                    _transferStopwatch.Stop();
+                    IsTransferActive = false;
+                    IsSasModalVisible = false;
+                });
             }
         }
     }
 
-    private async Task ExecuteSendFilesAsync()
+private async Task ExecuteSendFilesAsync()
     {
         if (SelectedFiles.Count == 0) return;
 
+        _activeTransferCts?.Dispose();
         _activeTransferCts = new CancellationTokenSource();
-        var ct = _activeTransferCts.Token;
+        var cancellationToken = _activeTransferCts.Token;
 
         try
         {
             IsTransferActive = true;
             TransferTitle = $"Connecting to {PeerHost}:{PeerPort}...";
             TotalProgress = 0;
+            _transferStopwatch.Restart();
 
-            var client = new TlsSocketClient();
-            TlsSocketConnection conn;
-            if (_pairedInvitation != null)
-            {
-                if (_pairedInvitation.IsExpired())
-                {
-                    StatusMessage = "Pairing invitation has expired. Please pair again.";
-                    return;
-                }
-                conn = await client.ConnectAsync(PeerHost, PeerPort, expectedSpkiSha256: _pairedInvitation.SpkiSha256, ct);
-            }
-            else
-            {
-                conn = await client.ConnectAsync(PeerHost, PeerPort, ct);
-            }
+            var files = SelectedFiles
+                .Select(item => new DesktopTransferFile(item.FilePath))
+                .ToList();
 
-            await using (conn)
-            {
-                var channel = new LanRecordChannel(conn.SslStream);
-                var sessionId = new SessionId(Guid.NewGuid().ToString("D").ToLowerInvariant());
+            var result = await _desktopTransferEngine.SendAsync(
+                new DesktopSendRequest(
+                    PeerHost,
+                    PeerPort,
+                    files,
+                    _pairedInvitation,
+                    Environment.MachineName),
+                this,
+                cancellationToken);
 
-                if (_pairedInvitation != null)
-                {
-                    // Transmit BOOTSTRAP record
-                    var bootstrapMsg = new LanBootstrapMessage(
-                        invitationId: _pairedInvitation.InvitationId,
-                        token: _pairedInvitation.Token,
-                        invitationHash: _pairedInvitation.InvitationHash,
-                        sessionId: sessionId.Value,
-                        role: LanBootstrapMessage.RoleSender);
-
-                    await channel.WriteBootstrapAsync(bootstrapMsg, ct);
-
-                    var bootstrapResult = await channel.ReadBootstrapResultAsync(ct);
-                    if (!bootstrapResult.IsAccepted)
-                    {
-                        StatusMessage = $"Pairing bootstrap rejected by peer: {bootstrapResult.Code}";
-                        return;
-                    }
-                    _pairedInvitation = null; // One-use token consumed
-                }
-                else
-                {
-                    byte[] sessionNonce = RandomNumberGenerator.GetBytes(32);
-                    int sas = SasCalculator.CalculateSas(conn.LocalPublicKeyBytes, conn.RemotePublicKeyBytes, sessionNonce);
-
-                    SasCode = $"{sas:D6}";
-                    SasPeerName = PeerHost;
-                    IsSasModalVisible = true;
-
-                    _sasConfirmationTcs = new TaskCompletionSource<bool>();
-                    bool sasConfirmed = await _sasConfirmationTcs.Task;
-                    IsSasModalVisible = false;
-
-                    if (!sasConfirmed)
-                    {
-                        StatusMessage = "Transfer cancelled by user.";
-                        return;
-                    }
-                }
-
-                // 1. HELLO
-                var helloBody = new JsonObject
-                {
-                    ["supportedMajors"] = new JsonArray(1),
-                    ["requiredCapabilities"] = new JsonArray(),
-                    ["optionalCapabilities"] = new JsonArray("folder-v1"),
-                    ["role"] = "sender",
-                    ["ephemeralPeerId"] = Guid.NewGuid().ToString("D").ToLowerInvariant(),
-                    ["displayName"] = Environment.MachineName
-                };
-                await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.Hello, sessionId, new MessageId(Guid.NewGuid().ToString("D").ToLowerInvariant()), 1, helloBody), ct);
-
-                // 2. HELLO_ACK
-                var ack = await channel.ReadEnvelopeAsync(ct);
-                SasPeerName = ack.Body["displayName"]?.ToString() ?? PeerHost;
-
-                // 3. OFFER_BEGIN
-                var batchId = new BatchId(Guid.NewGuid().ToString("D").ToLowerInvariant());
-                long totalBytes = SelectedFiles.Sum(f => f.SizeBytes);
-                var offerBegin = new JsonObject
-                {
-                    ["batchId"] = batchId.Value,
-                    ["itemCount"] = SelectedFiles.Count,
-                    ["totalBytes"] = totalBytes.ToString(),
-                    ["pageCount"] = 1
-                };
-                await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.OfferBegin, sessionId, new MessageId(Guid.NewGuid().ToString("D").ToLowerInvariant()), 2, offerBegin), ct);
-
-                // 4. OFFER_PAGE
-                var itemsArr = new JsonArray();
-                var itemMap = new Dictionary<string, (TransferItemViewModel item, Sha256Digest digest)>();
-
-                foreach (var f in SelectedFiles)
-                {
-                    var itemId = new ItemId(Guid.NewGuid().ToString("D").ToLowerInvariant());
-                    byte[] bytes = await File.ReadAllBytesAsync(f.FilePath, ct);
-                    var digest = new Sha256Digest(Convert.ToHexStringLower(SHA256.HashData(bytes)));
-                    itemMap[itemId.Value] = (f, digest);
-
-                    itemsArr.Add(new JsonObject
-                    {
-                        ["itemId"] = itemId.Value,
-                        ["name"] = f.Name,
-                        ["mime"] = "application/octet-stream",
-                        ["sizeBytes"] = f.SizeBytes.ToString(),
-                        ["relativePath"] = f.Name
-                    });
-                }
-
-                var offerPage = new JsonObject
-                {
-                    ["batchId"] = batchId.Value,
-                    ["pageIndex"] = 0,
-                    ["items"] = itemsArr
-                };
-                await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.OfferPage, sessionId, new MessageId(Guid.NewGuid().ToString("D").ToLowerInvariant()), 3, offerPage), ct);
-
-                // 5. OFFER_END
-                await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.OfferEnd, sessionId, new MessageId(Guid.NewGuid().ToString("D").ToLowerInvariant()), 4, new JsonObject { ["batchId"] = batchId.Value }), ct);
-
-                // 6. OFFER_DECISION
-                TransferTitle = "Waiting for peer approval...";
-                var dec = await channel.ReadEnvelopeAsync(ct);
-                if (!(dec.Body["accepted"]?.GetValue<bool>() ?? false))
-                {
-                    StatusMessage = "Peer rejected the transfer offer.";
-                    return;
-                }
-
-                TransferTitle = $"Sending {SelectedFiles.Count} file(s) to {SasPeerName}";
-                long cumulativeTransferred = 0;
-                var sw = Stopwatch.StartNew();
-
-                foreach (var (itemId, (item, digest)) in itemMap)
-                {
-                    CurrentFileName = item.Name;
-                    item.Status = "Sending...";
-                    string bulkRef = Guid.NewGuid().ToString("D").ToLowerInvariant();
-
-                    var startBody = new JsonObject
-                    {
-                        ["batchId"] = batchId.Value,
-                        ["itemId"] = itemId,
-                        ["bulkRef"] = bulkRef,
-                        ["sizeBytes"] = item.SizeBytes.ToString()
-                    };
-                    await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.ItemStart, sessionId, new MessageId(Guid.NewGuid().ToString("D").ToLowerInvariant()), 5, startBody), ct);
-
-                    await channel.ReadEnvelopeAsync(ct); // ITEM_READY
-
-                    // Stream file via LanRecord.Data
-                    using (var fs = new FileStream(item.FilePath, FileMode.Open, FileAccess.Read, FileShare.Read, 65536, true))
-                    {
-                        byte[] buf = new byte[65520];
-                        int read;
-                        while ((read = await fs.ReadAsync(buf.AsMemory(0, buf.Length), ct)) > 0)
-                        {
-                            await channel.WriteDataChunkAsync(bulkRef, buf.AsMemory(0, read), ct);
-                            cumulativeTransferred += read;
-
-                            TotalProgress = totalBytes > 0 ? (cumulativeTransferred * 100.0) / totalBytes : 100;
-                            double mbps = (cumulativeTransferred / (1024.0 * 1024.0)) / Math.Max(0.01, sw.Elapsed.TotalSeconds);
-                            TransferRateText = $"{mbps:F1} MB/s";
-                            TransferredBytesText = $"{TransferItemViewModel.FormatSize(cumulativeTransferred)} / {TransferItemViewModel.FormatSize(totalBytes)}";
-                        }
-
-                        byte[] extraBuf = new byte[1];
-                        int extra = await fs.ReadAsync(extraBuf.AsMemory(0, 1), ct);
-                        if (extra > 0)
-                        {
-                            throw new InvalidOperationException($"File {item.Name} had unexpected bytes beyond declared size.");
-                        }
-                    }
-
-                    // Send STREAM_END
-                    await channel.WriteStreamEndAsync(bulkRef, item.SizeBytes, ct);
-
-                    var endBody = new JsonObject
-                    {
-                        ["batchId"] = batchId.Value,
-                        ["itemId"] = itemId,
-                        ["actualBytes"] = item.SizeBytes.ToString(),
-                        ["sha256"] = digest.Value
-                    };
-                    await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.ItemEnd, sessionId, new MessageId(Guid.NewGuid().ToString("D").ToLowerInvariant()), 6, endBody), ct);
-
-                    var res = await channel.ReadEnvelopeAsync(ct); // ITEM_RESULT
-                    item.Status = res.Body["status"]?.ToString() == "verified" ? "Verified" : "Failed";
-
-                    Application.Current?.Dispatcher.Invoke(() =>
-                    {
-                        HistoryItems.Insert(0, new HistoryItemViewModel
-                        {
-                            Direction = "Sent",
-                            ItemName = item.Name,
-                            FormattedSize = item.FormattedSize,
-                            TargetPath = item.FilePath,
-                            PeerName = SasPeerName,
-                            Timestamp = DateTime.Now
-                        });
-                    });
-                }
-
-                await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.BatchEnd, sessionId, new MessageId(Guid.NewGuid().ToString("D").ToLowerInvariant()), 7, new JsonObject { ["batchId"] = batchId.Value }), ct);
-                await channel.ReadEnvelopeAsync(ct); // BATCH_RESULT
-
-                StatusMessage = $"Sent {SelectedFiles.Count} file(s) successfully!";
-            }
-        }
-        catch (Exception ex)
-        {
-            StatusMessage = $"Send failed: {ex.Message}";
+            StatusMessage = result.Message;
         }
         finally
         {
+            _transferStopwatch.Stop();
             IsTransferActive = false;
             IsSasModalVisible = false;
         }
     }
 
-    private void ExecuteOpenDownloads()
+    public async Task<bool> ConfirmSasAsync(
+        DesktopTransferDirection direction,
+        string peerName,
+        int sixDigitCode,
+        CancellationToken cancellationToken)
+    {
+        var confirmation = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        RunOnUi(() =>
+        {
+            _sasConfirmationTcs = confirmation;
+            SasCode = sixDigitCode.ToString("D6");
+            SasPeerName = peerName;
+            IsSasModalVisible = true;
+        });
+
+        try
+        {
+            return await confirmation.Task.WaitAsync(cancellationToken);
+        }
+        finally
+        {
+            RunOnUi(() =>
+            {
+                if (ReferenceEquals(_sasConfirmationTcs, confirmation))
+                {
+                    _sasConfirmationTcs = null;
+                }
+
+                IsSasModalVisible = false;
+            });
+        }
+    }
+
+    public Task<bool> ConfirmOfferAsync(
+        DesktopOffer offer,
+        CancellationToken cancellationToken)
+    {
+        RunOnUi(() =>
+        {
+            SasPeerName = offer.PeerName;
+            TransferTitle =
+                $"Receiving {offer.Items.Count} file(s) from {offer.PeerName}";
+        });
+
+        // Preserve current WPF behavior. HARD-015 adds explicit incoming-offer consent.
+        return Task.FromResult(true);
+    }
+
+    public void OnInvitationConsumed(DesktopTransferDirection direction)
+    {
+        RunOnUi(() =>
+        {
+            if (direction == DesktopTransferDirection.Send)
+            {
+                _pairedInvitation = null;
+            }
+            else
+            {
+                _activeInvitation = null;
+                ActiveInvitationUri = "";
+            }
+        });
+    }
+
+    public void OnPeerIdentified(
+        DesktopTransferDirection direction,
+        string peerName)
+    {
+        RunOnUi(() => SasPeerName = peerName);
+    }
+
+    public void OnStatus(
+        DesktopTransferDirection direction,
+        string message)
+    {
+        RunOnUi(() =>
+        {
+            StatusMessage = message;
+            if (message.Contains(
+                "Waiting for peer approval",
+                StringComparison.OrdinalIgnoreCase))
+            {
+                TransferTitle = message;
+            }
+        });
+    }
+
+    public void OnProgress(DesktopTransferProgress progress)
+    {
+        RunOnUi(() =>
+        {
+            CurrentFileName = progress.ItemName;
+            TotalProgress = progress.Fraction * 100.0;
+
+            double elapsedSeconds = Math.Max(
+                0.01,
+                _transferStopwatch.Elapsed.TotalSeconds);
+            double megabytesPerSecond =
+                (progress.TransferredBytes / (1024.0 * 1024.0)) /
+                elapsedSeconds;
+
+            TransferRateText = $"{megabytesPerSecond:F1} MB/s";
+            TransferredBytesText =
+                $"{TransferItemViewModel.FormatSize(progress.TransferredBytes)} / " +
+                $"{TransferItemViewModel.FormatSize(progress.TotalBytes)}";
+        });
+    }
+
+    public void OnItemStatus(
+        DesktopTransferDirection direction,
+        string itemName,
+        string status)
+    {
+        RunOnUi(() =>
+        {
+            CurrentFileName = itemName;
+            if (direction == DesktopTransferDirection.Send)
+            {
+                var selected = SelectedFiles.FirstOrDefault(
+                    item => string.Equals(
+                        item.Name,
+                        itemName,
+                        StringComparison.Ordinal));
+                if (selected != null)
+                {
+                    selected.Status = status;
+                }
+            }
+        });
+    }
+
+    public void OnHistory(DesktopHistoryEntry entry)
+    {
+        RunOnUi(() =>
+        {
+            HistoryItems.Insert(
+                0,
+                new HistoryItemViewModel
+                {
+                    Direction =
+                        entry.Direction == DesktopTransferDirection.Send
+                            ? "Sent"
+                            : "Received",
+                    ItemName = entry.ItemName,
+                    FormattedSize =
+                        TransferItemViewModel.FormatSize(entry.SizeBytes),
+                    TargetPath = entry.Path,
+                    PeerName = entry.PeerName,
+                    Timestamp = entry.Timestamp.LocalDateTime
+                });
+        });
+    }
+
+    private static void RunOnUi(Action action)
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher == null || dispatcher.CheckAccess())
+        {
+            action();
+            return;
+        }
+
+        dispatcher.Invoke(action);
+    }
+
+private void ExecuteOpenDownloads()
     {
         string downloads = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
         if (Directory.Exists(downloads))
