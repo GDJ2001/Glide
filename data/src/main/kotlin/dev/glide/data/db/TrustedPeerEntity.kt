@@ -56,6 +56,9 @@ interface TrustedPeerDao {
     @Query("DELETE FROM trusted_peers WHERE peer_fingerprint = :fingerprint")
     suspend fun deleteByFingerprint(fingerprint: String)
 
+    @Query("DELETE FROM trusted_peers")
+    suspend fun deleteAll()
+
     @Query("SELECT COUNT(*) FROM trusted_peers")
     suspend fun getPeerCount(): Int
 }
