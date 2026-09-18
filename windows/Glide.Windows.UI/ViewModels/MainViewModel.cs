@@ -460,6 +460,8 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
 
     internal async Task ExecuteSaveSettingsAsync()
     {
+        await InitializationTask;
+
         try
         {
             var settings = new DesktopSettings(
@@ -497,6 +499,8 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
 
     internal async Task ExecuteClearHistoryAsync()
     {
+        await InitializationTask;
+
         try
         {
             await _stateStore.ClearHistoryAsync();
