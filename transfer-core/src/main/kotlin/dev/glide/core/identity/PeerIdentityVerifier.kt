@@ -98,20 +98,30 @@ object PeerIdentityVerifier {
             return TrustStatus.FirstUsePairing
         }
 
-        val presentedFingerprint = deriveFingerprint(presentedKeyDer)
-        val presentedKeyDerHex = presentedKeyDer.toHex()
+        val presentedFingerprint =
+            deriveFingerprint(presentedKeyDer)
+        val presentedKeyDerHex =
+            presentedKeyDer.toHex()
 
-        if (knownPeer.peerFingerprintHex.equals(presentedFingerprint, ignoreCase = true)) {
-            if (knownPeer.publicKeyDerHex.equals(presentedKeyDerHex, ignoreCase = true)) {
-                return TrustStatus.TrustedPersistent
-            } else {
-                throw IdentityMismatchException(
-                    "Security Warning: Public key mismatch for known peer '$displayName' (fingerprint: $presentedFingerprint). Possible impersonation attack."
-                )
-            }
+        val fingerprintMatches =
+            knownPeer.peerFingerprintHex.equals(
+                presentedFingerprint,
+                ignoreCase = false
+            )
+        val keyMatches =
+            knownPeer.publicKeyDerHex.equals(
+                presentedKeyDerHex,
+                ignoreCase = false
+            )
+
+        if (!fingerprintMatches || !keyMatches) {
+            throw IdentityMismatchException(
+                "Security Warning: Persistent identity mismatch for known peer '$displayName'. " +
+                    "Expected fingerprint ${knownPeer.peerFingerprintHex}, received $presentedFingerprint."
+            )
         }
 
-        return TrustStatus.FirstUsePairing
+        return TrustStatus.TrustedPersistent
     }
 
     fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
