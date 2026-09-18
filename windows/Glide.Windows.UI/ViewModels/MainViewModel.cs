@@ -3,24 +3,18 @@ using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Security.Cryptography;
-using System.Text.Json.Nodes;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
-using Glide.Core.Codec;
 using Glide.Core.Models;
 using Glide.Core.Pairing;
-using Glide.Core.Security;
 using Glide.Core.Storage;
-using Glide.Core.Transport.Lan;
 using Glide.Desktop;
 using Glide.Transport.Discovery;
-using Glide.Transport.Framing;
 using Glide.Transport.Sockets;
 using Glide.Transport.Web;
 using Glide.Windows.UI.Common;
 using Microsoft.Win32;
-using ProtocolViolationException = Glide.Core.Models.ProtocolViolationException;
 
 namespace Glide.Windows.UI.ViewModels;
 
