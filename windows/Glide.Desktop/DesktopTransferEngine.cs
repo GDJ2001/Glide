@@ -46,33 +46,34 @@ public sealed class DesktopTransferEngine
 
         try
         {
+            if (request.Invitation == null)
+            {
+                return DesktopTransferResult.Failed(
+                    "Authenticated QR/pairing invitation is required for LAN sending.");
+            }
+
             string host = request.Host;
             int port = request.Port;
-            if (request.Invitation != null)
+            if (request.Invitation.IsExpired())
             {
-                if (request.Invitation.IsExpired())
-                {
-                    return DesktopTransferResult.Failed(
-                        "Pairing invitation has expired. Request a new pairing code.");
-                }
-
-                var endpoint = request.Invitation.Endpoints.First();
-                host = endpoint.Address;
-                port = endpoint.Port;
+                return DesktopTransferResult.Failed(
+                    "Pairing invitation has expired. Request a new pairing code.");
             }
+
+            var endpoint = request.Invitation.Endpoints.First();
+            host = endpoint.Address;
+            port = endpoint.Port;
 
             interaction.OnStatus(
                 DesktopTransferDirection.Send,
                 $"Connecting to {host}:{port} over TLS 1.3...");
 
             var client = new TlsSocketClient();
-            await using var connection = request.Invitation != null
-                ? await client.ConnectAsync(
-                    host,
-                    port,
-                    expectedSpkiSha256: request.Invitation.SpkiSha256,
-                    cancellationToken)
-                : await client.ConnectAsync(host, port, cancellationToken);
+            await using var connection = await client.ConnectAsync(
+                host,
+                port,
+                expectedSpkiSha256: request.Invitation.SpkiSha256,
+                cancellationToken);
 
             return await RunSenderSessionAsync(
                 connection,
@@ -131,46 +132,27 @@ public sealed class DesktopTransferEngine
         await using var channel = new LanRecordChannel(connection.SslStream);
         var sessionId = NewSessionId();
 
-        if (request.Invitation != null)
+        var invitation = request.Invitation
+            ?? throw new ProtocolViolationException(
+                WireErrorCodes.AuthenticationFailed,
+                "Authenticated pairing invitation is required.");
+
+        var bootstrap = new LanBootstrapMessage(
+            invitationId: invitation.InvitationId,
+            token: invitation.Token,
+            invitationHash: invitation.InvitationHash,
+            sessionId: sessionId.Value,
+            role: LanBootstrapMessage.RoleSender);
+
+        await channel.WriteBootstrapAsync(bootstrap, cancellationToken);
+        var result = await channel.ReadBootstrapResultAsync(cancellationToken);
+        if (!result.IsAccepted)
         {
-            var bootstrap = new LanBootstrapMessage(
-                invitationId: request.Invitation.InvitationId,
-                token: request.Invitation.Token,
-                invitationHash: request.Invitation.InvitationHash,
-                sessionId: sessionId.Value,
-                role: LanBootstrapMessage.RoleSender);
-
-            await channel.WriteBootstrapAsync(bootstrap, cancellationToken);
-            var result = await channel.ReadBootstrapResultAsync(cancellationToken);
-            if (!result.IsAccepted)
-            {
-                return DesktopTransferResult.RejectedByPeer(
-                    $"Pairing bootstrap rejected by peer: {result.Code}");
-            }
-
-            interaction.OnInvitationConsumed(DesktopTransferDirection.Send);
+            return DesktopTransferResult.RejectedByPeer(
+                $"Pairing bootstrap rejected by peer: {result.Code}");
         }
-        else
-        {
-            // HARD-012 owns replacing the legacy independently-generated direct-SAS nonce.
-            byte[] sessionNonce = RandomNumberGenerator.GetBytes(32);
-            int sas = SasCalculator.CalculateSas(
-                connection.LocalPublicKeyBytes,
-                connection.RemotePublicKeyBytes,
-                sessionNonce);
 
-            bool confirmed = await interaction.ConfirmSasAsync(
-                DesktopTransferDirection.Send,
-                request.Host,
-                sas,
-                cancellationToken);
-
-            if (!confirmed)
-            {
-                return DesktopTransferResult.CancelledByUser(
-                    "Transfer cancelled during verification.");
-            }
-        }
+        interaction.OnInvitationConsumed(DesktopTransferDirection.Send);
 
         string localName = string.IsNullOrWhiteSpace(request.LocalDeviceName)
             ? Environment.MachineName
@@ -476,11 +458,7 @@ public sealed class DesktopTransferEngine
                     StringComparison.OrdinalIgnoreCase) &&
                 !request.Invitation.IsExpired();
 
-            bool acceptedWithoutInvitation =
-                request.Invitation == null &&
-                request.AllowBootstrapWithoutInvitation;
-
-            if (!invitationMatches && !acceptedWithoutInvitation)
+            if (!invitationMatches)
             {
                 var code =
                     request.Invitation?.IsExpired() == true
@@ -502,28 +480,10 @@ public sealed class DesktopTransferEngine
             interaction.OnInvitationConsumed(DesktopTransferDirection.Receive);
             hello = await channel.ReadEnvelopeAsync(cancellationToken);
         }
-        else if (firstRecord is LanRecord.Control controlRecord)
+        else if (firstRecord is LanRecord.Control)
         {
-            // HARD-012 owns replacing the legacy independently-generated direct-SAS nonce.
-            byte[] sessionNonce = RandomNumberGenerator.GetBytes(32);
-            int sas = SasCalculator.CalculateSas(
-                connection.RemotePublicKeyBytes,
-                connection.LocalPublicKeyBytes,
-                sessionNonce);
-
-            bool confirmed = await interaction.ConfirmSasAsync(
-                DesktopTransferDirection.Receive,
-                "Remote Peer",
-                sas,
-                cancellationToken);
-
-            if (!confirmed)
-            {
-                return DesktopTransferResult.RejectedByPeer(
-                    "Transfer rejected during verification.");
-            }
-
-            hello = ProtocolCodec.Decode(controlRecord.Payload);
+            return DesktopTransferResult.RejectedByPeer(
+                "Unauthenticated direct LAN sessions are disabled; a fresh QR/pairing invitation is required.");
         }
         else
         {
