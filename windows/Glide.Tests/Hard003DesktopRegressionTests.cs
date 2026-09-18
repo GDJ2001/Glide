@@ -281,9 +281,9 @@ public sealed class Hard003DesktopRegressionTests : IDisposable
 
         await serverTask;
 
-        Assert.True(
-            secondItemStartSeq > firstItemEndSeq,
-            $"Sender sequence must increase across items; first ITEM_END seq={firstItemEndSeq}, second ITEM_START seq={secondItemStartSeq}.");
+        Assert.Equal(
+            firstItemEndSeq + 1,
+            secondItemStartSeq);
     }
 
     [Fact]
@@ -420,7 +420,7 @@ public sealed class Hard003DesktopRegressionTests : IDisposable
             MessageTypes.HelloAck,
             sessionId,
             NewMessageId(),
-            2,
+            1,
             body);
     }
 
@@ -494,7 +494,7 @@ public sealed class Hard003DesktopRegressionTests : IDisposable
         var task =
             (Task<int>?)method.Invoke(
                 null,
-                [args])
+                new object?[] { args })
             ?? throw new InvalidOperationException(
                 "RunSendAsync did not return Task<int>.");
         return await task;
