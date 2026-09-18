@@ -17,7 +17,7 @@ tasks.register("checkArchitecture") {
 
 tasks.register("checkLanGate") {
     group = "verification"
-    description = "Runs behavioral LAN verification gates: TLS loopback, protocol vectors, network/storage chaos, and performance budgets."
+    description = "Runs functional LAN verification gates: TLS loopback, protocol vectors, network/storage chaos, and storage correctness."
     dependsOn(
         ":transfer-core:test",
         ":transport-lan:testDebugUnitTest",
