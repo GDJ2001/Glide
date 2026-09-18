@@ -112,6 +112,33 @@ public sealed class DesktopTransferEngineTests : IDisposable
     }
 
     [Fact]
+    public async Task SharedEngine_CancelledSender_ReturnsCancelledWithoutStartingProtocol()
+    {
+        string sourcePath = Path.Combine(_sourceDir, "cancel.bin");
+        await File.WriteAllBytesAsync(
+            sourcePath,
+            RandomNumberGenerator.GetBytes(1024));
+
+        using var listener = new TlsSocketListener(0);
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        var engine = new DesktopTransferEngine();
+        var result = await engine.SendAsync(
+            new DesktopSendRequest(
+                "127.0.0.1",
+                listener.BoundPort,
+                new[] { new DesktopTransferFile(sourcePath) },
+                Invitation: null,
+                LocalDeviceName: "Cancelled-Sender"),
+            new RecordingInteraction(),
+            cts.Token);
+
+        Assert.True(result.Cancelled);
+        Assert.False(result.Success);
+    }
+
+    [Fact]
     public async Task SharedEngine_ReceiverOfferRejection_StopsBeforeFileCommit()
     {
         string sourcePath = Path.Combine(_sourceDir, "reject.bin");
