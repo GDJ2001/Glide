@@ -172,6 +172,269 @@ class ResumeProtocolTest {
         assertEquals(ResumeRejectCodes.FILE_CHANGED, rejectDto.code)
     }
 
+    @Test
+    fun resumeStreamStart_roundtrip_succeeds() {
+        val body =
+            buildJsonObject {
+                put(
+                    "profile",
+                    IdentityResumeTranscript
+                        .RESUME_PROFILE
+                )
+                put(
+                    "requestMessageId",
+                    requestMessageId
+                )
+                put(
+                    "originalSessionId",
+                    originalSessionId
+                )
+                put("itemId", itemId)
+                put(
+                    "bulkRef",
+                    "resume-bulk-1"
+                )
+                put(
+                    "startChunkIndex",
+                    2L
+                )
+                put(
+                    "startByteOffset",
+                    "2097152"
+                )
+                put(
+                    "remainingBytes",
+                    "3145728"
+                )
+                put(
+                    "chunkSize",
+                    1_048_576
+                )
+                put(
+                    "totalSizeBytes",
+                    "5242880"
+                )
+                put(
+                    "chunkRootHashHex",
+                    validRootHash
+                )
+                put(
+                    "wholeFileSha256Hex",
+                    signerFingerprint
+                )
+            }
+
+        val decoded =
+            codec.decode(
+                codec.encode(
+                    Envelope(
+                        1,
+                        MessageTypes
+                            .RESUME_STREAM_START,
+                        sessionId,
+                        MessageId(
+                            "99999999-9999-4999-8999-999999999999"
+                        ),
+                        6L,
+                        body
+                    )
+                )
+            )
+        val dto:
+            ResumeStreamStartDto =
+            codec.decodeBody(decoded)
+
+        assertEquals(
+            2L,
+            dto.startChunkIndex
+        )
+        assertEquals(
+            "3145728",
+            dto.remainingBytes
+        )
+        assertEquals(
+            signerFingerprint,
+            dto.wholeFileSha256Hex
+        )
+    }
+
+    @Test(
+        expected =
+            ProtocolViolationException::class
+    )
+    fun resumeStreamStart_incorrectRemainingBytes_isRejected() {
+        val body =
+            buildJsonObject {
+                put(
+                    "profile",
+                    IdentityResumeTranscript
+                        .RESUME_PROFILE
+                )
+                put(
+                    "requestMessageId",
+                    requestMessageId
+                )
+                put(
+                    "originalSessionId",
+                    originalSessionId
+                )
+                put("itemId", itemId)
+                put(
+                    "bulkRef",
+                    "resume-bulk-2"
+                )
+                put(
+                    "startChunkIndex",
+                    2L
+                )
+                put(
+                    "startByteOffset",
+                    "2097152"
+                )
+                put(
+                    "remainingBytes",
+                    "1"
+                )
+                put(
+                    "chunkSize",
+                    1_048_576
+                )
+                put(
+                    "totalSizeBytes",
+                    "5242880"
+                )
+                put(
+                    "chunkRootHashHex",
+                    validRootHash
+                )
+                put(
+                    "wholeFileSha256Hex",
+                    signerFingerprint
+                )
+            }
+
+        codec.decode(
+            codec.encode(
+                Envelope(
+                    1,
+                    MessageTypes
+                        .RESUME_STREAM_START,
+                    sessionId,
+                    MessageId(
+                        "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+                    ),
+                    6L,
+                    body
+                )
+            )
+        )
+    }
+
+    @Test
+    fun resumeStreamReady_andVerifiedResult_roundtrip() {
+        val readyBody =
+            buildJsonObject {
+                put(
+                    "profile",
+                    IdentityResumeTranscript
+                        .RESUME_PROFILE
+                )
+                put(
+                    "requestMessageId",
+                    requestMessageId
+                )
+                put(
+                    "originalSessionId",
+                    originalSessionId
+                )
+                put("itemId", itemId)
+                put(
+                    "bulkRef",
+                    "resume-bulk-3"
+                )
+            }
+        val ready =
+            codec.decode(
+                codec.encode(
+                    Envelope(
+                        1,
+                        MessageTypes
+                            .RESUME_STREAM_READY,
+                        sessionId,
+                        MessageId(
+                            "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+                        ),
+                        7L,
+                        readyBody
+                    )
+                )
+            )
+        val readyDto:
+            ResumeStreamReadyDto =
+            codec.decodeBody(ready)
+        assertEquals(
+            "resume-bulk-3",
+            readyDto.bulkRef
+        )
+
+        val resultBody =
+            buildJsonObject {
+                put(
+                    "profile",
+                    IdentityResumeTranscript
+                        .RESUME_PROFILE
+                )
+                put(
+                    "requestMessageId",
+                    requestMessageId
+                )
+                put(
+                    "originalSessionId",
+                    originalSessionId
+                )
+                put("itemId", itemId)
+                put(
+                    "status",
+                    "verified"
+                )
+                put(
+                    "sizeBytes",
+                    "5242880"
+                )
+                put(
+                    "sha256",
+                    signerFingerprint
+                )
+            }
+        val result =
+            codec.decode(
+                codec.encode(
+                    Envelope(
+                        1,
+                        MessageTypes
+                            .RESUME_RESULT,
+                        sessionId,
+                        MessageId(
+                            "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+                        ),
+                        8L,
+                        resultBody
+                    )
+                )
+            )
+        val resultDto:
+            ResumeResultDto =
+            codec.decodeBody(result)
+        assertEquals(
+            "verified",
+            resultDto.status
+        )
+        assertEquals(
+            signerFingerprint,
+            resultDto.sha256
+        )
+    }
+
     @Test(expected = ProtocolViolationException::class)
     fun resumeRequest_invalidRootHash_throwsProtocolViolationException() {
         val invalid = buildJsonObject {
