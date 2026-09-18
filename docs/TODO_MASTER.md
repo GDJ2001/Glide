@@ -7,7 +7,7 @@ Plan: [`planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md`](planning/CODE_R
 Latest reconciliation: [`planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md`](planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md)  
 Review baseline: `ea2e811a7f2d8aaddc552e894fe04782cd08a499`  
 HARD-002 captured source boundary: `12681eabba26387fe7d1bbaf309971f345642e41`  
-**Next recommended task: restore current-head CI and review HARD-008/HARD-009/HARD-011/HARD-012/HARD-013/HARD-014. HARD-014 is prepared as a stacked branch on HARD-013, but the M2 chain cannot satisfy its completion gates while Actions remains unscheduled and physical interoperability evidence is unavailable. HARD-010 still requires two physical Android devices.**
+**Next recommended task: restore current-head CI and review HARD-008/HARD-009/HARD-011/HARD-012/HARD-013/HARD-014/HARD-015. HARD-015 is prepared as a stacked branch on HARD-014, but the M2 chain cannot satisfy its completion gates while Actions remains unscheduled and physical interoperability evidence is unavailable. HARD-010 still requires two physical Android devices.**
 
 Source/configuration commits after the HARD-002 captured boundary are not silently certified by HARD-002; the task that consumes them must inspect/reconcile them before relying on their claims.
 
@@ -73,7 +73,7 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 | HARD-012 | M2 | REVIEW_REQUIRED | Align native LAN discovery/TLS/bootstrap profile |
 | HARD-013 | M2 | REVIEW_REQUIRED | Implement strict desktop session/protocol state machine |
 | HARD-014 | M2 | REVIEW_REQUIRED | Make desktop hashing/storage bounded and shared |
-| HARD-015 | M2 | NOT_STARTED | Complete desktop consent/history/settings/state |
+| HARD-015 | M2 | REVIEW_REQUIRED | Complete desktop consent/history/settings/state |
 | HARD-016 | M2 | NOT_STARTED | Harden Linux CLI/daemon receiving lifecycle |
 | HARD-017 | M2 | NOT_STARTED | Prove native cross-platform interoperability |
 | HARD-018 | M3 | NOT_STARTED | Finalize identity/resume protocol extension |
@@ -248,10 +248,15 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 <a id="hard-015"></a>
 ## HARD-015 — Complete desktop consent/history/settings/state
 
-- **Milestone / status:** M2 / NOT_STARTED.
-- **Dependencies:** HARD-013, HARD-014.
-- **Acceptance:** Incoming offers require authorization; history/settings persist; UI updates are thread-safe; CLI/WPF report identical outcomes.
-- **Tests/evidence:** Accept/reject, restart persistence, UI-thread marshaling and partial-batch journeys.
+- **Milestone / status:** M2 / REVIEW_REQUIRED.
+- **Dependencies:** HARD-013, HARD-014; both remain REVIEW_REQUIRED.
+- **Implementation state:** Prepared on `hardening/hard-015-desktop-consent-persistence`. WPF no longer auto-accepts inbound offers: authenticated offers remain pending in an explicit peer/item/size modal until Accept or Reject, and cancellation closes the decision. Interactive CLI receive also requires explicit y/yes consent; daemon offer authorization stays fail-closed pending HARD-016.
+- **Persistence:** Shared `JsonDesktopStateStore` atomically persists validated device name, absolute receive directory, history retention and verified-item history. WPF applies those settings to real invitation/discovery/send/receive/browser paths, reloads them at startup, persists each verified item through awaitable `OnHistoryAsync`, and durably clears history without deleting received files.
+- **Thread/state boundary:** `IUiDispatcher` isolates WPF dispatcher access; discovery/protocol/history mutations are marshaled through it. CLI and WPF both surface the shared engine's terminal `DesktopTransferResult.Message`.
+- **Tests prepared:** shared state restart/retention/clear/relative-path/partial-batch tests plus a Windows-only WPF test project for explicit accept/reject/cancel, settings restart and dispatcher-marshaled history collection mutation. Windows CI is prepared to execute the new UI test project.
+- **Verification blocker:** GitHub Actions still schedules no current-head runs/statuses and this execution environment has no .NET SDK. No build/test-pass or physical WPF claim is made.
+- **Evidence:** [HARD-015 desktop consent/persistence/state implementation](development/sessions/2026-09-18-hard-015.md).
+- **Completion gate:** current-head Windows solution + shared tests + WPF UI tests, dependency certification, and real WPF/CLI accept/reject/restart/partial-batch/thread-affinity evidence.
 
 <a id="hard-016"></a>
 ## HARD-016 — Harden Linux CLI/daemon receiving lifecycle
