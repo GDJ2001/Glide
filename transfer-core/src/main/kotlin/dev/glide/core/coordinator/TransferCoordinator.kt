@@ -414,6 +414,226 @@ class TransferCoordinator(
         maybeSubmitSenderOffer()
     }
 
+    private fun localOptionalCapabilities(): List<String> =
+        trustedSessionHandshake
+            ?.localOptionalCapabilities()
+            ?: NegotiationConstants
+                .OPTIONAL_CAPABILITIES
+                .toList()
+
+    private fun identityReadyForOffers(): Boolean {
+        if (expectedPeerFingerprintHex != null &&
+            trustedSessionHandshake == null
+        ) {
+            return false
+        }
+
+        return trustedSessionHandshake
+            ?.isReadyForOffers()
+            ?: true
+    }
+
+    private suspend fun maybeSubmitSenderOffer() {
+        val batch = senderBatch ?: return
+        if (_state.value.role != DeviceRole.Sender ||
+            _state.value.phase != SessionPhase.Offering ||
+            _state.value.batch != null ||
+            !identityReadyForOffers()
+        ) {
+            return
+        }
+
+        recordInitialHistory(batch)
+        dispatch(
+            ReducerEvent.SubmitOffer(
+                batch,
+                clock()
+            )
+        )
+    }
+
+    private fun scheduleIdentityTimeoutIfNeeded() {
+        val negotiated =
+            _state.value.negotiated
+                ?.capabilities
+                ?: emptySet()
+        if (NegotiationConstants
+                .CAPABILITY_PERSISTENT_IDENTITY_V1 !in
+            negotiated
+        ) {
+            return
+        }
+
+        identityTimeoutJob?.cancel()
+        identityTimeoutJob =
+            scope.launch {
+                kotlinx.coroutines.delay(
+                    30_000L
+                )
+                val handshake =
+                    trustedSessionHandshake
+                if (!_state.value.isTerminal &&
+                    handshake != null &&
+                    !handshake.isComplete
+                ) {
+                    dispatch(
+                        ReducerEvent.TransportFailure(
+                            TransferFailure.AuthenticationMismatch(
+                                "Persistent identity authentication timed out."
+                            ),
+                            clock()
+                        )
+                    )
+                }
+            }
+    }
+
+    private fun cancelIdentityTimeoutIfComplete() {
+        val handshake =
+            trustedSessionHandshake
+        if (handshake?.isComplete == true) {
+            authenticatedPeerFingerprintHex =
+                handshake
+                    .authenticatedPeerFingerprintHex
+            identityTimeoutJob?.cancel()
+            identityTimeoutJob = null
+        }
+    }
+
+    private fun requireIdentityReadyForOffer() {
+        if (!identityReadyForOffers()) {
+            throw TrustedSessionAuthenticationException(
+                "File offer arrived before persistent identity authentication completed."
+            )
+        }
+    }
+
+    private suspend fun sendHandshakeControl(
+        type: String,
+        body: JsonObject
+    ): Envelope {
+        val envelope =
+            mutex.withLock {
+                val current =
+                    _state.value
+                val next =
+                    Envelope(
+                        v =
+                            ProtocolCodec
+                                .PROTOCOL_MAJOR_VERSION,
+                        type = type,
+                        sessionId =
+                            current.sessionId,
+                        messageId =
+                            MessageId(
+                                UUID.randomUUID()
+                                    .toString()
+                            ),
+                        seq =
+                            current.nextOutboundSeq,
+                        body = body
+                    )
+
+                _state.value =
+                    current.copy(
+                        nextOutboundSeq =
+                            current.nextOutboundSeq + 1,
+                        lastActivityMonotonicMs =
+                            clock()
+                    )
+                next
+            }
+
+        try {
+            transport.sendControl(
+                peerId,
+                ProtocolCodec.encode(
+                    envelope
+                )
+            )
+        } catch (error: Exception) {
+            throw TrustedSessionAuthenticationException(
+                "Failed to send persistent identity control message: " +
+                    (error.message
+                        ?: error::class.java.simpleName),
+                error
+            )
+        }
+
+        return envelope
+    }
+
+    private suspend fun beginTrustedSessionAfterNegotiation() {
+        val handshake =
+            trustedSessionHandshake
+
+        if (handshake == null) {
+            if (expectedPeerFingerprintHex != null) {
+                throw TrustedSessionAuthenticationException(
+                    "A trusted peer was required but no authenticated identity authority is available."
+                )
+            }
+            return
+        }
+
+        handshake.onNegotiated(
+            ::sendHandshakeControl
+        )
+        scheduleIdentityTimeoutIfNeeded()
+        cancelIdentityTimeoutIfComplete()
+    }
+
+    private suspend fun handleIdentityChallenge(
+        envelope: Envelope
+    ) {
+        val handshake =
+            trustedSessionHandshake
+                ?: throw TrustedSessionAuthenticationException(
+                    "identity-v1 was received without a local persistent identity authority."
+                )
+
+        val challenge =
+            ProtocolCodec
+                .decodeBody<IdentityChallengeDto>(
+                    envelope
+                )
+
+        handshake.onChallenge(
+            envelope = envelope,
+            challenge = challenge,
+            sendControl =
+                ::sendHandshakeControl
+        )
+
+        cancelIdentityTimeoutIfComplete()
+        if (role == DeviceRole.Sender &&
+            handshake.isComplete
+        ) {
+            maybeSubmitSenderOffer()
+        }
+    }
+
+    private suspend fun handleIdentityResponse(
+        envelope: Envelope
+    ) {
+        val handshake =
+            trustedSessionHandshake
+                ?: throw TrustedSessionAuthenticationException(
+                    "identity-v1 was received without a local persistent identity authority."
+                )
+
+        val response =
+            ProtocolCodec
+                .decodeBody<IdentityResponseDto>(
+                    envelope
+                )
+
+        handshake.onResponse(
+            response
+        )
+        cancelIdentityTimeoutIfComplete()
+    }
+
     private suspend fun executeEffects(effects: List<ReducerEffect>) {
         for (effect in effects) {
             when (effect) {
