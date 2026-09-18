@@ -167,7 +167,83 @@ class TransferSessionFactory @Inject constructor(
             expectedPeerFingerprintHex =
                 expectedPeerFingerprintHex,
             onVerifiedPeerIdentity =
-                onVerifiedPeerIdentity
+                onVerifiedPeerIdentity,
+            persistReceiverResumeAuthority =
+                resumableStagingStore
+                    ?.let { store ->
+                        {
+                            originalSessionId,
+                            item,
+                            peerFingerprintHex ->
+                            val chunkSize =
+                                item.resumeChunkSize
+                                    ?: throw IllegalArgumentException(
+                                        "Resume chunk size is missing"
+                                    )
+                            val rootHash =
+                                item
+                                    .resumeChunkRootHashHex
+                                    ?: throw IllegalArgumentException(
+                                        "Resume chunk root is missing"
+                                    )
+                            store.initReceiverSession(
+                                originalSessionId =
+                                    originalSessionId
+                                        .value,
+                                itemId =
+                                    item.id.value,
+                                itemName =
+                                    item.name,
+                                peerFingerprintHex =
+                                    peerFingerprintHex,
+                                totalBytes =
+                                    item.sizeBytes,
+                                chunkSize =
+                                    chunkSize,
+                                chunkRootHashHex =
+                                    rootHash
+                            )
+                            Unit
+                        }
+                    },
+            recordReceiverResumeChunk =
+                resumableStagingStore
+                    ?.let { store ->
+                        {
+                            originalSessionId,
+                            itemId,
+                            chunkIndex,
+                            chunkData ->
+                            store.recordReceiverChunk(
+                                originalSessionId =
+                                    originalSessionId
+                                        .value,
+                                itemId =
+                                    itemId.value,
+                                chunkIndex =
+                                    chunkIndex,
+                                chunkData =
+                                    chunkData
+                            )
+                        }
+                    },
+            purgeResumeItemAuthority =
+                resumableStagingStore
+                    ?.let { store ->
+                        {
+                            originalSessionId,
+                            itemId ->
+                            store.purgeSession(
+                                originalSessionId =
+                                    originalSessionId
+                                        .value,
+                                itemId =
+                                    itemId.value
+                            )
+                        }
+                    },
+            enableTrueResumeCapability =
+                false
         )
     }
 }
