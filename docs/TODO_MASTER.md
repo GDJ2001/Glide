@@ -7,7 +7,7 @@ Plan: [`planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md`](planning/CODE_R
 Latest reconciliation: [`planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md`](planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md)  
 Review baseline: `ea2e811a7f2d8aaddc552e894fe04782cd08a499`  
 HARD-002 captured source boundary: `12681eabba26387fe7d1bbaf309971f345642e41`  
-**Next recommended task: HARD-005 (IN_PROGRESS).**
+**Next recommended task: HARD-006 (IN_PROGRESS).**
 
 Source/configuration commits after the HARD-002 captured boundary are not silently certified by HARD-002; the task that consumes them must inspect/reconcile them before relying on their claims.
 
@@ -28,14 +28,14 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 | Milestone | Tasks | Complete | Status |
 | --- | --- | ---: | --- |
 | M0 Honest baseline | HARD-001–004 | 4 / 4 | COMPLETE |
-| M1 Android production flow | HARD-005–010 | 0 / 6 | IN PROGRESS |
+| M1 Android production flow | HARD-005–010 | 1 / 6 | IN PROGRESS |
 | M2 Desktop/native interoperability | HARD-011–017 | 0 / 7 | NOT STARTED |
 | M3 Trust, folders and true resume | HARD-018–024 | 0 / 7 | NOT STARTED |
 | M4 Secure browser sharing | HARD-025–030 | 0 / 6 | NOT STARTED |
 | M5 Structure/developer experience | HARD-031–035 | 0 / 5 | NOT STARTED |
 | M6 Product quality/hardening | HARD-036–040 | 0 / 5 | NOT STARTED |
 | M7 Release/operations | HARD-041–043 | 0 / 3 | NOT STARTED |
-| **Total** | **HARD-001–043** | **4 / 43** | **9.3%** |
+| **Total** | **HARD-001–043** | **5 / 43** | **11.6%** |
 
 ## Finding → remediation map
 
@@ -63,8 +63,8 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 | HARD-002 | M0 | COMPLETE | Reconcile source, docs, claims and post-review commits |
 | HARD-003 | M0 | COMPLETE | Add regressions for confirmed review defects |
 | HARD-004 | M0 | COMPLETE | Establish Android/Windows/Linux CI baseline |
-| HARD-005 | M1 | IN_PROGRESS | Introduce service-owned Android TransferRuntime |
-| HARD-006 | M1 | NOT_STARTED | Wire production discovery and permissions |
+| HARD-005 | M1 | COMPLETE | Introduce service-owned Android TransferRuntime |
+| HARD-006 | M1 | IN_PROGRESS | Wire production discovery and permissions |
 | HARD-007 | M1 | NOT_STARTED | Wire complete Nearby send/receive lifecycle |
 | HARD-008 | M1 | NOT_STARTED | Wire real LAN listener and QR invitation lifecycle |
 | HARD-009 | M1 | NOT_STARTED | Complete service/session/background lifecycle |
@@ -145,19 +145,19 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 <a id="hard-005"></a>
 ## HARD-005 — Introduce service-owned Android TransferRuntime
 
-- **Milestone / status:** M1 / IN_PROGRESS.
+- **Milestone / status:** M1 / COMPLETE.
 - **Dependencies:** HARD-004.
-- **Acceptance:** One service-owned runtime exposes typed send/receive/accept/reject/cancel/resume commands and immutable discovery/pairing/transfer state; ViewModels do not construct transports or own active transfer scopes.
-- **Current implementation:** `TransferRuntime` now owns service-scoped coordinator/pairing execution and immutable runtime state; production Activity/navigation/application/service paths observe/use that runtime. Discovery/permission behavior remains deliberately fail-closed until HARD-006.
-- **Tests/evidence pending final CI:** Rotation/recreation, duplicate-command, exact-session cancellation, pairing ownership, service-detach interruption and fail-closed receive-availability tests.
+- **Acceptance satisfied:** One service-owned runtime exposes typed send/receive/accept/reject/cancel/resume commands and immutable discovery/pairing/transfer state; ViewModels do not construct transports or own active transfer scopes.
+- **Evidence:** [HARD-005 runtime evidence](development/sessions/2026-09-18-hard-005.md). Authoritative green CI run **35288819509** at `e5060a1c2dd8555c4c4483de137e9ccbc253c523`; runtime ownership, recreation, duplicate command, stale cancel, pairing ownership and service-detach interruption tests passed.
 
 <a id="hard-006"></a>
 ## HARD-006 — Wire production discovery and permissions
 
-- **Milestone / status:** M1 / NOT_STARTED.
+- **Milestone / status:** M1 / IN_PROGRESS.
 - **Dependencies:** HARD-005.
 - **Acceptance:** Production ViewModels use real runtime/discovery dependencies; point-of-use permission approval/denial controls actual discovery/advertising; fake defaults cannot enter production paths.
-- **Tests/evidence:** API permission matrix, DI wiring and discovery start/stop lifecycle with production wiring trace.
+- **Current focus:** replace optional/fake production discovery/advertising providers with runtime-owned Nearby discovery, enforce runtime permission/hardware gating before radio operations, and wire point-of-use permission launchers in Navigation3.
+- **Tests/evidence:** API permission matrix, DI/runtime wiring and discovery/advertising start/stop lifecycle with production wiring trace.
 
 <a id="hard-007"></a>
 ## HARD-007 — Wire complete Nearby send/receive lifecycle
