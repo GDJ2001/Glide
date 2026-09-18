@@ -89,8 +89,8 @@ public sealed class Hard014DesktopTransferTests : IDisposable
 
         Assert.True(senderResult.Success, senderResult.Message);
         Assert.True(receiverResult.Success, receiverResult.Message);
-        Assert.Equal(totalBytes, senderResult.VerifiedBytes);
-        Assert.Equal(totalBytes, receiverResult.VerifiedBytes);
+        Assert.Equal((long)totalBytes, senderResult.VerifiedBytes);
+        Assert.Equal((long)totalBytes, receiverResult.VerifiedBytes);
 
         string committedPath =
             Path.Combine(
@@ -107,7 +107,7 @@ public sealed class Hard014DesktopTransferTests : IDisposable
         Assert.Equal(
             sourceDigest,
             committedDigest);
-        Assert.Equal(0, store.ReservedBytes);
+        Assert.Equal(0L, store.ReservedBytes);
         Assert.Empty(
             Directory.Exists(stagingDirectory)
                 ? Directory.GetFiles(
@@ -183,7 +183,7 @@ public sealed class Hard014DesktopTransferTests : IDisposable
         Assert.Contains(
             WireErrorCodes.InsufficientStorage,
             receiverResult.Message);
-        Assert.Equal(0, store.ReservedBytes);
+        Assert.Equal(0L, store.ReservedBytes);
         Assert.Empty(
             Directory.Exists(destinationDirectory)
                 ? Directory.GetFiles(
@@ -222,7 +222,7 @@ public sealed class Hard014DesktopTransferTests : IDisposable
 
             Envelope hello =
                 await channel.ReadEnvelopeAsync();
-            Assert.Equal(1, hello.Seq);
+            Assert.Equal(1L, hello.Seq);
 
             await channel.WriteEnvelopeAsync(
                 CreateHelloAck(
