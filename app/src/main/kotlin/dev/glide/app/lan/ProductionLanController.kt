@@ -22,6 +22,7 @@ import java.io.Closeable
 import java.net.InetAddress
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -92,19 +93,27 @@ class ProductionLanController private constructor(
         },
         apiLevelProvider = { Build.VERSION.SDK_INT },
         transportFactory = { networkScope, scope ->
-            LanTransferTransport(
-                networkScope = networkScope,
-                coroutineScope = scope
-            )
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                LanTransferTransport(
+                    networkScope = networkScope,
+                    coroutineScope = scope
+                )
+            } else {
+                throw IllegalStateException("LAN transfer requires Android 10 or newer.")
+            }
         },
         allowLoopbackEndpointsForTesting = false,
         listenerFactory = { identity, networkScope, scope ->
-            LanListener(
-                identity = identity,
-                networkScope = networkScope,
-                port = 0,
-                coroutineScope = scope
-            )
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                LanListener(
+                    identity = identity,
+                    networkScope = networkScope,
+                    port = 0,
+                    coroutineScope = scope
+                )
+            } else {
+                throw IllegalStateException("LAN listener requires Android 10 or newer.")
+            }
         }
     )
 
@@ -238,6 +247,14 @@ class ProductionLanController private constructor(
                         "${it.address}:${it.port}"
                     }
                 )
+            } catch (cancelled: CancellationException) {
+                runCatching { transport?.close() }
+                runCatching { listener?.close() }
+                runCatching { identity?.close() }
+                runCatching { networkScope?.close() }
+                listenerScope?.cancel()
+                transportScope?.cancel()
+                return@launch
             } catch (error: Throwable) {
                 runCatching { transport?.close() }
                 runCatching { listener?.close() }
@@ -315,6 +332,11 @@ class ProductionLanController private constructor(
                     peerId = peerId,
                     localDeviceName = localDeviceName.trim().ifEmpty { "Glide Device" }
                 )
+            } catch (cancelled: CancellationException) {
+                runCatching { transport?.close() }
+                runCatching { networkScope?.close() }
+                transportScope?.cancel()
+                return@launch
             } catch (error: Throwable) {
                 runCatching { transport?.close() }
                 runCatching { networkScope?.close() }
