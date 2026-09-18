@@ -55,6 +55,14 @@ internal class TrustedSessionHandshake(
     val isComplete: Boolean
         get() = stage == Stage.Complete
 
+    val authenticatedPeerFingerprintHex: String?
+        get() =
+            if (isComplete) {
+                verifiedPeer?.fingerprintHex
+            } else {
+                null
+            }
+
     fun identityCapabilityAvailable(): Boolean {
         val context = channelContext() ?: return false
         return context.sessionId == sessionId() &&
