@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using Glide.Core.Pairing;
+using Glide.Core.Security;
 using Glide.Core.Storage;
 using Glide.Desktop;
 using Glide.Transport.Sockets;
@@ -109,6 +110,142 @@ public sealed class DesktopTransferEngineTests : IDisposable
             secondPayload,
             await File.ReadAllBytesAsync(
                 Path.Combine(_destinationDir, "beta.bin")));
+    }
+
+    [Fact]
+    public async Task SharedEngine_IdentityV1_MutuallyAuthenticatesBeforeOffer()
+    {
+        string sourcePath =
+            Path.Combine(
+                _sourceDir,
+                "trusted.bin");
+        byte[] payload =
+            RandomNumberGenerator.GetBytes(
+                16_384);
+        await File.WriteAllBytesAsync(
+            sourcePath,
+            payload);
+
+        using var listener =
+            new TlsSocketListener(0);
+        var invitationAuthority =
+            new LanInvitationAuthority();
+        var invitation =
+            invitationAuthority.Publish(
+                CreateInvitation(listener));
+        var receiverStore =
+            new QuarantineStagingStore(
+                stagingRoot: _stagingDir,
+                destinationRoot: _destinationDir);
+
+        var senderTrust =
+            new DesktopPersistentTrustManager(
+                new FakeDesktopIdentityStore(true),
+                new DesktopTrustStore(
+                    Path.Combine(
+                        _root,
+                        "sender-trust.json")));
+        var receiverTrust =
+            new DesktopPersistentTrustManager(
+                new FakeDesktopIdentityStore(true),
+                new DesktopTrustStore(
+                    Path.Combine(
+                        _root,
+                        "receiver-trust.json")));
+
+        senderTrust.Initialize();
+        receiverTrust.Initialize();
+
+        var senderInteraction =
+            new RecordingInteraction
+            {
+                AcceptEnrollment = true
+            };
+        var receiverInteraction =
+            new RecordingInteraction
+            {
+                AcceptEnrollment = true
+            };
+
+        var receiverTask = Task.Run(async () =>
+        {
+            await using var connection =
+                await listener.AcceptConnectionAsync();
+            return await new DesktopTransferEngine()
+                .ReceiveAsync(
+                    connection,
+                    new DesktopReceiveRequest(
+                        receiverStore,
+                        invitationAuthority,
+                        LocalDeviceName:
+                            "Trusted-Receiver",
+                        TrustManager:
+                            receiverTrust),
+                    receiverInteraction);
+        });
+
+        DesktopTransferResult senderResult =
+            await new DesktopTransferEngine()
+                .SendAsync(
+                    new DesktopSendRequest(
+                        "127.0.0.1",
+                        listener.BoundPort,
+                        [
+                            new DesktopTransferFile(
+                                sourcePath)
+                        ],
+                        invitation,
+                        LocalDeviceName:
+                            "Trusted-Sender",
+                        TrustManager:
+                            senderTrust),
+                    senderInteraction);
+
+        DesktopTransferResult receiverResult =
+            await receiverTask.WaitAsync(
+                TimeSpan.FromSeconds(15));
+
+        Assert.True(
+            senderResult.Success,
+            senderResult.Message);
+        Assert.True(
+            receiverResult.Success,
+            receiverResult.Message);
+
+        DesktopTrustedPeer senderView =
+            Assert.Single(
+                senderTrust.GetTrustedPeers());
+        DesktopTrustedPeer receiverView =
+            Assert.Single(
+                receiverTrust.GetTrustedPeers());
+
+        Assert.Equal(
+            receiverTrust.LocalFingerprintHex(),
+            senderView.FingerprintHex);
+        Assert.Equal(
+            senderTrust.LocalFingerprintHex(),
+            receiverView.FingerprintHex);
+
+        Assert.NotNull(
+            receiverInteraction
+                .LastOfferAuthenticatedFingerprint);
+        Assert.Equal(
+            senderTrust.LocalFingerprintHex(),
+            receiverInteraction
+                .LastOfferAuthenticatedFingerprint);
+        Assert.Equal(
+            1,
+            senderInteraction.EnrollmentPrompts);
+        Assert.Equal(
+            1,
+            receiverInteraction.EnrollmentPrompts);
+
+        Assert.Equal(
+            payload,
+            await File.ReadAllBytesAsync(
+                Path.Combine(
+                    _destinationDir,
+                    "trusted.bin")));
     }
 
     [Fact]
@@ -283,8 +420,11 @@ public sealed class DesktopTransferEngineTests : IDisposable
         : DesktopTransferInteractionBase
     {
         public bool AcceptOffers { get; init; } = true;
+        public bool AcceptEnrollment { get; init; }
         public bool InvitationConsumed { get; private set; }
         public string? LastPeerName { get; private set; }
+        public string? LastOfferAuthenticatedFingerprint { get; private set; }
+        public int EnrollmentPrompts { get; private set; }
 
         public List<DesktopHistoryEntry> History { get; } = [];
         public List<(DesktopTransferDirection Direction, string Item, string Status)>
@@ -292,8 +432,22 @@ public sealed class DesktopTransferEngineTests : IDisposable
 
         public override Task<bool> ConfirmOfferAsync(
             DesktopOffer offer,
-            CancellationToken cancellationToken) =>
-            Task.FromResult(AcceptOffers);
+            CancellationToken cancellationToken)
+        {
+            LastOfferAuthenticatedFingerprint =
+                offer.AuthenticatedPeerFingerprintHex;
+            return Task.FromResult(
+                AcceptOffers);
+        }
+
+        public override Task<bool> ConfirmPeerEnrollmentAsync(
+            VerifiedDesktopPeerIdentity peer,
+            CancellationToken cancellationToken)
+        {
+            EnrollmentPrompts++;
+            return Task.FromResult(
+                AcceptEnrollment);
+        }
 
         public override void OnInvitationConsumed(
             DesktopTransferDirection direction) =>
