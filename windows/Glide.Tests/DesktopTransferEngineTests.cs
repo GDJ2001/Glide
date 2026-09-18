@@ -249,6 +249,116 @@ public sealed class DesktopTransferEngineTests : IDisposable
     }
 
     [Fact]
+    public async Task SharedEngine_ExpectedTrustedPeer_RejectsIdentityCapabilityDowngrade()
+    {
+        string sourcePath =
+            Path.Combine(
+                _sourceDir,
+                "downgrade.bin");
+        await File.WriteAllBytesAsync(
+            sourcePath,
+            RandomNumberGenerator.GetBytes(1024));
+
+        using var listener =
+            new TlsSocketListener(0);
+        var invitationAuthority =
+            new LanInvitationAuthority();
+        var invitation =
+            invitationAuthority.Publish(
+                CreateInvitation(listener));
+        var receiverStore =
+            new QuarantineStagingStore(
+                stagingRoot: _stagingDir,
+                destinationRoot: _destinationDir);
+
+        var senderIdentity =
+            new FakeDesktopIdentityStore(true);
+        var expectedReceiverIdentity =
+            new FakeDesktopIdentityStore(true);
+        var senderStore =
+            new DesktopTrustStore(
+                Path.Combine(
+                    _root,
+                    "downgrade-sender-trust.json"));
+        var senderTrust =
+            new DesktopPersistentTrustManager(
+                senderIdentity,
+                senderStore);
+        senderTrust.Initialize();
+
+        DesktopTrustDocument senderDocument =
+            senderStore.Load();
+        long now =
+            DateTimeOffset.UtcNow
+                .ToUnixTimeMilliseconds();
+        senderDocument.Peers.Add(
+            new DesktopTrustedPeer(
+                expectedReceiverIdentity
+                    .GetFingerprintHex(),
+                Convert.ToHexStringLower(
+                    expectedReceiverIdentity
+                        .GetOrCreatePublicKeyDer()),
+                "Expected Receiver",
+                now,
+                now));
+        senderStore.Save(
+            senderDocument);
+
+        var receiverTask = Task.Run(async () =>
+        {
+            await using var connection =
+                await listener.AcceptConnectionAsync();
+            return await new DesktopTransferEngine()
+                .ReceiveAsync(
+                    connection,
+                    new DesktopReceiveRequest(
+                        receiverStore,
+                        invitationAuthority,
+                        LocalDeviceName:
+                            "Downgrade-Receiver"),
+                    new RecordingInteraction());
+        });
+
+        DesktopTransferResult senderResult =
+            await new DesktopTransferEngine()
+                .SendAsync(
+                    new DesktopSendRequest(
+                        "127.0.0.1",
+                        listener.BoundPort,
+                        [
+                            new DesktopTransferFile(
+                                sourcePath)
+                        ],
+                        invitation,
+                        LocalDeviceName:
+                            "Downgrade-Sender",
+                        TrustManager:
+                            senderTrust,
+                        ExpectedPeerFingerprintHex:
+                            expectedReceiverIdentity
+                                .GetFingerprintHex()),
+                    new RecordingInteraction());
+
+        DesktopTransferResult receiverResult =
+            await receiverTask.WaitAsync(
+                TimeSpan.FromSeconds(15));
+
+        Assert.False(
+            senderResult.Success);
+        Assert.Contains(
+            "identity-v1",
+            senderResult.Message,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.False(
+            receiverResult.Success);
+        Assert.Empty(
+            Directory.GetFiles(
+                _destinationDir,
+                "*",
+                SearchOption.AllDirectories));
+    }
+
+    [Fact]
     public async Task SharedEngine_CancelledSender_ReturnsCancelledWithoutStartingProtocol()
     {
         string sourcePath = Path.Combine(_sourceDir, "cancel.bin");
