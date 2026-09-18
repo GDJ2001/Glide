@@ -498,8 +498,7 @@ class TransferCoordinator(
                                         (
                                             error.message
                                                 ?: error
-                                                    ::class
-                                                    .java
+                                                    .javaClass
                                                     .simpleName
                                             )
                                 ),
