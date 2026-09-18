@@ -27,6 +27,8 @@ object TransferSessionManager {
 
     private var activeCoordinator: TransferCoordinator? = null
     private var activeJob: Job? = null
+    private var activeScope: CoroutineScope? = null
+    private var terminalCallbackSessionId: String? = null
 
     private var _uiState = MutableStateFlow<TransferUiState>(TransferUiState.Idle)
     val uiState: StateFlow<TransferUiState> get() = _uiState.asStateFlow()
@@ -73,6 +75,8 @@ object TransferSessionManager {
         // 3. Clean up any previous completed/cancelled jobs
         activeJob?.cancel()
         activeCoordinator = coordinator
+        activeScope = scope
+        terminalCallbackSessionId = null
 
         // 4. Mark session active in global tracker
         ActiveSessionTracker.setSessionActive(coordinator.sessionId.value, true)
@@ -118,8 +122,7 @@ object TransferSessionManager {
                     // quarantine cleanup and transport disconnect) have necessarily finished.
                     // Do not cancel coordinator jobs until that cleanup barrier is complete.
                     coordinator.awaitTerminalCleanup()
-                    coordinator.stop()
-                    onTerminalCallback?.invoke()
+                    finalizeTerminalSession(coordinator)
                 }
             }
         }
@@ -166,7 +169,15 @@ object TransferSessionManager {
         }
         val coordinator = activeCoordinator
         if (coordinator != null) {
-            coordinator.cancel(reason)
+            val owner = activeScope
+            if (owner != null) {
+                owner.launch {
+                    coordinator.cancelAndAwaitCleanup(reason)
+                    finalizeTerminalSession(coordinator)
+                }
+            } else {
+                coordinator.cancel(reason)
+            }
         } else {
             val current = _uiState.value
             _uiState.value = TransferUiState.Cancelled(
@@ -180,6 +191,21 @@ object TransferSessionManager {
         return true
     }
 
+    @Synchronized
+    private fun finalizeTerminalSession(coordinator: TransferCoordinator) {
+        if (activeCoordinator !== coordinator || !coordinator.state.value.phase.isTerminal) {
+            return
+        }
+
+        coordinator.stop()
+        ActiveSessionTracker.setSessionActive(coordinator.sessionId.value, false)
+
+        if (terminalCallbackSessionId != coordinator.sessionId.value) {
+            terminalCallbackSessionId = coordinator.sessionId.value
+            onTerminalCallback?.invoke()
+        }
+    }
+
     /**
      * Stops the active session, cancels jobs, and signals terminal teardown.
      */
@@ -188,6 +214,8 @@ object TransferSessionManager {
         rateTracker.reset()
         activeCoordinator?.stop()
         activeCoordinator = null
+        activeScope = null
+        terminalCallbackSessionId = null
         activeJob?.cancel()
         activeJob = null
         ActiveSessionTracker.reset()
