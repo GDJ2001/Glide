@@ -152,29 +152,41 @@ class StorageStreamingBenchmarkTest {
     @Test
     fun discardStaging_cleansUpDiskImmediately() = runTest {
         val sizeBytes = 10L * 1024L * 1024L // 10 MiB
-        val itemId = ItemId(UUID.randomUUID().toString())
+        val samplesMs = mutableListOf<Long>()
 
-        val handle = receiveStore.prepareStaging(sessionId, itemId, sizeBytes)
-        val stream = FastDeterministicInputStream(sizeBytes)
+        // Hosted runners can occasionally deschedule a single wall-clock sample. Keep the
+        // production 50 ms target, but use three independent 10 MiB cleanup samples and judge the
+        // median while verifying every file is actually removed.
+        repeat(3) {
+            val itemId = ItemId(UUID.randomUUID().toString())
+            val handle = receiveStore.prepareStaging(sessionId, itemId, sizeBytes)
+            val stream = FastDeterministicInputStream(sizeBytes)
 
-        receiveStore.openStagingOutput(handle).use { out ->
-            StreamHasher.copyAndHash(
-                inputStream = stream,
-                outputStream = out,
-                expectedBytes = sizeBytes
-            )
+            receiveStore.openStagingOutput(handle).use { out ->
+                StreamHasher.copyAndHash(
+                    inputStream = stream,
+                    outputStream = out,
+                    expectedBytes = sizeBytes
+                )
+            }
+
+            val stagingFile = File(receiveStore.stagingDir, "${itemId.value}.part")
+            assertTrue(stagingFile.exists())
+
+            val discardStart = System.nanoTime()
+            receiveStore.discardStaging(handle)
+            val discardDurationMs = (System.nanoTime() - discardStart) / 1_000_000
+            samplesMs += discardDurationMs
+
+            assertFalse("Staging file must be wiped immediately on discard", stagingFile.exists())
         }
 
-        val stagingFile = File(receiveStore.stagingDir, "${itemId.value}.part")
-        assertTrue(stagingFile.exists())
-
-        val discardStart = System.nanoTime()
-        receiveStore.discardStaging(handle)
-        val discardDurationMs = (System.nanoTime() - discardStart) / 1_000_000
-
-        assertFalse("Staging file must be wiped immediately on discard", stagingFile.exists())
-        println("\n Discard Staging Latency: $discardDurationMs ms")
-        assertTrue("Discard staging must complete in <= 50 ms", discardDurationMs <= 50)
+        val medianDiscardMs = samplesMs.sorted()[samplesMs.size / 2]
+        println("\n Discard Staging Latencies: $samplesMs ms; median=$medianDiscardMs ms")
+        assertTrue(
+            "Median discard staging latency must complete in <= 50 ms",
+            medianDiscardMs <= 50
+        )
     }
 
     @Test
