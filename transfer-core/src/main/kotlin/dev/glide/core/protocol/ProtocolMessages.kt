@@ -39,6 +39,9 @@ object MessageTypes {
     const val RESUME_REQUEST = "RESUME_REQUEST"
     const val RESUME_ACCEPT = "RESUME_ACCEPT"
     const val RESUME_REJECT = "RESUME_REJECT"
+    const val RESUME_STREAM_START = "RESUME_STREAM_START"
+    const val RESUME_STREAM_READY = "RESUME_STREAM_READY"
+    const val RESUME_RESULT = "RESUME_RESULT"
 
     val ALL: Set<String> = setOf(
         HELLO, HELLO_ACK,
@@ -48,7 +51,8 @@ object MessageTypes {
         CANCEL, CANCEL_ACK,
         ERROR, PING, PONG,
         IDENTITY_CHALLENGE, IDENTITY_RESPONSE,
-        RESUME_REQUEST, RESUME_ACCEPT, RESUME_REJECT
+        RESUME_REQUEST, RESUME_ACCEPT, RESUME_REJECT,
+        RESUME_STREAM_START, RESUME_STREAM_READY, RESUME_RESULT
     )
 }
 
@@ -163,6 +167,37 @@ object ProtocolCatalog {
             "requestMessageId",
             "originalSessionId",
             "itemId",
+            "code"
+        ),
+        MessageTypes.RESUME_STREAM_START to setOf(
+            "profile",
+            "requestMessageId",
+            "originalSessionId",
+            "itemId",
+            "bulkRef",
+            "startChunkIndex",
+            "startByteOffset",
+            "remainingBytes",
+            "chunkSize",
+            "totalSizeBytes",
+            "chunkRootHashHex",
+            "wholeFileSha256Hex"
+        ),
+        MessageTypes.RESUME_STREAM_READY to setOf(
+            "profile",
+            "requestMessageId",
+            "originalSessionId",
+            "itemId",
+            "bulkRef"
+        ),
+        MessageTypes.RESUME_RESULT to setOf(
+            "profile",
+            "requestMessageId",
+            "originalSessionId",
+            "itemId",
+            "status",
+            "sizeBytes",
+            "sha256",
             "code"
         ),
     )
@@ -397,5 +432,43 @@ data class ResumeRejectDto(
     val originalSessionId: String,
     val itemId: String,
     val code: String
+)
+
+
+@Serializable
+data class ResumeStreamStartDto(
+    val profile: String,
+    val requestMessageId: String,
+    val originalSessionId: String,
+    val itemId: String,
+    val bulkRef: String,
+    val startChunkIndex: Long,
+    val startByteOffset: String,
+    val remainingBytes: String,
+    val chunkSize: Int,
+    val totalSizeBytes: String,
+    val chunkRootHashHex: String,
+    val wholeFileSha256Hex: String
+)
+
+@Serializable
+data class ResumeStreamReadyDto(
+    val profile: String,
+    val requestMessageId: String,
+    val originalSessionId: String,
+    val itemId: String,
+    val bulkRef: String
+)
+
+@Serializable
+data class ResumeResultDto(
+    val profile: String,
+    val requestMessageId: String,
+    val originalSessionId: String,
+    val itemId: String,
+    val status: String,
+    val sizeBytes: String? = null,
+    val sha256: String? = null,
+    val code: String? = null
 )
 
