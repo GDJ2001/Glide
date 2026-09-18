@@ -7,6 +7,8 @@ import dev.glide.core.domain.PeerId
 import dev.glide.core.domain.SessionId
 import dev.glide.core.domain.SourceHandle
 import dev.glide.core.domain.TransferBatch
+import dev.glide.core.identity.PersistentTrustManager
+import dev.glide.core.identity.VerifiedPeerIdentity
 import dev.glide.core.ports.HistoryStore
 import dev.glide.core.ports.ReceiveStore
 import dev.glide.core.ports.SourceAccess
@@ -35,7 +37,10 @@ class TransferSessionFactory @Inject constructor(
         senderBatch: TransferBatch,
         sourceMap: Map<ItemId, SourceHandle>,
         transport: TransferTransport,
-        scope: CoroutineScope
+        scope: CoroutineScope,
+        persistentTrustManager: PersistentTrustManager? = null,
+        expectedPeerFingerprintHex: String? = null,
+        onVerifiedPeerIdentity: ((VerifiedPeerIdentity) -> Unit)? = null
     ): TransferCoordinator {
         return TransferCoordinator(
             sessionId = sessionId,
@@ -48,7 +53,13 @@ class TransferSessionFactory @Inject constructor(
             historyStore = historyStore,
             scope = scope,
             senderBatch = senderBatch,
-            sourceMap = sourceMap
+            sourceMap = sourceMap,
+            persistentTrustManager =
+                persistentTrustManager,
+            expectedPeerFingerprintHex =
+                expectedPeerFingerprintHex,
+            onVerifiedPeerIdentity =
+                onVerifiedPeerIdentity
         )
     }
 
@@ -62,7 +73,10 @@ class TransferSessionFactory @Inject constructor(
         peerDisplayName: String = "Glide Device",
         sessionId: SessionId? = null,
         transport: TransferTransport,
-        scope: CoroutineScope
+        scope: CoroutineScope,
+        persistentTrustManager: PersistentTrustManager? = null,
+        expectedPeerFingerprintHex: String? = null,
+        onVerifiedPeerIdentity: ((VerifiedPeerIdentity) -> Unit)? = null
     ): TransferCoordinator {
         return TransferCoordinator(
             sessionId = sessionId,
@@ -73,7 +87,13 @@ class TransferSessionFactory @Inject constructor(
             sourceAccess = sourceAccess,
             receiveStore = receiveStore,
             historyStore = historyStore,
-            scope = scope
+            scope = scope,
+            persistentTrustManager =
+                persistentTrustManager,
+            expectedPeerFingerprintHex =
+                expectedPeerFingerprintHex,
+            onVerifiedPeerIdentity =
+                onVerifiedPeerIdentity
         )
     }
 }
