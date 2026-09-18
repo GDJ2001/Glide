@@ -5,8 +5,11 @@ import androidx.annotation.RequiresApi
 import dev.glide.core.domain.BulkRef
 import dev.glide.core.domain.PeerDevice
 import dev.glide.core.domain.PeerId
+import dev.glide.core.domain.SessionId
 import dev.glide.core.pairing.LanInvitation
 import dev.glide.core.ports.AdvertisingEvent
+import dev.glide.core.ports.AuthenticatedChannelContext
+import dev.glide.core.ports.AuthenticatedChannelContextProvider
 import dev.glide.core.ports.BulkProgress
 import dev.glide.core.ports.ConnectionEvent
 import dev.glide.core.ports.ControlMessage
@@ -58,7 +61,7 @@ class LanTransferTransport(
     private val allowLoopbackForTesting: Boolean = false,
     private val coroutineScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
     customNsdDiscoveryAdapter: dev.glide.transport.lan.discovery.NsdDiscoveryAdapter? = null
-) : TransferTransport, Closeable {
+) : TransferTransport, AuthenticatedChannelContextProvider, Closeable {
 
     val nsdDiscoveryAdapter: dev.glide.transport.lan.discovery.NsdDiscoveryAdapter? =
         customNsdDiscoveryAdapter ?: networkScope.context?.let { ctx ->
@@ -94,7 +97,8 @@ class LanTransferTransport(
         val peerId: PeerId,
         val socket: SSLSocket,
         val writer: LanRecordWriter,
-        val readerJob: Job
+        val readerJob: Job,
+        val channelContext: AuthenticatedChannelContext
     )
 
     fun registerPendingInvitation(peerId: PeerId, invitation: LanInvitation) {
@@ -165,11 +169,21 @@ class LanTransferTransport(
                 readLoop(peerId, socket, inputStream)
             }
 
+            val serverSpki =
+                listener?.identity?.spkiSha256
+                    ?: throw IOException(
+                        "Authenticated LAN listener identity is unavailable."
+                    )
+
             activeConnections[peerId] = ActiveConnection(
                 peerId = peerId,
                 socket = socket,
                 writer = writer,
-                readerJob = readerJob
+                readerJob = readerJob,
+                channelContext = AuthenticatedChannelContext(
+                    sessionId = SessionId(bootstrapMessage.sessionId),
+                    channelBindingHex = serverSpki
+                )
             )
 
             _connectionEvents.emit(ConnectionEvent.Connected(peerDevice))
@@ -258,11 +272,20 @@ class LanTransferTransport(
             peerId = peerId,
             socket = sslSocket,
             writer = writer,
-            readerJob = readerJob
+            readerJob = readerJob,
+            channelContext = AuthenticatedChannelContext(
+                sessionId = SessionId(senderSessionId),
+                channelBindingHex = invitation.spkiSha256
+            )
         )
 
         _connectionEvents.emit(ConnectionEvent.Connected(peerDevice))
     }
+
+    override fun authenticatedChannelContext(
+        peerId: PeerId
+    ): AuthenticatedChannelContext? =
+        activeConnections[peerId]?.channelContext
 
     override suspend fun acceptConnection(peerId: PeerId) {
         // Handled automatically upon bootstrap validation
