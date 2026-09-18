@@ -37,6 +37,9 @@ public static class MessageTypes
     public const string ResumeRequest = "RESUME_REQUEST";
     public const string ResumeAccept = "RESUME_ACCEPT";
     public const string ResumeReject = "RESUME_REJECT";
+    public const string ResumeStreamStart = "RESUME_STREAM_START";
+    public const string ResumeStreamReady = "RESUME_STREAM_READY";
+    public const string ResumeResult = "RESUME_RESULT";
 
     public static readonly HashSet<string> All =
     [
@@ -47,7 +50,8 @@ public static class MessageTypes
         Cancel, CancelAck,
         Error, Ping, Pong,
         IdentityChallenge, IdentityResponse,
-        ResumeRequest, ResumeAccept, ResumeReject
+        ResumeRequest, ResumeAccept, ResumeReject,
+        ResumeStreamStart, ResumeStreamReady, ResumeResult
     ];
 }
 
