@@ -35,7 +35,7 @@ class DiscoveryScreenAcceptanceTest {
 
     @Test
     fun discoveryViewModel_initialSearchingState_isSearching() = runTest(testDispatcher) {
-        val viewModel = DiscoveryViewModel()
+        val viewModel = DiscoveryViewModel.forTesting()
         val state = viewModel.uiState.value
         assertTrue("Initial state should be Searching", state is DiscoveryUiState.Searching)
         val searching = state as DiscoveryUiState.Searching
@@ -45,7 +45,7 @@ class DiscoveryScreenAcceptanceTest {
 
     @Test
     fun rapidPeerAppearAndLoss_maintainsStableIndicesWithoutListJumps() = runTest(testDispatcher) {
-        val viewModel = DiscoveryViewModel()
+        val viewModel = DiscoveryViewModel.forTesting()
 
         val peerA = DiscoveredPeer(
             id = PeerId("peer-a"),
@@ -99,7 +99,7 @@ class DiscoveryScreenAcceptanceTest {
 
     @Test
     fun peerSelection_locksSingleConnection_andDisablesDuplicateConnectAttempts() = runTest(testDispatcher) {
-        val viewModel = DiscoveryViewModel()
+        val viewModel = DiscoveryViewModel.forTesting()
 
         val peerA = DiscoveredPeer(id = PeerId("peer-a"), displayName = "Pixel 9")
         val peerB = DiscoveredPeer(id = PeerId("peer-b"), displayName = "Pixel 10")
@@ -138,7 +138,7 @@ class DiscoveryScreenAcceptanceTest {
 
     @Test
     fun blockedStates_correctlyReflectReasons() = runTest(testDispatcher) {
-        val viewModel = DiscoveryViewModel()
+        val viewModel = DiscoveryViewModel.forTesting()
 
         viewModel.setBlocked(BlockedReason.BluetoothDisabled)
         assertEquals(
@@ -170,7 +170,7 @@ class DiscoveryScreenAcceptanceTest {
 
     @Test
     fun receiveReadinessViewModel_managesAdvertisingAndTimeout() = runTest(testDispatcher) {
-        val viewModel = ReceiveReadinessViewModel()
+        val viewModel = ReceiveReadinessViewModel.forTesting()
 
         viewModel.startAdvertising("Test Pixel")
         val state = viewModel.uiState.value
@@ -238,7 +238,7 @@ class DiscoveryScreenAcceptanceTest {
 
     @Test
     fun selectPeer_rejectsDuplicateTaps_whenAlreadyInitiatingConnection() = runTest(testDispatcher) {
-        val viewModel = DiscoveryViewModel()
+        val viewModel = DiscoveryViewModel.forTesting()
         val peer = DiscoveredPeer(PeerId("target-peer"), "Target Phone")
         viewModel.onPeerDiscovered(peer)
 
