@@ -41,18 +41,39 @@ internal sealed class DesktopControlSequence
             body);
     }
 
-    public async Task<Envelope> ReadExpectedAsync(
+    public Task<Envelope> ReadExpectedAsync(
         LanRecordChannel channel,
         string expectedType,
         SessionId sessionId,
         CancellationToken cancellationToken,
+        TimeSpan? timeout = null) =>
+        ReadExpectedOneOfAsync(
+            channel,
+            [expectedType],
+            sessionId,
+            cancellationToken,
+            timeout);
+
+    public async Task<Envelope> ReadExpectedOneOfAsync(
+        LanRecordChannel channel,
+        IReadOnlyCollection<string> expectedTypes,
+        SessionId sessionId,
+        CancellationToken cancellationToken,
         TimeSpan? timeout = null)
     {
+        if (expectedTypes.Count == 0)
+        {
+            throw new ArgumentException(
+                "At least one expected control type is required.",
+                nameof(expectedTypes));
+        }
+
+        string expectedLabel = string.Join(" or ", expectedTypes);
         Envelope envelope = await ReadWithTimeoutAsync(
             token => channel.ReadEnvelopeAsync(token),
             timeout ?? DefaultControlTimeout,
             cancellationToken,
-            $"Timed out waiting for {expectedType}.");
+            $"Timed out waiting for {expectedLabel}.");
 
         if (!string.Equals(
                 envelope.SessionId.Value,
@@ -61,7 +82,7 @@ internal sealed class DesktopControlSequence
         {
             throw new ProtocolViolationException(
                 WireErrorCodes.ProtocolOrder,
-                $"{expectedType} used sessionId '{envelope.SessionId.Value}', expected '{sessionId.Value}'.");
+                $"Control message used sessionId '{envelope.SessionId.Value}', expected '{sessionId.Value}'.");
         }
 
         if (envelope.Seq != _nextInbound)
@@ -71,14 +92,13 @@ internal sealed class DesktopControlSequence
                 $"Inbound control sequence {envelope.Seq} received while expecting {_nextInbound}.");
         }
 
-        if (!string.Equals(
+        if (!expectedTypes.Contains(
                 envelope.Type,
-                expectedType,
-                StringComparison.Ordinal))
+                StringComparer.Ordinal))
         {
             throw new ProtocolViolationException(
                 WireErrorCodes.ProtocolOrder,
-                $"Expected {expectedType} at sequence {_nextInbound}, received {envelope.Type}.");
+                $"Expected {expectedLabel} at sequence {_nextInbound}, received {envelope.Type}.");
         }
 
         _nextInbound++;
