@@ -224,6 +224,27 @@ Revocation immediately removes future trusted-session authority.
 
 Offset-only resume is prohibited.
 
+### 7.0 Initial offer metadata
+
+When and only when `resume-v1` is negotiated for the active authenticated session, a resumable
+`OFFER_PAGE.items[]` entry carries these two optional fields as an inseparable pair:
+
+- `rootHash`: canonical 64-character lowercase SHA-256 chunk-root hash;
+- `chunkSize`: integer in `1..16 MiB`.
+
+Both fields must be present or both absent. A zero-byte item cannot carry resume metadata. A peer
+must reject resume metadata if `resume-v1` was not negotiated.
+
+The sender derives these values from a bounded source preflight pass before the offer and persists
+the source handle/identity plus the same root in its durable sender journal. The receiver persists
+the root/chunk size together with only the chunk digests it actually retains from the authenticated
+stream. It does not need the sender's complete per-chunk digest list before interruption.
+
+On reconnect, the receiver signs the retained contiguous offset and the original root in
+`RESUME_REQUEST`. The sender freshly re-reads the persisted source, recomputes the complete root
+and whole-file digest, and accepts only if the source still matches the sender journal and signed
+request. The receiver independently re-hashes every retained chunk before reusing the prefix.
+
 A resumable item has:
 
 - original transfer session UUID;
@@ -313,11 +334,12 @@ True resume requires content continuity, not merely an authenticated offset.
 1. Source is divided into fixed negotiated chunks.
 2. Each chunk has a SHA-256 digest.
 3. The digest manifest produces the agreed chunk-root hash.
-4. Receiver verifies a chunk before journal advancement.
-5. Journal advancement is atomic and contiguous.
-6. On resume, retained chunks and journal state are revalidated before reuse.
-7. A changed source/root rejects resume.
-8. After the final chunk, the complete assembled file still requires whole-file SHA-256 verification before public commit.
+4. Receiver hashes each retained chunk from the authenticated stream and atomically appends that digest to the contiguous journal before treating the prefix as resumable.
+5. Journal advancement is atomic and contiguous; a gap cannot be skipped.
+6. On resume, the receiver re-hashes retained chunk files against its journal before reuse.
+7. The sender re-hashes the persisted source and requires its complete chunk root to equal the original offered/signed root.
+8. A changed source/root, revoked source permission, corrupt retained chunk, or journal mismatch rejects or rewinds resume.
+9. After the final chunk, the receiver recomputes the complete chunk root and whole-file SHA-256 before public commit.
 
 A resume optimization may not weaken final integrity.
 
