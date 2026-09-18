@@ -17,14 +17,14 @@ import java.security.MessageDigest
 import kotlin.math.min
 
 /**
- * Sandboxed durable receiver-side storage for HARD-022 true resume.
+ * Durable HARD-022 true-resume authority for Android.
  *
- * Invariants:
- * 1. Journal authority is keyed by original transfer + item and bound to authenticated peer/source.
- * 2. Only exactly the next verified chunk may advance the contiguous prefix.
- * 3. Retained chunks are re-hashed after restart before reuse.
- * 4. Expired/revoked/source-changed state cannot authorize resume.
- * 5. Assembly remains in private staging until the complete SHA-256 is verified.
+ * Sender rows retain source identity + source handle + preflight content authority.
+ * Receiver rows retain only private chunks and the locally verified contiguous-prefix digests.
+ *
+ * The receiver does not need the sender's full chunk manifest before interruption. On reconnect,
+ * the receiver proves its retained offset/root in the signed resume transcript while the sender
+ * freshly re-hashes the persisted source and verifies that the root still matches.
  */
 class ResumableStagingStore(
     private val stagingBaseDir: File,
@@ -42,64 +42,45 @@ class ResumableStagingStore(
         }
     }
 
-    suspend fun initSession(
+    suspend fun initReceiverSession(
         originalSessionId: String,
         itemId: String,
         itemName: String,
         peerFingerprintHex: String,
-        sourceIdentity: String,
         totalBytes: Long,
         chunkSize: Int,
-        digestTree: ContentDigestTree,
-        wholeFileSha256Hex: String,
+        chunkRootHashHex: String,
         nowMs: Long = System.currentTimeMillis()
     ): File = withContext(ioDispatcher) {
-        validateMetadata(
+        validateCommonMetadata(
             originalSessionId = originalSessionId,
             itemId = itemId,
             itemName = itemName,
             peerFingerprintHex = peerFingerprintHex,
-            sourceIdentity = sourceIdentity,
             totalBytes = totalBytes,
             chunkSize = chunkSize,
-            digestTree = digestTree,
-            wholeFileSha256Hex = wholeFileSha256Hex
+            chunkRootHashHex = chunkRootHashHex
         )
 
-        val existing =
-            resumableSessionDao.get(
-                originalSessionId,
-                itemId
-            )
+        val existing = activeExistingOrNull(
+            originalSessionId,
+            itemId,
+            nowMs
+        )
         if (existing != null) {
-            if (nowMs >=
-                existing.expiresAtMs
-            ) {
-                purgeInternal(existing)
-            } else {
-                requireSameAuthority(
-                    existing = existing,
-                    peerFingerprintHex =
-                        peerFingerprintHex,
-                    sourceIdentity =
-                        sourceIdentity,
-                    totalBytes =
-                        totalBytes,
-                    chunkSize =
-                        chunkSize,
-                    chunkRootHashHex =
-                        digestTree.rootHashHex,
-                    chunkHashesHex =
-                        encodeChunkHashes(
-                            digestTree
-                        ),
-                    wholeFileSha256Hex =
-                        wholeFileSha256Hex
-                )
-                return@withContext File(
-                    existing.stagingPath
-                )
-            }
+            requireReceiverAuthority(
+                existing,
+                peerFingerprintHex,
+                totalBytes,
+                chunkSize,
+                chunkRootHashHex
+            )
+            val existingPath =
+                existing.stagingPath
+                    ?: throw IllegalStateException(
+                        "Receiver journal is missing private staging authority"
+                    )
+            return@withContext File(existingPath)
         }
 
         val itemDir =
@@ -117,40 +98,160 @@ class ResumableStagingStore(
 
         val entity =
             ResumableSessionEntity(
+                originalSessionId = originalSessionId,
+                itemId = itemId,
+                journalRole =
+                    ResumableSessionEntity
+                        .ROLE_RECEIVER,
+                itemName = itemName,
+                peerFingerprintHex =
+                    peerFingerprintHex,
+                sourceHandle = null,
+                sourceIdentity = null,
+                totalBytes = totalBytes,
+                chunkSize = chunkSize,
+                verifiedChunks = 0L,
+                contiguousByteOffset = 0L,
+                chunkRootHashHex =
+                    chunkRootHashHex,
+                verifiedChunkHashesHex = "",
+                wholeFileSha256Hex = null,
+                createdAtMs = nowMs,
+                updatedAtMs = nowMs,
+                expiresAtMs =
+                    nowMs +
+                        ResumeToken
+                            .MAX_TTL_MILLIS,
+                stagingPath =
+                    itemDir.absolutePath
+            )
+
+        insertOrRequireReceiverRace(
+            entity
+        )
+        itemDir
+    }
+
+    suspend fun initSenderSession(
+        originalSessionId: String,
+        itemId: String,
+        itemName: String,
+        peerFingerprintHex: String,
+        sourceHandle: String,
+        sourceIdentity: String,
+        totalBytes: Long,
+        chunkSize: Int,
+        chunkRootHashHex: String,
+        wholeFileSha256Hex: String,
+        nowMs: Long = System.currentTimeMillis()
+    ): ResumableSessionEntity =
+        withContext(ioDispatcher) {
+            validateCommonMetadata(
                 originalSessionId =
                     originalSessionId,
                 itemId = itemId,
                 itemName = itemName,
                 peerFingerprintHex =
                     peerFingerprintHex,
-                sourceIdentity =
-                    sourceIdentity,
                 totalBytes = totalBytes,
                 chunkSize = chunkSize,
-                verifiedChunks = 0L,
-                contiguousByteOffset = 0L,
                 chunkRootHashHex =
-                    digestTree.rootHashHex,
-                chunkHashesHex =
-                    encodeChunkHashes(
-                        digestTree
-                    ),
-                wholeFileSha256Hex =
-                    wholeFileSha256Hex,
-                createdAtMs = nowMs,
-                updatedAtMs = nowMs,
-                expiresAtMs =
-                    nowMs +
-                        ResumeToken.MAX_TTL_MILLIS,
-                stagingPath =
-                    itemDir.absolutePath
+                    chunkRootHashHex
             )
-        val inserted =
-            resumableSessionDao
-                .insertIfAbsent(
-                    entity
+            require(
+                sourceHandle.isNotBlank() &&
+                    sourceHandle.length <=
+                        MAX_SOURCE_HANDLE_CHARS
+            ) {
+                "Source handle is missing or too large"
+            }
+            require(
+                LOWER_HEX_64.matches(
+                    sourceIdentity
                 )
-        if (inserted == -1L) {
+            ) {
+                "Source identity must be canonical lowercase SHA-256"
+            }
+            require(
+                LOWER_HEX_64.matches(
+                    wholeFileSha256Hex
+                )
+            ) {
+                "Whole-file digest must be canonical lowercase SHA-256"
+            }
+
+            val existing =
+                activeExistingOrNull(
+                    originalSessionId,
+                    itemId,
+                    nowMs
+                )
+            if (existing != null) {
+                requireSenderAuthority(
+                    existing =
+                        existing,
+                    peerFingerprintHex =
+                        peerFingerprintHex,
+                    sourceHandle =
+                        sourceHandle,
+                    sourceIdentity =
+                        sourceIdentity,
+                    totalBytes =
+                        totalBytes,
+                    chunkSize =
+                        chunkSize,
+                    chunkRootHashHex =
+                        chunkRootHashHex,
+                    wholeFileSha256Hex =
+                        wholeFileSha256Hex
+                )
+                return@withContext existing
+            }
+
+            val entity =
+                ResumableSessionEntity(
+                    originalSessionId =
+                        originalSessionId,
+                    itemId = itemId,
+                    journalRole =
+                        ResumableSessionEntity
+                            .ROLE_SENDER,
+                    itemName = itemName,
+                    peerFingerprintHex =
+                        peerFingerprintHex,
+                    sourceHandle =
+                        sourceHandle,
+                    sourceIdentity =
+                        sourceIdentity,
+                    totalBytes =
+                        totalBytes,
+                    chunkSize =
+                        chunkSize,
+                    verifiedChunks = 0L,
+                    contiguousByteOffset = 0L,
+                    chunkRootHashHex =
+                        chunkRootHashHex,
+                    verifiedChunkHashesHex = "",
+                    wholeFileSha256Hex =
+                        wholeFileSha256Hex,
+                    createdAtMs = nowMs,
+                    updatedAtMs = nowMs,
+                    expiresAtMs =
+                        nowMs +
+                            ResumeToken
+                                .MAX_TTL_MILLIS,
+                    stagingPath = null
+                )
+
+            val inserted =
+                resumableSessionDao
+                    .insertIfAbsent(
+                        entity
+                    )
+            if (inserted != -1L) {
+                return@withContext entity
+            }
+
             val raced =
                 resumableSessionDao.get(
                     originalSessionId,
@@ -159,10 +260,12 @@ class ResumableStagingStore(
                     ?: throw IllegalStateException(
                         "Resume journal conflicted but no persisted row is available"
                     )
-            requireSameAuthority(
+            requireSenderAuthority(
                 existing = raced,
                 peerFingerprintHex =
                     peerFingerprintHex,
+                sourceHandle =
+                    sourceHandle,
                 sourceIdentity =
                     sourceIdentity,
                 totalBytes =
@@ -170,19 +273,12 @@ class ResumableStagingStore(
                 chunkSize =
                     chunkSize,
                 chunkRootHashHex =
-                    digestTree.rootHashHex,
-                chunkHashesHex =
-                    entity.chunkHashesHex,
+                    chunkRootHashHex,
                 wholeFileSha256Hex =
                     wholeFileSha256Hex
             )
-            return@withContext File(
-                raced.stagingPath
-            )
+            raced
         }
-
-        itemDir
-    }
 
     suspend fun getJournal(
         originalSessionId: String,
@@ -206,140 +302,176 @@ class ResumableStagingStore(
             )?.verifiedChunks ?: 0L
         }
 
-    suspend fun writeAndVerifyChunk(
+    /**
+     * Records exactly the next receiver chunk from the authenticated transfer stream.
+     *
+     * The chunk is hashed locally, fsynced to a private temporary file, then the DB prefix is
+     * atomically compare-and-advanced with the new digest. A crash between DB advance and final
+     * rename is recovered by [reconcileReceiverForResume], which rewinds at the missing chunk.
+     */
+    suspend fun recordReceiverChunk(
         originalSessionId: String,
         itemId: String,
         chunkIndex: Long,
         chunkData: ByteArray,
-        nowMs: Long = System.currentTimeMillis()
-    ): Boolean = withContext(ioDispatcher) {
-        val journal =
-            resumableSessionDao.get(
-                originalSessionId,
-                itemId
-            ) ?: return@withContext false
+        nowMs: Long =
+            System.currentTimeMillis()
+    ): Boolean =
+        withContext(ioDispatcher) {
+            val journal =
+                resumableSessionDao.get(
+                    originalSessionId,
+                    itemId
+                ) ?: return@withContext false
 
-        if (nowMs >= journal.expiresAtMs ||
-            chunkIndex !=
-                journal.verifiedChunks
-        ) {
-            return@withContext false
-        }
-
-        val chunkHashes =
-            decodeChunkHashes(
-                journal.chunkHashesHex
-            )
-        if (chunkIndex !in
-            0 until chunkHashes.size.toLong()
-        ) {
-            return@withContext false
-        }
-
-        val expectedLength =
-            expectedChunkLength(
-                journal,
-                chunkIndex
-            )
-        if (chunkData.size !=
-            expectedLength
-        ) {
-            return@withContext false
-        }
-
-        val actualDigest =
-            sha256Hex(chunkData)
-        if (!actualDigest.equals(
-                chunkHashes[
-                    chunkIndex.toInt()
-                ],
-                ignoreCase = false
-            )
-        ) {
-            return@withContext false
-        }
-
-        val itemDir =
-            File(journal.stagingPath)
-        if (!itemDir.exists() &&
-            !itemDir.mkdirs()
-        ) {
-            return@withContext false
-        }
-
-        val chunkFile =
-            chunkFile(
-                itemDir,
-                chunkIndex
-            )
-        val tempFile =
-            File(
-                itemDir,
-                chunkFile.name + ".tmp-" +
-                    System.nanoTime()
-            )
-
-        try {
-            FileOutputStream(
-                tempFile
-            ).use { out ->
-                out.write(chunkData)
-                out.fd.sync()
+            if (journal.journalRole !=
+                    ResumableSessionEntity
+                        .ROLE_RECEIVER ||
+                nowMs >=
+                    journal.expiresAtMs ||
+                chunkIndex !=
+                    journal.verifiedChunks
+            ) {
+                return@withContext false
             }
-            atomicReplace(
-                tempFile,
-                chunkFile
-            )
 
+            val chunkCount =
+                totalChunkCount(
+                    journal.totalBytes,
+                    journal.chunkSize
+                )
+            if (chunkIndex !in
+                0 until chunkCount
+            ) {
+                return@withContext false
+            }
+
+            val expectedLength =
+                expectedChunkLength(
+                    journal.totalBytes,
+                    journal.chunkSize,
+                    chunkIndex
+                )
+            if (chunkData.size !=
+                expectedLength
+            ) {
+                return@withContext false
+            }
+
+            val itemDir =
+                journal.stagingPath
+                    ?.let(::File)
+                    ?: return@withContext false
+            if (!isInsideStagingRoot(
+                    itemDir
+                )
+            ) {
+                return@withContext false
+            }
+            if (!itemDir.exists() &&
+                !itemDir.mkdirs()
+            ) {
+                return@withContext false
+            }
+
+            val prefix =
+                decodeVerifiedPrefix(
+                    journal
+                        .verifiedChunkHashesHex
+                )
+            if (prefix.size.toLong() !=
+                journal.verifiedChunks
+            ) {
+                return@withContext false
+            }
+
+            val digest =
+                sha256Hex(
+                    chunkData
+                )
+            val nextPrefix =
+                prefix + digest
             val newOffset =
                 min(
                     journal.totalBytes,
                     journal
                         .contiguousByteOffset +
-                        chunkData.size.toLong()
+                        chunkData.size
+                            .toLong()
                 )
-            val advanced =
-                resumableSessionDao
-                    .compareAndAdvance(
-                        originalSessionId =
-                            originalSessionId,
-                        itemId = itemId,
-                        expectedVerifiedChunks =
-                            journal.verifiedChunks,
-                        expectedContiguousByteOffset =
-                            journal
-                                .contiguousByteOffset,
-                        newVerifiedChunks =
-                            journal.verifiedChunks +
-                                1,
-                        newContiguousByteOffset =
-                            newOffset,
-                        updatedAtMs = nowMs
-                    )
 
-            advanced == 1
-        } finally {
-            if (tempFile.exists()) {
-                tempFile.delete()
+            val chunkFile =
+                chunkFile(
+                    itemDir,
+                    chunkIndex
+                )
+            val tempFile =
+                File(
+                    itemDir,
+                    chunkFile.name +
+                        ".tmp-" +
+                        System.nanoTime()
+                )
+
+            try {
+                FileOutputStream(
+                    tempFile
+                ).use { out ->
+                    out.write(
+                        chunkData
+                    )
+                    out.fd.sync()
+                }
+
+                val advanced =
+                    resumableSessionDao
+                        .compareAndAdvance(
+                            originalSessionId =
+                                originalSessionId,
+                            itemId = itemId,
+                            expectedVerifiedChunks =
+                                journal
+                                    .verifiedChunks,
+                            expectedContiguousByteOffset =
+                                journal
+                                    .contiguousByteOffset,
+                            newVerifiedChunks =
+                                journal
+                                    .verifiedChunks +
+                                    1L,
+                            newContiguousByteOffset =
+                                newOffset,
+                            newVerifiedChunkHashesHex =
+                                encodeVerifiedPrefix(
+                                    nextPrefix
+                                ),
+                            updatedAtMs =
+                                nowMs
+                        )
+                if (advanced != 1) {
+                    return@withContext false
+                }
+
+                atomicReplace(
+                    tempFile,
+                    chunkFile
+                )
+                true
+            } finally {
+                if (tempFile.exists()) {
+                    tempFile.delete()
+                }
             }
         }
-    }
 
-    /**
-     * Revalidates resume authority plus every retained chunk after process death.
-     * Corrupt/missing retained data rewinds to the first invalid chunk and deletes the stale suffix.
-     */
-    suspend fun reconcileForResume(
+    suspend fun reconcileReceiverForResume(
         originalSessionId: String,
         itemId: String,
         authenticatedPeerFingerprintHex: String,
         peerStillTrusted: Boolean,
-        sourceStillAvailable: Boolean,
-        currentSourceIdentity: String,
-        currentTotalBytes: Long,
-        currentChunkRootHashHex: String,
-        nowMs: Long = System.currentTimeMillis()
-    ): ResumeRevalidationResult =
+        nowMs: Long =
+            System.currentTimeMillis()
+    ): ResumeReceiverRevalidationResult =
         withContext(ioDispatcher) {
             val journal =
                 resumableSessionDao.get(
@@ -347,15 +479,26 @@ class ResumableStagingStore(
                     itemId
                 )
                     ?: return@withContext
-                        ResumeRevalidationResult
+                        ResumeReceiverRevalidationResult
                             .NotFound
+
+            if (journal.journalRole !=
+                ResumableSessionEntity
+                    .ROLE_RECEIVER
+            ) {
+                return@withContext
+                    ResumeReceiverRevalidationResult
+                        .JournalMismatch
+            }
 
             if (nowMs >=
                 journal.expiresAtMs
             ) {
-                purgeInternal(journal)
+                purgeInternal(
+                    journal
+                )
                 return@withContext
-                    ResumeRevalidationResult
+                    ResumeReceiverRevalidationResult
                         .Expired
             }
 
@@ -364,37 +507,63 @@ class ResumableStagingStore(
                     journal.peerFingerprintHex
             ) {
                 return@withContext
-                    ResumeRevalidationResult
+                    ResumeReceiverRevalidationResult
                         .Unauthorized
             }
 
-            if (!sourceStillAvailable) {
-                return@withContext
-                    ResumeRevalidationResult
-                        .SourceUnavailable
-            }
-
-            if (currentSourceIdentity !=
-                    journal.sourceIdentity ||
-                currentTotalBytes !=
-                    journal.totalBytes ||
-                currentChunkRootHashHex !=
-                    journal.chunkRootHashHex
-            ) {
-                return@withContext
-                    ResumeRevalidationResult
-                        .SourceChanged
-            }
-
-            val chunkHashes =
-                decodeChunkHashes(
-                    journal.chunkHashesHex
+            val itemDir =
+                journal.stagingPath
+                    ?.let(::File)
+                    ?: run {
+                        purgeInternal(
+                            journal
+                        )
+                        return@withContext
+                            ResumeReceiverRevalidationResult
+                                .JournalMismatch
+                    }
+            if (!isInsideStagingRoot(
+                    itemDir
                 )
+            ) {
+                purgeInternal(
+                    journal
+                )
+                return@withContext
+                    ResumeReceiverRevalidationResult
+                        .JournalMismatch
+            }
+
+            val prefix =
+                try {
+                    decodeVerifiedPrefix(
+                        journal
+                            .verifiedChunkHashesHex
+                    )
+                } catch (
+                    _: IllegalArgumentException
+                ) {
+                    purgeInternal(
+                        journal
+                    )
+                    return@withContext
+                        ResumeReceiverRevalidationResult
+                            .JournalMismatch
+                }
+
+            if (prefix.size.toLong() !=
+                journal.verifiedChunks
+            ) {
+                purgeInternal(
+                    journal
+                )
+                return@withContext
+                    ResumeReceiverRevalidationResult
+                        .JournalMismatch
+            }
+
             var validChunks = 0L
             var validOffset = 0L
-            val itemDir =
-                File(journal.stagingPath)
-
             while (validChunks <
                 journal.verifiedChunks
             ) {
@@ -405,22 +574,28 @@ class ResumableStagingStore(
                     )
                 val expectedLength =
                     expectedChunkLength(
-                        journal,
+                        journal.totalBytes,
+                        journal.chunkSize,
                         validChunks
                     )
                 if (!file.isFile ||
                     file.length() !=
-                        expectedLength.toLong() ||
-                    sha256Hex(file) !=
-                        chunkHashes[
-                            validChunks.toInt()
+                        expectedLength
+                            .toLong() ||
+                    sha256Hex(
+                        file
+                    ) !=
+                        prefix[
+                            validChunks
+                                .toInt()
                         ]
                 ) {
                     break
                 }
 
                 validOffset +=
-                    expectedLength.toLong()
+                    expectedLength
+                        .toLong()
                 validChunks++
             }
 
@@ -431,6 +606,10 @@ class ResumableStagingStore(
                     itemDir,
                     validChunks
                 )
+                val validPrefix =
+                    prefix.take(
+                        validChunks.toInt()
+                    )
                 resumableSessionDao
                     .rewindProgress(
                         originalSessionId =
@@ -440,184 +619,335 @@ class ResumableStagingStore(
                             validChunks,
                         contiguousByteOffset =
                             validOffset,
-                        updatedAtMs = nowMs
+                        verifiedChunkHashesHex =
+                            encodeVerifiedPrefix(
+                                validPrefix
+                            ),
+                        updatedAtMs =
+                            nowMs
                     )
             }
 
-            ResumeRevalidationResult.Ready(
-                verifiedChunks =
-                    validChunks,
-                contiguousByteOffset =
-                    validOffset,
-                totalBytes =
-                    journal.totalBytes,
-                chunkSize =
-                    journal.chunkSize,
-                chunkRootHashHex =
-                    journal.chunkRootHashHex,
-                wholeFileSha256Hex =
+            ResumeReceiverRevalidationResult
+                .Ready(
+                    verifiedChunks =
+                        validChunks,
+                    contiguousByteOffset =
+                        validOffset,
+                    totalBytes =
+                        journal.totalBytes,
+                    chunkSize =
+                        journal.chunkSize,
+                    chunkRootHashHex =
+                        journal
+                            .chunkRootHashHex
+                )
+        }
+
+    suspend fun reconcileSenderForResume(
+        originalSessionId: String,
+        itemId: String,
+        authenticatedPeerFingerprintHex: String,
+        peerStillTrusted: Boolean,
+        sourceStillAvailable: Boolean,
+        currentSourceIdentity: String,
+        currentTotalBytes: Long,
+        currentChunkRootHashHex: String,
+        currentWholeFileSha256Hex: String,
+        nowMs: Long =
+            System.currentTimeMillis()
+    ): ResumeSenderRevalidationResult =
+        withContext(ioDispatcher) {
+            val journal =
+                resumableSessionDao.get(
+                    originalSessionId,
+                    itemId
+                )
+                    ?: return@withContext
+                        ResumeSenderRevalidationResult
+                            .NotFound
+
+            if (journal.journalRole !=
+                ResumableSessionEntity
+                    .ROLE_SENDER
+            ) {
+                return@withContext
+                    ResumeSenderRevalidationResult
+                        .JournalMismatch
+            }
+
+            if (nowMs >=
+                journal.expiresAtMs
+            ) {
+                purgeInternal(
+                    journal
+                )
+                return@withContext
+                    ResumeSenderRevalidationResult
+                        .Expired
+            }
+
+            if (!peerStillTrusted ||
+                authenticatedPeerFingerprintHex !=
+                    journal.peerFingerprintHex
+            ) {
+                return@withContext
+                    ResumeSenderRevalidationResult
+                        .Unauthorized
+            }
+
+            if (!sourceStillAvailable) {
+                return@withContext
+                    ResumeSenderRevalidationResult
+                        .SourceUnavailable
+            }
+
+            if (journal.sourceIdentity == null ||
+                journal.sourceHandle == null ||
+                journal.wholeFileSha256Hex == null ||
+                currentSourceIdentity !=
+                    journal.sourceIdentity ||
+                currentTotalBytes !=
+                    journal.totalBytes ||
+                currentChunkRootHashHex !=
+                    journal.chunkRootHashHex ||
+                currentWholeFileSha256Hex !=
                     journal.wholeFileSha256Hex
-            )
+            ) {
+                return@withContext
+                    ResumeSenderRevalidationResult
+                        .SourceChanged
+            }
+
+            ResumeSenderRevalidationResult
+                .Ready(
+                    sourceHandle =
+                        journal.sourceHandle,
+                    totalBytes =
+                        journal.totalBytes,
+                    chunkSize =
+                        journal.chunkSize,
+                    chunkRootHashHex =
+                        journal
+                            .chunkRootHashHex,
+                    wholeFileSha256Hex =
+                        journal
+                            .wholeFileSha256Hex
+                )
         }
 
     /**
-     * Assembles only a complete contiguous prefix, verifies the whole file in private staging,
-     * and only then atomically promotes it to the requested destination.
+     * Final receiver promotion requires every retained chunk, a root matching the authenticated
+     * resumable item root, and the complete ITEM_END whole-file SHA-256.
      */
-    suspend fun assembleVerifiedFile(
+    suspend fun assembleVerifiedReceiverFile(
         originalSessionId: String,
         itemId: String,
+        expectedWholeFileSha256Hex: String,
         destinationFile: File
-    ): Boolean = withContext(ioDispatcher) {
-        val journal =
-            resumableSessionDao.get(
-                originalSessionId,
-                itemId
-            ) ?: return@withContext false
-
-        val chunkHashes =
-            decodeChunkHashes(
-                journal.chunkHashesHex
-            )
-        if (journal.verifiedChunks !=
-                chunkHashes.size.toLong() ||
-            journal.contiguousByteOffset !=
-                journal.totalBytes
-        ) {
-            return@withContext false
-        }
-
-        val itemDir =
-            File(journal.stagingPath)
-        if (!itemDir.isDirectory) {
-            return@withContext false
-        }
-
-        val assembled =
-            File(
-                itemDir,
-                "assembled.verify"
-            )
-        if (assembled.exists()) {
-            assembled.delete()
-        }
-
-        val wholeDigest =
-            MessageDigest.getInstance(
-                "SHA-256"
-            )
-
-        try {
-            FileOutputStream(
-                assembled
-            ).use { out ->
-                for (index in
-                    chunkHashes.indices
-                ) {
-                    val chunk =
-                        chunkFile(
-                            itemDir,
-                            index.toLong()
-                        )
-                    if (!chunk.isFile ||
-                        chunk.length() !=
-                            expectedChunkLength(
-                                journal,
-                                index.toLong()
-                            ).toLong()
-                    ) {
-                        return@withContext false
-                    }
-
-                    val digest =
-                        MessageDigest.getInstance(
-                            "SHA-256"
-                        )
-                    FileInputStream(
-                        chunk
-                    ).use { input ->
-                        val buffer =
-                            ByteArray(64 * 1024)
-                        while (true) {
-                            val read =
-                                input.read(buffer)
-                            if (read < 0) {
-                                break
-                            }
-                            if (read == 0) {
-                                continue
-                            }
-                            digest.update(
-                                buffer,
-                                0,
-                                read
-                            )
-                            wholeDigest.update(
-                                buffer,
-                                0,
-                                read
-                            )
-                            out.write(
-                                buffer,
-                                0,
-                                read
-                            )
-                        }
-                    }
-
-                    if (toHex(
-                            digest.digest()
-                        ) !=
-                        chunkHashes[index]
-                    ) {
-                        return@withContext false
-                    }
-                }
-                out.fd.sync()
-            }
-
-            if (assembled.length() !=
-                    journal.totalBytes ||
-                toHex(
-                    wholeDigest.digest()
-                ) !=
-                    journal.wholeFileSha256Hex
+    ): Boolean =
+        withContext(ioDispatcher) {
+            if (!LOWER_HEX_64.matches(
+                    expectedWholeFileSha256Hex
+                )
             ) {
                 return@withContext false
             }
 
-            destinationFile.parentFile
-                ?.let { parent ->
-                    if (!parent.exists() &&
-                        !parent.mkdirs()
-                    ) {
-                        return@withContext false
-                    }
-                }
-
-            val promoted =
-                promoteVerifiedFile(
-                    source = assembled,
-                    destination =
-                        destinationFile,
-                    expectedSize =
-                        journal.totalBytes,
-                    expectedSha256Hex =
-                        journal
-                            .wholeFileSha256Hex
-                )
-            if (promoted) {
-                purgeInternal(
-                    journal
-                )
+            val journal =
+                resumableSessionDao.get(
+                    originalSessionId,
+                    itemId
+                ) ?: return@withContext false
+            if (journal.journalRole !=
+                ResumableSessionEntity
+                    .ROLE_RECEIVER
+            ) {
+                return@withContext false
             }
-            promoted
-        } finally {
+
+            val prefix =
+                try {
+                    decodeVerifiedPrefix(
+                        journal
+                            .verifiedChunkHashesHex
+                    )
+                } catch (
+                    _: IllegalArgumentException
+                ) {
+                    return@withContext false
+                }
+            val chunkCount =
+                totalChunkCount(
+                    journal.totalBytes,
+                    journal.chunkSize
+                )
+            if (journal.verifiedChunks !=
+                    chunkCount ||
+                journal.contiguousByteOffset !=
+                    journal.totalBytes ||
+                prefix.size.toLong() !=
+                    chunkCount
+            ) {
+                return@withContext false
+            }
+
+            val prefixRoot =
+                ContentDigestTree(
+                    prefix.map(
+                        ::hexToBytes
+                    )
+                ).rootHashHex
+            if (prefixRoot !=
+                journal.chunkRootHashHex
+            ) {
+                return@withContext false
+            }
+
+            val itemDir =
+                journal.stagingPath
+                    ?.let(::File)
+                    ?: return@withContext false
+            if (!itemDir.isDirectory ||
+                !isInsideStagingRoot(
+                    itemDir
+                )
+            ) {
+                return@withContext false
+            }
+
+            val assembled =
+                File(
+                    itemDir,
+                    "assembled.verify"
+                )
             if (assembled.exists()) {
                 assembled.delete()
             }
+
+            val wholeDigest =
+                MessageDigest.getInstance(
+                    "SHA-256"
+                )
+
+            try {
+                FileOutputStream(
+                    assembled
+                ).use { out ->
+                    for (index in
+                        prefix.indices
+                    ) {
+                        val chunk =
+                            chunkFile(
+                                itemDir,
+                                index.toLong()
+                            )
+                        if (!chunk.isFile ||
+                            chunk.length() !=
+                                expectedChunkLength(
+                                    journal.totalBytes,
+                                    journal.chunkSize,
+                                    index.toLong()
+                                ).toLong()
+                        ) {
+                            return@withContext false
+                        }
+
+                        val chunkDigest =
+                            MessageDigest.getInstance(
+                                "SHA-256"
+                            )
+                        FileInputStream(
+                            chunk
+                        ).use { input ->
+                            val buffer =
+                                ByteArray(
+                                    COPY_BUFFER_BYTES
+                                )
+                            while (true) {
+                                val read =
+                                    input.read(
+                                        buffer
+                                    )
+                                if (read < 0) {
+                                    break
+                                }
+                                if (read == 0) {
+                                    continue
+                                }
+                                chunkDigest.update(
+                                    buffer,
+                                    0,
+                                    read
+                                )
+                                wholeDigest.update(
+                                    buffer,
+                                    0,
+                                    read
+                                )
+                                out.write(
+                                    buffer,
+                                    0,
+                                    read
+                                )
+                            }
+                        }
+
+                        if (toHex(
+                                chunkDigest
+                                    .digest()
+                            ) !=
+                            prefix[index]
+                        ) {
+                            return@withContext false
+                        }
+                    }
+                    out.fd.sync()
+                }
+
+                if (assembled.length() !=
+                        journal.totalBytes ||
+                    toHex(
+                        wholeDigest.digest()
+                    ) !=
+                        expectedWholeFileSha256Hex
+                ) {
+                    return@withContext false
+                }
+
+                destinationFile
+                    .parentFile
+                    ?.let { parent ->
+                        if (!parent.exists() &&
+                            !parent.mkdirs()
+                        ) {
+                            return@withContext false
+                        }
+                    }
+
+                val promoted =
+                    promoteVerifiedFile(
+                        source =
+                            assembled,
+                        destination =
+                            destinationFile,
+                        expectedSize =
+                            journal.totalBytes,
+                        expectedSha256Hex =
+                            expectedWholeFileSha256Hex
+                    )
+                if (promoted) {
+                    purgeInternal(
+                        journal
+                    )
+                }
+                promoted
+            } finally {
+                if (assembled.exists()) {
+                    assembled.delete()
+                }
+            }
         }
-    }
 
     suspend fun purgeSession(
         originalSessionId: String,
@@ -684,16 +1014,9 @@ class ResumableStagingStore(
                     currentMs
                 )
         expired.forEach {
-            val path =
-                File(it.stagingPath)
-            if (isInsideStagingRoot(path)) {
-                path.deleteRecursively()
-            }
+            purgeInternal(it)
         }
-        resumableSessionDao
-            .deleteExpired(
-                currentMs
-            )
+        expired.size
     }
 
     suspend fun evictUnderStoragePressure(
@@ -726,9 +1049,7 @@ class ResumableStagingStore(
                     }
                 )
 
-        for (journal in
-            oldestFirst
-        ) {
+        for (journal in oldestFirst) {
             purgeInternal(
                 journal
             )
@@ -743,40 +1064,78 @@ class ResumableStagingStore(
         evicted
     }
 
-    private suspend fun purgeInternal(
-        journal: ResumableSessionEntity
-    ) {
-        val path =
-            File(journal.stagingPath)
-        if (isInsideStagingRoot(path)) {
-            path.deleteRecursively()
+    private suspend fun activeExistingOrNull(
+        originalSessionId: String,
+        itemId: String,
+        nowMs: Long
+    ): ResumableSessionEntity? {
+        val existing =
+            resumableSessionDao.get(
+                originalSessionId,
+                itemId
+            ) ?: return null
+        if (nowMs >=
+            existing.expiresAtMs
+        ) {
+            purgeInternal(
+                existing
+            )
+            return null
         }
-        resumableSessionDao.delete(
-            journal.originalSessionId,
-            journal.itemId
+        return existing
+    }
+
+    private suspend fun insertOrRequireReceiverRace(
+        entity: ResumableSessionEntity
+    ) {
+        val inserted =
+            resumableSessionDao
+                .insertIfAbsent(
+                    entity
+                )
+        if (inserted != -1L) {
+            return
+        }
+
+        val raced =
+            resumableSessionDao.get(
+                entity.originalSessionId,
+                entity.itemId
+            )
+                ?: throw IllegalStateException(
+                    "Resume journal conflicted but no persisted row is available"
+                )
+        requireReceiverAuthority(
+            raced,
+            entity.peerFingerprintHex,
+            entity.totalBytes,
+            entity.chunkSize,
+            entity.chunkRootHashHex
         )
     }
 
-    private fun validateMetadata(
+    private fun validateCommonMetadata(
         originalSessionId: String,
         itemId: String,
         itemName: String,
         peerFingerprintHex: String,
-        sourceIdentity: String,
         totalBytes: Long,
         chunkSize: Int,
-        digestTree: ContentDigestTree,
-        wholeFileSha256Hex: String
+        chunkRootHashHex: String
     ) {
         require(
             originalSessionId.isNotBlank()
         ) {
             "Original session id cannot be blank"
         }
-        require(itemId.isNotBlank()) {
+        require(
+            itemId.isNotBlank()
+        ) {
             "Item id cannot be blank"
         }
-        require(itemName.isNotBlank()) {
+        require(
+            itemName.isNotBlank()
+        ) {
             "Item name cannot be blank"
         }
         require(
@@ -785,13 +1144,6 @@ class ResumableStagingStore(
             )
         ) {
             "Peer fingerprint must be canonical lowercase SHA-256"
-        }
-        require(
-            sourceIdentity.isNotBlank() &&
-                sourceIdentity.length <=
-                    MAX_SOURCE_IDENTITY_CHARS
-        ) {
-            "Source identity is missing or too large"
         }
         require(totalBytes > 0) {
             "Resumable item size must be positive"
@@ -804,58 +1156,69 @@ class ResumableStagingStore(
         }
         require(
             LOWER_HEX_64.matches(
-                digestTree.rootHashHex
+                chunkRootHashHex
             )
         ) {
             "Chunk root must be canonical lowercase SHA-256"
         }
         require(
-            LOWER_HEX_64.matches(
-                wholeFileSha256Hex
-            )
-        ) {
-            "Whole-file digest must be canonical lowercase SHA-256"
-        }
-
-        val expectedChunks =
-            (totalBytes +
-                chunkSize - 1L) /
+            totalChunkCount(
+                totalBytes,
                 chunkSize
-        require(
-            expectedChunks <=
-                Int.MAX_VALUE.toLong()
+            ) <=
+                Int.MAX_VALUE
+                    .toLong()
         ) {
             "Chunk manifest is too large"
         }
+    }
+
+    private fun requireReceiverAuthority(
+        existing: ResumableSessionEntity,
+        peerFingerprintHex: String,
+        totalBytes: Long,
+        chunkSize: Int,
+        chunkRootHashHex: String
+    ) {
         require(
-            digestTree.chunkHashes.size
-                .toLong() ==
-                expectedChunks
+            existing.journalRole ==
+                ResumableSessionEntity
+                    .ROLE_RECEIVER &&
+                existing.peerFingerprintHex ==
+                    peerFingerprintHex &&
+                existing.totalBytes ==
+                    totalBytes &&
+                existing.chunkSize ==
+                    chunkSize &&
+                existing.chunkRootHashHex ==
+                    chunkRootHashHex &&
+                existing.sourceHandle == null &&
+                existing.sourceIdentity == null &&
+                existing.wholeFileSha256Hex == null &&
+                existing.stagingPath != null
         ) {
-            "Chunk digest count does not match item size/chunk size"
-        }
-        require(
-            digestTree.chunkHashes.all {
-                it.size == 32
-            }
-        ) {
-            "Each chunk digest must be SHA-256"
+            "Existing receiver resume authority does not match this item"
         }
     }
 
-    private fun requireSameAuthority(
+    private fun requireSenderAuthority(
         existing: ResumableSessionEntity,
         peerFingerprintHex: String,
+        sourceHandle: String,
         sourceIdentity: String,
         totalBytes: Long,
         chunkSize: Int,
         chunkRootHashHex: String,
-        chunkHashesHex: String,
         wholeFileSha256Hex: String
     ) {
         require(
-            existing.peerFingerprintHex ==
-                peerFingerprintHex &&
+            existing.journalRole ==
+                ResumableSessionEntity
+                    .ROLE_SENDER &&
+                existing.peerFingerprintHex ==
+                    peerFingerprintHex &&
+                existing.sourceHandle ==
+                    sourceHandle &&
                 existing.sourceIdentity ==
                     sourceIdentity &&
                 existing.totalBytes ==
@@ -864,40 +1227,66 @@ class ResumableStagingStore(
                     chunkSize &&
                 existing.chunkRootHashHex ==
                     chunkRootHashHex &&
-                existing.chunkHashesHex ==
-                    chunkHashesHex &&
                 existing.wholeFileSha256Hex ==
-                    wholeFileSha256Hex
+                    wholeFileSha256Hex &&
+                existing.stagingPath == null
         ) {
-            "Existing resume journal authority does not match this item"
+            "Existing sender resume authority does not match this item"
         }
     }
 
+    private suspend fun purgeInternal(
+        journal: ResumableSessionEntity
+    ) {
+        journal.stagingPath
+            ?.let(::File)
+            ?.takeIf(
+                ::isInsideStagingRoot
+            )
+            ?.deleteRecursively()
+
+        resumableSessionDao.delete(
+            journal.originalSessionId,
+            journal.itemId
+        )
+    }
+
+    private fun totalChunkCount(
+        totalBytes: Long,
+        chunkSize: Int
+    ): Long =
+        (
+            totalBytes +
+                chunkSize - 1L
+            ) / chunkSize
+
     private fun expectedChunkLength(
-        journal: ResumableSessionEntity,
+        totalBytes: Long,
+        chunkSize: Int,
         chunkIndex: Long
     ): Int {
         val chunkCount =
-            decodeChunkHashes(
-                journal.chunkHashesHex
-            ).size.toLong()
+            totalChunkCount(
+                totalBytes,
+                chunkSize
+            )
         require(
             chunkIndex in
                 0 until chunkCount
         ) {
-            "Chunk index outside manifest"
+            "Chunk index outside item"
         }
 
         return if (chunkIndex ==
-            chunkCount - 1
+            chunkCount - 1L
         ) {
             val prior =
                 chunkIndex *
-                    journal.chunkSize.toLong()
-            (journal.totalBytes -
-                prior).toInt()
+                    chunkSize.toLong()
+            (totalBytes - prior)
+                .toInt()
         } else {
-            journal.chunkSize
+            chunkSize
         }
     }
 
@@ -980,29 +1369,48 @@ class ResumableStagingStore(
                 )
         )
 
-    private fun encodeChunkHashes(
-        digestTree: ContentDigestTree
+    private fun encodeVerifiedPrefix(
+        hashes: List<String>
     ): String =
-        digestTree.chunkHashes
-            .joinToString(",") {
-                toHex(it)
-            }
+        hashes.joinToString(",")
 
-    private fun decodeChunkHashes(
+    private fun decodeVerifiedPrefix(
         value: String
     ): List<String> {
+        if (value.isEmpty()) {
+            return emptyList()
+        }
         val hashes =
             value.split(',')
         require(
-            hashes.isNotEmpty() &&
-                hashes.all {
-                    LOWER_HEX_64
-                        .matches(it)
-                }
+            hashes.all(
+                LOWER_HEX_64::matches
+            )
         ) {
-            "Stored chunk digest manifest is invalid"
+            "Stored verified-prefix digest list is invalid"
         }
         return hashes
+    }
+
+    private fun hexToBytes(
+        value: String
+    ): ByteArray {
+        require(
+            LOWER_HEX_64.matches(
+                value
+            )
+        ) {
+            "Digest must be canonical lowercase SHA-256"
+        }
+        return ByteArray(
+            value.length / 2
+        ) { index ->
+            value.substring(
+                index * 2,
+                index * 2 + 2
+            ).toInt(16)
+                .toByte()
+        }
     }
 
     private fun sha256Hex(
@@ -1023,25 +1431,30 @@ class ResumableStagingStore(
             MessageDigest.getInstance(
                 "SHA-256"
             )
-        FileInputStream(file)
-            .use { input ->
-                val buffer =
-                    ByteArray(64 * 1024)
-                while (true) {
-                    val read =
-                        input.read(buffer)
-                    if (read < 0) {
-                        break
-                    }
-                    if (read > 0) {
-                        digest.update(
-                            buffer,
-                            0,
-                            read
-                        )
-                    }
+        FileInputStream(
+            file
+        ).use { input ->
+            val buffer =
+                ByteArray(
+                    COPY_BUFFER_BYTES
+                )
+            while (true) {
+                val read =
+                    input.read(
+                        buffer
+                    )
+                if (read < 0) {
+                    break
+                }
+                if (read > 0) {
+                    digest.update(
+                        buffer,
+                        0,
+                        read
+                    )
                 }
             }
+        }
         return toHex(
             digest.digest()
         )
@@ -1068,14 +1481,18 @@ class ResumableStagingStore(
             val valid =
                 destination.length() ==
                     expectedSize &&
-                    sha256Hex(destination) ==
-                        expectedSha256Hex
+                    sha256Hex(
+                        destination
+                    ) ==
+                    expectedSha256Hex
             if (!valid) {
                 destination.delete()
             }
             return valid
-        } catch (_: java.io.IOException) {
-            // Private staging and the final destination may be on different filesystems.
+        } catch (
+            _: java.io.IOException
+        ) {
+            // Private staging and final destination may be on different filesystems.
         }
 
         val parent =
@@ -1101,18 +1518,21 @@ class ResumableStagingStore(
                 MessageDigest.getInstance(
                     "SHA-256"
                 )
-            FileInputStream(source).use {
-                input ->
+            FileInputStream(
+                source
+            ).use { input ->
                 FileOutputStream(
                     destinationTemp
                 ).use { output ->
                     val buffer =
                         ByteArray(
-                            64 * 1024
+                            COPY_BUFFER_BYTES
                         )
                     while (true) {
                         val read =
-                            input.read(buffer)
+                            input.read(
+                                buffer
+                            )
                         if (read < 0) {
                             break
                         }
@@ -1148,7 +1568,7 @@ class ResumableStagingStore(
                 destinationTemp,
                 destination
             )
-            return true
+            true
         } finally {
             if (destinationTemp.exists()) {
                 destinationTemp.delete()
@@ -1187,36 +1607,62 @@ class ResumableStagingStore(
                 "^[0-9a-f]{64}$"
             )
         private const val
-            MAX_SOURCE_IDENTITY_CHARS =
-            2048
+            MAX_SOURCE_HANDLE_CHARS = 512
         private const val
             MAX_CHUNK_SIZE_BYTES =
             16 * 1024 * 1024
+        private const val
+            COPY_BUFFER_BYTES =
+            64 * 1024
     }
 }
 
-sealed interface ResumeRevalidationResult {
+sealed interface ResumeReceiverRevalidationResult {
     data class Ready(
         val verifiedChunks: Long,
         val contiguousByteOffset: Long,
         val totalBytes: Long,
         val chunkSize: Int,
-        val chunkRootHashHex: String,
-        val wholeFileSha256Hex: String
-    ) : ResumeRevalidationResult
+        val chunkRootHashHex: String
+    ) : ResumeReceiverRevalidationResult
 
     data object NotFound :
-        ResumeRevalidationResult
+        ResumeReceiverRevalidationResult
 
     data object Expired :
-        ResumeRevalidationResult
+        ResumeReceiverRevalidationResult
 
     data object Unauthorized :
-        ResumeRevalidationResult
+        ResumeReceiverRevalidationResult
+
+    data object JournalMismatch :
+        ResumeReceiverRevalidationResult
+}
+
+sealed interface ResumeSenderRevalidationResult {
+    data class Ready(
+        val sourceHandle: String,
+        val totalBytes: Long,
+        val chunkSize: Int,
+        val chunkRootHashHex: String,
+        val wholeFileSha256Hex: String
+    ) : ResumeSenderRevalidationResult
+
+    data object NotFound :
+        ResumeSenderRevalidationResult
+
+    data object Expired :
+        ResumeSenderRevalidationResult
+
+    data object Unauthorized :
+        ResumeSenderRevalidationResult
+
+    data object JournalMismatch :
+        ResumeSenderRevalidationResult
 
     data object SourceUnavailable :
-        ResumeRevalidationResult
+        ResumeSenderRevalidationResult
 
     data object SourceChanged :
-        ResumeRevalidationResult
+        ResumeSenderRevalidationResult
 }
