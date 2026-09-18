@@ -236,24 +236,20 @@ public static class Program
             string pairingUri = InvitationCodec.Encode(invitation);
 
             Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine($"
-[READY] Listening for incoming transfers on port {boundPort}");
+            Console.WriteLine($"\\n[READY] Listening for incoming transfers on port {boundPort}");
             Console.WriteLine($"[INFO] Local IP addresses: {string.Join(", ", ips)}");
             Console.WriteLine($"[INFO] Staging sandbox: {stagingStore.StagingRoot}");
             Console.WriteLine($"[INFO] Destination: {stagingStore.DestinationRoot}");
             Console.ResetColor();
 
             Console.ForegroundColor = ConsoleColor.Cyan;
-            Console.WriteLine("
-[PAIRING INVITATION] Scan or paste into peer device:");
-            Console.WriteLine($"  {pairingUri}
-");
+            Console.WriteLine("\\n[PAIRING INVITATION] Scan or paste into peer device:");
+            Console.WriteLine($"  {pairingUri}\\n");
             Console.ResetColor();
 
             var qr = QrCodeGenerator.EncodeText(pairingUri);
             Console.Write(qr.ToTerminalString(border: 2));
-            Console.WriteLine("
-Waiting for peer connection (Ctrl+C to cancel)...");
+            Console.WriteLine("\\nWaiting for peer connection (Ctrl+C to cancel)...");
 
             await using var connection = await listener.AcceptConnectionAsync();
             var engine = new DesktopTransferEngine();
@@ -272,7 +268,7 @@ Waiting for peer connection (Ctrl+C to cancel)...");
         }
     }
 
-private static async Task<int> RunDaemonAsync(string[] args)
+    private static async Task<int> RunDaemonAsync(string[] args)
     {
         int port = LanDiscoveryConstants.DefaultPort;
         for (int i = 0; i < args.Length; i++)
@@ -369,7 +365,7 @@ private static async Task<int> RunDaemonAsync(string[] args)
 
 
 
-private static async Task<int> RunSendAsync(string[] args)
+    private static async Task<int> RunSendAsync(string[] args)
     {
         string? pairUri = null;
         string host = "127.0.0.1";
@@ -538,7 +534,7 @@ private static async Task<int> RunSendAsync(string[] args)
         }
     }
 
-private static string GetCurrentPlatform() =>
+    private static string GetCurrentPlatform() =>
         OperatingSystem.IsLinux() ? "linux" :
         OperatingSystem.IsMacOS() ? "macos" :
         OperatingSystem.IsWindows() ? "windows" : "unknown";
