@@ -33,7 +33,7 @@ public static class IdentityResumeTranscript
         new("^[0-9a-f]{64}$",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-    public static string CapabilityHashHex(
+    public static byte[] CapabilityCanonicalBytes(
         IEnumerable<string> capabilities)
     {
         ArgumentNullException.ThrowIfNull(capabilities);
@@ -58,9 +58,14 @@ public static class IdentityResumeTranscript
             WriteString(stream, capability);
         }
 
-        return Convert.ToHexStringLower(
-            SHA256.HashData(stream.ToArray()));
+        return stream.ToArray();
     }
+
+    public static string CapabilityHashHex(
+        IEnumerable<string> capabilities) =>
+        Convert.ToHexStringLower(
+            SHA256.HashData(
+                CapabilityCanonicalBytes(capabilities)));
 
     public static byte[] IdentityProofBytes(
         string activeSessionId,
