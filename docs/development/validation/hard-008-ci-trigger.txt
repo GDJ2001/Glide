@@ -1,0 +1,5 @@
+HARD-008 validation-only marker.
+
+Purpose: trigger the repository's pull_request CI workflow against the exact source graph currently on main because push-triggered Actions stopped creating runs after CI run 100.
+
+This file is not intended for merge. The PR will be closed after verification and the validation branch reset to main.
