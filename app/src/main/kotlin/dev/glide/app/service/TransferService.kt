@@ -11,6 +11,8 @@ import android.os.Build
 import android.os.IBinder
 import androidx.core.app.ServiceCompat
 import dev.glide.app.ui.transfer.TransferUiState
+import dev.glide.core.domain.BatchId
+import dev.glide.core.domain.PeerId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -65,6 +67,40 @@ class TransferService : Service() {
                 startForegroundWithNotification()
                 startNotificationUpdates()
                 // Active transfer execution is already owned by the runtime attached in onCreate().
+            }
+
+            ACTION_START_NEARBY_SENDER -> {
+                startForegroundWithNotification()
+                startNotificationUpdates()
+                val peerId = intent?.getStringExtra(EXTRA_PEER_ID)
+                val peerName = intent?.getStringExtra(EXTRA_PEER_NAME) ?: "Nearby device"
+                val localDeviceName =
+                    intent?.getStringExtra(EXTRA_LOCAL_DEVICE_NAME) ?: "Glide Device"
+                val selectionId = intent?.getStringExtra(EXTRA_SELECTION_ID)?.let(::BatchId)
+                val started = peerId != null && runtime().dispatch(
+                    TransferRuntimeCommand.StartNearbySenderPairing(
+                        selectionId = selectionId,
+                        peerId = PeerId(peerId),
+                        peerDisplayName = peerName,
+                        localDeviceName = localDeviceName
+                    )
+                )
+                if (!started) {
+                    handleTerminalTeardown()
+                }
+            }
+
+            ACTION_START_NEARBY_RECEIVER -> {
+                startForegroundWithNotification()
+                startNotificationUpdates()
+                val localDeviceName =
+                    intent?.getStringExtra(EXTRA_LOCAL_DEVICE_NAME) ?: "Glide Device"
+                if (!runtime().dispatch(
+                        TransferRuntimeCommand.StartReceiveAvailability(localDeviceName)
+                    )
+                ) {
+                    handleTerminalTeardown()
+                }
             }
 
             ACTION_CANCEL -> {
@@ -256,13 +292,20 @@ class TransferService : Service() {
 
     companion object {
         const val ACTION_START = "dev.glide.app.action.START_TRANSFER"
+        const val ACTION_START_NEARBY_SENDER =
+            "dev.glide.app.action.START_NEARBY_SENDER"
+        const val ACTION_START_NEARBY_RECEIVER =
+            "dev.glide.app.action.START_NEARBY_RECEIVER"
         const val ACTION_STOP = "dev.glide.app.action.STOP_TRANSFER"
         const val ACTION_CANCEL = "dev.glide.app.action.CANCEL_TRANSFER"
         const val ACTION_ACCEPT = "dev.glide.app.action.ACCEPT_OFFER"
         const val ACTION_REJECT = "dev.glide.app.action.REJECT_OFFER"
 
         const val EXTRA_SESSION_ID = "dev.glide.app.extra.SESSION_ID"
+        const val EXTRA_PEER_ID = "dev.glide.app.extra.PEER_ID"
         const val EXTRA_PEER_NAME = "dev.glide.app.extra.PEER_NAME"
+        const val EXTRA_SELECTION_ID = "dev.glide.app.extra.SELECTION_ID"
+        const val EXTRA_LOCAL_DEVICE_NAME = "dev.glide.app.extra.LOCAL_DEVICE_NAME"
         const val EXTRA_IS_LAN = "dev.glide.app.extra.IS_LAN"
 
         const val NOTIFICATION_CHANNEL_ID = "glide_transfer_channel"
@@ -279,6 +322,42 @@ class TransferService : Service() {
                 putExtra(EXTRA_SESSION_ID, sessionId)
                 putExtra(EXTRA_PEER_NAME, peerName)
                 putExtra(EXTRA_IS_LAN, isLan)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
+
+        fun startNearbySenderPairing(
+            context: Context,
+            peerId: PeerId,
+            peerName: String,
+            selectionId: BatchId? = null,
+            localDeviceName: String = "Glide Device"
+        ) {
+            val intent = Intent(context, TransferService::class.java).apply {
+                action = ACTION_START_NEARBY_SENDER
+                putExtra(EXTRA_PEER_ID, peerId.value)
+                putExtra(EXTRA_PEER_NAME, peerName)
+                putExtra(EXTRA_LOCAL_DEVICE_NAME, localDeviceName)
+                selectionId?.let { putExtra(EXTRA_SELECTION_ID, it.value) }
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
+
+        fun startNearbyReceiver(
+            context: Context,
+            localDeviceName: String = "Glide Device"
+        ) {
+            val intent = Intent(context, TransferService::class.java).apply {
+                action = ACTION_START_NEARBY_RECEIVER
+                putExtra(EXTRA_LOCAL_DEVICE_NAME, localDeviceName)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
