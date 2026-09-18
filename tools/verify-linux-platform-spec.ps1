@@ -133,13 +133,30 @@ if ($SpecContent -notmatch "\[Unit\]" -or $SpecContent -notmatch "systemctl --us
 }
 $DesktopPath = Join-Path $ProjectRoot "packaging\linux\glide.desktop"
 $ServicePath = Join-Path $ProjectRoot "packaging\linux\glide.service"
+$DaemonPolicyExamplePath = Join-Path $ProjectRoot "packaging\linux\glide-daemon-policy.example.json"
 if (-not (Test-Path $DesktopPath)) {
     Write-Error "FAIL: FreeDesktop packaging asset missing: $DesktopPath"
 }
 if (-not (Test-Path $ServicePath)) {
     Write-Error "FAIL: systemd user service packaging asset missing: $ServicePath"
 }
-Write-Host "  PASS: FreeDesktop .desktop entry and systemd user unit definitions and files verified." -ForegroundColor Green
+if (-not (Test-Path $DaemonPolicyExamplePath)) {
+    Write-Error "FAIL: daemon receive-policy example missing: $DaemonPolicyExamplePath"
+}
+$ServiceContent = Get-Content $ServicePath -Raw
+if ($ServiceContent -notmatch 'daemon --policy %h/.config/glide/daemon-policy.json' -or
+    $ServiceContent -notmatch 'KillSignal=SIGTERM' -or
+    $ServiceContent -notmatch 'TimeoutStopSec=15s' -or
+    $ServiceContent -notmatch 'UMask=0077') {
+    Write-Error "FAIL: systemd unit does not require explicit policy and bounded private shutdown semantics."
+}
+$DaemonPolicyContent = Get-Content $DaemonPolicyExamplePath -Raw
+foreach ($requiredField in @("destinationDirectory", "enrollmentFile", "allowedRemoteAddresses", "maxItemBytes", "maxBatchBytes", "maxItems", "invitationTtlSeconds")) {
+    if ($DaemonPolicyContent -notmatch [regex]::Escape($requiredField)) {
+        Write-Error "FAIL: daemon policy example missing required field: $requiredField"
+    }
+}
+Write-Host "  PASS: FreeDesktop assets plus policy-bound, SIGTERM-bounded systemd daemon definitions verified." -ForegroundColor Green
 
 # --- Check 9: Headless Terminal QR Code Rendering Contract ---
 Write-Host "`n[Check 9/10] Auditing Headless Terminal QR Code Rendering Contract..." -ForegroundColor Yellow
