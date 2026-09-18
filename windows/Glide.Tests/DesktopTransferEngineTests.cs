@@ -269,8 +269,13 @@ public sealed class DesktopTransferEngineTests : IDisposable
             string status) =>
             ItemStatuses.Add((direction, itemName, status));
 
-        public override void OnHistory(DesktopHistoryEntry entry) =>
+        public override Task OnHistoryAsync(
+            DesktopHistoryEntry entry,
+            CancellationToken cancellationToken = default)
+        {
             History.Add(entry);
+            return Task.CompletedTask;
+        }
     }
 
     public void Dispose()
