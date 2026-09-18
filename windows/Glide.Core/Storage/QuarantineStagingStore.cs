@@ -129,11 +129,25 @@ public sealed class QuarantineStagingStore
         string sanitizedRelativePath =
             WindowsPathSanitizer.SanitizeRelativePath(rawRelativePath);
 
-        EnsureRootAndRelativePathSafe(
-            _destinationRoot,
-            sanitizedRelativePath,
-            createDirectories: false,
-            WireErrorCodes.DestinationUnavailable);
+        try
+        {
+            EnsureRootAndRelativePathSafe(
+                _destinationRoot,
+                sanitizedRelativePath,
+                createDirectories: false,
+                WireErrorCodes.DestinationUnavailable);
+        }
+        catch (ProtocolViolationException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.DestinationUnavailable,
+                "Unable to validate the configured destination path.",
+                ex);
+        }
 
         string reservationKey =
             BuildReservationKey(sessionId, itemId);
@@ -178,7 +192,7 @@ public sealed class QuarantineStagingStore
                 expectedSizeBytes,
                 reservationKey);
         }
-        catch
+        catch (ProtocolViolationException)
         {
             ReleaseReservation(
                 reservationKey,
@@ -186,6 +200,18 @@ public sealed class QuarantineStagingStore
                 itemId,
                 purgeQuarantine: true);
             throw;
+        }
+        catch (Exception ex)
+        {
+            ReleaseReservation(
+                reservationKey,
+                sessionId,
+                itemId,
+                purgeQuarantine: true);
+            throw new ProtocolViolationException(
+                WireErrorCodes.DestinationUnavailable,
+                "Unable to prepare quarantine storage for the incoming item.",
+                ex);
         }
     }
 
