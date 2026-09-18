@@ -498,7 +498,7 @@ public static class Program
             return Task.FromResult(true);
         }
 
-        public override Task<bool> ConfirmOfferAsync(
+        public override async Task<bool> ConfirmOfferAsync(
             DesktopOffer offer,
             CancellationToken cancellationToken)
         {
@@ -506,8 +506,23 @@ public static class Program
             Console.WriteLine(
                 $"{prefix}[OFFER] Inbound offer: {offer.Items.Count} items, {offer.TotalBytes} bytes from '{offer.PeerName}'");
 
-            // HARD-016 owns explicit headless authorization policy.
-            return Task.FromResult(true);
+            if (isDaemon)
+            {
+                Console.WriteLine(
+                    $"{prefix}[OFFER] Rejected: unattended receiving has no explicit authorization policy yet.");
+                return false;
+            }
+
+            Console.Write("Accept this transfer? [y/N]: ");
+            string? response = await Console.In.ReadLineAsync(cancellationToken);
+            return string.Equals(
+                response?.Trim(),
+                "y",
+                StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(
+                    response?.Trim(),
+                    "yes",
+                    StringComparison.OrdinalIgnoreCase);
         }
 
         public override void OnInvitationConsumed(DesktopTransferDirection direction)
