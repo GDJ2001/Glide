@@ -98,7 +98,7 @@ public sealed class Hard014DesktopTransferTests : IDisposable
                 "ten-mib.bin");
         Assert.True(File.Exists(committedPath));
         Assert.Equal(
-            totalBytes,
+            (long)totalBytes,
             new FileInfo(committedPath).Length);
 
         Sha256Digest committedDigest =
