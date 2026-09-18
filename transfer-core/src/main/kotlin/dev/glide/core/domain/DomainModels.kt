@@ -136,7 +136,9 @@ data class TransferItem(
     val mimeType: String,
     val sizeBytes: Long,
     val digest: Sha256Digest? = null,
-    val relativePath: String? = null
+    val relativePath: String? = null,
+    val resumeChunkSize: Int? = null,
+    val resumeChunkRootHashHex: String? = null
 ) {
     init {
         require(name.isNotBlank() && name.codePointCount(0, name.length) <= ProtocolLimits.MAX_FILENAME_CODE_POINTS) {
@@ -154,6 +156,34 @@ data class TransferItem(
         if (relativePath != null) {
             require(relativePath.length <= ProtocolLimits.MAX_RELATIVE_PATH_LENGTH) {
                 "relativePath length (${relativePath.length}) exceeds maximum limit ${ProtocolLimits.MAX_RELATIVE_PATH_LENGTH}"
+            }
+        }
+        require(
+            (resumeChunkSize == null) ==
+                (resumeChunkRootHashHex == null)
+        ) {
+            "Resume offer metadata requires both chunk size and root hash"
+        }
+        if (resumeChunkSize != null &&
+            resumeChunkRootHashHex != null
+        ) {
+            require(sizeBytes > 0) {
+                "Zero-byte items cannot carry resume metadata"
+            }
+            require(
+                resumeChunkSize in
+                    1..16 * 1024 * 1024
+            ) {
+                "Resume chunk size must be in 1..16 MiB"
+            }
+            require(
+                resumeChunkRootHashHex.length == 64 &&
+                    resumeChunkRootHashHex.all {
+                        it in '0'..'9' ||
+                            it in 'a'..'f'
+                    }
+            ) {
+                "Resume chunk root must be canonical lowercase SHA-256"
             }
         }
     }
