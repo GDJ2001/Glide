@@ -3,24 +3,16 @@ using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Security.Cryptography;
-using System.Text.Json.Nodes;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
-using Glide.Core.Codec;
-using Glide.Core.Models;
 using Glide.Core.Pairing;
-using Glide.Core.Security;
-using Glide.Core.Storage;
-using Glide.Core.Transport.Lan;
 using Glide.Desktop;
 using Glide.Transport.Discovery;
-using Glide.Transport.Framing;
 using Glide.Transport.Sockets;
 using Glide.Transport.Web;
 using Glide.Windows.UI.Common;
 using Microsoft.Win32;
-using ProtocolViolationException = Glide.Core.Models.ProtocolViolationException;
 
 namespace Glide.Windows.UI.ViewModels;
 
@@ -34,10 +26,10 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     private string _statusMessage = "Ready";
     private string _localIpText = "";
 
-    private bool _isSasModalVisible;
-    private string _sasCode = "";
-    private string _sasPeerName = "";
-    private TaskCompletionSource<bool>? _sasConfirmationTcs;
+    private bool _isOfferModalVisible;
+    private string _incomingOfferPeer = "";
+    private string _incomingOfferSummary = "";
+    private TaskCompletionSource<bool>? _offerConfirmationTcs;
 
     private bool _isTransferActive;
     private string _transferTitle = "";
@@ -47,7 +39,10 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     private string _currentFileName = "";
     private CancellationTokenSource? _activeTransferCts;
     private readonly DesktopTransferEngine _desktopTransferEngine = new();
+    private readonly DesktopStateStore _stateStore = new();
     private readonly Stopwatch _transferStopwatch = new();
+    private string _receiveDirectory = "";
+    private int _listenerPortPreference = LanDiscoveryConstants.DefaultPort;
 
     private TlsSocketListener? _listener;
 
@@ -107,8 +102,9 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     public RelayCommand ClearFilesCommand { get; }
     public RelayCommand SendFilesCommand { get; }
     public RelayCommand ToggleListenerCommand { get; }
-    public RelayCommand ConfirmSasCommand { get; }
-    public RelayCommand RejectSasCommand { get; }
+    public RelayCommand AcceptOfferCommand { get; }
+    public RelayCommand RejectOfferCommand { get; }
+    public RelayCommand BrowseReceiveFolderCommand { get; }
     public RelayCommand CancelTransferCommand { get; }
     public RelayCommand OpenDownloadsCommand { get; }
     public RelayCommand ShowPairModalCommand { get; }
@@ -123,6 +119,14 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
 
     public MainViewModel()
     {
+        DesktopPersistentState persisted = _stateStore.Load();
+        _receiveDirectory = persisted.Settings.ReceiveDirectory;
+        _listenerPortPreference = persisted.Settings.ListenerPort;
+        foreach (DesktopHistoryEntry entry in persisted.History)
+        {
+            HistoryItems.Add(ToHistoryViewModel(entry));
+        }
+
         SwitchTabCommand = new RelayCommand(param => CurrentTab = param?.ToString() ?? "Send");
         AddFilesCommand = new RelayCommand(ExecuteAddFiles);
         RemoveFileCommand = new RelayCommand(param =>
@@ -134,8 +138,9 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             async () => await ExecuteSendFilesAsync(),
             () => !IsTransferActive && SelectedFiles.Count > 0 && _pairedInvitation != null);
         ToggleListenerCommand = new RelayCommand(async () => await ToggleListenerAsync());
-        ConfirmSasCommand = new RelayCommand(() => _sasConfirmationTcs?.TrySetResult(true));
-        RejectSasCommand = new RelayCommand(() => _sasConfirmationTcs?.TrySetResult(false));
+        AcceptOfferCommand = new RelayCommand(() => _offerConfirmationTcs?.TrySetResult(true));
+        RejectOfferCommand = new RelayCommand(() => _offerConfirmationTcs?.TrySetResult(false));
+        BrowseReceiveFolderCommand = new RelayCommand(ExecuteBrowseReceiveFolder);
         CancelTransferCommand = new RelayCommand(() => _activeTransferCts?.Cancel());
         OpenDownloadsCommand = new RelayCommand(ExecuteOpenDownloads);
         ShowPairModalCommand = new RelayCommand(() => IsPairModalVisible = true);
@@ -248,10 +253,51 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         set => SetProperty(ref _localIpText, value);
     }
 
-    public bool IsSasModalVisible
+    public bool IsOfferModalVisible
     {
-        get => _isSasModalVisible;
-        set => SetProperty(ref _isSasModalVisible, value);
+        get => _isOfferModalVisible;
+        set => SetProperty(ref _isOfferModalVisible, value);
+    }
+
+    public string IncomingOfferPeer
+    {
+        get => _incomingOfferPeer;
+        set => SetProperty(ref _incomingOfferPeer, value);
+    }
+
+    public string IncomingOfferSummary
+    {
+        get => _incomingOfferSummary;
+        set => SetProperty(ref _incomingOfferSummary, value);
+    }
+
+    public string ReceiveDirectory
+    {
+        get => _receiveDirectory;
+        set
+        {
+            if (SetProperty(ref _receiveDirectory, value))
+            {
+                PersistDesktopSettings();
+            }
+        }
+    }
+
+    public int ListenerPortPreference
+    {
+        get => _listenerPortPreference;
+        set
+        {
+            if (value is < 1 or > 65535)
+            {
+                return;
+            }
+
+            if (SetProperty(ref _listenerPortPreference, value))
+            {
+                PersistDesktopSettings();
+            }
+        }
     }
 
     public bool IsPairModalVisible
@@ -276,18 +322,6 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                 PairingQrImage = QrImageHelper.GenerateQrImageSource(value);
             }
         }
-    }
-
-    public string SasCode
-    {
-        get => _sasCode;
-        set => SetProperty(ref _sasCode, value);
-    }
-
-    public string SasPeerName
-    {
-        get => _sasPeerName;
-        set => SetProperty(ref _sasPeerName, value);
     }
 
     public bool IsTransferActive
@@ -419,7 +453,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
 
         try
         {
-            _listener = new TlsSocketListener(LanDiscoveryConstants.DefaultPort);
+            _listener = new TlsSocketListener(ListenerPortPreference);
         }
         catch
         {
@@ -429,51 +463,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         ListeningPort = _listener.BoundPort;
         IsListening = true;
 
-        try
-        {
-            string presence = LanDiscoveryConstants.GeneratePresenceId();
-            byte[] tokenBytes = RandomNumberGenerator.GetBytes(32);
-            string token = Convert.ToBase64String(tokenBytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
-            byte[] spkiHashBytes = SHA256.HashData(_listener.ServerCertificate.PublicKey.ExportSubjectPublicKeyInfo());
-            string spkiSha256 = Convert.ToHexString(spkiHashBytes).ToLowerInvariant();
-            long expiresAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 120;
-
-            var localIps = Dns.GetHostAddresses(Dns.GetHostName())
-                .Where(ip => ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
-                .Select(ip => ip.ToString())
-                .ToList();
-
-            var endpoints = localIps.Select(ip => new LanEndpoint(ip, ListeningPort)).Take(4).ToList();
-            if (endpoints.Count == 0)
-            {
-                endpoints.Add(new LanEndpoint("127.0.0.1", ListeningPort));
-            }
-
-            var invitation = new LanInvitation(
-                invitationId: Guid.NewGuid().ToString().ToLowerInvariant(),
-                presence: presence,
-                name: Environment.MachineName,
-                platform: "windows",
-                endpoints: endpoints,
-                spkiSha256: spkiSha256,
-                token: token,
-                expiresAt: expiresAt.ToString(),
-                ttlSeconds: 120);
-
-            LanInvitation canonicalInvitation =
-                _invitationAuthority.Publish(invitation);
-            _activeInvitation = canonicalInvitation;
-            ActiveInvitationUri = InvitationCodec.Encode(canonicalInvitation);
-
-            _mdnsService.StartAdvertising(
-                deviceName: Environment.MachineName,
-                port: ListeningPort,
-                presenceId: canonicalInvitation.Presence);
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"Failed to generate pairing invitation: {ex.Message}");
-        }
+        RefreshReceiverInvitation();
 
         StatusMessage = $"Listening on port {ListeningPort}";
         _ = Task.Run(async () => await RunListenerLoopAsync());
@@ -486,7 +476,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             try
             {
                 var conn = await _listener.AcceptConnectionAsync();
-                _ = Task.Run(async () => await HandleInboundTransferAsync(conn));
+                await HandleInboundTransferAsync(conn);
             }
             catch
             {
@@ -516,7 +506,8 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                 var result = await _desktopTransferEngine.ReceiveAsync(
                     conn,
                     new DesktopReceiveRequest(
-                        new QuarantineStagingStore(),
+                        new QuarantineStagingStore(
+                            destinationRoot: ReceiveDirectory),
                         _invitationAuthority,
                         LocalDeviceName: Environment.MachineName),
                     this,
@@ -530,7 +521,11 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                 {
                     _transferStopwatch.Stop();
                     IsTransferActive = false;
-                    IsSasModalVisible = false;
+                    IsOfferModalVisible = false;
+                    if (IsListening && _listener != null)
+                    {
+                        RefreshReceiverInvitation();
+                    }
                 });
             }
         }
@@ -578,58 +573,49 @@ private async Task ExecuteSendFilesAsync()
         {
             _transferStopwatch.Stop();
             IsTransferActive = false;
-            IsSasModalVisible = false;
+            IsOfferModalVisible = false;
         }
     }
 
-    public async Task<bool> ConfirmSasAsync(
-        DesktopTransferDirection direction,
-        string peerName,
-        int sixDigitCode,
+    public async Task<bool> ConfirmOfferAsync(
+        DesktopOffer offer,
         CancellationToken cancellationToken)
     {
-        var confirmation = new TaskCompletionSource<bool>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
+        var confirmation =
+            new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
 
         RunOnUi(() =>
         {
-            _sasConfirmationTcs = confirmation;
-            SasCode = sixDigitCode.ToString("D6");
-            SasPeerName = peerName;
-            IsSasModalVisible = true;
+            _offerConfirmationTcs = confirmation;
+            IncomingOfferPeer = offer.PeerName;
+            IncomingOfferSummary =
+                $"{offer.Items.Count} item(s) • " +
+                $"{TransferItemViewModel.FormatSize(offer.TotalBytes)}";
+            TransferTitle =
+                $"Incoming transfer from {offer.PeerName}";
+            IsOfferModalVisible = true;
         });
 
         try
         {
-            return await confirmation.Task.WaitAsync(cancellationToken);
+            return await confirmation.Task.WaitAsync(
+                cancellationToken);
         }
         finally
         {
             RunOnUi(() =>
             {
-                if (ReferenceEquals(_sasConfirmationTcs, confirmation))
+                if (ReferenceEquals(
+                        _offerConfirmationTcs,
+                        confirmation))
                 {
-                    _sasConfirmationTcs = null;
+                    _offerConfirmationTcs = null;
                 }
 
-                IsSasModalVisible = false;
+                IsOfferModalVisible = false;
             });
         }
-    }
-
-    public Task<bool> ConfirmOfferAsync(
-        DesktopOffer offer,
-        CancellationToken cancellationToken)
-    {
-        RunOnUi(() =>
-        {
-            SasPeerName = offer.PeerName;
-            TransferTitle =
-                $"Receiving {offer.Items.Count} file(s) from {offer.PeerName}";
-        });
-
-        // Preserve current WPF behavior. HARD-015 adds explicit incoming-offer consent.
-        return Task.FromResult(true);
     }
 
     public void OnInvitationConsumed(DesktopTransferDirection direction)
@@ -644,6 +630,7 @@ private async Task ExecuteSendFilesAsync()
             else
             {
                 _activeInvitation = null;
+                _mdnsService.StopAdvertising();
                 ActiveInvitationUri = "";
             }
         });
@@ -653,7 +640,13 @@ private async Task ExecuteSendFilesAsync()
         DesktopTransferDirection direction,
         string peerName)
     {
-        RunOnUi(() => SasPeerName = peerName);
+        RunOnUi(() =>
+        {
+            TransferTitle =
+                direction == DesktopTransferDirection.Receive
+                    ? $"Receiving from {peerName}"
+                    : $"Sending to {peerName}";
+        });
     }
 
     public void OnStatus(
@@ -718,25 +711,39 @@ private async Task ExecuteSendFilesAsync()
 
     public void OnHistory(DesktopHistoryEntry entry)
     {
+        try
+        {
+            _stateStore.AppendVerifiedHistory(entry);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine(
+                $"Failed to persist transfer history: {ex.Message}");
+        }
+
         RunOnUi(() =>
         {
             HistoryItems.Insert(
                 0,
-                new HistoryItemViewModel
-                {
-                    Direction =
-                        entry.Direction == DesktopTransferDirection.Send
-                            ? "Sent"
-                            : "Received",
-                    ItemName = entry.ItemName,
-                    FormattedSize =
-                        TransferItemViewModel.FormatSize(entry.SizeBytes),
-                    TargetPath = entry.Path,
-                    PeerName = entry.PeerName,
-                    Timestamp = entry.Timestamp.LocalDateTime
-                });
+                ToHistoryViewModel(entry));
         });
     }
+
+    private static HistoryItemViewModel ToHistoryViewModel(
+        DesktopHistoryEntry entry) =>
+        new()
+        {
+            Direction =
+                entry.Direction == DesktopTransferDirection.Send
+                    ? "Sent"
+                    : "Received",
+            ItemName = entry.ItemName,
+            FormattedSize =
+                TransferItemViewModel.FormatSize(entry.SizeBytes),
+            TargetPath = entry.Path,
+            PeerName = entry.PeerName,
+            Timestamp = entry.Timestamp.LocalDateTime
+        };
 
     private static void RunOnUi(Action action)
     {
@@ -748,6 +755,134 @@ private async Task ExecuteSendFilesAsync()
         }
 
         dispatcher.Invoke(action);
+    }
+
+    private void ExecuteBrowseReceiveFolder()
+    {
+        var dialog = new OpenFolderDialog
+        {
+            Title = "Choose Glide receive folder",
+            InitialDirectory =
+                Directory.Exists(ReceiveDirectory)
+                    ? ReceiveDirectory
+                    : Environment.GetFolderPath(
+                        Environment.SpecialFolder.UserProfile)
+        };
+
+        if (dialog.ShowDialog() == true)
+        {
+            ReceiveDirectory = dialog.FolderName;
+        }
+    }
+
+    private void PersistDesktopSettings()
+    {
+        if (string.IsNullOrWhiteSpace(ReceiveDirectory) ||
+            ListenerPortPreference is < 1 or > 65535)
+        {
+            return;
+        }
+
+        try
+        {
+            _stateStore.SaveSettings(
+                new DesktopSettings(
+                    ReceiveDirectory,
+                    ListenerPortPreference));
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine(
+                $"Failed to persist desktop settings: {ex.Message}");
+        }
+    }
+
+    private void RefreshReceiverInvitation()
+    {
+        if (_listener == null || !IsListening)
+        {
+            return;
+        }
+
+        string presence =
+            LanDiscoveryConstants.GeneratePresenceId();
+        byte[] tokenBytes =
+            RandomNumberGenerator.GetBytes(32);
+        string token =
+            Convert.ToBase64String(tokenBytes)
+                .TrimEnd('=')
+                .Replace('+', '-')
+                .Replace('/', '_');
+        byte[] spkiHashBytes =
+            SHA256.HashData(
+                _listener.ServerCertificate
+                    .PublicKey
+                    .ExportSubjectPublicKeyInfo());
+        string spkiSha256 =
+            Convert.ToHexString(
+                    spkiHashBytes)
+                .ToLowerInvariant();
+        long expiresAt =
+            DateTimeOffset.UtcNow
+                .ToUnixTimeSeconds() + 120;
+
+        var localIps =
+            Dns.GetHostAddresses(
+                    Dns.GetHostName())
+                .Where(ip =>
+                    ip.AddressFamily ==
+                    System.Net.Sockets
+                        .AddressFamily.InterNetwork)
+                .Select(ip => ip.ToString())
+                .ToList();
+
+        var endpoints =
+            localIps
+                .Select(ip =>
+                    new LanEndpoint(
+                        ip,
+                        ListeningPort))
+                .Take(
+                    LanInvitation.MaxEndpoints)
+                .ToList();
+        if (endpoints.Count == 0)
+        {
+            endpoints.Add(
+                new LanEndpoint(
+                    "127.0.0.1",
+                    ListeningPort));
+        }
+
+        var invitation =
+            new LanInvitation(
+                invitationId:
+                    Guid.NewGuid()
+                        .ToString("D")
+                        .ToLowerInvariant(),
+                presence: presence,
+                name: Environment.MachineName,
+                platform: "windows",
+                endpoints: endpoints,
+                spkiSha256: spkiSha256,
+                token: token,
+                expiresAt: expiresAt.ToString(),
+                ttlSeconds: 120);
+
+        LanInvitation canonicalInvitation =
+            _invitationAuthority.Publish(
+                invitation);
+        _activeInvitation =
+            canonicalInvitation;
+        ActiveInvitationUri =
+            InvitationCodec.Encode(
+                canonicalInvitation);
+
+        _mdnsService.StartAdvertising(
+            deviceName:
+                Environment.MachineName,
+            port: ListeningPort,
+            presenceId:
+                canonicalInvitation.Presence);
     }
 
 private void ExecuteOpenDownloads()
