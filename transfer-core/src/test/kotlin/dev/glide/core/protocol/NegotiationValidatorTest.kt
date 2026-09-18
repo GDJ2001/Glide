@@ -165,4 +165,83 @@ class NegotiationValidatorTest {
             assertEquals("LIMIT_EXCEEDED", e.failure.code)
         }
     }
+
+    @Test
+    fun defaultHello_doesNotAdvertiseTrustExtensionsBeforeRuntimeIntegration() {
+        val hello = NegotiationValidator.createHello(
+            role = DeviceRole.Sender,
+            ephemeralPeerId = validSenderPeerId,
+            displayName = "Pixel"
+        )
+
+        assertTrue(
+            NegotiationConstants.CAPABILITY_FOLDER_V1 in
+                hello.optionalCapabilities
+        )
+        assertTrue(
+            NegotiationConstants.CAPABILITY_PERSISTENT_IDENTITY_V1 !in
+                hello.optionalCapabilities
+        )
+        assertTrue(
+            NegotiationConstants.CAPABILITY_TRUE_RESUME_V1 !in
+                hello.optionalCapabilities
+        )
+    }
+
+    @Test
+    fun resumeWithoutIdentity_isRejectedAtHelloConstruction() {
+        try {
+            NegotiationValidator.createHello(
+                role = DeviceRole.Sender,
+                ephemeralPeerId = validSenderPeerId,
+                displayName = "Pixel",
+                optionalCapabilities =
+                    listOf(
+                        NegotiationConstants
+                            .CAPABILITY_TRUE_RESUME_V1
+                    )
+            )
+            fail("Expected resume-v1 without identity-v1 to be rejected")
+        } catch (e: ProtocolViolationException) {
+            assertEquals(
+                "UNSUPPORTED_PROTOCOL",
+                e.failure.code
+            )
+        }
+    }
+
+    @Test
+    fun helloAckCannotSelectUnofferedIdentityCapability() {
+        val hello = NegotiationValidator.createHello(
+            role = DeviceRole.Sender,
+            ephemeralPeerId = validSenderPeerId,
+            displayName = "Pixel"
+        )
+        val ack = NegotiationValidator.createHelloAck(
+            hello = hello,
+            ephemeralPeerId = validReceiverPeerId,
+            displayName = "Receiver"
+        )
+        val tampered =
+            ack.copy(
+                capabilities =
+                    ack.capabilities +
+                        NegotiationConstants
+                            .CAPABILITY_PERSISTENT_IDENTITY_V1
+            )
+
+        try {
+            NegotiationValidator.validateHelloAck(
+                hello,
+                tampered
+            )
+            fail("Expected unoffered identity-v1 to be rejected")
+        } catch (e: ProtocolViolationException) {
+            assertEquals(
+                "UNSUPPORTED_PROTOCOL",
+                e.failure.code
+            )
+        }
+    }
+
 }
