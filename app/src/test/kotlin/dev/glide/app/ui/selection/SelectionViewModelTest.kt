@@ -1,6 +1,7 @@
 package dev.glide.app.ui.selection
 
 import dev.glide.core.domain.ProtocolLimits
+import dev.glide.core.domain.Sha256Digest
 import dev.glide.core.domain.SourceHandle
 import dev.glide.core.domain.TransferFailure
 import dev.glide.core.ports.SourceAccess
@@ -190,6 +191,35 @@ class SelectionViewModelTest {
         assertEquals(2, stored.sourceMap.size)
         assertEquals("content://files/alpha.txt", stored.sourceMap[batch.items[0].id]?.value)
         assertEquals("content://files/beta.txt", stored.sourceMap[batch.items[1].id]?.value)
+    }
+
+    @Test
+    fun prepareReadyFileForTransfer_storesCanonicalSingleFileBatch() = runTest(testDispatcher) {
+        val handle = SourceHandle("content://files/legacy-single.txt")
+        val viewModel = SelectionViewModel()
+        viewModel.setUiStateForTesting(
+            SelectionUiState.Ready(
+                displayName = "legacy-single.txt",
+                sizeBytes = 42L,
+                mimeType = "text/plain",
+                digest = Sha256Digest("0".repeat(64)),
+                handle = handle
+            )
+        )
+
+        val prepared = viewModel.prepareReadyFileForTransfer()
+        assertNotNull(prepared)
+        val (batch, sourceMap) = prepared!!
+
+        assertEquals(1, batch.items.size)
+        assertEquals("legacy-single.txt", batch.items.single().name)
+        assertEquals(42L, batch.items.single().sizeBytes)
+        assertEquals(handle, sourceMap[batch.items.single().id])
+
+        val stored = SelectedTransferStore.get(batch.id)
+        assertNotNull(stored)
+        assertEquals(batch, stored!!.batch)
+        assertEquals(handle, stored.sourceMap[batch.items.single().id])
     }
 
     @Test
