@@ -2,24 +2,38 @@ using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
-using Glide.Transport.Security;
 
 namespace Glide.Transport.Sockets;
 
+/// <summary>
+/// Glide LAN TLS 1.3 client.
+///
+/// Initial pairing authenticates the receiver with the exact SPKI SHA-256 pin carried by the
+/// out-of-band invitation. A client certificate is optional and reserved for a future negotiated
+/// persistent-identity profile; it is never generated implicitly for an initial pairing.
+/// </summary>
 public sealed class TlsSocketClient
 {
-    private readonly X509Certificate2 _clientCertificate;
+    private readonly X509Certificate2? _clientCertificate;
 
     public TlsSocketClient(X509Certificate2? clientCertificate = null)
     {
-        _clientCertificate = clientCertificate ?? CertificateGenerator.GenerateEphemeralCertificate("Glide-Desktop-Client");
+        _clientCertificate = clientCertificate;
     }
 
+    /// <summary>
+    /// Test/low-level transport overload. Production transfer orchestration must use the pinned
+    /// overload with an authenticated invitation.
+    /// </summary>
     public Task<TlsSocketConnection> ConnectAsync(
         string host,
         int port,
         CancellationToken cancellationToken) =>
-        ConnectAsync(host, port, expectedSpkiSha256: null, cancellationToken);
+        ConnectAsync(
+            host,
+            port,
+            expectedSpkiSha256: null,
+            cancellationToken);
 
     public async Task<TlsSocketConnection> ConnectAsync(
         string host,
@@ -27,79 +41,128 @@ public sealed class TlsSocketClient
         string? expectedSpkiSha256 = null,
         CancellationToken cancellationToken = default)
     {
-        var tcpClient = new TcpClient();
-        tcpClient.NoDelay = true;
-        await tcpClient.ConnectAsync(host, port, cancellationToken);
-
-        byte[]? remotePublicKey = null;
-        string? remoteSpkiSha256 = null;
-
-        var sslStream = new SslStream(tcpClient.GetStream(), leaveInnerStreamOpen: false);
-
-        var clientCertCollection = new X509Certificate2Collection(_clientCertificate);
-
-        var options = new SslClientAuthenticationOptions
+        var tcpClient = new TcpClient
         {
-            TargetHost = host,
-            ClientCertificates = clientCertCollection,
-            EnabledSslProtocols = SslProtocols.Tls13,
-            ApplicationProtocols = new List<SslApplicationProtocol>
-            {
-                new SslApplicationProtocol("glide-lan/1"),
-                new SslApplicationProtocol("glide-v1")
-            },
-            CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
-            LocalCertificateSelectionCallback = (sender, targetHost, localCertificates, remoteCertificate, acceptableIssuers) =>
-            {
-                return _clientCertificate;
-            },
-            RemoteCertificateValidationCallback = (sender, certificate, chain, sslPolicyErrors) =>
-            {
-                if (certificate != null)
-                {
-                    string computedSpkiHex;
-                    if (certificate is X509Certificate2 x509)
-                    {
-                        computedSpkiHex = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(x509.PublicKey.ExportSubjectPublicKeyInfo())).ToLowerInvariant();
-                    }
-                    else
-                    {
-                        using var tempCert = new X509Certificate2(certificate);
-                        computedSpkiHex = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(tempCert.PublicKey.ExportSubjectPublicKeyInfo())).ToLowerInvariant();
-                    }
-
-                    if (!string.IsNullOrEmpty(expectedSpkiSha256))
-                    {
-                        if (!string.Equals(computedSpkiHex, expectedSpkiSha256, StringComparison.OrdinalIgnoreCase))
-                        {
-                            // SPKI Pin mismatch -> rejects connection immediately
-                            return false;
-                        }
-                    }
-
-                    remotePublicKey = certificate.GetPublicKey();
-                    remoteSpkiSha256 = computedSpkiHex;
-                    return true;
-                }
-                return false;
-            }
+            NoDelay = true
         };
 
-        await sslStream.AuthenticateAsClientAsync(options, cancellationToken);
-
-        if (remotePublicKey == null)
+        SslStream? sslStream = null;
+        try
         {
-            throw new AuthenticationException("Peer server certificate did not provide a valid public key or failed SPKI pinning.");
+            await tcpClient.ConnectAsync(host, port, cancellationToken);
+
+            byte[]? remotePublicKey = null;
+            string? remoteSpkiSha256 = null;
+
+            sslStream = new SslStream(
+                tcpClient.GetStream(),
+                leaveInnerStreamOpen: false);
+
+            var options = new SslClientAuthenticationOptions
+            {
+                TargetHost = host,
+                EnabledSslProtocols = SslProtocols.Tls13,
+                ApplicationProtocols =
+                [
+                    new SslApplicationProtocol("glide-lan/1")
+                ],
+                CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
+                RemoteCertificateValidationCallback =
+                    (_, certificate, _, _) =>
+                    {
+                        if (certificate == null) return false;
+
+                        string computedSpkiHex;
+                        if (certificate is X509Certificate2 x509)
+                        {
+                            computedSpkiHex = Convert.ToHexString(
+                                System.Security.Cryptography.SHA256.HashData(
+                                    x509.PublicKey.ExportSubjectPublicKeyInfo()))
+                                .ToLowerInvariant();
+                        }
+                        else
+                        {
+                            using var tempCertificate =
+                                new X509Certificate2(certificate);
+                            computedSpkiHex = Convert.ToHexString(
+                                System.Security.Cryptography.SHA256.HashData(
+                                    tempCertificate.PublicKey
+                                        .ExportSubjectPublicKeyInfo()))
+                                .ToLowerInvariant();
+                        }
+
+                        if (!string.IsNullOrEmpty(expectedSpkiSha256) &&
+                            !string.Equals(
+                                computedSpkiHex,
+                                expectedSpkiSha256,
+                                StringComparison.Ordinal))
+                        {
+                            return false;
+                        }
+
+                        remotePublicKey = certificate.GetPublicKey();
+                        remoteSpkiSha256 = computedSpkiHex;
+                        return true;
+                    }
+            };
+
+            if (_clientCertificate != null)
+            {
+                options.ClientCertificates =
+                    new X509Certificate2Collection(_clientCertificate);
+                options.LocalCertificateSelectionCallback =
+                    (_, _, _, _, _) => _clientCertificate;
+            }
+
+            await sslStream.AuthenticateAsClientAsync(
+                options,
+                cancellationToken);
+
+            if (sslStream.SslProtocol != SslProtocols.Tls13)
+            {
+                throw new AuthenticationException(
+                    $"Glide LAN requires TLS 1.3, negotiated {sslStream.SslProtocol}.");
+            }
+
+            var expectedAlpn = new SslApplicationProtocol("glide-lan/1");
+            if (sslStream.NegotiatedApplicationProtocol != expectedAlpn)
+            {
+                throw new AuthenticationException(
+                    "Glide LAN requires ALPN 'glide-lan/1'.");
+            }
+
+            if (remotePublicKey == null || remoteSpkiSha256 == null)
+            {
+                throw new AuthenticationException(
+                    "Peer server certificate did not provide a usable public key.");
+            }
+
+            byte[] localPublicKey = _clientCertificate?.GetPublicKey()
+                ?? Array.Empty<byte>();
+            string? localSpkiSha256 = _clientCertificate == null
+                ? null
+                : Convert.ToHexString(
+                    System.Security.Cryptography.SHA256.HashData(
+                        _clientCertificate.PublicKey
+                            .ExportSubjectPublicKeyInfo()))
+                    .ToLowerInvariant();
+
+            return new TlsSocketConnection(
+                tcpClient,
+                sslStream,
+                localPublicKey,
+                remotePublicKey,
+                localSpkiSha256,
+                remoteSpkiSha256);
         }
-
-        string localSpkiHex = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(_clientCertificate.PublicKey.ExportSubjectPublicKeyInfo())).ToLowerInvariant();
-
-        return new TlsSocketConnection(
-            tcpClient,
-            sslStream,
-            _clientCertificate.GetPublicKey(),
-            remotePublicKey,
-            localSpkiHex,
-            remoteSpkiSha256);
+        catch
+        {
+            if (sslStream != null)
+            {
+                await sslStream.DisposeAsync();
+            }
+            tcpClient.Dispose();
+            throw;
+        }
     }
 }
