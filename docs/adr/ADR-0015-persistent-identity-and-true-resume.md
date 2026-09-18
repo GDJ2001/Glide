@@ -73,7 +73,7 @@ The offset must be derivable from the contiguous verified chunk journal. Offset-
 
 ### Capability advertisement
 
-The protocol constants may define `identity-v1` and `resume-v1`, but production defaults do not advertise them until HARD-019–021 wire persistent key storage, enrollment, channel binding, and trusted-session enforcement. `resume-v1` can never be selected without `identity-v1`.
+`identity-v1` is advertised dynamically only on a native LAN session that has both persistent identity authority and the authenticated server-SPKI/BOOTSTRAP channel context required by HARD-021. Transports without that authority do not advertise it. `resume-v1` remains disabled until HARD-022/HARD-023 provide durable resume state, and it can never be selected without `identity-v1`.
 
 ## Canonical signature encoding
 
