@@ -392,8 +392,10 @@ class ProductionLanController private constructor(
             .asSequence()
             .filterNot {
                 it.isAnyLocalAddress ||
+                    it.isLinkLocalAddress ||
                     (!allowLoopbackEndpointsForTesting && it.isLoopbackAddress)
             }
+            .sortedByDescending { it is java.net.Inet4Address }
             .mapNotNull { address ->
                 val numeric = address.hostAddress
                     ?.substringBefore('%')
