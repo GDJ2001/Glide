@@ -110,21 +110,22 @@ By pairing two vertical pixels per character cell, the QR code displays with squ
 
 ### 4.2 Interactive CLI Commands
 ```bash
-# Listen for incoming transfers from Android, Windows, or Apple peers:
+# Listen interactively for one authenticated transfer.
+# A fresh QR/pairing invitation is generated and the offer still requires explicit y/yes consent:
 glide receive [--port <port>]
 
-# Send files to a specific peer endpoint:
-glide send <peer-ip> <peer-port> <file-paths...>
-
-# Send files using an out-of-band pairing invitation link:
+# Send files only with an out-of-band pairing invitation.
+# Raw host/port sending is intentionally disabled because discovery endpoints are not identity:
 glide send --pair "glide://pair/v1#..." <file-paths...>
 
-# Launch zero-install web gateway for any browser on the local Wi-Fi:
+# Launch the prototype browser gateway (not release-certified secure transport; HARD-025–030):
 glide web [--port <port>] <file-paths...>
 
-# Run as background daemon:
-glide daemon [--port <port>]
+# Run unattended receiving only with an explicit policy:
+glide daemon --policy ~/.config/glide/daemon-policy.json [--port <port>]
 ```
+
+The daemon policy binds unattended authority to a fresh one-use invitation plus an exact remote-IP allowlist, absolute receive destination, item/batch/count limits and invitation TTL. This is a temporary headless authorization boundary; persistent cryptographic peer identity is owned by HARD-018–021.
 
 ---
 
@@ -133,12 +134,16 @@ glide daemon [--port <port>]
 ### 5.1 Discovery Specification
 - Service Type: `_glide._tcp.local.`
 - Multicast Group: `224.0.0.251:5353`
-- TXT Records:
-  - `v`: Protocol version (`1`)
-  - `name`: User-facing machine or custom hostname
-  - `spki`: Lowercase hex SHA-256 digest of the server's SubjectPublicKeyInfo
-  - `presence`: 16-byte random presence token
-  - `cap`: Capability bitmask (`0x03` = LAN Profile 1 + Web Gateway)
+- SRV port: the actual dynamically bound listener port; no fixed Glide port is implied.
+- Canonical TXT keys:
+  - `v=1`: protocol major.
+  - `tv=1`: native LAN transport profile.
+  - `q=1`: fresh invitation/QR authentication is required.
+  - `p`: 32 lowercase hexadecimal presence identifier.
+  - `dn`: bounded display name.
+  - `dt`: one of `phone`, `tablet`, `desktop`, or `unknown`.
+
+Discovery metadata is untrusted routing/hint data only. Certificate fingerprints, bearer tokens, capabilities and authentication state are not advertised through mDNS; identity is established by the out-of-band invitation and exact TLS SPKI pin.
 
 ### 5.2 Avahi & systemd-resolved Coexistence Invariant
 On standard Linux distributions (Ubuntu, Fedora, Arch, Debian), port `5353` is frequently bound by `avahi-daemon` or `systemd-resolved`.
@@ -198,25 +203,35 @@ For home servers, NAS units, and background operation on workstations, Glide pro
 ```ini
 [Unit]
 Description=Glide Local File Sharing Daemon
-Documentation=https://github.com/GDJ2001/Glide
-After=network.target
+After=network.target network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/glide daemon --port 42424
+ExecStart=/usr/local/bin/glide daemon --policy %h/.config/glide/daemon-policy.json
 Restart=on-failure
 RestartSec=5s
-StandardOutput=journal
-StandardError=journal
+KillSignal=SIGTERM
+KillMode=mixed
+TimeoutStopSec=15s
+SendSIGKILL=yes
+UMask=0077
 
-# Sandboxing
+Environment=XDG_DATA_HOME=%h/.local/share
+Environment=XDG_CONFIG_HOME=%h/.config
+Environment=XDG_CACHE_HOME=%h/.cache
+
+NoNewPrivileges=true
+PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=%h/Downloads %h/.local/share/glide
+ReadWritePaths=%h/Downloads %h/.local/share/glide %h/.config/glide
 
 [Install]
 WantedBy=default.target
 ```
+
+The packaged unit intentionally expects `~/.config/glide/daemon-policy.json`. Its example policy targets `%h/Downloads`; administrators choosing another destination must update `ReadWritePaths` to grant that exact path rather than weakening `ProtectSystem`/`ProtectHome`. The active one-use bearer is written to the configured enrollment file with user-only permissions and is removed on consumption, rotation, or orderly shutdown.
 
 Commands:
 ```bash
