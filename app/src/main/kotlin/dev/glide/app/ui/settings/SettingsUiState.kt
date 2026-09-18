@@ -2,7 +2,7 @@ package dev.glide.app.ui.settings
 
 import dev.glide.core.ports.GlideSettings
 import dev.glide.core.ports.StorageSummary
-import dev.glide.data.db.TrustedPeerEntity
+import dev.glide.core.domain.TrustedPeerRecord
 
 /**
  * Diagnostics information for local device-to-device transport radios and permissions.
@@ -31,7 +31,7 @@ data class SettingsUiState(
     val isNearbyDiagnosticsOpen: Boolean = false,
     val isLicensesDialogOpen: Boolean = false,
     val isTrustedDevicesDialogOpen: Boolean = false,
-    val trustedPeers: List<TrustedPeerEntity> = emptyList(),
+    val trustedPeers: List<TrustedPeerRecord> = emptyList(),
     val nearbyDiagnostics: NearbyDiagnosticsState = NearbyDiagnosticsState(),
     val appVersionName: String = "1.0.0-dev",
     val appBuildNumber: String = "1"
