@@ -36,3 +36,24 @@ public static class ProtocolCapabilities
         }
     }
 }
+
+
+public static class ResumeRejectCodes
+{
+    public const string FileChanged = "FILE_CHANGED";
+    public const string JournalMismatch = "JOURNAL_MISMATCH";
+    public const string Expired = "EXPIRED";
+    public const string Unauthorized = "UNAUTHORIZED";
+    public const string InvalidOffset = "INVALID_OFFSET";
+    public const string CapabilityMismatch = "CAPABILITY_MISMATCH";
+
+    public static readonly HashSet<string> All =
+    [
+        FileChanged,
+        JournalMismatch,
+        Expired,
+        Unauthorized,
+        InvalidOffset,
+        CapabilityMismatch
+    ];
+}
