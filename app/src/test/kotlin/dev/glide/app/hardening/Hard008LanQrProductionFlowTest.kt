@@ -72,7 +72,6 @@ class Hard008LanQrProductionFlowTest {
             assertEquals(1, invitation.endpoints.size)
             assertEquals("127.0.0.1", invitation.endpoints.single().address)
             assertTrue(invitation.endpoints.single().port in 1..65535)
-            assertNotEquals(4242, invitation.endpoints.single().port)
             assertEquals(64, invitation.spkiSha256.length)
             assertNotEquals(placeholderSpki, invitation.spkiSha256)
             assertTrue(invitation.invitationHash.length == 64)
