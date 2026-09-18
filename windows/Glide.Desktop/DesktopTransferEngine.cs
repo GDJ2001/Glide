@@ -226,20 +226,9 @@ public sealed class DesktopTransferEngine
 
         var batchId =
             new BatchId(Guid.NewGuid().ToString("D").ToLowerInvariant());
-        long totalBytes = checked(
-            request.Files.Sum(static file => file.SizeBytes));
-
-        if (request.Files.Count > peerMaxItems ||
-            totalBytes > peerMaxBatchBytes ||
-            request.Files.Any(file => file.SizeBytes > peerMaxItemBytes))
-        {
-            throw new ProtocolViolationException(
-                WireErrorCodes.LimitExceeded,
-                "Transfer offer exceeds the receiver's negotiated limits.");
-        }
 
         var offeredItems =
-            new List<(string ItemId, DesktopTransferFile File, Sha256Digest Digest, JsonObject Metadata)>(
+            new List<(string ItemId, DesktopTransferFile File, long ExpectedSize, JsonObject Metadata)>(
                 request.Files.Count);
 
         foreach (DesktopTransferFile file in request.Files)
@@ -248,22 +237,32 @@ public sealed class DesktopTransferEngine
 
             var itemId =
                 new ItemId(Guid.NewGuid().ToString("D").ToLowerInvariant());
-
-            // HARD-014 replaces this pre-send whole-file read with bounded streaming hashing.
-            byte[] bytes =
-                await File.ReadAllBytesAsync(file.FilePath, cancellationToken);
-            var digest = new Sha256Digest(
-                Convert.ToHexStringLower(SHA256.HashData(bytes)));
+            long expectedSize =
+                new FileInfo(file.FilePath).Length;
 
             var metadata = new JsonObject
             {
                 ["itemId"] = itemId.Value,
                 ["name"] = file.Name,
                 ["mime"] = "application/octet-stream",
-                ["sizeBytes"] = file.SizeBytes.ToString(),
+                ["sizeBytes"] = expectedSize.ToString(),
                 ["relativePath"] = file.Name
             };
-            offeredItems.Add((itemId.Value, file, digest, metadata));
+            offeredItems.Add(
+                (itemId.Value, file, expectedSize, metadata));
+        }
+
+        long totalBytes = checked(
+            offeredItems.Sum(static item => item.ExpectedSize));
+
+        if (offeredItems.Count > peerMaxItems ||
+            totalBytes > peerMaxBatchBytes ||
+            offeredItems.Any(item =>
+                item.ExpectedSize > peerMaxItemBytes))
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.LimitExceeded,
+                "Transfer offer exceeds the receiver's negotiated limits.");
         }
 
         List<List<JsonObject>> pages = BuildOfferPages(
@@ -353,7 +352,7 @@ public sealed class DesktopTransferEngine
                         ["batchId"] = batchId.Value,
                         ["itemId"] = entry.ItemId,
                         ["bulkRef"] = bulkRef,
-                        ["sizeBytes"] = entry.File.SizeBytes.ToString()
+                        ["sizeBytes"] = entry.ExpectedSize.ToString()
                     }),
                 cancellationToken);
 
@@ -365,27 +364,49 @@ public sealed class DesktopTransferEngine
                 batchId.Value,
                 entry.ItemId);
 
+            Sha256Digest transmittedDigest;
+            long streamedBytes = 0;
+
             using (var stream = new FileStream(
                 entry.File.FilePath,
                 FileMode.Open,
                 FileAccess.Read,
                 FileShare.Read,
                 65536,
-                useAsync: true))
+                FileOptions.Asynchronous |
+                FileOptions.SequentialScan))
+            using (var sha256 = new StreamingSha256())
             {
+                if (stream.Length != entry.ExpectedSize)
+                {
+                    throw new ProtocolViolationException(
+                        WireErrorCodes.SourceUnavailable,
+                        $"File '{entry.File.Name}' changed size after the offer was accepted.");
+                }
+
                 byte[] buffer = new byte[65520];
-                long streamedBytes = 0;
                 int read;
                 while ((read = await stream.ReadAsync(
                     buffer.AsMemory(0, buffer.Length),
                     cancellationToken)) > 0)
                 {
+                    long nextBytes = checked(
+                        streamedBytes + read);
+                    if (nextBytes > entry.ExpectedSize)
+                    {
+                        throw new ProtocolViolationException(
+                            WireErrorCodes.SourceUnavailable,
+                            $"File '{entry.File.Name}' grew while streaming.");
+                    }
+
                     await channel.WriteDataChunkAsync(
                         bulkRef,
                         buffer.AsMemory(0, read),
                         cancellationToken);
 
-                    streamedBytes += read;
+                    sha256.Append(
+                        buffer.AsSpan(0, read));
+                    streamedBytes = nextBytes;
                     cumulativeTransferred += read;
                     interaction.OnProgress(
                         new DesktopTransferProgress(
@@ -396,28 +417,20 @@ public sealed class DesktopTransferEngine
                             totalBytes));
                 }
 
-                if (streamedBytes != entry.File.SizeBytes)
+                if (streamedBytes != entry.ExpectedSize)
                 {
                     throw new ProtocolViolationException(
                         WireErrorCodes.SourceUnavailable,
                         $"File '{entry.File.Name}' changed length while streaming.");
                 }
 
-                byte[] extra = new byte[1];
-                int extraRead = await stream.ReadAsync(
-                    extra.AsMemory(0, 1),
-                    cancellationToken);
-                if (extraRead > 0)
-                {
-                    throw new ProtocolViolationException(
-                        WireErrorCodes.SourceUnavailable,
-                        $"File '{entry.File.Name}' grew while streaming.");
-                }
+                transmittedDigest =
+                    sha256.Complete();
             }
 
             await channel.WriteStreamEndAsync(
                 bulkRef,
-                entry.File.SizeBytes,
+                streamedBytes,
                 cancellationToken);
 
             await channel.WriteEnvelopeAsync(
@@ -427,8 +440,8 @@ public sealed class DesktopTransferEngine
                     {
                         ["batchId"] = batchId.Value,
                         ["itemId"] = entry.ItemId,
-                        ["actualBytes"] = entry.File.SizeBytes.ToString(),
-                        ["sha256"] = entry.Digest.Value
+                        ["actualBytes"] = streamedBytes.ToString(),
+                        ["sha256"] = transmittedDigest.Value
                     }),
                 cancellationToken);
 
@@ -462,10 +475,10 @@ public sealed class DesktopTransferEngine
                 itemResult.Body["sizeBytes"]?.ToString() ?? "-1");
             string receiptSha =
                 itemResult.Body["sha256"]?.ToString() ?? string.Empty;
-            if (receiptSize != entry.File.SizeBytes ||
+            if (receiptSize != entry.ExpectedSize ||
                 !string.Equals(
                     receiptSha,
-                    entry.Digest.Value,
+                    transmittedDigest.Value,
                     StringComparison.Ordinal))
             {
                 throw new ProtocolViolationException(
@@ -474,7 +487,7 @@ public sealed class DesktopTransferEngine
             }
 
             verifiedCount++;
-            verifiedBytes += entry.File.SizeBytes;
+            verifiedBytes += entry.ExpectedSize;
             interaction.OnItemStatus(
                 DesktopTransferDirection.Send,
                 entry.File.Name,
