@@ -142,17 +142,55 @@ class PersistentIdentityComplianceTest {
         val bobFingerprint = dev.glide.core.identity.PeerIdentityVerifier.deriveFingerprint(bobKeyPair.public.encoded)
         assertFalse(aliceFingerprint == bobFingerprint)
 
-        // Mutual challenge response
-        val challengeNonce = dev.glide.core.identity.PeerIdentityVerifier.generateNonce()
-        val bobSignature = dev.glide.core.identity.PeerIdentityVerifier.signNonce(bobKeyPair.private, challengeNonce)
+        // Authentication signs the complete HARD-018 transcript, never a bare nonce.
+        val challengeNonce =
+            dev.glide.core.identity.PeerIdentityVerifier.generateNonce()
+                .joinToString("") { "%02x".format(it) }
+        val capabilityHash =
+            dev.glide.core.protocol.IdentityResumeTranscript
+                .capabilityHashHex(
+                    listOf(
+                        "folder-v1",
+                        "identity-v1",
+                        "sha256",
+                        "stream-v1"
+                    )
+                )
+        val transcript =
+            dev.glide.core.protocol.IdentityResumeTranscript
+                .identityProofBytes(
+                    activeSessionId =
+                        "11111111-1111-4111-8111-111111111111",
+                    challengeMessageId =
+                        "22222222-2222-4222-8222-222222222222",
+                    signerRole = "sender",
+                    verifierRole = "receiver",
+                    signerFingerprintHex = bobFingerprint,
+                    verifierFingerprintHex = aliceFingerprint,
+                    challengeNonceHex = challengeNonce,
+                    channelBindingHex =
+                        "ffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221100",
+                    capabilityHashHex = capabilityHash
+                )
+        val bobSignature =
+            dev.glide.core.identity.PeerIdentityVerifier
+                .signTranscript(
+                    bobKeyPair.private,
+                    transcript
+                )
 
-        // Valid verification by Alice
-        val verified = dev.glide.core.identity.PeerIdentityVerifier.verifyNonceSignature(
-            publicKeyDer = bobKeyPair.public.encoded,
-            nonce = challengeNonce,
-            signatureBytes = bobSignature
+        val verified =
+            dev.glide.core.identity.PeerIdentityVerifier
+                .verifyTranscriptSignature(
+                    publicKeyDer =
+                        bobKeyPair.public.encoded,
+                    transcript = transcript,
+                    signatureBytes = bobSignature
+                )
+        assertTrue(
+            "Legitimate bound transcript signature must verify successfully",
+            verified
         )
-        assertTrue("Legitimate signature must verify successfully", verified)
 
         val record = dev.glide.core.domain.TrustedPeerRecord(
             peerFingerprintHex = bobFingerprint,
@@ -180,37 +218,111 @@ class PersistentIdentityComplianceTest {
 
     @Test
     fun test8_protocolEnvelopes_serializationAndCapabilityNegotiation() {
-        // Assert capability strings
-        assertTrue(
-            "Negotiation constants must offer identity-v1",
-            dev.glide.core.protocol.NegotiationConstants.OPTIONAL_CAPABILITIES.contains(
-                dev.glide.core.protocol.NegotiationConstants.CAPABILITY_PERSISTENT_IDENTITY_V1
-            )
+        // identity-v1/resume-v1 are known extension capabilities but MUST NOT be
+        // advertised by default before HARD-019..021 wire trusted-session enforcement.
+        assertFalse(
+            "Production optional capabilities must not advertise identity-v1 yet",
+            dev.glide.core.protocol.NegotiationConstants
+                .OPTIONAL_CAPABILITIES
+                .contains(
+                    dev.glide.core.protocol.NegotiationConstants
+                        .CAPABILITY_PERSISTENT_IDENTITY_V1
+                )
+        )
+        assertFalse(
+            "Production optional capabilities must not advertise resume-v1 yet",
+            dev.glide.core.protocol.NegotiationConstants
+                .OPTIONAL_CAPABILITIES
+                .contains(
+                    dev.glide.core.protocol.NegotiationConstants
+                        .CAPABILITY_TRUE_RESUME_V1
+                )
         )
         assertTrue(
-            "Negotiation constants must offer resume-v1",
-            dev.glide.core.protocol.NegotiationConstants.OPTIONAL_CAPABILITIES.contains(
-                dev.glide.core.protocol.NegotiationConstants.CAPABILITY_TRUE_RESUME_V1
-            )
+            dev.glide.core.protocol.NegotiationConstants
+                .TRUST_EXTENSION_CAPABILITIES
+                .contains(
+                    dev.glide.core.protocol.NegotiationConstants
+                        .CAPABILITY_PERSISTENT_IDENTITY_V1
+                )
+        )
+        assertTrue(
+            dev.glide.core.protocol.NegotiationConstants
+                .TRUST_EXTENSION_CAPABILITIES
+                .contains(
+                    dev.glide.core.protocol.NegotiationConstants
+                        .CAPABILITY_TRUE_RESUME_V1
+                )
         )
 
-        // IDENTITY_CHALLENGE roundtrip
+        val capabilityHash =
+            dev.glide.core.protocol.IdentityResumeTranscript
+                .capabilityHashHex(
+                    listOf(
+                        "folder-v1",
+                        "identity-v1",
+                        "sha256",
+                        "stream-v1"
+                    )
+                )
+
         val body = buildJsonObject {
-            put("nonceHex", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+            put(
+                "profile",
+                dev.glide.core.protocol.IdentityResumeTranscript
+                    .IDENTITY_PROFILE
+            )
+            put(
+                "challengeNonceHex",
+                "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+            )
+            put(
+                "verifierFingerprintHex",
+                "abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd"
+            )
+            put("verifierRole", "receiver")
+            put("signerRole", "sender")
+            put(
+                "channelBindingHex",
+                "ffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221100"
+            )
+            put("capabilityHashHex", capabilityHash)
         }
-        val envelope = dev.glide.core.protocol.Envelope(
-            v = 1,
-            type = dev.glide.core.protocol.MessageTypes.IDENTITY_CHALLENGE,
-            sessionId = dev.glide.core.domain.SessionId("11111111-1111-4111-8111-111111111111"),
-            messageId = dev.glide.core.domain.MessageId("22222222-2222-4222-8222-222222222222"),
-            seq = 1L,
-            body = body
+        val envelope =
+            dev.glide.core.protocol.Envelope(
+                v = 1,
+                type =
+                    dev.glide.core.protocol.MessageTypes
+                        .IDENTITY_CHALLENGE,
+                sessionId =
+                    dev.glide.core.domain.SessionId(
+                        "11111111-1111-4111-8111-111111111111"
+                    ),
+                messageId =
+                    dev.glide.core.domain.MessageId(
+                        "22222222-2222-4222-8222-222222222222"
+                    ),
+                seq = 1L,
+                body = body
+            )
+        val encoded =
+            dev.glide.core.protocol.ProtocolCodec
+                .encode(envelope)
+        val decoded =
+            dev.glide.core.protocol.ProtocolCodec
+                .decode(encoded)
+        assertEquals(
+            dev.glide.core.protocol.MessageTypes.IDENTITY_CHALLENGE,
+            decoded.type
         )
-        val encoded = dev.glide.core.protocol.ProtocolCodec.encode(envelope)
-        val decoded = dev.glide.core.protocol.ProtocolCodec.decode(encoded)
-        assertEquals(dev.glide.core.protocol.MessageTypes.IDENTITY_CHALLENGE, decoded.type)
-        val challengeDto: dev.glide.core.protocol.IdentityChallengeDto = dev.glide.core.protocol.ProtocolCodec.decodeBody(decoded)
-        assertEquals("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", challengeDto.nonceHex)
+        val challengeDto:
+            dev.glide.core.protocol.IdentityChallengeDto =
+            dev.glide.core.protocol.ProtocolCodec
+                .decodeBody(decoded)
+        assertEquals(
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            challengeDto.challengeNonceHex
+        )
     }
 
     @Test
