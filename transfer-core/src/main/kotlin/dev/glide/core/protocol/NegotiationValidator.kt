@@ -55,6 +55,7 @@ object NegotiationValidator {
     ): HelloBody {
         require(isValidUuidV4(ephemeralPeerId)) { "ephemeralPeerId must be UUIDv4, got: '$ephemeralPeerId'" }
         validateDisplayName(displayName)
+        validateCapabilityDependencies(optionalCapabilities.toSet())
         return HelloBody(
             supportedMajors = listOf(NegotiationConstants.PROTOCOL_MAJOR_VERSION),
             requiredCapabilities = NegotiationConstants.REQUIRED_CAPABILITIES.toList(),
@@ -75,6 +76,7 @@ object NegotiationValidator {
         validateHello(hello)
         require(isValidUuidV4(ephemeralPeerId)) { "ephemeralPeerId must be UUIDv4, got: '$ephemeralPeerId'" }
         validateDisplayName(displayName)
+        validateCapabilityDependencies(supportedOptionalCapabilities)
 
         if (NegotiationConstants.PROTOCOL_MAJOR_VERSION !in hello.supportedMajors) {
             throw ProtocolViolationException(
