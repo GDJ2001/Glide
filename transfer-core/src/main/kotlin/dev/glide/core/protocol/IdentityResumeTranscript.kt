@@ -33,7 +33,9 @@ object IdentityResumeTranscript {
     private val capabilityRegex = Regex("^[a-z0-9][a-z0-9-]{0,63}$")
     private val lowerHex64Regex = Regex("^[0-9a-f]{64}$")
 
-    fun capabilityHashHex(capabilities: Collection<String>): String {
+    fun capabilityCanonicalBytes(
+        capabilities: Collection<String>
+    ): ByteArray {
         val normalized = capabilities.toSortedSet()
         require(normalized.all(capabilityRegex::matches)) {
             "Capabilities must be lowercase ASCII tokens of at most 64 characters"
@@ -45,8 +47,13 @@ object IdentityResumeTranscript {
             out.writeInt(normalized.size)
             normalized.forEach { writeString(out, it) }
         }
-        return sha256Hex(bytes.toByteArray())
+        return bytes.toByteArray()
     }
+
+    fun capabilityHashHex(
+        capabilities: Collection<String>
+    ): String =
+        sha256Hex(capabilityCanonicalBytes(capabilities))
 
     fun identityProofBytes(
         activeSessionId: String,
