@@ -4,7 +4,6 @@ using System.Text.Json.Nodes;
 using Glide.Core.Codec;
 using Glide.Core.Models;
 using Glide.Core.Pairing;
-using Glide.Core.Security;
 using Glide.Core.Storage;
 using Glide.Core.Transport.Lan;
 using Glide.Transport.Framing;
@@ -15,11 +14,9 @@ namespace Glide.Desktop;
 /// <summary>
 /// Shared desktop application/session engine for CLI and WPF.
 ///
-/// HARD-011 deliberately centralizes the currently-shipped desktop session semantics without
-/// attempting the protocol repairs owned by HARD-012/HARD-013/HARD-014. In particular, the
-/// existing one-page offer, current sequence values, direct/unpaired SAS construction, and
-/// pre-send whole-file digest behavior are preserved here so later hardening tasks have one
-/// implementation to repair rather than two divergent copies.
+/// HARD-011 centralized the desktop session semantics. HARD-012 removes the unauthenticated
+/// direct/SAS path and requires the canonical pinned-TLS + one-use invitation bootstrap.
+/// HARD-013/HARD-014 still own sequencing/pagination and bounded hashing respectively.
 /// </summary>
 public sealed class DesktopTransferEngine
 {
@@ -30,6 +27,17 @@ public sealed class DesktopTransferEngine
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(interaction);
+
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return DesktopTransferResult.CancelledByUser("Transfer cancelled.");
+        }
+
+        if (request.Invitation == null)
+        {
+            return DesktopTransferResult.Failed(
+                "Authenticated pairing invitation required. Scan or paste a current Glide pairing invitation before sending.");
+        }
 
         if (request.Files.Count == 0)
         {
@@ -46,33 +54,27 @@ public sealed class DesktopTransferEngine
 
         try
         {
-            string host = request.Host;
-            int port = request.Port;
-            if (request.Invitation != null)
+            var invitation = request.Invitation;
+            if (invitation.IsExpired())
             {
-                if (request.Invitation.IsExpired())
-                {
-                    return DesktopTransferResult.Failed(
-                        "Pairing invitation has expired. Request a new pairing code.");
-                }
-
-                var endpoint = request.Invitation.Endpoints.First();
-                host = endpoint.Address;
-                port = endpoint.Port;
+                return DesktopTransferResult.Failed(
+                    "Pairing invitation has expired. Request a new pairing code.");
             }
+
+            var endpoint = invitation.Endpoints.First();
+            string host = endpoint.Address;
+            int port = endpoint.Port;
 
             interaction.OnStatus(
                 DesktopTransferDirection.Send,
                 $"Connecting to {host}:{port} over TLS 1.3...");
 
             var client = new TlsSocketClient();
-            await using var connection = request.Invitation != null
-                ? await client.ConnectAsync(
-                    host,
-                    port,
-                    expectedSpkiSha256: request.Invitation.SpkiSha256,
-                    cancellationToken)
-                : await client.ConnectAsync(host, port, cancellationToken);
+            await using var connection = await client.ConnectAsync(
+                host,
+                port,
+                expectedSpkiSha256: invitation.SpkiSha256,
+                cancellationToken);
 
             return await RunSenderSessionAsync(
                 connection,
@@ -131,46 +133,27 @@ public sealed class DesktopTransferEngine
         await using var channel = new LanRecordChannel(connection.SslStream);
         var sessionId = NewSessionId();
 
-        if (request.Invitation != null)
+        var invitation = request.Invitation
+            ?? throw new InvalidOperationException(
+                "Authenticated pairing invitation is required.");
+
+        var bootstrap = new LanBootstrapMessage(
+            invitationId: invitation.InvitationId,
+            token: invitation.Token,
+            invitationHash: invitation.InvitationHash,
+            sessionId: sessionId.Value,
+            role: LanBootstrapMessage.RoleSender);
+
+        await channel.WriteBootstrapAsync(bootstrap, cancellationToken);
+        var bootstrapResult =
+            await channel.ReadBootstrapResultAsync(cancellationToken);
+        if (!bootstrapResult.IsAccepted)
         {
-            var bootstrap = new LanBootstrapMessage(
-                invitationId: request.Invitation.InvitationId,
-                token: request.Invitation.Token,
-                invitationHash: request.Invitation.InvitationHash,
-                sessionId: sessionId.Value,
-                role: LanBootstrapMessage.RoleSender);
-
-            await channel.WriteBootstrapAsync(bootstrap, cancellationToken);
-            var result = await channel.ReadBootstrapResultAsync(cancellationToken);
-            if (!result.IsAccepted)
-            {
-                return DesktopTransferResult.RejectedByPeer(
-                    $"Pairing bootstrap rejected by peer: {result.Code}");
-            }
-
-            interaction.OnInvitationConsumed(DesktopTransferDirection.Send);
+            return DesktopTransferResult.RejectedByPeer(
+                $"Pairing bootstrap rejected by peer: {bootstrapResult.Code}");
         }
-        else
-        {
-            // HARD-012 owns replacing the legacy independently-generated direct-SAS nonce.
-            byte[] sessionNonce = RandomNumberGenerator.GetBytes(32);
-            int sas = SasCalculator.CalculateSas(
-                connection.LocalPublicKeyBytes,
-                connection.RemotePublicKeyBytes,
-                sessionNonce);
 
-            bool confirmed = await interaction.ConfirmSasAsync(
-                DesktopTransferDirection.Send,
-                request.Host,
-                sas,
-                cancellationToken);
-
-            if (!confirmed)
-            {
-                return DesktopTransferResult.CancelledByUser(
-                    "Transfer cancelled during verification.");
-            }
-        }
+        interaction.OnInvitationConsumed(DesktopTransferDirection.Send);
 
         string localName = string.IsNullOrWhiteSpace(request.LocalDeviceName)
             ? Environment.MachineName
@@ -454,82 +437,39 @@ public sealed class DesktopTransferEngine
                 "Peer disconnected before sending the first record.");
         }
 
-        Envelope hello;
-        if (firstRecord is LanRecord.Bootstrap bootstrapRecord)
-        {
-            var bootstrap = LanBootstrapCodec.DecodeBootstrap(
-                bootstrapRecord.JsonBytes);
-
-            bool invitationMatches =
-                request.Invitation != null &&
-                string.Equals(
-                    request.Invitation.InvitationId,
-                    bootstrap.InvitationId,
-                    StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(
-                    request.Invitation.Token,
-                    bootstrap.Token,
-                    StringComparison.Ordinal) &&
-                string.Equals(
-                    request.Invitation.InvitationHash,
-                    bootstrap.InvitationHash,
-                    StringComparison.OrdinalIgnoreCase) &&
-                !request.Invitation.IsExpired();
-
-            bool acceptedWithoutInvitation =
-                request.Invitation == null &&
-                request.AllowBootstrapWithoutInvitation;
-
-            if (!invitationMatches && !acceptedWithoutInvitation)
-            {
-                var code =
-                    request.Invitation?.IsExpired() == true
-                        ? LanBootstrapFailureCode.INVITATION_EXPIRED
-                        : LanBootstrapFailureCode.AUTHENTICATION_FAILED;
-
-                await channel.WriteBootstrapResultAsync(
-                    LanBootstrapResult.Rejected(code),
-                    cancellationToken);
-
-                return DesktopTransferResult.RejectedByPeer(
-                    $"Inbound pairing bootstrap rejected: {code}.");
-            }
-
-            await channel.WriteBootstrapResultAsync(
-                LanBootstrapResult.Accepted(bootstrap.SessionId),
-                cancellationToken);
-
-            interaction.OnInvitationConsumed(DesktopTransferDirection.Receive);
-            hello = await channel.ReadEnvelopeAsync(cancellationToken);
-        }
-        else if (firstRecord is LanRecord.Control controlRecord)
-        {
-            // HARD-012 owns replacing the legacy independently-generated direct-SAS nonce.
-            byte[] sessionNonce = RandomNumberGenerator.GetBytes(32);
-            int sas = SasCalculator.CalculateSas(
-                connection.RemotePublicKeyBytes,
-                connection.LocalPublicKeyBytes,
-                sessionNonce);
-
-            bool confirmed = await interaction.ConfirmSasAsync(
-                DesktopTransferDirection.Receive,
-                "Remote Peer",
-                sas,
-                cancellationToken);
-
-            if (!confirmed)
-            {
-                return DesktopTransferResult.RejectedByPeer(
-                    "Transfer rejected during verification.");
-            }
-
-            hello = ProtocolCodec.Decode(controlRecord.Payload);
-        }
-        else
+        if (firstRecord is not LanRecord.Bootstrap bootstrapRecord)
         {
             throw new ProtocolViolationException(
                 WireErrorCodes.ProtocolOrder,
-                $"Unexpected first record kind: {firstRecord.Kind}");
+                "Authenticated BOOTSTRAP must be the first LAN record.");
+        }
+
+        var bootstrap = LanBootstrapCodec.DecodeBootstrap(
+            bootstrapRecord.JsonBytes);
+        LanBootstrapResult bootstrapResult =
+            request.InvitationAuthority.Consume(bootstrap);
+
+        await channel.WriteBootstrapResultAsync(
+            bootstrapResult,
+            cancellationToken);
+
+        if (!bootstrapResult.IsAccepted)
+        {
+            return DesktopTransferResult.RejectedByPeer(
+                $"Inbound pairing bootstrap rejected: {bootstrapResult.Code}.");
+        }
+
+        interaction.OnInvitationConsumed(DesktopTransferDirection.Receive);
+        Envelope hello = await channel.ReadEnvelopeAsync(cancellationToken);
+
+        if (!string.Equals(
+                hello.SessionId.Value,
+                bootstrap.SessionId,
+                StringComparison.Ordinal))
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.ProtocolOrder,
+                "HELLO sessionId must match the authenticated bootstrap session.");
         }
 
         string peerName =
