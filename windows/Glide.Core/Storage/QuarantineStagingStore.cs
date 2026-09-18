@@ -449,35 +449,51 @@ public sealed class QuarantineStagingStore
 
             string targetPath = GetDestinationPath(
                 sanitizedRelativePath);
-            string finalPath =
-                ResolveCollision(targetPath);
 
-            string? targetDirectory =
-                Path.GetDirectoryName(finalPath);
-            if (targetDirectory != null)
+            for (int attempt = 0; attempt < 1000; attempt++)
             {
-                EnsureDirectoryChainSafe(
-                    _destinationRoot,
-                    targetDirectory,
-                    createDirectories: true,
-                    WireErrorCodes.DestinationUnavailable);
+                string finalPath =
+                    ResolveCollision(targetPath);
+
+                string? targetDirectory =
+                    Path.GetDirectoryName(finalPath);
+                if (targetDirectory != null)
+                {
+                    EnsureDirectoryChainSafe(
+                        _destinationRoot,
+                        targetDirectory,
+                        createDirectories: true,
+                        WireErrorCodes.DestinationUnavailable);
+                }
+
+                try
+                {
+                    File.Move(
+                        quarantinePath,
+                        finalPath,
+                        overwrite: false);
+                    return finalPath;
+                }
+                catch (IOException)
+                    when (File.Exists(finalPath) ||
+                          Directory.Exists(finalPath))
+                {
+                    // A different store/process won this collision name after resolution.
+                    // Re-resolve against the filesystem and retry without overwriting.
+                    continue;
+                }
+                catch (Exception ex)
+                {
+                    throw new ProtocolViolationException(
+                        WireErrorCodes.DestinationUnavailable,
+                        "Verified quarantine file could not be committed to the destination.",
+                        ex);
+                }
             }
 
-            try
-            {
-                File.Move(
-                    quarantinePath,
-                    finalPath,
-                    overwrite: false);
-                return finalPath;
-            }
-            catch (Exception ex)
-            {
-                throw new ProtocolViolationException(
-                    WireErrorCodes.DestinationUnavailable,
-                    "Verified quarantine file could not be committed to the destination.",
-                    ex);
-            }
+            throw new ProtocolViolationException(
+                WireErrorCodes.DestinationUnavailable,
+                "Unable to resolve a collision-safe destination after 1000 attempts.");
         }
     }
 
