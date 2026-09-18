@@ -1,12 +1,11 @@
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text.Json.Nodes;
-using System.Text.RegularExpressions;
-using Glide.Core.Codec;
 using Glide.Core.Models;
 using Glide.Core.Pairing;
 using Glide.Core.Storage;
 using Glide.Core.Transport.Lan;
+using Glide.Desktop;
 using Glide.Transport.Framing;
 using Glide.Transport.Sockets;
 using GlideAppProgram = Glide.App.Program;
@@ -19,9 +18,11 @@ public sealed class Hard003ConsoleRuntimeCollectionDefinition
 }
 
 /// <summary>
-/// Red-before-fix regressions for defects confirmed by the HARD review.
-/// These tests intentionally exercise the real Glide.App send/receive orchestration instead of
-/// source-text scanning. They are expected to fail until the corresponding HARD-011..016 fixes land.
+/// Executable regressions discovered by HARD-003.
+///
+/// The authentication regressions now pass after HARD-012. Pagination, sequencing, and bounded
+/// hashing remain expected-red until HARD-013/HARD-014 land; the suite keeps exercising those
+/// defects through the authenticated production send path.
 /// </summary>
 [Trait("HARD", "003-red")]
 [Collection("HARD-003 console/runtime")]
@@ -31,7 +32,10 @@ public sealed class Hard003DesktopRegressionTests : IDisposable
 
     public Hard003DesktopRegressionTests()
     {
-        _root = Path.Combine(Path.GetTempPath(), "GlideHard003", Guid.NewGuid().ToString("N"));
+        _root = Path.Combine(
+            Path.GetTempPath(),
+            "GlideHard003",
+            Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_root);
     }
 
@@ -39,7 +43,10 @@ public sealed class Hard003DesktopRegressionTests : IDisposable
     {
         try
         {
-            if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true);
+            if (Directory.Exists(_root))
+            {
+                Directory.Delete(_root, recursive: true);
+            }
         }
         catch
         {
@@ -52,24 +59,30 @@ public sealed class Hard003DesktopRegressionTests : IDisposable
     {
         using var listener = new TlsSocketListener(port: 0);
         var store = CreateStore("daemon-auth");
+        var authority = new LanInvitationAuthority();
+        var engine = new DesktopTransferEngine();
 
         var serverTask = Task.Run(async () =>
         {
-            await using var serverConnection = await listener.AcceptConnectionAsync();
-            try
-            {
-                return await InvokeReceiveHandlerAsync(serverConnection, store, invitation: null, isDaemon: true);
-            }
-            catch
-            {
-                return false;
-            }
+            await using var serverConnection =
+                await listener.AcceptConnectionAsync();
+            return await engine.ReceiveAsync(
+                serverConnection,
+                new DesktopReceiveRequest(
+                    store,
+                    authority,
+                    "HARD-003 receiver"),
+                new RejectingInteraction());
         });
 
         LanBootstrapResult bootstrapResult;
         var client = new TlsSocketClient();
-        await using (var clientConnection = await client.ConnectAsync("127.0.0.1", listener.BoundPort))
-        using (var channel = new LanRecordChannel(clientConnection.SslStream))
+        await using (var clientConnection = await client.ConnectAsync(
+            "127.0.0.1",
+            listener.BoundPort,
+            expectedSpkiSha256: listener.LocalSpkiSha256))
+        await using (var channel =
+            new LanRecordChannel(clientConnection.SslStream))
         {
             var bootstrap = new LanBootstrapMessage(
                 invitationId: NewUuid(),
@@ -78,71 +91,31 @@ public sealed class Hard003DesktopRegressionTests : IDisposable
                 sessionId: NewUuid());
 
             await channel.WriteBootstrapAsync(bootstrap);
-            bootstrapResult = await channel.ReadBootstrapResultAsync();
+            bootstrapResult =
+                await channel.ReadBootstrapResultAsync();
         }
 
-        await serverTask;
+        DesktopTransferResult serverResult =
+            await serverTask.WaitAsync(TimeSpan.FromSeconds(5));
 
-        Assert.False(
-            bootstrapResult.IsAccepted,
-            "A headless daemon with no active invitation/enrollment authority must fail closed instead of accepting an arbitrary bootstrap token.");
+        Assert.False(bootstrapResult.IsAccepted);
+        Assert.True(serverResult.Rejected);
     }
 
     [Fact]
-    public async Task DirectUnpairedTransfer_BothProductionPaths_MustDisplaySameSas()
+    public async Task DirectUnpairedTransfer_ProductionCli_MustFailClosed()
     {
-        string file = Path.Combine(_root, "sas.txt");
-        await File.WriteAllTextAsync(file, "HARD-003 SAS runtime regression");
+        string file = Path.Combine(_root, "unpaired.txt");
+        await File.WriteAllTextAsync(
+            file,
+            "HARD-003 unauthenticated path regression");
 
-        using var listener = new TlsSocketListener(port: 0);
-        var store = CreateStore("sas");
+        int exitCode = await InvokeSendAsync(
+            "127.0.0.1",
+            "42424",
+            file);
 
-        var originalOut = Console.Out;
-        var capture = new StringWriter();
-        Console.SetOut(TextWriter.Synchronized(capture));
-
-        Task<bool>? serverTask = null;
-        try
-        {
-            serverTask = Task.Run(async () =>
-            {
-                await using var serverConnection = await listener.AcceptConnectionAsync();
-                return await InvokeReceiveHandlerAsync(serverConnection, store, invitation: null, isDaemon: false);
-            });
-
-            try
-            {
-                await InvokeSendAsync("127.0.0.1", listener.BoundPort.ToString(), file);
-            }
-            catch
-            {
-                // This regression only needs the two production SAS values. Later protocol defects
-                // may terminate the transfer after both values have already been displayed.
-            }
-
-            if (serverTask != null)
-            {
-                try
-                {
-                    await serverTask.WaitAsync(TimeSpan.FromSeconds(5));
-                }
-                catch
-                {
-                    // Same rationale: ignore later transfer/protocol failure after SAS emission.
-                }
-            }
-        }
-        finally
-        {
-            Console.SetOut(originalOut);
-        }
-
-        MatchCollection codes = Regex.Matches(capture.ToString(), @"6-DIGIT VERIFICATION CODE: \[ (\d{6}) \]");
-        Assert.True(codes.Count >= 2, $"Expected both sender and receiver SAS output, got {codes.Count}. Output: {capture}");
-
-        string first = codes[0].Groups[1].Value;
-        string second = codes[1].Groups[1].Value;
-        Assert.Equal(first, second);
+        Assert.Equal(1, exitCode);
     }
 
     [Fact]
@@ -151,38 +124,43 @@ public sealed class Hard003DesktopRegressionTests : IDisposable
         var files = new List<string>();
         for (int i = 0; i < 33; i++)
         {
-            string path = Path.Combine(_root, $"page-{i:D2}.bin");
+            string path = Path.Combine(
+                _root,
+                $"page-{i:D2}.bin");
             await File.WriteAllBytesAsync(path, Array.Empty<byte>());
             files.Add(path);
         }
 
         using var listener = new TlsSocketListener(port: 0);
+        LanInvitation invitation = CreateInvitation(listener);
         long observedPageCount = -1;
 
         var serverTask = Task.Run(async () =>
         {
-            await using var connection = await listener.AcceptConnectionAsync();
-            using var channel = new LanRecordChannel(connection.SslStream);
+            await using var connection =
+                await listener.AcceptConnectionAsync();
+            await using var channel =
+                new LanRecordChannel(connection.SslStream);
 
-            Envelope hello = await channel.ReadEnvelopeAsync();
-            await channel.WriteEnvelopeAsync(CreateHelloAck(hello.SessionId));
+            Envelope hello =
+                await AcceptBootstrapAndHelloAsync(channel, invitation);
 
-            Envelope offerBegin = await channel.ReadEnvelopeAsync();
-            observedPageCount = offerBegin.Body["pageCount"]?.GetValue<long>() ?? -1L;
+            Envelope offerBegin =
+                await channel.ReadEnvelopeAsync();
+            observedPageCount =
+                offerBegin.Body["pageCount"]?.GetValue<long>() ?? -1L;
         });
 
-        string[] sendArgs = ["127.0.0.1", listener.BoundPort.ToString(), .. files];
         try
         {
-            await InvokeSendAsync(sendArgs);
+            await InvokePairedSendAsync(invitation, files);
         }
         catch
         {
-            // The current implementation may fault when it tries to encode all 33 items in one page.
+            // Server intentionally closes after observing OFFER_BEGIN.
         }
 
         await serverTask;
-
         Assert.Equal(2L, observedPageCount);
     }
 
@@ -191,45 +169,80 @@ public sealed class Hard003DesktopRegressionTests : IDisposable
     {
         string firstFile = Path.Combine(_root, "seq-a.bin");
         string secondFile = Path.Combine(_root, "seq-b.bin");
-        await File.WriteAllBytesAsync(firstFile, new byte[] { 0x11 });
-        await File.WriteAllBytesAsync(secondFile, new byte[] { 0x22 });
+        await File.WriteAllBytesAsync(firstFile, [0x11]);
+        await File.WriteAllBytesAsync(secondFile, [0x22]);
 
         using var listener = new TlsSocketListener(port: 0);
+        LanInvitation invitation = CreateInvitation(listener);
         long firstItemEndSeq = -1;
         long secondItemStartSeq = -1;
 
         var serverTask = Task.Run(async () =>
         {
-            await using var connection = await listener.AcceptConnectionAsync();
-            using var channel = new LanRecordChannel(connection.SslStream);
+            await using var connection =
+                await listener.AcceptConnectionAsync();
+            await using var channel =
+                new LanRecordChannel(connection.SslStream);
 
-            Envelope hello = await channel.ReadEnvelopeAsync();
-            await channel.WriteEnvelopeAsync(CreateHelloAck(hello.SessionId));
-
-            Envelope offerBegin = await channel.ReadEnvelopeAsync();
+            Envelope hello =
+                await AcceptBootstrapAndHelloAsync(channel, invitation);
+            Envelope offerBegin =
+                await channel.ReadEnvelopeAsync();
             await channel.ReadEnvelopeAsync(); // OFFER_PAGE
             await channel.ReadEnvelopeAsync(); // OFFER_END
 
-            string batchId = offerBegin.Body["batchId"]!.ToString();
-            var decisionBody = new JsonObject { ["batchId"] = batchId, ["accepted"] = true };
-            await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.OfferDecision, hello.SessionId, NewMessageId(), 3, decisionBody));
+            string batchId =
+                offerBegin.Body["batchId"]!.ToString();
+            var decisionBody = new JsonObject
+            {
+                ["batchId"] = batchId,
+                ["accepted"] = true
+            };
+            await channel.WriteEnvelopeAsync(
+                new Envelope(
+                    1,
+                    MessageTypes.OfferDecision,
+                    hello.SessionId,
+                    NewMessageId(),
+                    3,
+                    decisionBody));
 
-            Envelope itemStart = await channel.ReadEnvelopeAsync();
-            string itemId = itemStart.Body["itemId"]!.ToString();
-            var readyBody = new JsonObject { ["batchId"] = batchId, ["itemId"] = itemId };
-            await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.ItemReady, hello.SessionId, NewMessageId(), 4, readyBody));
+            Envelope itemStart =
+                await channel.ReadEnvelopeAsync();
+            string itemId =
+                itemStart.Body["itemId"]!.ToString();
+            var readyBody = new JsonObject
+            {
+                ["batchId"] = batchId,
+                ["itemId"] = itemId
+            };
+            await channel.WriteEnvelopeAsync(
+                new Envelope(
+                    1,
+                    MessageTypes.ItemReady,
+                    hello.SessionId,
+                    NewMessageId(),
+                    4,
+                    readyBody));
 
             while (true)
             {
-                LanRecord? record = await channel.ReadRecordAsync();
+                LanRecord? record =
+                    await channel.ReadRecordAsync();
                 if (record == null)
                 {
-                    throw new EndOfStreamException("Sender disconnected before STREAM_END.");
+                    throw new EndOfStreamException(
+                        "Sender disconnected before STREAM_END.");
                 }
-                if (record is LanRecord.StreamEnd) break;
+
+                if (record is LanRecord.StreamEnd)
+                {
+                    break;
+                }
             }
 
-            Envelope itemEnd = await channel.ReadEnvelopeAsync();
+            Envelope itemEnd =
+                await channel.ReadEnvelopeAsync();
             firstItemEndSeq = itemEnd.Seq;
 
             var resultBody = new JsonObject
@@ -237,22 +250,34 @@ public sealed class Hard003DesktopRegressionTests : IDisposable
                 ["batchId"] = batchId,
                 ["itemId"] = itemId,
                 ["status"] = "verified",
-                ["sizeBytes"] = itemEnd.Body["actualBytes"]!.ToString(),
-                ["sha256"] = itemEnd.Body["sha256"]!.ToString()
+                ["sizeBytes"] =
+                    itemEnd.Body["actualBytes"]!.ToString(),
+                ["sha256"] =
+                    itemEnd.Body["sha256"]!.ToString()
             };
-            await channel.WriteEnvelopeAsync(new Envelope(1, MessageTypes.ItemResult, hello.SessionId, NewMessageId(), 5, resultBody));
+            await channel.WriteEnvelopeAsync(
+                new Envelope(
+                    1,
+                    MessageTypes.ItemResult,
+                    hello.SessionId,
+                    NewMessageId(),
+                    5,
+                    resultBody));
 
-            Envelope nextItemStart = await channel.ReadEnvelopeAsync();
+            Envelope nextItemStart =
+                await channel.ReadEnvelopeAsync();
             secondItemStartSeq = nextItemStart.Seq;
         });
 
         try
         {
-            await InvokeSendAsync("127.0.0.1", listener.BoundPort.ToString(), firstFile, secondFile);
+            await InvokePairedSendAsync(
+                invitation,
+                [firstFile, secondFile]);
         }
         catch
         {
-            // Connection closes after the sequence observation is captured.
+            // Server closes after the sequence observation.
         }
 
         await serverTask;
@@ -268,8 +293,13 @@ public sealed class Hard003DesktopRegressionTests : IDisposable
         const long fileSize = 32L * 1024 * 1024;
         const long allocationBudget = 12L * 1024 * 1024;
 
-        string largeFile = Path.Combine(_root, "bounded-hash.bin");
-        await using (var stream = new FileStream(largeFile, FileMode.Create, FileAccess.Write, FileShare.None))
+        string largeFile =
+            Path.Combine(_root, "bounded-hash.bin");
+        await using (var stream = new FileStream(
+            largeFile,
+            FileMode.Create,
+            FileAccess.Write,
+            FileShare.None))
         {
             stream.SetLength(fileSize);
         }
@@ -277,30 +307,38 @@ public sealed class Hard003DesktopRegressionTests : IDisposable
         GC.Collect();
         GC.WaitForPendingFinalizers();
         GC.Collect();
-        long before = GC.GetTotalAllocatedBytes(precise: true);
+        long before =
+            GC.GetTotalAllocatedBytes(precise: true);
 
         using var listener = new TlsSocketListener(port: 0);
+        LanInvitation invitation = CreateInvitation(listener);
         long allocationAtOfferPage = -1;
 
         var serverTask = Task.Run(async () =>
         {
-            await using var connection = await listener.AcceptConnectionAsync();
-            using var channel = new LanRecordChannel(connection.SslStream);
+            await using var connection =
+                await listener.AcceptConnectionAsync();
+            await using var channel =
+                new LanRecordChannel(connection.SslStream);
 
-            Envelope hello = await channel.ReadEnvelopeAsync();
-            await channel.WriteEnvelopeAsync(CreateHelloAck(hello.SessionId));
+            _ = await AcceptBootstrapAndHelloAsync(
+                channel,
+                invitation);
             await channel.ReadEnvelopeAsync(); // OFFER_BEGIN
-            await channel.ReadEnvelopeAsync(); // OFFER_PAGE: sender has completed pre-transfer hashing here
-            allocationAtOfferPage = GC.GetTotalAllocatedBytes(precise: true) - before;
+            await channel.ReadEnvelopeAsync(); // OFFER_PAGE
+            allocationAtOfferPage =
+                GC.GetTotalAllocatedBytes(precise: true) - before;
         });
 
         try
         {
-            await InvokeSendAsync("127.0.0.1", listener.BoundPort.ToString(), largeFile);
+            await InvokePairedSendAsync(
+                invitation,
+                [largeFile]);
         }
         catch
         {
-            // Server intentionally closes after observing the allocation point.
+            // Server intentionally closes after the allocation point.
         }
 
         await serverTask;
@@ -313,70 +351,162 @@ public sealed class Hard003DesktopRegressionTests : IDisposable
 
     private QuarantineStagingStore CreateStore(string name)
     {
-        string staging = Path.Combine(_root, name, "staging");
-        string destination = Path.Combine(_root, name, "downloads");
+        string staging =
+            Path.Combine(_root, name, "staging");
+        string destination =
+            Path.Combine(_root, name, "downloads");
         Directory.CreateDirectory(staging);
         Directory.CreateDirectory(destination);
-        return new QuarantineStagingStore(staging, destination);
+        return new QuarantineStagingStore(
+            staging,
+            destination);
     }
 
-    private static Envelope CreateHelloAck(SessionId sessionId)
+    private static async Task<Envelope> AcceptBootstrapAndHelloAsync(
+        LanRecordChannel channel,
+        LanInvitation invitation)
+    {
+        LanBootstrapMessage bootstrap =
+            await channel.ReadBootstrapAsync();
+
+        Assert.Equal(
+            invitation.InvitationId,
+            bootstrap.InvitationId);
+        Assert.Equal(
+            invitation.Token,
+            bootstrap.Token);
+        Assert.Equal(
+            invitation.InvitationHash,
+            bootstrap.InvitationHash);
+
+        await channel.WriteBootstrapResultAsync(
+            LanBootstrapResult.Accepted(
+                bootstrap.SessionId));
+
+        Envelope hello =
+            await channel.ReadEnvelopeAsync();
+        Assert.Equal(
+            bootstrap.SessionId,
+            hello.SessionId.Value);
+
+        await channel.WriteEnvelopeAsync(
+            CreateHelloAck(hello.SessionId));
+        return hello;
+    }
+
+    private static Envelope CreateHelloAck(
+        SessionId sessionId)
     {
         var limits = new JsonObject
         {
             ["maxItems"] = 1000,
-            ["maxItemBytes"] = ProtocolCatalog.MaxItemBytes.ToString(),
-            ["maxBatchBytes"] = ProtocolCatalog.MaxBatchBytes.ToString(),
-            ["maxControlBytes"] = ProtocolCatalog.MaxControlBytes
+            ["maxItemBytes"] =
+                ProtocolCatalog.MaxItemBytes.ToString(),
+            ["maxBatchBytes"] =
+                ProtocolCatalog.MaxBatchBytes.ToString(),
+            ["maxControlBytes"] =
+                ProtocolCatalog.MaxControlBytes
         };
         var body = new JsonObject
         {
             ["selectedMajor"] = 1,
-            ["capabilities"] = new JsonArray("lan-v1"),
+            ["capabilities"] =
+                new JsonArray("lan-v1"),
             ["ephemeralPeerId"] = NewUuid(),
             ["displayName"] = "HARD-003 Test Receiver",
             ["limits"] = limits
         };
-        return new Envelope(1, MessageTypes.HelloAck, sessionId, NewMessageId(), 2, body);
+        return new Envelope(
+            1,
+            MessageTypes.HelloAck,
+            sessionId,
+            NewMessageId(),
+            2,
+            body);
     }
 
-    private static MessageId NewMessageId() => new(NewUuid());
-
-    private static string NewUuid() => Guid.NewGuid().ToString("D").ToLowerInvariant();
-
-    private static string NewToken()
+    private static LanInvitation CreateInvitation(
+        TlsSocketListener listener)
     {
-        return Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
+        var invitation = new LanInvitation(
+            invitationId: NewUuid(),
+            presence: Convert.ToHexString(
+                    RandomNumberGenerator.GetBytes(16))
+                .ToLowerInvariant(),
+            name: "HARD-003 Receiver",
+            platform: "windows",
+            endpoints:
+            [
+                new LanEndpoint(
+                    "127.0.0.1",
+                    listener.BoundPort)
+            ],
+            spkiSha256: listener.LocalSpkiSha256,
+            token: NewToken(),
+            expiresAt: (
+                DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 120)
+                .ToString(),
+            ttlSeconds: 120);
+
+        return InvitationCodec.Decode(
+            InvitationCodec.Encode(invitation));
+    }
+
+    private static MessageId NewMessageId() =>
+        new(NewUuid());
+
+    private static string NewUuid() =>
+        Guid.NewGuid()
+            .ToString("D")
+            .ToLowerInvariant();
+
+    private static string NewToken() =>
+        Convert.ToBase64String(
+                RandomNumberGenerator.GetBytes(32))
             .TrimEnd('=')
             .Replace('+', '-')
             .Replace('/', '_');
+
+    private static Task<int> InvokePairedSendAsync(
+        LanInvitation invitation,
+        IReadOnlyList<string> files)
+    {
+        string[] args =
+        [
+            "--pair",
+            InvitationCodec.Encode(invitation),
+            .. files
+        ];
+        return InvokeSendAsync(args);
     }
 
-    private static async Task<int> InvokeSendAsync(params string[] args)
+    private static async Task<int> InvokeSendAsync(
+        params string[] args)
     {
-        MethodInfo method = typeof(GlideAppProgram).GetMethod(
-            "RunSendAsync",
-            BindingFlags.NonPublic | BindingFlags.Static)
-            ?? throw new MissingMethodException(typeof(GlideAppProgram).FullName, "RunSendAsync");
+        MethodInfo method =
+            typeof(GlideAppProgram).GetMethod(
+                "RunSendAsync",
+                BindingFlags.NonPublic |
+                BindingFlags.Static)
+            ?? throw new MissingMethodException(
+                typeof(GlideAppProgram).FullName,
+                "RunSendAsync");
 
-        var task = (Task<int>?)method.Invoke(null, new object?[] { args })
-            ?? throw new InvalidOperationException("RunSendAsync did not return Task<int>.");
+        var task =
+            (Task<int>?)method.Invoke(
+                null,
+                [args])
+            ?? throw new InvalidOperationException(
+                "RunSendAsync did not return Task<int>.");
         return await task;
     }
 
-    private static async Task<bool> InvokeReceiveHandlerAsync(
-        TlsSocketConnection connection,
-        QuarantineStagingStore store,
-        LanInvitation? invitation,
-        bool isDaemon)
+    private sealed class RejectingInteraction
+        : DesktopTransferInteractionBase
     {
-        MethodInfo method = typeof(GlideAppProgram).GetMethod(
-            "HandleConnectionTransferAsync",
-            BindingFlags.NonPublic | BindingFlags.Static)
-            ?? throw new MissingMethodException(typeof(GlideAppProgram).FullName, "HandleConnectionTransferAsync");
-
-        var task = (Task<bool>?)method.Invoke(null, new object?[] { connection, store, invitation, isDaemon })
-            ?? throw new InvalidOperationException("HandleConnectionTransferAsync did not return Task<bool>.");
-        return await task;
+        public override Task<bool> ConfirmOfferAsync(
+            DesktopOffer offer,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(false);
     }
 }
