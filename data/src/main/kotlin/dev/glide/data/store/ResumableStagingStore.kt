@@ -72,24 +72,34 @@ class ResumableStagingStore(
                 itemId
             )
         if (existing != null) {
-            requireSameAuthority(
-                existing = existing,
-                peerFingerprintHex = peerFingerprintHex,
-                sourceIdentity = sourceIdentity,
-                totalBytes = totalBytes,
-                chunkSize = chunkSize,
-                chunkRootHashHex =
-                    digestTree.rootHashHex,
-                chunkHashesHex =
-                    encodeChunkHashes(
-                        digestTree
-                    ),
-                wholeFileSha256Hex =
-                    wholeFileSha256Hex
-            )
-            return@withContext File(
-                existing.stagingPath
-            )
+            if (nowMs >=
+                existing.expiresAtMs
+            ) {
+                purgeInternal(existing)
+            } else {
+                requireSameAuthority(
+                    existing = existing,
+                    peerFingerprintHex =
+                        peerFingerprintHex,
+                    sourceIdentity =
+                        sourceIdentity,
+                    totalBytes =
+                        totalBytes,
+                    chunkSize =
+                        chunkSize,
+                    chunkRootHashHex =
+                        digestTree.rootHashHex,
+                    chunkHashesHex =
+                        encodeChunkHashes(
+                            digestTree
+                        ),
+                    wholeFileSha256Hex =
+                        wholeFileSha256Hex
+                )
+                return@withContext File(
+                    existing.stagingPath
+                )
+            }
         }
 
         val itemDir =
@@ -135,9 +145,42 @@ class ResumableStagingStore(
                 stagingPath =
                     itemDir.absolutePath
             )
-        resumableSessionDao.insertOrUpdate(
-            entity
-        )
+        val inserted =
+            resumableSessionDao
+                .insertIfAbsent(
+                    entity
+                )
+        if (inserted == -1L) {
+            val raced =
+                resumableSessionDao.get(
+                    originalSessionId,
+                    itemId
+                )
+                    ?: throw IllegalStateException(
+                        "Resume journal conflicted but no persisted row is available"
+                    )
+            requireSameAuthority(
+                existing = raced,
+                peerFingerprintHex =
+                    peerFingerprintHex,
+                sourceIdentity =
+                    sourceIdentity,
+                totalBytes =
+                    totalBytes,
+                chunkSize =
+                    chunkSize,
+                chunkRootHashHex =
+                    digestTree.rootHashHex,
+                chunkHashesHex =
+                    entity.chunkHashesHex,
+                wholeFileSha256Hex =
+                    wholeFileSha256Hex
+            )
+            return@withContext File(
+                raced.stagingPath
+            )
+        }
+
         itemDir
     }
 
@@ -552,11 +595,16 @@ class ResumableStagingStore(
                     }
                 }
 
-            atomicReplace(
-                assembled,
-                destinationFile
+            promoteVerifiedFile(
+                source = assembled,
+                destination =
+                    destinationFile,
+                expectedSize =
+                    journal.totalBytes,
+                expectedSha256Hex =
+                    journal
+                        .wholeFileSha256Hex
             )
-            true
         } finally {
             if (assembled.exists()) {
                 assembled.delete()
@@ -927,6 +975,103 @@ class ResumableStagingStore(
         value.joinToString("") {
             "%02x".format(it)
         }
+
+    private fun promoteVerifiedFile(
+        source: File,
+        destination: File,
+        expectedSize: Long,
+        expectedSha256Hex: String
+    ): Boolean {
+        try {
+            atomicReplace(
+                source,
+                destination
+            )
+            return destination.length() ==
+                expectedSize &&
+                sha256Hex(destination) ==
+                    expectedSha256Hex
+        } catch (_: java.io.IOException) {
+            // Private staging and the final destination may be on different filesystems.
+        }
+
+        val parent =
+            destination.parentFile
+                ?: return false
+        if (!parent.exists() &&
+            !parent.mkdirs()
+        ) {
+            return false
+        }
+
+        val destinationTemp =
+            File(
+                parent,
+                "." +
+                    destination.name +
+                    ".glide-verify-" +
+                    System.nanoTime()
+            )
+
+        try {
+            val digest =
+                MessageDigest.getInstance(
+                    "SHA-256"
+                )
+            FileInputStream(source).use {
+                input ->
+                FileOutputStream(
+                    destinationTemp
+                ).use { output ->
+                    val buffer =
+                        ByteArray(
+                            64 * 1024
+                        )
+                    while (true) {
+                        val read =
+                            input.read(buffer)
+                        if (read < 0) {
+                            break
+                        }
+                        if (read == 0) {
+                            continue
+                        }
+                        digest.update(
+                            buffer,
+                            0,
+                            read
+                        )
+                        output.write(
+                            buffer,
+                            0,
+                            read
+                        )
+                    }
+                    output.fd.sync()
+                }
+            }
+
+            if (destinationTemp.length() !=
+                    expectedSize ||
+                toHex(
+                    digest.digest()
+                ) !=
+                    expectedSha256Hex
+            ) {
+                return false
+            }
+
+            atomicReplace(
+                destinationTemp,
+                destination
+            )
+            return true
+        } finally {
+            if (destinationTemp.exists()) {
+                destinationTemp.delete()
+            }
+        }
+    }
 
     private fun atomicReplace(
         source: File,
