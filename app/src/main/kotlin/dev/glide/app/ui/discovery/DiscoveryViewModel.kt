@@ -2,116 +2,104 @@ package dev.glide.app.ui.discovery
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import dev.glide.app.discovery.UnifiedDiscoveryRepository
+import dev.glide.app.service.TransferRuntime
+import dev.glide.app.service.TransferRuntimeCommand
 import dev.glide.core.domain.PeerId
-import dev.glide.core.ports.DiscoveryEvent
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 
 /**
- * ViewModel governing the Discovery route UI state, 120-second timeout,
- * stable non-jumping peer cards, and live discovery observations (LAN-004, LAN-015).
+ * Presentation adapter for runtime-owned production discovery (HARD-006).
+ *
+ * A no-argument instance is deliberately fail-closed and exists only for tests/tooling that do not
+ * provide the production runtime. Production Navigation3 always supplies [TransferRuntime].
  */
-class DiscoveryViewModel(
-    val unifiedDiscoveryRepository: UnifiedDiscoveryRepository? = null,
-    private val discoveryFlowProvider: (() -> Flow<DiscoveryEvent>)? = null,
-    private val onStopDiscoveryCallback: (() -> Unit)? = null
+class DiscoveryViewModel private constructor(
+    private val runtime: TransferRuntime?,
+    initialState: DiscoveryUiState
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow<DiscoveryUiState>(DiscoveryUiState.Searching())
+    constructor(runtime: TransferRuntime) : this(runtime, runtime.discoveryState.value)
+
+    constructor() : this(
+        runtime = null,
+        initialState = DiscoveryUiState.Blocked(
+            BlockedReason.TransportError("Production discovery dependency is unavailable")
+        )
+    )
+
+    private val _uiState = MutableStateFlow(initialState)
     val uiState: StateFlow<DiscoveryUiState> = _uiState.asStateFlow()
 
-    private var timerJob: Job? = null
-    private var discoveryJob: Job? = null
-
     init {
-        startDiscoveryTimer()
-    }
-
-    fun startDiscoveryTimer() {
-        timerJob?.cancel()
-        discoveryJob?.cancel()
-
-        _uiState.value = DiscoveryUiState.Searching(
-            peers = (_uiState.value as? DiscoveryUiState.Searching)?.peers ?: emptyList(),
-            secondsElapsed = 0,
-            selectedPeerId = null
-        )
-
-        timerJob = viewModelScope.launch {
-            for (sec in 1..120) {
-                delay(1000L)
-                val current = _uiState.value
-                if (current is DiscoveryUiState.Searching) {
-                    if (sec >= 120) {
-                        _uiState.value = DiscoveryUiState.TimedOut(peers = current.peers)
-                        stopDiscovery()
-                        break
-                    } else {
-                        _uiState.value = current.copy(secondsElapsed = sec)
-                    }
-                } else {
-                    break
-                }
-            }
-        }
-
-        if (unifiedDiscoveryRepository != null) {
-            discoveryJob = viewModelScope.launch {
-                try {
-                    unifiedDiscoveryRepository.startDiscovery()
-                    unifiedDiscoveryRepository.unifiedPeers.collect { peerList ->
-                        val current = _uiState.value
-                        if (current is DiscoveryUiState.Searching) {
-                            _uiState.value = current.copy(peers = peerList)
-                        }
-                    }
-                } catch (_: Exception) {
-                    // Cancelled or stopped cleanly
-                }
-            }
-        } else if (discoveryFlowProvider != null) {
-            discoveryJob = viewModelScope.launch {
-                try {
-                    discoveryFlowProvider.invoke().collect { event ->
-                        when (event) {
-                            is DiscoveryEvent.PeerAppeared -> {
-                                onPeerDiscovered(
-                                    DiscoveredPeer(
-                                        id = event.peer.id,
-                                        displayName = event.peer.displayName,
-                                        deviceType = DeviceType.fromDeviceName(event.peer.displayName)
+        if (runtime != null) {
+            viewModelScope.launch {
+                runtime.discoveryState.collect { state ->
+                    val current = _uiState.value
+                    _uiState.value = if (
+                        state is DiscoveryUiState.Searching &&
+                        current is DiscoveryUiState.Searching &&
+                        current.selectedPeerId != null
+                    ) {
+                        state.copy(
+                            peers = state.peers.map { peer ->
+                                val old = current.peers.firstOrNull { it.id == peer.id }
+                                if (old != null) {
+                                    peer.copy(
+                                        isConnecting = old.isConnecting,
+                                        isSelected = old.isSelected,
+                                        isBusy = old.isBusy
                                     )
-                                )
-                            }
-                            is DiscoveryEvent.PeerLost -> {
-                                onPeerLost(event.peerId)
-                            }
-                        }
+                                } else {
+                                    peer
+                                }
+                            },
+                            selectedPeerId = current.selectedPeerId
+                        )
+                    } else {
+                        state
                     }
-                } catch (_: Exception) {
-                    // Cancelled or stopped cleanly
                 }
             }
         }
     }
 
     /**
+     * Starts the real runtime discovery operation. No ViewModel-owned radio/timer job exists.
+     */
+    fun startDiscovery(): Boolean =
+        runtime?.dispatch(TransferRuntimeCommand.StartDiscovery) ?: false
+
+    /**
+     * Historical API retained for callers/tests; now delegates to runtime-owned discovery.
+     */
+    fun startDiscoveryTimer(): Boolean = startDiscovery()
+
+    fun stopDiscovery() {
+        runtime?.dispatch(TransferRuntimeCommand.StopDiscovery)
+    }
+
+    fun onPermissionDenied() {
+        runtime?.dispatch(
+            TransferRuntimeCommand.NearbyPermissionDenied(receiveMode = false)
+        )
+    }
+
+    fun retryDiscovery(): Boolean = startDiscovery()
+
+    /**
      * Taps a peer to initiate connection.
-     * Enforces single-click selection and disables duplicate attempts.
+     * HARD-007 will bind this selection to the production pairing/session command.
      */
     fun selectPeer(peerId: PeerId, onInitiateConnection: (PeerId) -> Unit = {}) {
         val current = _uiState.value
         if (current !is DiscoveryUiState.Searching) return
-        if (current.selectedPeerId != null) return // Already connecting to a peer; ignore duplicate tap
+        if (current.selectedPeerId != null) return
 
         val target = current.peers.find { it.id == peerId }
-        if (target == null || !target.isAvailable || target.isBusy) return // Cannot select unavailable or busy peer
+        if (target == null || !target.isAvailable || target.isBusy) return
 
         val updatedPeers = current.peers.map { peer ->
             if (peer.id == peerId) {
@@ -129,79 +117,70 @@ class DiscoveryViewModel(
         onInitiateConnection(peerId)
     }
 
-    /**
-     * Updates the busy status of a peer from transport observations.
-     */
     fun setPeerBusy(peerId: PeerId, isBusy: Boolean) {
         val current = _uiState.value
         if (current is DiscoveryUiState.Searching) {
-            val updated = current.peers.map { peer ->
-                if (peer.id == peerId) peer.copy(isBusy = isBusy) else peer
-            }
-            _uiState.value = current.copy(peers = updated)
+            _uiState.value = current.copy(
+                peers = current.peers.map { peer ->
+                    if (peer.id == peerId) peer.copy(isBusy = isBusy) else peer
+                }
+            )
         }
     }
 
     /**
-     * Adds a newly discovered peer or updates an existing one without changing list indices.
+     * Test/presentation helper; production peer events originate from ProductionDiscoveryController.
      */
     fun onPeerDiscovered(peer: DiscoveredPeer) {
         val current = _uiState.value
         if (current is DiscoveryUiState.Searching) {
             val existingIndex = current.peers.indexOfFirst { it.id == peer.id }
-            val newPeers = if (existingIndex >= 0) {
+            val peers = if (existingIndex >= 0) {
                 current.peers.toMutableList().apply {
+                    val existing = this[existingIndex]
                     this[existingIndex] = peer.copy(
-                        isConnecting = current.peers[existingIndex].isConnecting,
-                        isSelected = current.peers[existingIndex].isSelected
+                        isConnecting = existing.isConnecting,
+                        isSelected = existing.isSelected,
+                        isBusy = existing.isBusy
                     )
                 }
             } else {
                 current.peers + peer
             }
-            _uiState.value = current.copy(peers = newPeers)
+            _uiState.value = current.copy(peers = peers)
         }
     }
 
-    /**
-     * Marks a peer as unavailable rather than removing it immediately, preventing list jumping.
-     */
     fun onPeerLost(peerId: PeerId) {
         val current = _uiState.value
         if (current is DiscoveryUiState.Searching) {
-            val updated = current.peers.map { peer ->
-                if (peer.id == peerId) peer.copy(isAvailable = false) else peer
-            }
-            _uiState.value = current.copy(peers = updated)
+            _uiState.value = current.copy(
+                peers = current.peers.map { peer ->
+                    if (peer.id == peerId) peer.copy(isAvailable = false) else peer
+                }
+            )
         }
     }
 
-    fun stopDiscovery() {
-        discoveryJob?.cancel()
-        discoveryJob = null
-        unifiedDiscoveryRepository?.stopDiscovery()
-        onStopDiscoveryCallback?.invoke()
-    }
-
     fun setBlocked(reason: BlockedReason) {
-        timerJob?.cancel()
-        discoveryJob?.cancel()
         _uiState.value = DiscoveryUiState.Blocked(reason)
     }
 
-    fun retryDiscovery() {
-        startDiscoveryTimer()
-    }
-
     fun setUiStateForTesting(state: DiscoveryUiState) {
-        timerJob?.cancel()
-        discoveryJob?.cancel()
         _uiState.value = state
     }
 
     override fun onCleared() {
-        super.onCleared()
         stopDiscovery()
-        unifiedDiscoveryRepository?.close()
+        super.onCleared()
+    }
+
+    companion object {
+        internal fun forTesting(
+            initialState: DiscoveryUiState = DiscoveryUiState.Searching()
+        ): DiscoveryViewModel = DiscoveryViewModel(
+            runtime = null,
+            initialState = initialState
+        )
     }
 }
