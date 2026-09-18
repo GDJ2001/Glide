@@ -24,7 +24,7 @@ public sealed class Hard014BoundedStorageTests : IDisposable
 
         Sha256Digest digest = hash.Complete();
 
-        Assert.Equal(0, hash.BytesProcessed);
+        Assert.Equal(0L, hash.BytesProcessed);
         Assert.Equal(
             "e3b0c44298fc1c149afbf4c8996fb924" +
             "27ae41e4649b934ca495991b7852b855",
@@ -69,7 +69,7 @@ public sealed class Hard014BoundedStorageTests : IDisposable
         Assert.Equal(64, digest.Value.Length);
         Assert.InRange(
             allocated,
-            0,
+            0L,
             2L * 1024 * 1024);
     }
 
@@ -133,10 +133,10 @@ public sealed class Hard014BoundedStorageTests : IDisposable
         Assert.Equal(
             WireErrorCodes.InsufficientStorage,
             ex.FailureCode);
-        Assert.Equal(60, store.ReservedBytes);
+        Assert.Equal(60L, store.ReservedBytes);
 
         first.Dispose();
-        Assert.Equal(0, store.ReservedBytes);
+        Assert.Equal(0L, store.ReservedBytes);
 
         using IncomingFileReservation retry =
             store.ReserveIncoming(
@@ -145,7 +145,7 @@ public sealed class Hard014BoundedStorageTests : IDisposable
                 "second.bin",
                 41);
 
-        Assert.Equal(41, store.ReservedBytes);
+        Assert.Equal(41L, store.ReservedBytes);
     }
 
     [Fact]
@@ -206,15 +206,15 @@ public sealed class Hard014BoundedStorageTests : IDisposable
             await writer.CompleteAndCommitAsync(
                 expectedDigest);
 
-        Assert.Equal(totalSize, writer.WrittenBytes);
+        Assert.Equal((long)totalSize, writer.WrittenBytes);
         Assert.Equal(expectedDigest, actualDigest);
-        Assert.Equal(totalSize, new FileInfo(committedPath).Length);
+        Assert.Equal((long)totalSize, new FileInfo(committedPath).Length);
         Assert.False(
             File.Exists(
                 store.GetQuarantinePath(
                     session,
                     item)));
-        Assert.Equal(0, store.ReservedBytes);
+        Assert.Equal(0L, store.ReservedBytes);
 
     }
 
@@ -248,8 +248,8 @@ public sealed class Hard014BoundedStorageTests : IDisposable
                 expected);
 
         Assert.Equal(expected, actual);
-        Assert.Equal(0, new FileInfo(path).Length);
-        Assert.Equal(0, store.ReservedBytes);
+        Assert.Equal(0L, new FileInfo(path).Length);
+        Assert.Equal(0L, store.ReservedBytes);
     }
 
     [Fact]
@@ -282,7 +282,7 @@ public sealed class Hard014BoundedStorageTests : IDisposable
         }
 
         Assert.False(File.Exists(quarantine));
-        Assert.Equal(0, store.ReservedBytes);
+        Assert.Equal(0L, store.ReservedBytes);
     }
 
     [Fact]
@@ -307,7 +307,7 @@ public sealed class Hard014BoundedStorageTests : IDisposable
                 store.GetQuarantinePath(
                     session,
                     item)));
-        Assert.Equal(0, store.ReservedBytes);
+        Assert.Equal(0L, store.ReservedBytes);
     }
 
     [Fact]
@@ -363,7 +363,7 @@ public sealed class Hard014BoundedStorageTests : IDisposable
         Assert.Equal(
             WireErrorCodes.DestinationUnavailable,
             failure.FailureCode);
-        Assert.Equal(0, store.ReservedBytes);
+        Assert.Equal(0L, store.ReservedBytes);
     }
 
     [Fact]
@@ -432,7 +432,7 @@ public sealed class Hard014BoundedStorageTests : IDisposable
                 "report.txt"
             },
             names);
-        Assert.Equal(0, store.ReservedBytes);
+        Assert.Equal(0L, store.ReservedBytes);
     }
 
     private QuarantineStagingStore CreateStore(
