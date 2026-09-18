@@ -3,6 +3,7 @@ package dev.glide.app.ui.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import dev.glide.app.service.TransferRuntime
 import dev.glide.core.ports.DeviceNameValidator
 import dev.glide.core.ports.GlideSettings
 import dev.glide.core.ports.PrivateFileManager
@@ -19,7 +20,8 @@ import kotlinx.coroutines.launch
 class SettingsViewModel(
     private val settingsStore: SettingsStore,
     private val fileManager: PrivateFileManager,
-    private val trustedPeerDao: TrustedPeerDao? = null
+    private val trustedPeerDao: TrustedPeerDao? = null,
+    private val transferRuntime: TransferRuntime? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState(isLoading = true))
@@ -34,10 +36,39 @@ class SettingsViewModel(
                 }
             }
         }
-        viewModelScope.launch {
-            trustedPeerDao?.observeAllPeers()?.collect { peers ->
-                if (!isTestingOverride) {
-                    _uiState.update { it.copy(trustedPeers = peers) }
+        if (transferRuntime != null) {
+            viewModelScope.launch {
+                transferRuntime.refreshPersistentTrustState()
+                transferRuntime.trustState.collect { trust ->
+                    if (!isTestingOverride) {
+                        _uiState.update {
+                            it.copy(
+                                trustedPeers = trust.trustedPeers
+                            )
+                        }
+                    }
+                }
+            }
+        } else {
+            viewModelScope.launch {
+                trustedPeerDao?.observeAllPeers()?.collect { peers ->
+                    if (!isTestingOverride) {
+                        _uiState.update { state ->
+                            state.copy(
+                                trustedPeers = peers.map { peer ->
+                                    dev.glide.core.domain.TrustedPeerRecord(
+                                        peerFingerprintHex =
+                                            peer.peerFingerprint.lowercase(),
+                                        publicKeyDerHex =
+                                            peer.publicKeyDer.lowercase(),
+                                        displayName = peer.displayName,
+                                        pairedAtMs = peer.pairedAtMs,
+                                        lastSeenAtMs = peer.lastSeenAtMs
+                                    )
+                                }
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -234,8 +265,34 @@ class SettingsViewModel(
 
     fun revokeTrustedPeer(fingerprint: String) {
         viewModelScope.launch {
-            trustedPeerDao?.deleteByFingerprint(fingerprint)
-            _uiState.update { it.copy(feedbackMessage = "Device trust revoked") }
+            val revoked = if (transferRuntime != null) {
+                transferRuntime.revokeTrustedPeerNow(fingerprint)
+            } else {
+                val dao = trustedPeerDao
+                if (dao == null) {
+                    false
+                } else {
+                    dao.deleteByFingerprint(fingerprint)
+                    true
+                }
+            }
+
+            if (revoked) {
+                _uiState.update { state ->
+                    state.copy(
+                        trustedPeers = state.trustedPeers.filterNot {
+                            it.peerFingerprintHex == fingerprint
+                        },
+                        feedbackMessage = "Device trust revoked"
+                    )
+                }
+            } else {
+                _uiState.update {
+                    it.copy(
+                        feedbackMessage = "Failed to revoke device trust"
+                    )
+                }
+            }
         }
     }
 
@@ -248,11 +305,17 @@ class SettingsViewModel(
         fun provideFactory(
             settingsStore: SettingsStore,
             fileManager: PrivateFileManager,
-            trustedPeerDao: TrustedPeerDao? = null
+            trustedPeerDao: TrustedPeerDao? = null,
+            transferRuntime: TransferRuntime? = null
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                return SettingsViewModel(settingsStore, fileManager, trustedPeerDao) as T
+                return SettingsViewModel(
+                    settingsStore,
+                    fileManager,
+                    trustedPeerDao,
+                    transferRuntime
+                ) as T
             }
         }
     }
