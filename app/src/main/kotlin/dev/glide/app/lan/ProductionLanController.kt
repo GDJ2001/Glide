@@ -70,6 +70,7 @@ class ProductionLanController private constructor(
     private val permissionChecker: (String) -> Boolean,
     private val apiLevelProvider: () -> Int,
     private val transportFactory: (LanNetworkScope, CoroutineScope) -> LanTransferTransport,
+    private val allowLoopbackEndpointsForTesting: Boolean,
     private val listenerFactory: (
         LanLeaseIdentity,
         LanNetworkScope,
@@ -96,6 +97,7 @@ class ProductionLanController private constructor(
                 coroutineScope = scope
             )
         },
+        allowLoopbackEndpointsForTesting = false,
         listenerFactory = { identity, networkScope, scope ->
             LanListener(
                 identity = identity,
@@ -388,7 +390,10 @@ class ProductionLanController private constructor(
     ): List<LanEndpoint> {
         return addresses
             .asSequence()
-            .filterNot { it.isLoopbackAddress || it.isAnyLocalAddress }
+            .filterNot {
+                it.isAnyLocalAddress ||
+                    (!allowLoopbackEndpointsForTesting && it.isLoopbackAddress)
+            }
             .mapNotNull { address ->
                 val numeric = address.hostAddress
                     ?.substringBefore('%')
@@ -459,6 +464,7 @@ class ProductionLanController private constructor(
             permissionChecker = permissionChecker,
             apiLevelProvider = apiLevelProvider,
             transportFactory = transportFactory,
+            allowLoopbackEndpointsForTesting = true,
             listenerFactory = listenerFactory
         )
     }
