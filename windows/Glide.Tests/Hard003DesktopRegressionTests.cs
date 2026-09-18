@@ -410,7 +410,7 @@ public sealed class Hard003DesktopRegressionTests : IDisposable
         {
             ["selectedMajor"] = 1,
             ["capabilities"] =
-                new JsonArray("lan-v1"),
+                new JsonArray(ProtocolCapabilities.StreamV1, ProtocolCapabilities.Sha256),
             ["ephemeralPeerId"] = NewUuid(),
             ["displayName"] = "HARD-003 Test Receiver",
             ["limits"] = limits
