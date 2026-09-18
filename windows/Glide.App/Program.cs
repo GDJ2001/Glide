@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
@@ -281,7 +282,8 @@ public static class Program
                     !int.TryParse(args[++i], out port) ||
                     port is < 0 or > 65535)
                 {
-                    Console.Error.WriteLine("[DAEMON ERROR] --port requires a value from 0 to 65535.");
+                    Console.Error.WriteLine(
+                        "[DAEMON ERROR] --port requires a value from 0 to 65535.");
                     return 1;
                 }
             }
@@ -289,7 +291,8 @@ public static class Program
             {
                 if (i + 1 >= args.Length)
                 {
-                    Console.Error.WriteLine("[DAEMON ERROR] --policy requires a JSON file path.");
+                    Console.Error.WriteLine(
+                        "[DAEMON ERROR] --policy requires a JSON file path.");
                     return 1;
                 }
 
@@ -297,7 +300,8 @@ public static class Program
             }
             else
             {
-                Console.Error.WriteLine($"[DAEMON ERROR] Unknown daemon option '{args[i]}'.");
+                Console.Error.WriteLine(
+                    $"[DAEMON ERROR] Unknown daemon option '{args[i]}'.");
                 return 1;
             }
         }
@@ -316,196 +320,220 @@ public static class Program
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[DAEMON ERROR] Invalid receive policy: {ex.Message}");
+            Console.Error.WriteLine(
+                $"[DAEMON ERROR] Invalid receive policy: {ex.Message}");
             return 1;
         }
 
-        TlsSocketListener listener;
+        using var shutdownCts =
+            new CancellationTokenSource();
+
+        ConsoleCancelEventHandler cancelHandler = (_, e) =>
+        {
+            e.Cancel = true;
+            shutdownCts.Cancel();
+        };
+        Console.CancelKeyPress += cancelHandler;
+
+        PosixSignalRegistration? sigTerm = null;
+        if (OperatingSystem.IsLinux() ||
+            OperatingSystem.IsMacOS())
+        {
+            sigTerm = PosixSignalRegistration.Create(
+                PosixSignal.SIGTERM,
+                context =>
+                {
+                    context.Cancel = true;
+                    shutdownCts.Cancel();
+                });
+        }
+
         try
         {
-            listener = new TlsSocketListener(port);
+            return await RunDaemonWithPolicyAsync(
+                policy,
+                port,
+                shutdownCts.Token);
         }
         catch (Exception ex)
         {
             Console.Error.WriteLine(
-                $"[DAEMON ERROR] Unable to bind requested listener port {port}: {ex.Message}");
+                $"[DAEMON ERROR] {ex.Message}");
             return 1;
         }
-
-        using (listener)
-        using (var shutdownCts = new CancellationTokenSource())
+        finally
         {
-            int boundPort = listener.BoundPort;
-            var enrollmentFile =
-                new DaemonEnrollmentFile(policy.EnrollmentFile);
-            var stagingStore =
-                new QuarantineStagingStore(
-                    destinationRoot: policy.DestinationDirectory);
-            var engine = new DesktopTransferEngine();
-            DesktopReceiveLimits receiveLimits =
-                policy.ToReceiveLimits();
+            shutdownCts.Cancel();
+            sigTerm?.Dispose();
+            Console.CancelKeyPress -= cancelHandler;
+        }
+    }
 
-            Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine(
-                $"[{DateTime.UtcNow:O}] [DAEMON READY] Glide daemon listening on port {boundPort}");
-            Console.WriteLine(
-                $"[{DateTime.UtcNow:O}] [DAEMON POLICY] Destination: {policy.DestinationDirectory}");
-            Console.WriteLine(
-                $"[{DateTime.UtcNow:O}] [DAEMON POLICY] Allowed remote IPs: {string.Join(", ", policy.AllowedRemoteAddresses)}");
-            Console.WriteLine(
-                $"[{DateTime.UtcNow:O}] [DAEMON POLICY] Limits: {policy.MaxItems} item(s), {policy.MaxItemBytes} bytes/item, {policy.MaxBatchBytes} bytes/batch");
-            Console.WriteLine(
-                $"[{DateTime.UtcNow:O}] [DAEMON INFO] Enrollment URI is written to {policy.EnrollmentFile}; bearer contents are never logged.");
-            Console.ResetColor();
+    internal static async Task<int> RunDaemonWithPolicyAsync(
+        DaemonReceivePolicy policy,
+        int port,
+        CancellationToken shutdownToken)
+    {
+        ArgumentNullException.ThrowIfNull(policy);
+        policy = policy.Validate();
 
-            ConsoleCancelEventHandler cancelHandler = (_, e) =>
+        if (port is < 0 or > 65535)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(port));
+        }
+
+        using var listener =
+            new TlsSocketListener(port);
+
+        int boundPort = listener.BoundPort;
+        var enrollmentFile =
+            new DaemonEnrollmentFile(
+                policy.EnrollmentFile);
+        var stagingStore =
+            new QuarantineStagingStore(
+                destinationRoot:
+                    policy.DestinationDirectory);
+        var engine =
+            new DesktopTransferEngine();
+        DesktopReceiveLimits receiveLimits =
+            policy.ToReceiveLimits();
+
+        Console.ForegroundColor = ConsoleColor.Green;
+        Console.WriteLine(
+            $"[{DateTime.UtcNow:O}] [DAEMON READY] Glide daemon listening on port {boundPort}");
+        Console.WriteLine(
+            $"[{DateTime.UtcNow:O}] [DAEMON POLICY] Destination: {policy.DestinationDirectory}");
+        Console.WriteLine(
+            $"[{DateTime.UtcNow:O}] [DAEMON POLICY] Allowed remote IPs: {string.Join(", ", policy.AllowedRemoteAddresses)}");
+        Console.WriteLine(
+            $"[{DateTime.UtcNow:O}] [DAEMON POLICY] Limits: {policy.MaxItems} item(s), {policy.MaxItemBytes} bytes/item, {policy.MaxBatchBytes} bytes/batch");
+        Console.WriteLine(
+            $"[{DateTime.UtcNow:O}] [DAEMON INFO] Enrollment URI is written to {policy.EnrollmentFile}; bearer contents are never logged.");
+        Console.ResetColor();
+
+        try
+        {
+            while (!shutdownToken.IsCancellationRequested)
             {
-                e.Cancel = true;
-                shutdownCts.Cancel();
-            };
-            Console.CancelKeyPress += cancelHandler;
+                (LanInvitation invitation, string invitationUri) =
+                    CreateDaemonInvitation(
+                        listener,
+                        boundPort,
+                        policy);
 
-            PosixSignalRegistration? sigTerm = null;
-            if (OperatingSystem.IsLinux() ||
-                OperatingSystem.IsMacOS())
-            {
-                sigTerm = PosixSignalRegistration.Create(
-                    PosixSignal.SIGTERM,
-                    context =>
-                    {
-                        context.Cancel = true;
-                        shutdownCts.Cancel();
-                    });
-            }
+                var invitationAuthority =
+                    new LanInvitationAuthority(
+                        invitation);
 
-            try
-            {
-                while (!shutdownCts.IsCancellationRequested)
+                await enrollmentFile.WriteAsync(
+                    invitationUri,
+                    shutdownToken);
+
+                Console.WriteLine(
+                    $"[{DateTime.UtcNow:O}] [DAEMON ENROLLMENT] Fresh one-use enrollment ready at {policy.EnrollmentFile}; expires in {policy.InvitationTtlSeconds}s.");
+
+                long expiryTicks =
+                    Stopwatch.GetTimestamp() +
+                    (long)(
+                        policy.InvitationTtlSeconds *
+                        (double)Stopwatch.Frequency);
+
+                try
                 {
-                    (LanInvitation invitation, string invitationUri) =
-                        CreateDaemonInvitation(
-                            listener,
-                            boundPort,
-                            policy);
-
-                    var invitationAuthority =
-                        new LanInvitationAuthority(invitation);
-
-                    await enrollmentFile.WriteAsync(
-                        invitationUri,
-                        shutdownCts.Token);
-
-                    Console.WriteLine(
-                        $"[{DateTime.UtcNow:O}] [DAEMON ENROLLMENT] Fresh one-use enrollment ready at {policy.EnrollmentFile}; expires in {policy.InvitationTtlSeconds}s.");
-
-                    long expiryTicks =
-                        Stopwatch.GetTimestamp() +
-                        (long)(
-                            policy.InvitationTtlSeconds *
-                            (double)Stopwatch.Frequency);
-
-                    try
+                    while (!shutdownToken.IsCancellationRequested &&
+                           !invitationAuthority.IsConsumed)
                     {
-                        while (!shutdownCts.IsCancellationRequested &&
-                               !invitationAuthority.IsConsumed)
+                        long remainingTicks =
+                            expiryTicks -
+                            Stopwatch.GetTimestamp();
+                        if (remainingTicks <= 0)
                         {
-                            long remainingTicks =
-                                expiryTicks -
-                                Stopwatch.GetTimestamp();
-                            if (remainingTicks <= 0)
+                            break;
+                        }
+
+                        TimeSpan remaining =
+                            TimeSpan.FromSeconds(
+                                remainingTicks /
+                                (double)Stopwatch.Frequency);
+
+                        using var acceptCts =
+                            CancellationTokenSource.CreateLinkedTokenSource(
+                                shutdownToken);
+                        acceptCts.CancelAfter(remaining);
+
+                        TlsSocketConnection connection;
+                        try
+                        {
+                            connection =
+                                await listener.AcceptConnectionAsync(
+                                    acceptCts.Token);
+                        }
+                        catch (OperationCanceledException)
+                            when (!shutdownToken.IsCancellationRequested)
+                        {
+                            // Enrollment TTL elapsed while no connection was accepted.
+                            break;
+                        }
+
+                        await using (connection)
+                        {
+                            if (connection.TcpClient.Client.RemoteEndPoint
+                                    is not IPEndPoint remote ||
+                                !policy.IsRemoteAllowed(remote.Address))
                             {
-                                break;
-                            }
-
-                            TimeSpan remaining =
-                                TimeSpan.FromSeconds(
-                                    remainingTicks /
-                                    (double)Stopwatch.Frequency);
-
-                            using var acceptCts =
-                                CancellationTokenSource.CreateLinkedTokenSource(
-                                    shutdownCts.Token);
-                            acceptCts.CancelAfter(remaining);
-
-                            TlsSocketConnection connection;
-                            try
-                            {
-                                connection =
-                                    await listener.AcceptConnectionAsync(
-                                        acceptCts.Token);
-                            }
-                            catch (OperationCanceledException)
-                                when (!shutdownCts.IsCancellationRequested)
-                            {
-                                // Enrollment TTL elapsed while no connection was accepted.
-                                break;
-                            }
-
-                            await using (connection)
-                            {
-                                if (connection.TcpClient.Client.RemoteEndPoint
-                                        is not IPEndPoint remote ||
-                                    !policy.IsRemoteAllowed(remote.Address))
-                                {
-                                    Console.WriteLine(
-                                        $"[{DateTime.UtcNow:O}] [DAEMON REJECT] Remote endpoint is not authorized by policy.");
-                                    continue;
-                                }
-
                                 Console.WriteLine(
-                                    $"[{DateTime.UtcNow:O}] [DAEMON] Authorized network peer connected from {remote.Address}.");
-
-                                var interaction =
-                                    new ConsoleDesktopTransferInteraction(
-                                        isDaemon: true,
-                                        daemonPolicy: policy,
-                                        onInvitationConsumed:
-                                            enrollmentFile.Delete);
-
-                                DesktopTransferResult result =
-                                    await engine.ReceiveAsync(
-                                        connection,
-                                        new DesktopReceiveRequest(
-                                            stagingStore,
-                                            invitationAuthority,
-                                            LocalDeviceName:
-                                                policy.DeviceName,
-                                            Limits:
-                                                receiveLimits),
-                                        interaction,
-                                        shutdownCts.Token);
-
-                                Console.WriteLine(
-                                    $"[{DateTime.UtcNow:O}] [RESULT] {result.Message}");
+                                    $"[{DateTime.UtcNow:O}] [DAEMON REJECT] Remote endpoint is not authorized by policy.");
+                                continue;
                             }
+
+                            Console.WriteLine(
+                                $"[{DateTime.UtcNow:O}] [DAEMON] Policy-allowed network peer connected from {remote.Address}.");
+
+                            var interaction =
+                                new ConsoleDesktopTransferInteraction(
+                                    isDaemon: true,
+                                    daemonPolicy: policy,
+                                    onInvitationConsumed:
+                                        enrollmentFile.Delete);
+
+                            DesktopTransferResult result =
+                                await engine.ReceiveAsync(
+                                    connection,
+                                    new DesktopReceiveRequest(
+                                        stagingStore,
+                                        invitationAuthority,
+                                        LocalDeviceName:
+                                            policy.DeviceName,
+                                        Limits:
+                                            receiveLimits),
+                                    interaction,
+                                    shutdownToken);
+
+                            Console.WriteLine(
+                                $"[{DateTime.UtcNow:O}] [RESULT] {result.Message}");
                         }
                     }
-                    finally
-                    {
-                        enrollmentFile.Delete();
-                    }
+                }
+                finally
+                {
+                    enrollmentFile.Delete();
                 }
             }
-            catch (OperationCanceledException)
-                when (shutdownCts.IsCancellationRequested)
-            {
-                // Normal Ctrl+C / SIGTERM shutdown.
-            }
-            finally
-            {
-                shutdownCts.Cancel();
-                enrollmentFile.Delete();
-                stagingStore.PurgeSession(
-                    new SessionId(
-                        "00000000-0000-4000-8000-000000000000"));
-                sigTerm?.Dispose();
-                Console.CancelKeyPress -= cancelHandler;
-            }
-
-            Console.WriteLine(
-                $"[{DateTime.UtcNow:O}] [DAEMON STOPPED] Clean shutdown complete.");
-            return 0;
         }
+        catch (OperationCanceledException)
+            when (shutdownToken.IsCancellationRequested)
+        {
+            // Normal Ctrl+C / SIGTERM/test-driven shutdown.
+        }
+        finally
+        {
+            enrollmentFile.Delete();
+        }
+
+        Console.WriteLine(
+            $"[{DateTime.UtcNow:O}] [DAEMON STOPPED] Clean shutdown complete.");
+        return 0;
     }
 
     private static (LanInvitation Invitation, string Uri)
