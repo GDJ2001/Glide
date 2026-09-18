@@ -80,7 +80,9 @@ object TransferReducer {
         val hello = NegotiationValidator.createHello(
             role = state.role,
             ephemeralPeerId = event.ephemeralPeerId,
-            displayName = event.displayName
+            displayName = event.displayName,
+            optionalCapabilities =
+                event.optionalCapabilities
         )
         val (env, nextSeq) = makeEnvelope(state, MessageTypes.HELLO, ProtocolCodec.encodeBody(hello))
         val nextState = state.copy(
@@ -102,7 +104,9 @@ object TransferReducer {
             hello = event.hello,
             ephemeralPeerId = peerId,
             displayName = "Glide Device",
-            requestedLimits = limits
+            requestedLimits = limits,
+            supportedOptionalCapabilities =
+                event.supportedOptionalCapabilities
         )
         val session = NegotiationValidator.validateHelloAck(event.hello, ack)
         val (env, nextSeq) = makeEnvelope(state, MessageTypes.HELLO_ACK, ProtocolCodec.encodeBody(ack))
