@@ -178,6 +178,29 @@ class TransferRuntimeTest {
         }
 
     @Test
+    fun stopActiveSession_requestsCancellationAndWaitsForTerminalCleanup() = runTest(dispatcher) {
+        var terminalCallbacks = 0
+        val runtime = TransferRuntime.forTesting()
+        runtime.attachServiceScope(backgroundScope) { terminalCallbacks++ }
+
+        val transport = TestTransport()
+        val coordinator = coordinator(transport = transport)
+        assertTrue(runtime.attachCoordinatorForTesting(coordinator, "Sender"))
+        testScheduler.runCurrent()
+
+        assertTrue(runtime.stopActiveSession("USER_STOPPED"))
+        testScheduler.advanceUntilIdle()
+
+        assertTrue(runtime.transferState.value is TransferUiState.Cancelled)
+        assertFalse(runtime.isSessionActive.value)
+        assertNull(runtime.activeSessionId.value)
+        assertTrue(transport.disconnectCalls >= 1)
+        assertEquals(1, terminalCallbacks)
+
+        runtime.detachServiceScope()?.join()
+    }
+
+    @Test
     fun exactSessionCancel_rejectsStaleId_andTerminatesMatchingSession() = runTest(dispatcher) {
         var terminalCallbacks = 0
         val runtime = TransferRuntime.forTesting()
