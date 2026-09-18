@@ -7,7 +7,7 @@ Plan: [`planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md`](planning/CODE_R
 Latest reconciliation: [`planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md`](planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md)  
 Review baseline: `ea2e811a7f2d8aaddc552e894fe04782cd08a499`  
 HARD-002 captured source boundary: `12681eabba26387fe7d1bbaf309971f345642e41`  
-**Next recommended task: HARD-011 (IN_PROGRESS) while M1 physical/CI blockers remain open. Restore current-head CI to verify HARD-008/HARD-009, then execute HARD-010 on two physical devices.**
+**Next recommended task: HARD-011 (REVIEW_REQUIRED). Restore current-head CI and verify the shared desktop engine before activating HARD-012. M1 still has HARD-008/HARD-009 CI review blockers and HARD-010 physical-device evidence blocked.**
 
 Source/configuration commits after the HARD-002 captured boundary are not silently certified by HARD-002; the task that consumes them must inspect/reconcile them before relying on their claims.
 
@@ -29,7 +29,7 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 | --- | --- | ---: | --- |
 | M0 Honest baseline | HARD-001–004 | 4 / 4 | COMPLETE |
 | M1 Android production flow | HARD-005–010 | 3 / 6 | IN PROGRESS |
-| M2 Desktop/native interoperability | HARD-011–017 | 0 / 7 | NOT STARTED |
+| M2 Desktop/native interoperability | HARD-011–017 | 0 / 7 | IN PROGRESS |
 | M3 Trust, folders and true resume | HARD-018–024 | 0 / 7 | NOT STARTED |
 | M4 Secure browser sharing | HARD-025–030 | 0 / 6 | NOT STARTED |
 | M5 Structure/developer experience | HARD-031–035 | 0 / 5 | NOT STARTED |
@@ -69,7 +69,7 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 | HARD-008 | M1 | REVIEW_REQUIRED | Wire real LAN listener and QR invitation lifecycle |
 | HARD-009 | M1 | REVIEW_REQUIRED | Complete service/session/background lifecycle |
 | HARD-010 | M1 | BLOCKED | Prove two-device Android production journey |
-| HARD-011 | M2 | IN_PROGRESS | Extract shared desktop transfer engine |
+| HARD-011 | M2 | REVIEW_REQUIRED | Extract shared desktop transfer engine |
 | HARD-012 | M2 | NOT_STARTED | Align native LAN discovery/TLS/bootstrap profile |
 | HARD-013 | M2 | NOT_STARTED | Implement strict desktop session/protocol state machine |
 | HARD-014 | M2 | NOT_STARTED | Make desktop hashing/storage bounded and shared |
@@ -199,11 +199,14 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 <a id="hard-011"></a>
 ## HARD-011 — Extract shared desktop transfer engine
 
-- **Milestone / status:** M2 / IN_PROGRESS.
+- **Milestone / status:** M2 / REVIEW_REQUIRED.
 - **Dependencies:** HARD-004.
-- **Current focus:** inventory the CLI and WPF pairing/consent/protocol/streaming loops, extract one shared desktop application/session engine, and make both entrypoints delegate to it without changing protocol semantics.
-- **Acceptance:** WPF and CLI share one pairing/consent/sequencing/streaming/completion/cancellation engine; no duplicated protocol loop remains in UI/entrypoint code.
-- **Tests/evidence:** CLI/WPF parity through the same engine fixtures/fakes and a dependency/responsibility map.
+- **Implementation state:** `Glide.Desktop` now owns the shared connected-session engine. CLI send/receive/daemon and WPF send/receive delegate to `DesktopTransferEngine`; neither entrypoint retains a `LanRecordChannel`/item protocol loop or sender whole-file hashing loop. `Glide.Desktop` is wired into the solution, CLI, WPF and test projects.
+- **Behavioral evidence prepared:** real loopback TLS QR-paired two-file send/receive, offer rejection before commit, shared cancellation result, peer/invitation/history callbacks, plus architecture guards preventing protocol-loop regression into CLI/WPF.
+- **HARD-003 compatibility:** the CLI receive-handler reflection seam and original SAS console format are retained as thin presentation wrappers so expected-red pagination/sequence/SAS/hashing tests continue exercising the deferred defects.
+- **Verification blocker:** GitHub Actions still produces no current-head runs/checks. No compile/test claim is made for the HARD-011 source graph.
+- **Evidence:** [HARD-011 shared desktop engine extraction](development/sessions/2026-09-18-hard-011.md).
+- **Completion gate:** current-head Windows solution build + ordinary Windows/Linux tests + shared-engine tests + architecture guards + intended HARD-003 expected-red behavior must pass before HARD-012 is activated.
 
 <a id="hard-012"></a>
 ## HARD-012 — Align native LAN discovery/TLS/bootstrap profile
