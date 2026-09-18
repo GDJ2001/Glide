@@ -243,8 +243,25 @@ fun GlideAppNavDisplay(
                         }
                     },
                     onSelectPeer = { peerId ->
-                        viewModel.selectPeer(peerId) { selectedId ->
-                            backStack.add(GlideRoute.Transfer(sessionId = "send-${selectedId.value}", batchId = route.batchId))
+                        val peer = (uiState as? dev.glide.app.ui.discovery.DiscoveryUiState.Searching)
+                            ?.peers
+                            ?.firstOrNull { it.id == peerId }
+                        if (peer != null) {
+                            viewModel.selectPeer(peerId) { selectedId ->
+                                viewModel.stopDiscovery()
+                                dev.glide.app.service.TransferService.startNearbySenderPairing(
+                                    context = context,
+                                    peerId = selectedId,
+                                    peerName = peer.displayName,
+                                    selectionId = route.batchId?.let { dev.glide.core.domain.BatchId(it) }
+                                )
+                                backStack.add(
+                                    GlideRoute.Transfer(
+                                        sessionId = "nearby-send-${selectedId.value}",
+                                        batchId = route.batchId
+                                    )
+                                )
+                            }
                         }
                     },
                     onRetry = startDiscoveryAtPointOfUse,
@@ -286,14 +303,28 @@ fun GlideAppNavDisplay(
                     contract = ActivityResultContracts.RequestMultiplePermissions()
                 ) {
                     if (hasNearbyPermissions()) {
-                        viewModel.startAdvertising("Glide Device")
+                        if (transferRuntime != null) {
+                            dev.glide.app.service.TransferService.startNearbyReceiver(
+                                context = context,
+                                localDeviceName = "Glide Device"
+                            )
+                        } else {
+                            viewModel.startAdvertising("Glide Device")
+                        }
                     } else {
                         viewModel.onPermissionDenied()
                     }
                 }
                 val startAdvertisingAtPointOfUse: () -> Unit = {
                     if (nearbyPermissions.isEmpty() || hasNearbyPermissions()) {
-                        viewModel.startAdvertising("Glide Device")
+                        if (transferRuntime != null) {
+                            dev.glide.app.service.TransferService.startNearbyReceiver(
+                                context = context,
+                                localDeviceName = "Glide Device"
+                            )
+                        } else {
+                            viewModel.startAdvertising("Glide Device")
+                        }
                     } else {
                         permissionLauncher.launch(nearbyPermissions.toTypedArray())
                     }
@@ -308,11 +339,31 @@ fun GlideAppNavDisplay(
                 }
                 val uiState by viewModel.uiState.collectAsStateWithLifecycle()
                 val qrState by qrViewModel.receiverState.collectAsStateWithLifecycle()
+                val pairingState = if (transferRuntime != null) {
+                    val runtimePairingState by transferRuntime.pairingState.collectAsStateWithLifecycle()
+                    runtimePairingState
+                } else {
+                    dev.glide.app.ui.pairing.PairingUiState.Idle
+                }
+
+                androidx.compose.runtime.LaunchedEffect(pairingState) {
+                    val verifying = pairingState as? dev.glide.app.ui.pairing.PairingUiState.Verifying
+                    if (verifying != null && backStack.lastOrNull() !is GlideRoute.Transfer) {
+                        backStack.add(
+                            GlideRoute.Transfer(
+                                sessionId = "nearby-receive-${verifying.peerId.value}"
+                            )
+                        )
+                    }
+                }
 
                 dev.glide.app.ui.discovery.ReceiveReadinessScreen(
                     uiState = uiState,
                     onStopReceiving = {
                         viewModel.stopAdvertising()
+                        if (transferRuntime != null) {
+                            dev.glide.app.service.TransferService.stopService(context)
+                        }
                         qrViewModel.stopReceiving()
                         showQrSheet = false
                         if (backStack.size > 1) {
