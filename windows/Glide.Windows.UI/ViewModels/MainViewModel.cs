@@ -428,6 +428,105 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         set => SetProperty(ref _historyLimit, value);
     }
 
+    private async Task InitializePersistentStateAsync()
+    {
+        try
+        {
+            DesktopPersistentState state =
+                await _stateStore.LoadAsync();
+
+            await _uiDispatcher.InvokeAsync(() =>
+            {
+                DeviceName = state.Settings.DeviceName;
+                ReceiveDirectory = state.Settings.ReceiveDirectory;
+                HistoryLimit = state.Settings.HistoryLimit;
+
+                HistoryItems.Clear();
+                foreach (DesktopHistoryEntry entry in state.History)
+                {
+                    HistoryItems.Add(CreateHistoryItem(entry));
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            await _uiDispatcher.InvokeAsync(() =>
+            {
+                StatusMessage =
+                    $"Desktop state could not be loaded: {ex.Message}";
+            });
+        }
+    }
+
+    private async Task ExecuteSaveSettingsAsync()
+    {
+        try
+        {
+            var settings = new DesktopSettings(
+                DeviceName,
+                ReceiveDirectory,
+                HistoryLimit).Validate();
+
+            await _stateStore.SaveSettingsAsync(settings);
+
+            await _uiDispatcher.InvokeAsync(() =>
+            {
+                DeviceName = settings.DeviceName;
+                ReceiveDirectory = settings.ReceiveDirectory;
+                HistoryLimit = settings.HistoryLimit;
+                StatusMessage = IsListening
+                    ? "Settings saved. Restart listening to advertise the new device name."
+                    : "Settings saved.";
+            });
+        }
+        catch (Exception ex)
+        {
+            await _uiDispatcher.InvokeAsync(() =>
+            {
+                StatusMessage =
+                    $"Settings were not saved: {ex.Message}";
+            });
+        }
+    }
+
+    private async Task ExecuteClearHistoryAsync()
+    {
+        try
+        {
+            await _stateStore.ClearHistoryAsync();
+
+            await _uiDispatcher.InvokeAsync(() =>
+            {
+                HistoryItems.Clear();
+                StatusMessage = "Transfer history cleared.";
+            });
+        }
+        catch (Exception ex)
+        {
+            await _uiDispatcher.InvokeAsync(() =>
+            {
+                StatusMessage =
+                    $"Transfer history could not be cleared: {ex.Message}";
+            });
+        }
+    }
+
+    private static HistoryItemViewModel CreateHistoryItem(
+        DesktopHistoryEntry entry) =>
+        new()
+        {
+            Direction =
+                entry.Direction == DesktopTransferDirection.Send
+                    ? "Sent"
+                    : "Received",
+            ItemName = entry.ItemName,
+            FormattedSize =
+                TransferItemViewModel.FormatSize(entry.SizeBytes),
+            TargetPath = entry.Path,
+            PeerName = entry.PeerName,
+            Timestamp = entry.Timestamp.LocalDateTime
+        };
+
     public void AddDroppedFiles(string[] filePaths)
     {
         foreach (var path in filePaths)
