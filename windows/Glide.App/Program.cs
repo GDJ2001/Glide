@@ -232,6 +232,8 @@ public static class Program
                 ttlSeconds: 120);
 
             string pairingUri = InvitationCodec.Encode(invitation);
+            var canonicalInvitation = InvitationCodec.Decode(pairingUri);
+            var invitationAuthority = new LanInvitationAuthority(canonicalInvitation);
 
             Console.ForegroundColor = ConsoleColor.Green;
             Console.WriteLine($"\n[READY] Listening for incoming transfers on port {boundPort}");
@@ -257,8 +259,7 @@ public static class Program
                 connection,
                 new DesktopReceiveRequest(
                     stagingStore,
-                    invitation,
-                    AllowBootstrapWithoutInvitation: false,
+                    invitationAuthority,
                     LocalDeviceName: Environment.MachineName),
                 interaction);
 
@@ -333,8 +334,7 @@ public static class Program
                             connection,
                             new DesktopReceiveRequest(
                                 stagingStore,
-                                Invitation: null,
-                                AllowBootstrapWithoutInvitation: false,
+                                InvitationAuthority: null,
                                 LocalDeviceName: Environment.MachineName),
                             interaction,
                             cts.Token);
@@ -366,7 +366,7 @@ public static class Program
     private static async Task<bool> HandleConnectionTransferAsync(
         TlsSocketConnection connection,
         QuarantineStagingStore stagingStore,
-        LanInvitation? invitation,
+        LanInvitationAuthority? invitationAuthority,
         bool isDaemon)
     {
         var engine = new DesktopTransferEngine();
@@ -374,8 +374,7 @@ public static class Program
             connection,
             new DesktopReceiveRequest(
                 stagingStore,
-                invitation,
-                AllowBootstrapWithoutInvitation: isDaemon,
+                invitationAuthority,
                 LocalDeviceName: Environment.MachineName),
             new ConsoleDesktopTransferInteraction(isDaemon));
 
