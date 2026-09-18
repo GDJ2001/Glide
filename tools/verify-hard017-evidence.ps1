@@ -60,11 +60,13 @@ foreach ($platform in @("android","windows","linux")) {
     $endpoint = Read-JsonFile $path
     if ($null -eq $endpoint) { continue }
 
-    if ($endpoint.schema -ne "glide-hard017-endpoint-v1") {
-        Add-Failure "$platform endpoint has unsupported schema '$($endpoint.schema)'."
+    $endpointSchema = Require-Property $endpoint "schema" "$platform endpoint"
+    if ($endpointSchema -and $endpointSchema -ne "glide-hard017-endpoint-v1") {
+        Add-Failure "$platform endpoint has unsupported schema '$endpointSchema'."
     }
-    if ($endpoint.platform -ne $platform) {
-        Add-Failure "$platform endpoint declares platform '$($endpoint.platform)'."
+    $declaredPlatform = Require-Property $endpoint "platform" "$platform endpoint"
+    if ($declaredPlatform -and $declaredPlatform -ne $platform) {
+        Add-Failure "$platform endpoint declares platform '$declaredPlatform'."
     }
 
     $head = Require-Property $endpoint "repositoryHead" "$platform endpoint"
@@ -81,7 +83,8 @@ foreach ($platform in @("android","windows","linux")) {
         foreach ($field in @("serial","manufacturer","model","androidRelease","sdk","buildFingerprint","packageId")) {
             [void](Require-Property $endpoint $field "android endpoint")
         }
-        if ($endpoint.deviceEvidenceRule -notmatch "physical Android") {
+        $deviceRule = Require-Property $endpoint "deviceEvidenceRule" "android endpoint"
+        if ($deviceRule -and $deviceRule -notmatch "physical Android") {
             Add-Failure "Android endpoint does not record the physical-device evidence rule."
         }
     }
@@ -105,8 +108,9 @@ $corpusPath = Join-Path $EvidenceDir "corpus\corpus-manifest.json"
 $corpus = Read-JsonFile $corpusPath
 $corpusSha = ""
 if ($null -ne $corpus) {
-    if ($corpus.schema -ne "glide-hard017-corpus-v1") {
-        Add-Failure "Corpus has unsupported schema '$($corpus.schema)'."
+    $corpusSchema = Require-Property $corpus "schema" "corpus"
+    if ($corpusSchema -and $corpusSchema -ne "glide-hard017-corpus-v1") {
+        Add-Failure "Corpus has unsupported schema '$corpusSchema'."
     }
     if ([int]$corpus.itemCount -lt 35) {
         Add-Failure "Corpus must contain at least 35 items; found $($corpus.itemCount)."
@@ -202,16 +206,19 @@ foreach ($case in $required) {
     if ($null -eq $run) { continue }
 
     $ctx = "run '$($case.id)'"
-    if ($run.schema -ne "glide-hard017-run-v1") {
-        Add-Failure "$ctx has unsupported schema '$($run.schema)'."
+    $runSchema = Get-RunProperty $run "schema" $ctx
+    if ($runSchema -and $runSchema -ne "glide-hard017-run-v1") {
+        Add-Failure "$ctx has unsupported schema '$runSchema'."
     }
-    if ($run.id -ne $case.id) {
-        Add-Failure "$ctx declares id '$($run.id)'."
+    $declaredId = Get-RunProperty $run "id" $ctx
+    if ($declaredId -and $declaredId -ne $case.id) {
+        Add-Failure "$ctx declares id '$declaredId'."
     }
-    if ($run.scenario -ne $case.kind) {
-        Add-Failure "$ctx scenario '$($run.scenario)' does not match '$($case.kind)'."
+    $declaredScenario = Get-RunProperty $run "scenario" $ctx
+    if ($declaredScenario -and $declaredScenario -ne $case.kind) {
+        Add-Failure "$ctx scenario '$declaredScenario' does not match '$($case.kind)'."
     }
-    if ($run.observedResult -ne "pass") {
+    if ((Get-RunProperty $run "observedResult" $ctx) -ne "pass") {
         Add-Failure "$ctx is not recorded as observedResult=pass."
     }
 
@@ -235,19 +242,19 @@ foreach ($case in $required) {
     }
 
     if ($endpoints.ContainsKey($sender)) {
-        if ($run.senderArtifactSha256 -ne $endpoints[$sender].artifactSha256) {
+        if ((Get-RunProperty $run "senderArtifactSha256" $ctx) -ne $endpoints[$sender].artifactSha256) {
             Add-Failure "$ctx sender artifact hash does not match captured $sender endpoint."
         }
     }
     if ($endpoints.ContainsKey($receiver)) {
-        if ($run.receiverArtifactSha256 -ne $endpoints[$receiver].artifactSha256) {
+        if ((Get-RunProperty $run "receiverArtifactSha256" $ctx) -ne $endpoints[$receiver].artifactSha256) {
             Add-Failure "$ctx receiver artifact hash does not match captured $receiver endpoint."
         }
     }
 
     if ($endpoints.Count -eq 3) {
         $expectedHead = $endpoints["android"].repositoryHead
-        if ($run.repositoryHead -ne $expectedHead) {
+        if ((Get-RunProperty $run "repositoryHead" $ctx) -ne $expectedHead) {
             Add-Failure "$ctx repositoryHead does not match endpoint build identity."
         }
     }
