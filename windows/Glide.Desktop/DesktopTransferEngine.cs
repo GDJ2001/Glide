@@ -15,9 +15,9 @@ namespace Glide.Desktop;
 /// Shared desktop application/session engine for CLI and WPF.
 ///
 /// HARD-011 centralized the desktop session implementation. HARD-012 aligned the authenticated
-/// native LAN profile. HARD-013 makes the control session strict: independent monotonic direction
-/// sequences, paged/validated offers, exact correlation, protocol deadlines, and truthful receipts.
-/// HARD-014 still owns replacing pre-send whole-file digest reads with bounded streaming hashing.
+/// native LAN profile. HARD-013 made the control session strict. HARD-014 hashes the exact
+/// transmitted bytes in one bounded pass and routes receive storage through the shared
+/// reservation-backed quarantine/commit boundary.
 /// </summary>
 public sealed class DesktopTransferEngine
 {
@@ -32,6 +32,7 @@ public sealed class DesktopTransferEngine
     {
         _deadlines = deadlines ?? DesktopProtocolDeadlines.Default;
     }
+
     public async Task<DesktopTransferResult> SendAsync(
         DesktopSendRequest request,
         IDesktopTransferInteraction interaction,
