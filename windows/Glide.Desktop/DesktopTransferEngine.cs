@@ -830,6 +830,12 @@ public sealed class DesktopTransferEngine
 
         if (!offerAccepted)
         {
+            if (userAccepted)
+            {
+                request.StagingStore.PurgeSession(
+                    sessionId);
+            }
+
             return DesktopTransferResult.RejectedByPeer(
                 userAccepted
                     ? $"Transfer offer could not be reserved locally: {rejectionCode}."
