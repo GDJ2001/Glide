@@ -221,7 +221,7 @@ class Hard008LanQrProductionFlowTest {
             isBusy = false
         )
         assertFalse(replay.isAccepted)
-        assertEquals(LanBootstrapFailureCode.INVITATION_USED, replay.code)
+        assertEquals(LanBootstrapFailureCode.INVITATION_USED.name, replay.code)
 
         val expiringAuthority = InvitationAuthority(clock = clock)
         val expiring = expiringAuthority.mintInvitation(
@@ -246,7 +246,7 @@ class Hard008LanQrProductionFlowTest {
             isBusy = false
         )
         assertFalse(expired.isAccepted)
-        assertEquals(LanBootstrapFailureCode.INVITATION_EXPIRED, expired.code)
+        assertEquals(LanBootstrapFailureCode.INVITATION_EXPIRED.name, expired.code)
     }
 
     private fun controller(): ProductionLanController =
