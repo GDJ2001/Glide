@@ -520,8 +520,8 @@ internal static class DesktopTrustedSessionAuthenticator
             binding.Length != 64 ||
             binding.Any(
                 static ch =>
-                    ch is not (>= '0' and <= '9') &&
-                    ch is not (>= 'a' and <= 'f')) ||
+                    !((ch >= '0' && ch <= '9') ||
+                      (ch >= 'a' && ch <= 'f'))) ||
             binding.All(static ch => ch == '0'))
         {
             throw AuthenticationFailure(
