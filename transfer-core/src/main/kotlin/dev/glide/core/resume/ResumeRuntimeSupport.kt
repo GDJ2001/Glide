@@ -52,3 +52,120 @@ data class ResumeSourcePreflight(
         }
     }
 }
+
+
+/**
+ * Explicit byte-level reconnect mode. Ordinary retry/reattachment never creates this plan.
+ */
+sealed interface ResumeReconnectPlan {
+    val originalSessionId:
+        dev.glide.core.domain.SessionId
+    val itemId:
+        dev.glide.core.domain.ItemId
+    val expectedPeerFingerprintHex: String
+
+    data class Sender(
+        override val originalSessionId:
+            dev.glide.core.domain.SessionId,
+        override val itemId:
+            dev.glide.core.domain.ItemId,
+        override val expectedPeerFingerprintHex:
+            String
+    ) : ResumeReconnectPlan
+
+    data class Receiver(
+        override val originalSessionId:
+            dev.glide.core.domain.SessionId,
+        override val itemId:
+            dev.glide.core.domain.ItemId,
+        override val expectedPeerFingerprintHex:
+            String
+    ) : ResumeReconnectPlan
+}
+
+data class ResumeSenderReadySource(
+    val authority:
+        ResumeRequestAuthority
+            .SenderSourceAuthority,
+    val sourceHandle:
+        dev.glide.core.domain.SourceHandle,
+    val wholeFileSha256Hex: String
+) {
+    init {
+        require(
+            wholeFileSha256Hex.length == 64 &&
+                wholeFileSha256Hex.all {
+                    it in '0'..'9' ||
+                        it in 'a'..'f'
+                }
+        ) {
+            "wholeFileSha256Hex must be canonical lowercase SHA-256"
+        }
+    }
+}
+
+sealed interface ResumeAuthorityLookup<
+    out T
+> {
+    data class Ready<T>(
+        val value: T
+    ) : ResumeAuthorityLookup<T>
+
+    data class Rejected(
+        val code: String
+    ) : ResumeAuthorityLookup<Nothing> {
+        init {
+            require(
+                code in
+                    dev.glide.core.protocol
+                        .ResumeRejectCodes.ALL
+            ) {
+                "Unsupported resume rejection code"
+            }
+        }
+    }
+}
+
+sealed interface ResumeReconnectState {
+    data object Idle :
+        ResumeReconnectState
+
+    data class AwaitingResponse(
+        val requestMessageId: String,
+        val originalSessionId:
+            dev.glide.core.domain.SessionId,
+        val itemId:
+            dev.glide.core.domain.ItemId,
+        val requestedChunkIndex: Long,
+        val requestedByteOffset: Long
+    ) : ResumeReconnectState
+
+    data class ReceiverAccepted(
+        val originalSessionId:
+            dev.glide.core.domain.SessionId,
+        val itemId:
+            dev.glide.core.domain.ItemId,
+        val startChunkIndex: Long,
+        val startByteOffset: Long
+    ) : ResumeReconnectState
+
+    data class SenderAccepted(
+        val originalSessionId:
+            dev.glide.core.domain.SessionId,
+        val itemId:
+            dev.glide.core.domain.ItemId,
+        val startChunkIndex: Long,
+        val startByteOffset: Long,
+        val sourceHandle:
+            dev.glide.core.domain.SourceHandle,
+        val wholeFileSha256Hex: String
+    ) : ResumeReconnectState
+
+    data class Rejected(
+        val code: String
+    ) : ResumeReconnectState
+
+    data class Failed(
+        val code: String
+    ) : ResumeReconnectState
+}
