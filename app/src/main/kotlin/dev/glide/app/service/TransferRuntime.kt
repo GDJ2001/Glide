@@ -143,10 +143,12 @@ class TransferRuntime private constructor(
      * interrupted failure instead of being allowed to continue in a ViewModel/application scope.
      * Terminal UI state is preserved for result/retry presentation.
      */
-    fun detachServiceScope() {
+    fun detachServiceScope(): Job? {
         val coordinatorToStop: TransferCoordinator?
+        val ownerScope: CoroutineScope?
         synchronized(lock) {
             coordinatorToStop = activeCoordinator
+            ownerScope = serviceScope
             activeCoordinatorJob?.cancel()
             activeCoordinatorJob = null
             pairingJob?.cancel()
@@ -188,9 +190,27 @@ class TransferRuntime private constructor(
             terminalCallback = null
             rateTracker.reset()
         }
-        coordinatorToStop?.stop()
+
         discoveryController?.stopAdvertising()
         lanController?.stopAll()
+
+        if (coordinatorToStop == null) return null
+        if (ownerScope == null) {
+            coordinatorToStop.stop()
+            return null
+        }
+
+        return ownerScope.launch {
+            try {
+                if (coordinatorToStop.state.value.phase.isTerminal) {
+                    coordinatorToStop.awaitTerminalCleanup()
+                } else {
+                    coordinatorToStop.interruptAndAwaitCleanup("SERVICE_STOPPED")
+                }
+            } finally {
+                coordinatorToStop.stop()
+            }
+        }
     }
 
     fun isServiceAttached(): Boolean = synchronized(lock) { serviceScope != null }
@@ -541,6 +561,11 @@ class TransferRuntime private constructor(
                     _activeSessionId.value = coordinator.sessionId.value.takeIf { active }
 
                     if (sessionState.phase.isTerminal) {
+                        coordinator.awaitTerminalCleanup()
+                        val stillOwned = synchronized(lock) {
+                            activeCoordinator === coordinator
+                        }
+                        if (!stillOwned) return@collect
                         captureTerminalSnapshot(coordinator)
                         coordinator.stop()
                         terminalCallback?.invoke()
@@ -789,22 +814,27 @@ class TransferRuntime private constructor(
         return true
     }
 
-    fun stopActiveSession(): Boolean {
-        val coordinator: TransferCoordinator?
-        synchronized(lock) {
-            coordinator = activeCoordinator
-            activeCoordinatorJob?.cancel()
-            activeCoordinatorJob = null
-            activeCoordinator = null
-            _isSessionActive.value = false
-            _activeSessionId.value = null
-            rateTracker.reset()
+    fun stopActiveSession(reason: String = "USER_STOPPED"): Boolean {
+        val coordinator = synchronized(lock) { activeCoordinator } ?: return false
+
+        if (coordinator.state.value.phase.isTerminal) {
+            synchronized(lock) {
+                if (activeCoordinator === coordinator) {
+                    captureTerminalSnapshot(coordinator)
+                    activeCoordinatorJob?.cancel()
+                    activeCoordinatorJob = null
+                    activeCoordinator = null
+                    _isSessionActive.value = false
+                    _activeSessionId.value = null
+                    rateTracker.reset()
+                }
+            }
+            coordinator.stop()
+            return true
         }
-        coordinator?.let {
-            captureTerminalSnapshot(it)
-            it.stop()
-        }
-        return coordinator != null
+
+        coordinator.cancel(reason)
+        return true
     }
 
     fun getActiveSessionId(): String? = _activeSessionId.value
