@@ -1,8 +1,10 @@
 package dev.glide.app.service
 
+import dev.glide.app.discovery.ProductionDiscoveryController
 import dev.glide.app.ui.discovery.BlockedReason
 import dev.glide.app.ui.discovery.DeviceType
 import dev.glide.app.ui.discovery.DiscoveryUiState
+import dev.glide.app.ui.discovery.ReceiveReadinessUiState
 import dev.glide.app.ui.pairing.PairingUiState
 import dev.glide.app.ui.selection.SelectedTransferStore
 import dev.glide.app.ui.transfer.TransferUiState
@@ -40,11 +42,15 @@ import javax.inject.Singleton
 @Singleton
 class TransferRuntime private constructor(
     private val sessionFactory: TransferSessionFactory?,
+    private val discoveryController: ProductionDiscoveryController?,
     @Suppress("unused") private val testInstance: Boolean
 ) {
 
     @Inject
-    constructor(sessionFactory: TransferSessionFactory) : this(sessionFactory, false)
+    constructor(
+        sessionFactory: TransferSessionFactory,
+        discoveryController: ProductionDiscoveryController
+    ) : this(sessionFactory, discoveryController, false)
 
     private val lock = Any()
 
@@ -65,12 +71,21 @@ class TransferRuntime private constructor(
     private val _pairingState = MutableStateFlow<PairingUiState>(PairingUiState.Idle)
     val pairingState: StateFlow<PairingUiState> = _pairingState.asStateFlow()
 
-    private val _discoveryState = MutableStateFlow<DiscoveryUiState>(
+    private val _fallbackDiscoveryState = MutableStateFlow<DiscoveryUiState>(
         DiscoveryUiState.Blocked(
-            BlockedReason.TransportError("Production discovery is not attached yet")
+            BlockedReason.TransportError("Production discovery is not attached")
         )
     )
-    val discoveryState: StateFlow<DiscoveryUiState> = _discoveryState.asStateFlow()
+    val discoveryState: StateFlow<DiscoveryUiState> =
+        discoveryController?.discoveryState ?: _fallbackDiscoveryState.asStateFlow()
+
+    private val _fallbackReceiveReadinessState = MutableStateFlow<ReceiveReadinessUiState>(
+        ReceiveReadinessUiState.Blocked(
+            BlockedReason.TransportError("Production advertising is not attached")
+        )
+    )
+    val receiveReadinessState: StateFlow<ReceiveReadinessUiState> =
+        discoveryController?.receiveReadinessState ?: _fallbackReceiveReadinessState.asStateFlow()
 
     private val _isSessionActive = MutableStateFlow(false)
     val isSessionActive: StateFlow<Boolean> = _isSessionActive.asStateFlow()
@@ -185,7 +200,12 @@ class TransferRuntime private constructor(
             is TransferRuntimeCommand.RejectOffer -> rejectOffer(command.sessionId, command.reason)
             is TransferRuntimeCommand.Cancel -> cancel(command.sessionId, command.reason)
             is TransferRuntimeCommand.Resume -> resume(command.sessionId)
-            is TransferRuntimeCommand.StartReceiveAvailability -> startReceiveAvailability(command.localDeviceName)
+            TransferRuntimeCommand.StartDiscovery -> startDiscovery()
+            TransferRuntimeCommand.StopDiscovery -> stopDiscovery()
+            is TransferRuntimeCommand.NearbyPermissionDenied ->
+                nearbyPermissionDenied(command.receiveMode)
+            is TransferRuntimeCommand.StartReceiveAvailability ->
+                startReceiveAvailability(command.localDeviceName)
             TransferRuntimeCommand.StopReceiveAvailability -> stopReceiveAvailability()
         }
     }
@@ -465,19 +485,52 @@ class TransferRuntime private constructor(
         return true
     }
 
-    private fun startReceiveAvailability(localDeviceName: String): Boolean {
-        _discoveryState.value = DiscoveryUiState.Blocked(
-            BlockedReason.TransportError(
-                "Receive availability for ${localDeviceName.ifBlank { "Glide Device" }} is not wired until HARD-006"
+    private fun startDiscovery(): Boolean {
+        val controller = discoveryController ?: run {
+            _fallbackDiscoveryState.value = DiscoveryUiState.Blocked(
+                BlockedReason.TransportError("Production discovery dependency is unavailable")
             )
-        )
-        return false
+            return false
+        }
+        return controller.startDiscovery()
+    }
+
+    private fun stopDiscovery(): Boolean {
+        val controller = discoveryController ?: return false
+        controller.stopDiscovery()
+        return true
+    }
+
+    private fun nearbyPermissionDenied(receiveMode: Boolean): Boolean {
+        val controller = discoveryController ?: run {
+            if (receiveMode) {
+                _fallbackReceiveReadinessState.value = ReceiveReadinessUiState.Blocked(
+                    BlockedReason.PermissionsRequired
+                )
+            } else {
+                _fallbackDiscoveryState.value = DiscoveryUiState.Blocked(
+                    BlockedReason.PermissionsRequired
+                )
+            }
+            return false
+        }
+        controller.onPermissionDenied(receiveMode)
+        return true
+    }
+
+    private fun startReceiveAvailability(localDeviceName: String): Boolean {
+        val controller = discoveryController ?: run {
+            _fallbackReceiveReadinessState.value = ReceiveReadinessUiState.Blocked(
+                BlockedReason.TransportError("Production advertising dependency is unavailable")
+            )
+            return false
+        }
+        return controller.startAdvertising(localDeviceName)
     }
 
     private fun stopReceiveAvailability(): Boolean {
-        _discoveryState.value = DiscoveryUiState.Blocked(
-            BlockedReason.TransportError("Receive availability is stopped")
-        )
+        val controller = discoveryController ?: return false
+        controller.stopAdvertising()
         return true
     }
 
@@ -532,7 +585,11 @@ class TransferRuntime private constructor(
     }
 
     internal fun setDiscoveryStateForTesting(state: DiscoveryUiState) {
-        _discoveryState.value = state
+        _fallbackDiscoveryState.value = state
+    }
+
+    internal fun setReceiveReadinessStateForTesting(state: ReceiveReadinessUiState) {
+        _fallbackReceiveReadinessState.value = state
     }
 
     internal fun resetForTesting() {
@@ -552,8 +609,12 @@ class TransferRuntime private constructor(
         lastSourceMap = emptyMap()
         _transferState.value = TransferUiState.Idle
         _pairingState.value = PairingUiState.Idle
-        _discoveryState.value = DiscoveryUiState.Blocked(
-            BlockedReason.TransportError("Production discovery is not attached yet")
+        discoveryController?.resetForTesting()
+        _fallbackDiscoveryState.value = DiscoveryUiState.Blocked(
+            BlockedReason.TransportError("Production discovery is not attached")
+        )
+        _fallbackReceiveReadinessState.value = ReceiveReadinessUiState.Blocked(
+            BlockedReason.TransportError("Production advertising is not attached")
         )
         _isSessionActive.value = false
         _activeSessionId.value = null
@@ -568,8 +629,11 @@ class TransferRuntime private constructor(
     }
 
     companion object {
-        internal fun forTesting(sessionFactory: TransferSessionFactory? = null): TransferRuntime {
-            return TransferRuntime(sessionFactory, true)
+        internal fun forTesting(
+            sessionFactory: TransferSessionFactory? = null,
+            discoveryController: ProductionDiscoveryController? = null
+        ): TransferRuntime {
+            return TransferRuntime(sessionFactory, discoveryController, true)
         }
     }
 }
@@ -609,6 +673,9 @@ sealed interface TransferRuntimeCommand {
         val reason: String = "USER_CANCELLED"
     ) : TransferRuntimeCommand
     data class Resume(val sessionId: String) : TransferRuntimeCommand
+    data object StartDiscovery : TransferRuntimeCommand
+    data object StopDiscovery : TransferRuntimeCommand
+    data class NearbyPermissionDenied(val receiveMode: Boolean) : TransferRuntimeCommand
     data class StartReceiveAvailability(val localDeviceName: String) : TransferRuntimeCommand
     data object StopReceiveAvailability : TransferRuntimeCommand
 }
