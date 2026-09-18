@@ -1,6 +1,5 @@
 using System.Text.Json.Nodes;
 using Glide.Core.Models;
-using Glide.Core.Security;
 using Glide.Transport.Framing;
 using Glide.Transport.Sockets;
 using Xunit;
@@ -53,55 +52,67 @@ public class FramingAndTransportTests
     }
 
     [Fact]
-    public async Task TlsSocket_MutualAuthLoopbackAndSasDerivation_Succeeds()
+    public async Task TlsSocket_InvitationProfile_AllowsNoClientCertificate_AndNegotiatesCanonicalAlpn()
     {
         using var listener = new TlsSocketListener(port: 0);
         int port = listener.BoundPort;
         Assert.True(port > 0);
 
         var client = new TlsSocketClient();
-
-        var serverTask = Task.Run(async () => await listener.AcceptConnectionAsync());
-        var clientTask = Task.Run(async () => await client.ConnectAsync("127.0.0.1", port));
+        var serverTask = Task.Run(
+            async () => await listener.AcceptConnectionAsync());
+        var clientTask = Task.Run(
+            async () => await client.ConnectAsync(
+                "127.0.0.1",
+                port,
+                expectedSpkiSha256: listener.LocalSpkiSha256));
 
         await Task.WhenAll(serverTask, clientTask);
 
-        await using var serverConn = await serverTask;
-        await using var clientConn = await clientTask;
+        await using var serverConnection = await serverTask;
+        await using var clientConnection = await clientTask;
 
-        Assert.NotNull(serverConn.RemotePublicKeyBytes);
-        Assert.NotNull(clientConn.RemotePublicKeyBytes);
+        Assert.Empty(clientConnection.LocalPublicKeyBytes);
+        Assert.Empty(serverConnection.RemotePublicKeyBytes);
+        Assert.Equal(
+            new System.Net.Security.SslApplicationProtocol("glide-lan/1"),
+            clientConnection.SslStream.NegotiatedApplicationProtocol);
+        Assert.Equal(
+            new System.Net.Security.SslApplicationProtocol("glide-lan/1"),
+            serverConnection.SslStream.NegotiatedApplicationProtocol);
 
-        // Derive SAS on both sides
-        byte[] sessionNonce = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+        var serverChannel =
+            new LengthPrefixedFrameChannel(serverConnection.SslStream);
+        var clientChannel =
+            new LengthPrefixedFrameChannel(clientConnection.SslStream);
 
-        int serverSas = SasCalculator.CalculateSas(clientConn.LocalPublicKeyBytes, serverConn.LocalPublicKeyBytes, sessionNonce);
-        int clientSas = SasCalculator.CalculateSas(clientConn.LocalPublicKeyBytes, clientConn.RemotePublicKeyBytes, sessionNonce);
-
-        Assert.InRange(serverSas, 100_000, 999_999);
-        Assert.Equal(serverSas, clientSas);
-
-        // Exchange framed HELLO / HELLO_ACK message
-        var serverChannel = new LengthPrefixedFrameChannel(serverConn.SslStream);
-        var clientChannel = new LengthPrefixedFrameChannel(clientConn.SslStream);
-
-        var sessionId = new SessionId("11111111-1111-4111-8111-111111111111");
-        var messageId = new MessageId("22222222-2222-4222-8222-222222222222");
-
+        var sessionId =
+            new SessionId("11111111-1111-4111-8111-111111111111");
+        var messageId =
+            new MessageId("22222222-2222-4222-8222-222222222222");
         var helloBody = new JsonObject
         {
             ["supportedMajors"] = new JsonArray(1),
             ["requiredCapabilities"] = new JsonArray(),
             ["role"] = "sender",
-            ["ephemeralPeerId"] = "33333333-3333-4333-8333-333333333333",
+            ["ephemeralPeerId"] =
+                "33333333-3333-4333-8333-333333333333",
             ["displayName"] = "Windows-Sender"
         };
-        var helloEnvelope = new Envelope(1, MessageTypes.Hello, sessionId, messageId, 1, helloBody);
+        var helloEnvelope = new Envelope(
+            1,
+            MessageTypes.Hello,
+            sessionId,
+            messageId,
+            1,
+            helloBody);
 
         await clientChannel.WriteEnvelopeAsync(helloEnvelope);
         var receivedHello = await serverChannel.ReadEnvelopeAsync();
 
         Assert.Equal(MessageTypes.Hello, receivedHello.Type);
-        Assert.Equal("Windows-Sender", receivedHello.Body["displayName"]?.ToString());
+        Assert.Equal(
+            "Windows-Sender",
+            receivedHello.Body["displayName"]?.ToString());
     }
 }
