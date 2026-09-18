@@ -399,6 +399,21 @@ public sealed class DesktopPersistentTrustTests : IDisposable
                     (UnixFileMode)0,
                     mode & forbidden);
             }
+            else if (OperatingSystem.IsWindows())
+            {
+                using CngKey key =
+                    CngKey.Open(
+                        windowsName,
+                        CngProvider.MicrosoftSoftwareKeyStorageProvider,
+                        CngKeyOpenOptions.None);
+                Assert.Equal(
+                    CngExportPolicies.None,
+                    key.ExportPolicy);
+                Assert.ThrowsAny<CryptographicException>(
+                    () =>
+                        key.Export(
+                            CngKeyBlobFormat.EccPrivateBlob));
+            }
         }
         finally
         {
@@ -440,6 +455,108 @@ public sealed class DesktopPersistentTrustTests : IDisposable
         Assert.Equal(
             (UnixFileMode)0,
             mode & forbidden);
+    }
+
+    [Fact]
+    public void LinuxIdentityStore_RejectsGroupReadableExistingKey()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+
+        string keyPath =
+            Path.Combine(
+                _root,
+                "identity-permissions",
+                "identity-v1.pk8");
+        var identity =
+            new DesktopPersistentIdentityStore(
+                linuxKeyPath: keyPath,
+                windowsKeyName:
+                    "unused-" + Guid.NewGuid().ToString("N"));
+
+        identity.GetOrCreatePublicKeyDer();
+        File.SetUnixFileMode(
+            keyPath,
+            UnixFileMode.UserRead |
+            UnixFileMode.UserWrite |
+            UnixFileMode.GroupRead);
+
+        Assert.Throws<UnauthorizedAccessException>(
+            () =>
+                identity.GetOrCreatePublicKeyDer());
+
+        File.SetUnixFileMode(
+            keyPath,
+            UnixFileMode.UserRead |
+            UnixFileMode.UserWrite);
+        identity.DeleteIdentity();
+    }
+
+    [Fact]
+    public void LinuxTrustStore_RejectsGroupReadableDatabase()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+
+        string path =
+            Path.Combine(
+                _root,
+                "trust-permissions",
+                "trust-v1.json");
+        var store =
+            new DesktopTrustStore(path);
+        store.Save(
+            new DesktopTrustDocument());
+
+        File.SetUnixFileMode(
+            path,
+            UnixFileMode.UserRead |
+            UnixFileMode.UserWrite |
+            UnixFileMode.GroupRead);
+
+        Assert.Throws<UnauthorizedAccessException>(
+            () => store.Load());
+    }
+
+    [Fact]
+    public void TrustStore_UnknownVersion_FailsClosed()
+    {
+        string path =
+            Path.Combine(
+                _root,
+                "unknown-version",
+                "trust-v1.json");
+        Directory.CreateDirectory(
+            Path.GetDirectoryName(path)!);
+
+        File.WriteAllText(
+            path,
+            """
+            {
+              "version": 999,
+              "localIdentityFingerprintHex": null,
+              "peers": [],
+              "headlessPolicies": []
+            }
+            """);
+
+        if (OperatingSystem.IsLinux())
+        {
+            File.SetUnixFileMode(
+                path,
+                UnixFileMode.UserRead |
+                UnixFileMode.UserWrite);
+        }
+
+        var store =
+            new DesktopTrustStore(path);
+
+        Assert.Throws<InvalidDataException>(
+            () => store.Load());
     }
 
     private VerifiedDesktopPeerIdentity
