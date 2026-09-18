@@ -7,7 +7,7 @@ Plan: [`planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md`](planning/CODE_R
 Latest reconciliation: [`planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md`](planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md)  
 Review baseline: `ea2e811a7f2d8aaddc552e894fe04782cd08a499`  
 HARD-002 captured source boundary: `12681eabba26387fe7d1bbaf309971f345642e41`  
-**Next recommended task: HARD-011 (REVIEW_REQUIRED). Restore current-head CI and verify the shared desktop engine before activating HARD-012. M1 still has HARD-008/HARD-009 CI review blockers and HARD-010 physical-device evidence blocked.**
+**Next recommended verification action: restore current-head CI for the continuation branch, then review HARD-008/HARD-009/HARD-011–015. HARD-010 and HARD-017 remain blocked on real-device/platform evidence. HARD-016 is IN_PROGRESS until peer-specific headless authorization can bind to persistent identities in HARD-020/HARD-021.**
 
 Source/configuration commits after the HARD-002 captured boundary are not silently certified by HARD-002; the task that consumes them must inspect/reconcile them before relying on their claims.
 
@@ -70,12 +70,12 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 | HARD-009 | M1 | REVIEW_REQUIRED | Complete service/session/background lifecycle |
 | HARD-010 | M1 | BLOCKED | Prove two-device Android production journey |
 | HARD-011 | M2 | REVIEW_REQUIRED | Extract shared desktop transfer engine |
-| HARD-012 | M2 | NOT_STARTED | Align native LAN discovery/TLS/bootstrap profile |
-| HARD-013 | M2 | NOT_STARTED | Implement strict desktop session/protocol state machine |
-| HARD-014 | M2 | NOT_STARTED | Make desktop hashing/storage bounded and shared |
-| HARD-015 | M2 | NOT_STARTED | Complete desktop consent/history/settings/state |
-| HARD-016 | M2 | NOT_STARTED | Harden Linux CLI/daemon receiving lifecycle |
-| HARD-017 | M2 | NOT_STARTED | Prove native cross-platform interoperability |
+| HARD-012 | M2 | REVIEW_REQUIRED | Align native LAN discovery/TLS/bootstrap profile |
+| HARD-013 | M2 | REVIEW_REQUIRED | Implement strict desktop session/protocol state machine |
+| HARD-014 | M2 | REVIEW_REQUIRED | Make desktop hashing/storage bounded and shared |
+| HARD-015 | M2 | REVIEW_REQUIRED | Complete desktop consent/history/settings/state |
+| HARD-016 | M2 | IN_PROGRESS | Harden Linux CLI/daemon receiving lifecycle |
+| HARD-017 | M2 | BLOCKED | Prove native cross-platform interoperability |
 | HARD-018 | M3 | NOT_STARTED | Finalize identity/resume protocol extension |
 | HARD-019 | M3 | NOT_STARTED | Integrate Android persistent identity/trust |
 | HARD-020 | M3 | NOT_STARTED | Integrate Windows/Linux persistent identity/trust |
@@ -211,47 +211,57 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 <a id="hard-012"></a>
 ## HARD-012 — Align native LAN discovery/TLS/bootstrap profile
 
-- **Milestone / status:** M2 / NOT_STARTED.
-- **Dependencies:** HARD-011.
-- **Acceptance:** One DNS-SD TXT contract, ALPN, certificate/client-auth expectation, invitation format, 5-byte LAN framing and authenticated bootstrap works Android↔desktop; unpaired SAS is removed or repaired around one exchanged/bound nonce and explicit confirmation.
-- **Tests/evidence:** Cross-language bootstrap/golden vectors, wrong pin/cert/ALPN/replay cases and actual interoperability traces.
+- **Milestone / status:** M2 / REVIEW_REQUIRED.
+- **Dependencies:** HARD-011 (still REVIEW_REQUIRED because current-head CI is unavailable).
+- **Implementation state:** Continuation branch `hardening/continue-2026-09-18` now aligns desktop DNS-SD with Android's `v/tv/q/p/dn/dt` availability profile, removes discovery authentication material, requires TLS 1.3 + ALPN `glide-lan/1`, uses server-authenticated pinned TLS for invitation pairing, atomically consumes canonical one-use invitations, and removes the unauthenticated direct/SAS production path.
+- **Tests prepared:** canonical/legacy DNS-SD profile checks, no-client-certificate pinned TLS loopback, unpaired-send rejection, invitation replay rejection and authenticated shared-engine journeys.
+- **Verification blocker:** no GitHub Actions run/check is being scheduled for the continuation branch; actual Android↔desktop interoperability is HARD-017.
+- **Evidence:** [HARD-012 implementation record](development/sessions/2026-09-18-hard-012.md).
 
 <a id="hard-013"></a>
 ## HARD-013 — Implement strict desktop session/protocol state machine
 
-- **Milestone / status:** M2 / NOT_STARTED.
-- **Dependencies:** HARD-011, HARD-012.
-- **Acceptance:** Monotonic sequence, paged offers, exact IDs/correlation, deadlines, consent ordering and truthful item/batch terminal outcomes match protocol semantics.
-- **Tests/evidence:** Multi-page offers, duplicate/gapped sequence, mismatched IDs, failed middle item and lost terminal receipt; state-machine tests and golden parity.
+- **Milestone / status:** M2 / REVIEW_REQUIRED.
+- **Dependencies:** HARD-011, HARD-012; both await current-head executable verification.
+- **Implementation state:** Shared desktop control state now uses independent strictly increasing per-direction sequence numbers, 32-item paged offers, exact session/batch/item/bulk-reference correlation, bounded control/data read deadlines, bootstrap-before-HELLO ordering and truthful terminal aggregation. A failed item cannot be surfaced as a fully successful batch.
+- **Tests prepared:** 33-item pagination, exact multi-item sequence continuity, offer rejection, authenticated two-file transfer, replay rejection and correlation checks in production-engine paths.
+- **Verification blocker:** current branch has no build/test run; lost-terminal and adversarial cross-language runtime traces still belong to review/HARD-017.
+- **Evidence:** [HARD-013 implementation record](development/sessions/2026-09-18-hard-013.md).
 
 <a id="hard-014"></a>
 ## HARD-014 — Make desktop hashing/storage bounded and shared
 
-- **Milestone / status:** M2 / NOT_STARTED.
+- **Milestone / status:** M2 / REVIEW_REQUIRED.
 - **Dependencies:** HARD-011.
-- **Acceptance:** Production sender hashing/transfer is streaming and bounded; no whole-file production digest read; safe paths, reservations, quarantine cleanup and commit are centralized.
-- **Tests/evidence:** Empty/10 MB/1 GB/5+ GB, cancel, disk full, duplicate names, traversal/reparse; memory must not scale with file size.
+- **Implementation state:** Sender SHA-256 is computed incrementally in the same bounded streaming pass that transmits data; receiver hashing is incremental, declared sizes and STREAM_END counts are enforced, failures purge quarantine state, safe relative paths flow through the shared sanitizer and successful items commit through `QuarantineStagingStore`.
+- **Tests prepared:** bounded allocation regression with a 32 MiB source plus ordinary shared-engine empty/multi-file/cancel/reject coverage.
+- **Verification/manual gaps:** no current-head build/test evidence; required 1 GB/5+ GB, disk-full, duplicate-name and reparse-point scenarios remain part of the later verification matrix.
+- **Evidence:** [HARD-014 implementation record](development/sessions/2026-09-18-hard-014.md).
 
 <a id="hard-015"></a>
 ## HARD-015 — Complete desktop consent/history/settings/state
 
-- **Milestone / status:** M2 / NOT_STARTED.
+- **Milestone / status:** M2 / REVIEW_REQUIRED.
 - **Dependencies:** HARD-013, HARD-014.
-- **Acceptance:** Incoming offers require authorization; history/settings persist; UI updates are thread-safe; CLI/WPF report identical outcomes.
-- **Tests/evidence:** Accept/reject, restart persistence, UI-thread marshaling and partial-batch journeys.
+- **Implementation state:** WPF now presents an explicit authenticated incoming-offer accept/reject modal, persists non-secret receive settings and verified history through `DesktopStateStore`, rotates receive invitations, uses the configured receive directory and marshals interaction callbacks onto the UI dispatcher. Interactive CLI receive also requires explicit offer consent.
+- **Tests prepared:** state restart persistence/no-secret persistence, offer rejection before commit and shared-engine history callbacks.
+- **Verification/manual gaps:** WPF compile/UI journey, restart UI rendering, keyboard/accessibility and partial-batch behavior need executable/manual evidence.
+- **Evidence:** [HARD-015 implementation record](development/sessions/2026-09-18-hard-015.md).
 
 <a id="hard-016"></a>
 ## HARD-016 — Harden Linux CLI/daemon receiving lifecycle
 
-- **Milestone / status:** M2 / NOT_STARTED.
-- **Dependencies:** HARD-013, HARD-014.
-- **Acceptance:** Missing/invalid enrollment is rejected; daemon cannot auto-authorize arbitrary offers; headless receive requires explicit peer/destination/size policy; shutdown/cancel cleans resources.
-- **Tests/evidence:** No invitation, wrong peer, unauthorized offer, SIGTERM/shutdown and disk-limit runtime/systemd traces.
+- **Milestone / status:** M2 / IN_PROGRESS.
+- **Dependencies:** HARD-013, HARD-014; persistent peer identity binding is completed by HARD-020/HARD-021.
+- **Implemented now:** CLI send requires an authenticated pairing invitation; interactive receive asks before accepting an offer; daemon startup fails closed unless `--accept-paired-offers` is explicitly supplied; daemon policy has a configured destination and byte ceiling; invitations rotate before expiry; Ctrl+C/SIGTERM cancellation is bounded through linked cancellation tokens.
+- **Remaining acceptance gap:** current initial-pairing profile authenticates the receiver but does not yet give the receiver a persistent cryptographic sender identity, so headless authorization cannot honestly be called peer-specific. HARD-020/HARD-021 must bind this policy to an enrolled peer before HARD-016 can complete.
+- **Tests prepared:** daemon-without-explicit-policy fails closed; invitation/no-authority rejection; authenticated receive behavior.
+- **Evidence:** [HARD-016 implementation record](development/sessions/2026-09-18-hard-016.md).
 
 <a id="hard-017"></a>
 ## HARD-017 — Prove native cross-platform interoperability
 
-- **Milestone / status:** M2 / NOT_STARTED.
+- **Milestone / status:** M2 / BLOCKED.
 - **Dependencies:** HARD-012, HARD-013, HARD-014, HARD-015, HARD-016.
 - **Acceptance:** Android↔Windows, Android↔Linux and Windows↔Linux pass both directions with multi-page/multi-file batches; failed items cannot yield successful batch status.
 - **Tests/evidence:** Empty/large/mixed files, reject/cancel, wrong authentication and reconnect boundaries with real platform/build identities, hashes and logs.
