@@ -73,6 +73,9 @@ object IdentityResumeTranscript {
         requireLowerHex64(verifierFingerprintHex, "verifierFingerprintHex")
         requireLowerHex64(challengeNonceHex, "challengeNonceHex")
         requireLowerHex64(channelBindingHex, "channelBindingHex")
+        require(channelBindingHex.any { it != '0' }) {
+            "channelBindingHex cannot be an all-zero synthetic binding"
+        }
         requireLowerHex64(capabilityHashHex, "capabilityHashHex")
 
         val bytes = ByteArrayOutputStream()
@@ -122,6 +125,9 @@ object IdentityResumeTranscript {
         requireLowerHex64(responderFingerprintHex, "responderFingerprintHex")
         requireLowerHex64(sessionNonceHex, "sessionNonceHex")
         requireLowerHex64(channelBindingHex, "channelBindingHex")
+        require(channelBindingHex.any { it != '0' }) {
+            "channelBindingHex cannot be an all-zero synthetic binding"
+        }
         requireLowerHex64(capabilityHashHex, "capabilityHashHex")
         requireLowerHex64(chunkRootHashHex, "chunkRootHashHex")
         require(chunkSize > 0) { "chunkSize must be positive" }
