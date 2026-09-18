@@ -615,12 +615,15 @@ public sealed class DesktopTransferEngine
             ? Environment.MachineName
             : request.LocalDeviceName;
 
+        DesktopReceiveLimits receiveLimits =
+            (request.Limits ?? DesktopReceiveLimits.Default).Validate();
+
         var limits = new JsonObject
         {
-            ["maxItems"] = 1000,
-            ["maxItemBytes"] = ProtocolCatalog.MaxItemBytes.ToString(),
-            ["maxBatchBytes"] = ProtocolCatalog.MaxBatchBytes.ToString(),
-            ["maxControlBytes"] = ProtocolCatalog.MaxControlBytes
+            ["maxItems"] = receiveLimits.MaxItems,
+            ["maxItemBytes"] = receiveLimits.MaxItemBytes.ToString(),
+            ["maxBatchBytes"] = receiveLimits.MaxBatchBytes.ToString(),
+            ["maxControlBytes"] = receiveLimits.MaxControlBytes
         };
 
         await channel.WriteEnvelopeAsync(
@@ -655,6 +658,16 @@ public sealed class DesktopTransferEngine
             offerBegin.Body["totalBytes"]?.ToString() ?? "0");
         int pageCount =
             offerBegin.Body["pageCount"]?.GetValue<int>() ?? 0;
+
+        if (expectedItemCount < 1 ||
+            expectedItemCount > receiveLimits.MaxItems ||
+            expectedTotalBytes < 0 ||
+            expectedTotalBytes > receiveLimits.MaxBatchBytes)
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.LimitExceeded,
+                $"Offer exceeds configured receive policy: items={expectedItemCount}/{receiveLimits.MaxItems}, bytes={expectedTotalBytes}/{receiveLimits.MaxBatchBytes}.");
+        }
 
         var items = new List<DesktopOfferItem>(expectedItemCount);
         var itemIds = new HashSet<string>(StringComparer.Ordinal);
@@ -718,7 +731,20 @@ public sealed class DesktopTransferEngine
                 string name = itemObject["name"]!.ToString();
                 long size =
                     long.Parse(itemObject["sizeBytes"]!.ToString());
+                if (size < 0 || size > receiveLimits.MaxItemBytes)
+                {
+                    throw new ProtocolViolationException(
+                        WireErrorCodes.LimitExceeded,
+                        $"Offered item '{name}' exceeds configured item limit {receiveLimits.MaxItemBytes} bytes.");
+                }
+
                 assembledBytes = checked(assembledBytes + size);
+                if (assembledBytes > receiveLimits.MaxBatchBytes)
+                {
+                    throw new ProtocolViolationException(
+                        WireErrorCodes.LimitExceeded,
+                        "Assembled offer exceeds configured batch byte limit.");
+                }
                 string relativePath =
                     itemObject.TryGetPropertyValue(
                         "relativePath",
