@@ -503,6 +503,7 @@ fun GlideAppNavDisplay(
                 }
                 val uiState by viewModel.uiState.collectAsStateWithLifecycle()
                 val pairingState by viewModel.pairingState.collectAsStateWithLifecycle()
+                val trustState by viewModel.trustState.collectAsStateWithLifecycle()
                 val openFileFeedback by viewModel.openFileFeedback.collectAsStateWithLifecycle()
                 val exportStatus by viewModel.exportStatus.collectAsStateWithLifecycle()
                 val context = androidx.compose.ui.platform.LocalContext.current
@@ -510,6 +511,7 @@ fun GlideAppNavDisplay(
                     route = route,
                     uiState = uiState,
                     pairingState = pairingState,
+                    trustState = trustState,
                     openFileFeedback = openFileFeedback,
                     exportStatus = exportStatus,
                     onAcceptConsent = { viewModel.acceptConsent() },
@@ -517,6 +519,8 @@ fun GlideAppNavDisplay(
                     onCancelTransfer = { viewModel.cancelTransfer() },
                     onConfirmMatch = { peerId -> viewModel.confirmPairing(peerId) },
                     onRejectMatch = { peerId -> viewModel.rejectPairing(peerId) },
+                    onApproveTrust = { viewModel.approvePendingTrust() },
+                    onRejectTrust = { viewModel.rejectPendingTrust() },
                     onOpenFile = { viewModel.openReceivedFile(context) },
                     onExportFile = { viewModel.exportReceivedFile(context) },
                     onShareFile = { viewModel.shareAllVerifiedItems(context) },
