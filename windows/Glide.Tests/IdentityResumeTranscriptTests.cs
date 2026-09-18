@@ -134,6 +134,26 @@ public sealed class IdentityResumeTranscriptTests
                     Value(vector, "chunkRootHashHex")));
     }
 
+    [Fact]
+    public void IdentityVector_ZeroChannelBinding_IsRejected()
+    {
+        JsonElement vector =
+            _fixture.RootElement
+                .GetProperty("identityVector");
+
+        Assert.Throws<ArgumentException>(
+            () =>
+                IdentityResumeTranscript.IdentityProofBytes(
+                    Value(vector, "activeSessionId"),
+                    Value(vector, "challengeMessageId"),
+                    Value(vector, "signerRole"),
+                    Value(vector, "verifierRole"),
+                    Value(vector, "signerFingerprintHex"),
+                    Value(vector, "verifierFingerprintHex"),
+                    Value(vector, "challengeNonceHex"),
+                    new string('0', 64),
+                    Value(vector, "capabilityHashHex")));
+    }
     private static string Value(
         JsonElement value,
         string property) =>
