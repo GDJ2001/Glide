@@ -13,6 +13,10 @@ import dev.glide.data.db.ReceiveJournalDao
 import dev.glide.data.db.ReceiveJournalEntity
 import dev.glide.data.db.ReceivedFileDao
 import dev.glide.data.db.ReceivedFileEntity
+import dev.glide.data.db.ResumableSessionDao
+import dev.glide.data.db.ResumableSessionEntity
+import dev.glide.data.store.ResumableStagingStore
+import dev.glide.core.resume.ContentDigestTree
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -57,6 +61,7 @@ class OrphanMaintenanceCleanerTest {
         jDao: ReceiveJournalDao? = journalDao,
         fDao: ReceivedFileDao? = fileCatalogDao,
         hStore: HistoryStore? = historyStore,
+        resumableStore: ResumableStagingStore? = null,
         clock: () -> Long = { currentTimeMs }
     ): OrphanMaintenanceCleaner {
         return OrphanMaintenanceCleaner(
@@ -66,6 +71,8 @@ class OrphanMaintenanceCleanerTest {
             receiveJournalDao = jDao,
             receivedFileDao = fDao,
             historyStore = hStore,
+            resumableStagingStore =
+                resumableStore,
             clock = clock
         )
     }
@@ -282,6 +289,108 @@ class OrphanMaintenanceCleanerTest {
     }
 
     @Test
+    fun expiredResumeJournal_isPurgedByMaintenance() = runTest {
+        val resumeRoot =
+            tempFolder.newFolder(
+                "resume_maintenance"
+            )
+        val resumeDao =
+            FakeMaintenanceResumeDao()
+        val resumeStore =
+            ResumableStagingStore(
+                stagingBaseDir =
+                    resumeRoot,
+                resumableSessionDao =
+                    resumeDao
+            )
+
+        val chunk =
+            "resume-data"
+                .toByteArray()
+        val tree =
+            ContentDigestTree(
+                listOf(
+                    ContentDigestTree
+                        .sha256(chunk)
+                )
+            )
+        val wholeDigest =
+            ContentDigestTree
+                .sha256(chunk)
+                .joinToString("") {
+                    "%02x".format(it)
+                }
+
+        resumeStore.initSession(
+            originalSessionId =
+                "expired-original-session",
+            itemId =
+                "expired-item",
+            itemName =
+                "expired.bin",
+            peerFingerprintHex =
+                "a".repeat(64),
+            sourceIdentity =
+                "content://expired-source",
+            totalBytes =
+                chunk.size.toLong(),
+            chunkSize =
+                chunk.size,
+            digestTree =
+                tree,
+            wholeFileSha256Hex =
+                wholeDigest,
+            nowMs =
+                currentTimeMs -
+                    dev.glide.core.resume
+                        .ResumeToken
+                        .MAX_TTL_MILLIS -
+                    1L
+        )
+
+        val journal =
+            resumeDao.get(
+                "expired-original-session",
+                "expired-item"
+            )
+        assertNotNull(journal)
+        assertTrue(
+            File(
+                journal!!.stagingPath
+            ).exists()
+        )
+
+        val cleaner =
+            createCleaner(
+                resumableStore =
+                    resumeStore
+            )
+        val result =
+            cleaner.runMaintenance()
+
+        assertEquals(
+            1,
+            result.expiredResumeItemsPurged
+        )
+        assertEquals(
+            1,
+            result.totalCleaned
+        )
+        assertEquals(
+            null,
+            resumeDao.get(
+                "expired-original-session",
+                "expired-item"
+            )
+        )
+        assertFalse(
+            File(
+                journal.stagingPath
+            ).exists()
+        )
+    }
+
+    @Test
     fun historyRetention_trimmedPreservingCatalog() = runTest {
         historyStore.stubPrunedCount = 5
 
@@ -409,6 +518,96 @@ class FakeReceivedFileDao : ReceivedFileDao {
     override suspend fun detachAllItemIds(): Int = 0
 
     override suspend fun detachItemIdsForSession(sessionId: String): Int = 0
+}
+
+class FakeMaintenanceResumeDao :
+    ResumableSessionDao {
+
+    private val sessions =
+        mutableMapOf<
+            Pair<String, String>,
+            ResumableSessionEntity
+        >()
+
+    override suspend fun insertIfAbsent(
+        session: ResumableSessionEntity
+    ): Long {
+        val key =
+            session.originalSessionId to
+                session.itemId
+        if (sessions.containsKey(key)) {
+            return -1L
+        }
+        sessions[key] = session
+        return 1L
+    }
+
+    override suspend fun get(
+        originalSessionId: String,
+        itemId: String
+    ): ResumableSessionEntity? =
+        sessions[
+            originalSessionId to itemId
+        ]
+
+    override suspend fun getAllResumableSessions():
+        List<ResumableSessionEntity> =
+        sessions.values.toList()
+
+    override suspend fun compareAndAdvance(
+        originalSessionId: String,
+        itemId: String,
+        expectedVerifiedChunks: Long,
+        expectedContiguousByteOffset: Long,
+        newVerifiedChunks: Long,
+        newContiguousByteOffset: Long,
+        updatedAtMs: Long
+    ): Int = 0
+
+    override suspend fun rewindProgress(
+        originalSessionId: String,
+        itemId: String,
+        verifiedChunks: Long,
+        contiguousByteOffset: Long,
+        updatedAtMs: Long
+    ): Int = 0
+
+    override suspend fun delete(
+        originalSessionId: String,
+        itemId: String
+    ) {
+        sessions.remove(
+            originalSessionId to itemId
+        )
+    }
+
+    override suspend fun getExpiredSessions(
+        currentMs: Long
+    ): List<ResumableSessionEntity> =
+        sessions.values.filter {
+            it.expiresAtMs <= currentMs
+        }
+
+    override suspend fun deleteExpired(
+        currentMs: Long
+    ): Int {
+        val keys =
+            sessions
+                .filterValues {
+                    it.expiresAtMs <=
+                        currentMs
+                }
+                .keys
+                .toList()
+        keys.forEach {
+            sessions.remove(it)
+        }
+        return keys.size
+    }
+
+    override suspend fun getSessionCount():
+        Int =
+        sessions.size
 }
 
 class FakeHistoryStore : HistoryStore {
