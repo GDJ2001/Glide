@@ -267,7 +267,7 @@ fun GlideAppNavDisplay(
                     onRetry = startDiscoveryAtPointOfUse,
                     onScanQrClicked = {
                         viewModel.stopDiscovery()
-                        backStack.add(GlideRoute.QrScanner)
+                        backStack.add(GlideRoute.QrScanner(batchId = route.batchId))
                     }
                 )
             }
@@ -330,6 +330,50 @@ fun GlideAppNavDisplay(
                     }
                 }
 
+                val lanPermissions = androidx.compose.runtime.remember {
+                    PermissionPolicy.lanTransferPermissions()
+                }
+                val hasLanPermissions: () -> Boolean = {
+                    lanPermissions.all { permission ->
+                        ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+                    }
+                }
+                val lanPermissionLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.RequestMultiplePermissions()
+                ) {
+                    if (hasLanPermissions() && transferRuntime != null) {
+                        qrViewModel.showLiveReceiverStarting()
+                        showQrSheet = true
+                        dev.glide.app.service.TransferService.startLanReceiver(
+                            context = context,
+                            localDeviceName = "Glide Device"
+                        )
+                    } else {
+                        qrViewModel.showLiveReceiverError(
+                            "Local network permission is required to create a LAN pairing code."
+                        )
+                        showQrSheet = true
+                    }
+                }
+                val startLanReceiverAtPointOfUse: () -> Unit = {
+                    viewModel.stopAdvertising()
+                    if (transferRuntime == null) {
+                        qrViewModel.showLiveReceiverError(
+                            "Production LAN runtime is unavailable."
+                        )
+                        showQrSheet = true
+                    } else if (lanPermissions.isEmpty() || hasLanPermissions()) {
+                        qrViewModel.showLiveReceiverStarting()
+                        showQrSheet = true
+                        dev.glide.app.service.TransferService.startLanReceiver(
+                            context = context,
+                            localDeviceName = "Glide Device"
+                        )
+                    } else {
+                        lanPermissionLauncher.launch(lanPermissions.toTypedArray())
+                    }
+                }
+
                 androidx.compose.runtime.LaunchedEffect(initialReceiveState, transferRuntime) {
                     if (initialReceiveState != null) {
                         viewModel.setUiStateForTesting(initialReceiveState)
@@ -339,6 +383,12 @@ fun GlideAppNavDisplay(
                 }
                 val uiState by viewModel.uiState.collectAsStateWithLifecycle()
                 val qrState by qrViewModel.receiverState.collectAsStateWithLifecycle()
+                val lanReceiverState = if (transferRuntime != null) {
+                    val runtimeLanState by transferRuntime.lanReceiverState.collectAsStateWithLifecycle()
+                    runtimeLanState
+                } else {
+                    dev.glide.app.lan.LanReceiverRuntimeState.Idle
+                }
                 val pairingState = if (transferRuntime != null) {
                     val runtimePairingState by transferRuntime.pairingState.collectAsStateWithLifecycle()
                     runtimePairingState
@@ -357,6 +407,45 @@ fun GlideAppNavDisplay(
                     }
                 }
 
+                androidx.compose.runtime.LaunchedEffect(lanReceiverState) {
+                    when (val state = lanReceiverState) {
+                        dev.glide.app.lan.LanReceiverRuntimeState.Idle -> Unit
+                        dev.glide.app.lan.LanReceiverRuntimeState.Starting -> {
+                            qrViewModel.showLiveReceiverStarting()
+                            showQrSheet = true
+                        }
+                        is dev.glide.app.lan.LanReceiverRuntimeState.Ready -> {
+                            qrViewModel.showLiveReceiverInvitation(
+                                invitation = state.invitation,
+                                onRevoke = {
+                                    transferRuntime?.dispatch(
+                                        dev.glide.app.service.TransferRuntimeCommand.StopLanReceiver
+                                    )
+                                }
+                            )
+                            showQrSheet = true
+                        }
+                        is dev.glide.app.lan.LanReceiverRuntimeState.Error -> {
+                            qrViewModel.showLiveReceiverError(
+                                message = state.message,
+                                canRetry = state.canRetry
+                            )
+                            showQrSheet = true
+                        }
+                        is dev.glide.app.lan.LanReceiverRuntimeState.Connected -> {
+                            qrViewModel.clearLiveReceiverPresentation()
+                            showQrSheet = false
+                            if (backStack.lastOrNull() !is GlideRoute.Transfer) {
+                                backStack.add(
+                                    GlideRoute.Transfer(
+                                        sessionId = "lan-receive-${state.peer.id.value}"
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+
                 dev.glide.app.ui.discovery.ReceiveReadinessScreen(
                     uiState = uiState,
                     onStopReceiving = {
@@ -371,39 +460,17 @@ fun GlideAppNavDisplay(
                         }
                     },
                     onRestartReceiving = startAdvertisingAtPointOfUse,
-                    onShowQrCode = {
-                        val deviceName = if (uiState is dev.glide.app.ui.discovery.ReceiveReadinessUiState.Advertising) {
-                            (uiState as dev.glide.app.ui.discovery.ReceiveReadinessUiState.Advertising).localDeviceName
-                        } else {
-                            "Glide Device"
-                        }
-                        qrViewModel.startReceiving(
-                            deviceName = deviceName,
-                            endpoints = listOf(dev.glide.core.pairing.LanEndpoint("192.168.1.50", 4242)),
-                            spkiSha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-                        )
-                        showQrSheet = true
-                    }
+                    onShowQrCode = startLanReceiverAtPointOfUse
                 )
 
                 if (showQrSheet) {
                     dev.glide.app.ui.pairing.QrInvitationSheet(
                         uiState = qrState,
-                        onRefresh = {
-                            val deviceName = if (uiState is dev.glide.app.ui.discovery.ReceiveReadinessUiState.Advertising) {
-                                (uiState as dev.glide.app.ui.discovery.ReceiveReadinessUiState.Advertising).localDeviceName
-                            } else {
-                                "Glide Device"
-                            }
-                            qrViewModel.refreshInvitation(
-                                deviceName = deviceName,
-                                endpoints = listOf(dev.glide.core.pairing.LanEndpoint("192.168.1.50", 4242)),
-                                spkiSha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-                            )
-                        },
+                        onRefresh = startLanReceiverAtPointOfUse,
                         onDismiss = {
                             qrViewModel.stopReceiving()
                             showQrSheet = false
+                            startAdvertisingAtPointOfUse()
                         }
                     )
                 }
@@ -548,19 +615,60 @@ fun GlideAppNavDisplay(
                     }
                 )
             }
-            entry<GlideRoute.QrScanner> {
+            entry<GlideRoute.QrScanner> { route ->
                 val viewModel = androidx.lifecycle.viewmodel.compose.viewModel<dev.glide.app.ui.pairing.QrPairingViewModel>()
                 val scannerState by viewModel.scannerState.collectAsStateWithLifecycle()
+                val context = androidx.compose.ui.platform.LocalContext.current
+                val lanPermissions = androidx.compose.runtime.remember {
+                    PermissionPolicy.lanTransferPermissions()
+                }
+                var pendingInvitation by androidx.compose.runtime.remember {
+                    androidx.compose.runtime.mutableStateOf<dev.glide.core.pairing.LanInvitation?>(null)
+                }
+                val hasLanPermissions: () -> Boolean = {
+                    lanPermissions.all { permission ->
+                        ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+                    }
+                }
+                val startLanSender: (dev.glide.core.pairing.LanInvitation) -> Unit = { invitation ->
+                    if (transferRuntime != null) {
+                        dev.glide.app.service.TransferService.startLanSenderPairing(
+                            context = context,
+                            invitation = invitation,
+                            selectionId = route.batchId?.let { dev.glide.core.domain.BatchId(it) }
+                        )
+                        backStack.add(
+                            GlideRoute.Transfer(
+                                sessionId = "send-lan-${invitation.invitationId}",
+                                batchId = route.batchId
+                            )
+                        )
+                    }
+                }
+                val lanPermissionLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.RequestMultiplePermissions()
+                ) {
+                    val invitation = pendingInvitation
+                    pendingInvitation = null
+                    if (hasLanPermissions() && invitation != null) {
+                        startLanSender(invitation)
+                    }
+                }
 
                 androidx.compose.runtime.LaunchedEffect(Unit) {
                     viewModel.startScanning()
                 }
 
-                androidx.compose.runtime.LaunchedEffect(viewModel) {
+                androidx.compose.runtime.LaunchedEffect(viewModel, route.batchId) {
                     viewModel.events.collect { event ->
                         when (event) {
                             is dev.glide.app.ui.pairing.QrPairingEvent.ConnectConfirmed -> {
-                                backStack.add(GlideRoute.Transfer("send-lan-${event.invitation.invitationId}"))
+                                if (lanPermissions.isEmpty() || hasLanPermissions()) {
+                                    startLanSender(event.invitation)
+                                } else {
+                                    pendingInvitation = event.invitation
+                                    lanPermissionLauncher.launch(lanPermissions.toTypedArray())
+                                }
                             }
                             else -> {}
                         }
