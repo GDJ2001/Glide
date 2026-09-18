@@ -263,6 +263,7 @@ public static class Program
                     LocalDeviceName: Environment.MachineName),
                 interaction);
 
+            Console.WriteLine($"[RESULT] {result.Message}");
             return result.Success ? 0 : 1;
         }
     }
@@ -463,6 +464,7 @@ public static class Program
                 Environment.MachineName),
             interaction);
 
+        Console.WriteLine($"[RESULT] {result.Message}");
         return result.Success ? 0 : 1;
     }
 
