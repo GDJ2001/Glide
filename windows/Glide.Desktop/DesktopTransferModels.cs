@@ -1,3 +1,4 @@
+using Glide.Core.Codec;
 using Glide.Core.Pairing;
 using Glide.Core.Storage;
 
@@ -119,7 +120,56 @@ public sealed record DesktopSendRequest(
     LanInvitation? Invitation = null,
     string LocalDeviceName = "");
 
+public sealed record DesktopReceiveLimits(
+    int MaxItems,
+    long MaxItemBytes,
+    long MaxBatchBytes,
+    int MaxControlBytes = ProtocolCatalog.MaxControlBytes)
+{
+    public static DesktopReceiveLimits Default { get; } =
+        new(
+            MaxItems: 1000,
+            MaxItemBytes: ProtocolCatalog.MaxItemBytes,
+            MaxBatchBytes: ProtocolCatalog.MaxBatchBytes,
+            MaxControlBytes: ProtocolCatalog.MaxControlBytes);
+
+    public DesktopReceiveLimits Validate()
+    {
+        if (MaxItems is < 1 or > 1000)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(MaxItems),
+                "Receive maxItems must be between 1 and 1000.");
+        }
+
+        if (MaxItemBytes is < 0 or > ProtocolCatalog.MaxItemBytes)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(MaxItemBytes),
+                $"Receive maxItemBytes must be between 0 and {ProtocolCatalog.MaxItemBytes}.");
+        }
+
+        if (MaxBatchBytes is < 0 or > ProtocolCatalog.MaxBatchBytes ||
+            MaxBatchBytes < MaxItemBytes)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(MaxBatchBytes),
+                $"Receive maxBatchBytes must be between maxItemBytes and {ProtocolCatalog.MaxBatchBytes}.");
+        }
+
+        if (MaxControlBytes is < 1024 or > ProtocolCatalog.MaxControlBytes)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(MaxControlBytes),
+                $"Receive maxControlBytes must be between 1024 and {ProtocolCatalog.MaxControlBytes}.");
+        }
+
+        return this;
+    }
+}
+
 public sealed record DesktopReceiveRequest(
     QuarantineStagingStore StagingStore,
     LanInvitationAuthority? InvitationAuthority = null,
-    string LocalDeviceName = "");
+    string LocalDeviceName = "",
+    DesktopReceiveLimits? Limits = null);
