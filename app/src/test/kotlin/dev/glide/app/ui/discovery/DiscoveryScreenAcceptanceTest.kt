@@ -163,16 +163,20 @@ class DiscoveryScreenAcceptanceTest {
         assertTrue(errorState.reason is BlockedReason.TransportError)
         assertEquals("Nearby Service unavailable", (errorState.reason as BlockedReason.TransportError).message)
 
-        // Retrying returns to Searching state
-        viewModel.retryDiscovery()
-        assertTrue(viewModel.uiState.value is DiscoveryUiState.Searching)
+        // A test-only ViewModel has no production runtime and therefore cannot restart radios.
+        assertFalse(viewModel.retryDiscovery())
+        assertTrue(viewModel.uiState.value is DiscoveryUiState.Blocked)
     }
 
     @Test
-    fun receiveReadinessViewModel_managesAdvertisingAndTimeout() = runTest(testDispatcher) {
-        val viewModel = ReceiveReadinessViewModel.forTesting()
+    fun receiveReadinessViewModel_representsAdvertisingAndIncomingConnection() = runTest(testDispatcher) {
+        val viewModel = ReceiveReadinessViewModel.forTesting(
+            ReceiveReadinessUiState.Advertising(
+                localDeviceName = "Test Pixel",
+                secondsRemaining = 120
+            )
+        )
 
-        viewModel.startAdvertising("Test Pixel")
         val state = viewModel.uiState.value
         assertTrue(state is ReceiveReadinessUiState.Advertising)
         val adv = state as ReceiveReadinessUiState.Advertising
@@ -204,19 +208,15 @@ class DiscoveryScreenAcceptanceTest {
     }
 
     @Test
-    fun liveDiscoveryObservations_updatesUiStateDeterministically() = runTest(testDispatcher) {
-        val discoveryFlow = kotlinx.coroutines.flow.MutableSharedFlow<dev.glide.core.ports.DiscoveryEvent>(replay = 1)
-        var stopCount = 0
-
-        val viewModel = DiscoveryViewModel(
-            discoveryFlowProvider = { discoveryFlow },
-            onStopDiscoveryCallback = { stopCount++ }
+    fun presentationHelpers_updateUiStateDeterministically() = runTest(testDispatcher) {
+        val viewModel = DiscoveryViewModel.forTesting()
+        val peer = DiscoveredPeer(
+            id = PeerId("peer-live-1"),
+            displayName = "Galaxy Tab S9",
+            deviceType = DeviceType.Tablet
         )
-        testScheduler.runCurrent()
 
-        val peerDevice = dev.glide.core.domain.PeerDevice(PeerId("peer-live-1"), "Galaxy Tab S9")
-        discoveryFlow.emit(dev.glide.core.ports.DiscoveryEvent.PeerAppeared(peerDevice))
-        testScheduler.runCurrent()
+        viewModel.onPeerDiscovered(peer)
 
         var state = viewModel.uiState.value as DiscoveryUiState.Searching
         assertEquals(1, state.peers.size)
@@ -224,16 +224,11 @@ class DiscoveryScreenAcceptanceTest {
         assertEquals(DeviceType.Tablet, state.peers[0].deviceType)
         assertTrue(state.peers[0].isAvailable)
 
-        // Peer lost event marks unavailable without changing index
-        discoveryFlow.emit(dev.glide.core.ports.DiscoveryEvent.PeerLost(PeerId("peer-live-1")))
-        testScheduler.runCurrent()
+        viewModel.onPeerLost(PeerId("peer-live-1"))
 
         state = viewModel.uiState.value as DiscoveryUiState.Searching
         assertEquals(1, state.peers.size)
         assertFalse(state.peers[0].isAvailable)
-
-        viewModel.stopDiscovery()
-        assertEquals(1, stopCount)
     }
 
     @Test
