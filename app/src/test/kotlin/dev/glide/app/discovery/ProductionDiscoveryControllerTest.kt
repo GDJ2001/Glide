@@ -19,17 +19,22 @@ import dev.glide.core.ports.InputStreamProvider
 import dev.glide.core.ports.TransferTransport
 import dev.glide.transport.nearby.NearbyAvailabilityChecker
 import dev.glide.transport.nearby.NearbyHardwareStatus
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.After
+import org.junit.Before
 import org.junit.Test
 
 /**
@@ -39,6 +44,16 @@ import org.junit.Test
 class ProductionDiscoveryControllerTest {
 
     private val dispatcher = StandardTestDispatcher()
+
+    @Before
+    fun setUp() {
+        Dispatchers.setMain(dispatcher)
+    }
+
+    @After
+    fun tearDown() {
+        Dispatchers.resetMain()
+    }
 
     private class FakeNearbyTransport : TransferTransport {
         val discoveryEvents = MutableSharedFlow<DiscoveryEvent>(extraBufferCapacity = 16)
