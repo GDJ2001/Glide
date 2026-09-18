@@ -144,6 +144,68 @@ public sealed class IdentityResumeProtocolTests
     }
 
     [Fact]
+    public void OfferResumeMetadata_RoundTripsWhenPairIsCanonical()
+    {
+        JsonObject body =
+            ValidOfferPageBody();
+        JsonObject item =
+            (JsonObject)((JsonArray)body["items"]!)[0]!;
+        item["rootHash"] = RootHash;
+        item["chunkSize"] = 1_048_576;
+
+        Envelope decoded =
+            RoundTrip(
+                MessageTypes.OfferPage,
+                "77777777-7777-4777-8777-777777777777",
+                body);
+
+        JsonObject decodedItem =
+            (JsonObject)
+                ((JsonArray)decoded.Body["items"]!)[0]!;
+        Assert.Equal(
+            RootHash,
+            decodedItem["rootHash"]!.ToString());
+        Assert.Equal(
+            "1048576",
+            decodedItem["chunkSize"]!.ToString());
+    }
+
+    [Fact]
+    public void OfferResumeMetadata_MissingChunkSize_IsRejected()
+    {
+        JsonObject body =
+            ValidOfferPageBody();
+        JsonObject item =
+            (JsonObject)((JsonArray)body["items"]!)[0]!;
+        item["rootHash"] = RootHash;
+
+        Assert.Throws<ProtocolViolationException>(
+            () =>
+                RoundTrip(
+                    MessageTypes.OfferPage,
+                    "77777777-7777-4777-8777-777777777778",
+                    body));
+    }
+
+    [Fact]
+    public void OfferResumeMetadata_UppercaseRoot_IsRejected()
+    {
+        JsonObject body =
+            ValidOfferPageBody();
+        JsonObject item =
+            (JsonObject)((JsonArray)body["items"]!)[0]!;
+        item["rootHash"] = RootHash.ToUpperInvariant();
+        item["chunkSize"] = 1_048_576;
+
+        Assert.Throws<ProtocolViolationException>(
+            () =>
+                RoundTrip(
+                    MessageTypes.OfferPage,
+                    "77777777-7777-4777-8777-777777777779",
+                    body));
+    }
+
+    [Fact]
     public void ResumeCapability_RequiresIdentityCapability()
     {
         Assert.Throws<ProtocolViolationException>(
@@ -172,6 +234,25 @@ public sealed class IdentityResumeProtocolTests
             ProtocolCapabilities.ResumeV1,
             ProtocolCapabilities.ProductionOptional);
     }
+
+    private static JsonObject ValidOfferPageBody() =>
+        new()
+        {
+            ["batchId"] =
+                "88888888-8888-4888-8888-888888888888",
+            ["pageIndex"] = 0,
+            ["items"] =
+                new JsonArray(
+                    new JsonObject
+                    {
+                        ["itemId"] =
+                            "99999999-9999-4999-8999-999999999999",
+                        ["name"] = "resume.bin",
+                        ["mime"] =
+                            "application/octet-stream",
+                        ["sizeBytes"] = "1048576"
+                    })
+        };
 
     private static JsonObject ValidResumeBody() =>
         new()
