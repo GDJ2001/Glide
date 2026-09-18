@@ -22,8 +22,7 @@ import java.security.MessageDigest
 object IdentityResumeTranscript {
     const val IDENTITY_PROFILE = "identity-v1"
     const val RESUME_PROFILE = "resume-v1"
-    const val CHANNEL_BINDING_SCHEME = "tls-exporter-v1"
-    const val TLS_EXPORTER_LABEL = "EXPORTER-GLIDE-IDENTITY-V1"
+    const val CHANNEL_BINDING_SCHEME = "tls-server-spki-sha256-v1"
 
     private const val SIGN_DOMAIN = "GLIDE-SIGN-V1"
     private const val CAPABILITY_DOMAIN = "GLIDE-CAPS-V1"
