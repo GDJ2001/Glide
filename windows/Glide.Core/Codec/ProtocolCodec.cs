@@ -259,6 +259,9 @@ public static class ProtocolCodec
             case MessageTypes.ResumeRequest: ValidateResumeRequest(body); break;
             case MessageTypes.ResumeAccept: ValidateResumeAccept(body); break;
             case MessageTypes.ResumeReject: ValidateResumeReject(body); break;
+            case MessageTypes.ResumeStreamStart: ValidateResumeStreamStart(body); break;
+            case MessageTypes.ResumeStreamReady: ValidateResumeStreamReady(body); break;
+            case MessageTypes.ResumeResult: ValidateResumeResult(body); break;
         }
     }
 
@@ -788,6 +791,139 @@ public static class ProtocolCodec
             throw new ProtocolViolationException(
                 WireErrorCodes.MalformedMessage,
                 $"Unknown RESUME_REJECT code '{code}'");
+        }
+    }
+
+    private static void ValidateResumeStreamStart(JsonObject body)
+    {
+        RequireProfile(body, IdentityResumeTranscript.ResumeProfile);
+        RequireUuid(body, "requestMessageId");
+        RequireUuid(body, "originalSessionId");
+        RequireUuid(body, "itemId");
+
+        string bulkRef = RequireString(body, "bulkRef");
+        if (string.IsNullOrWhiteSpace(bulkRef) || bulkRef.Length > 64)
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.MalformedMessage,
+                "RESUME_STREAM_START 'bulkRef' must be 1..64 characters");
+        }
+
+        long startChunkIndex =
+            RequireLong(body, "startChunkIndex", min: 0);
+        long startByteOffset =
+            RequireByteCount(body, "startByteOffset", MaxItemBytes);
+        long remainingBytes =
+            RequireByteCount(body, "remainingBytes", MaxItemBytes);
+
+        if (!body.TryGetPropertyValue("chunkSize", out JsonNode? chunkSizeElement) ||
+            chunkSizeElement is not JsonValue chunkSizeValue ||
+            chunkSizeValue.GetValue<object>() is string ||
+            !int.TryParse(chunkSizeValue.ToString(), out int chunkSize))
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.MalformedMessage,
+                "RESUME_STREAM_START 'chunkSize' must be an integer");
+        }
+        if (chunkSize is < 1 or > 16_777_216)
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.LimitExceeded,
+                "RESUME_STREAM_START 'chunkSize' must be in 1..16777216");
+        }
+
+        long totalSizeBytes =
+            RequireByteCount(body, "totalSizeBytes", MaxItemBytes);
+        if (startByteOffset > totalSizeBytes)
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.MalformedMessage,
+                "RESUME_STREAM_START offset exceeds totalSizeBytes");
+        }
+        if (remainingBytes != totalSizeBytes - startByteOffset)
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.MalformedMessage,
+                "RESUME_STREAM_START remainingBytes does not equal totalSizeBytes-startByteOffset");
+        }
+        if (remainingBytes <= 0)
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.MalformedMessage,
+                "RESUME_STREAM_START requires positive remainingBytes");
+        }
+        if (startByteOffset % chunkSize != 0)
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.MalformedMessage,
+                "RESUME_STREAM_START offset must be chunk-aligned");
+        }
+        if (startChunkIndex != startByteOffset / chunkSize)
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.MalformedMessage,
+                "RESUME_STREAM_START startChunkIndex does not match offset/chunkSize");
+        }
+
+        RequireLowerHex64(body, "chunkRootHashHex");
+        RequireLowerHex64(body, "wholeFileSha256Hex");
+    }
+
+    private static void ValidateResumeStreamReady(JsonObject body)
+    {
+        RequireProfile(body, IdentityResumeTranscript.ResumeProfile);
+        RequireUuid(body, "requestMessageId");
+        RequireUuid(body, "originalSessionId");
+        RequireUuid(body, "itemId");
+        string bulkRef = RequireString(body, "bulkRef");
+        if (string.IsNullOrWhiteSpace(bulkRef) || bulkRef.Length > 64)
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.MalformedMessage,
+                "RESUME_STREAM_READY 'bulkRef' must be 1..64 characters");
+        }
+    }
+
+    private static void ValidateResumeResult(JsonObject body)
+    {
+        RequireProfile(body, IdentityResumeTranscript.ResumeProfile);
+        RequireUuid(body, "requestMessageId");
+        RequireUuid(body, "originalSessionId");
+        RequireUuid(body, "itemId");
+
+        string status = RequireString(body, "status");
+        if (status == "verified")
+        {
+            RequireByteCount(body, "sizeBytes", MaxItemBytes);
+            RequireLowerHex64(body, "sha256");
+            if (body.ContainsKey("code"))
+            {
+                throw new ProtocolViolationException(
+                    WireErrorCodes.MalformedMessage,
+                    "RESUME_RESULT verified must not contain 'code'");
+            }
+        }
+        else if (status == "failed")
+        {
+            string code = RequireString(body, "code");
+            if (!WireErrorCodes.All.Contains(code))
+            {
+                throw new ProtocolViolationException(
+                    WireErrorCodes.MalformedMessage,
+                    $"RESUME_RESULT failed has unknown code '{code}'");
+            }
+            if (body.ContainsKey("sizeBytes") || body.ContainsKey("sha256"))
+            {
+                throw new ProtocolViolationException(
+                    WireErrorCodes.MalformedMessage,
+                    "RESUME_RESULT failed must not contain sizeBytes or sha256");
+            }
+        }
+        else
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.MalformedMessage,
+                $"RESUME_RESULT status must be 'verified' or 'failed', got: '{status}'");
         }
     }
 
