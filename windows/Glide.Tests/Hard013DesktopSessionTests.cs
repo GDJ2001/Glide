@@ -206,6 +206,80 @@ public sealed class Hard013DesktopSessionTests : IDisposable
     }
 
     [Fact]
+    public async Task Sender_MismatchedItemReadyItemId_FailsBeforeStreaming()
+    {
+        string path = Path.Combine(_root, "wrong-item.bin");
+        await File.WriteAllBytesAsync(path, [0x44, 0x55]);
+
+        using var listener = new TlsSocketListener(0);
+        LanInvitation invitation = CreateInvitation(listener);
+
+        var serverTask = Task.Run(async () =>
+        {
+            await using var connection = await listener.AcceptConnectionAsync();
+            using var channel = new LanRecordChannel(connection.SslStream);
+            LanBootstrapMessage bootstrap = await AcceptBootstrapAsync(channel);
+
+            await channel.ReadEnvelopeAsync(); // HELLO
+            await channel.WriteEnvelopeAsync(CreateHelloAck(bootstrap.SessionId, 1));
+
+            Envelope begin = await channel.ReadEnvelopeAsync();
+            await channel.ReadEnvelopeAsync(); // OFFER_PAGE
+            await channel.ReadEnvelopeAsync(); // OFFER_END
+            string batchId = begin.Body["batchId"]!.ToString();
+
+            await channel.WriteEnvelopeAsync(
+                new Envelope(
+                    1,
+                    MessageTypes.OfferDecision,
+                    new SessionId(bootstrap.SessionId),
+                    NewMessageId(),
+                    2,
+                    new JsonObject
+                    {
+                        ["batchId"] = batchId,
+                        ["accepted"] = true
+                    }));
+
+            Envelope itemStart = await channel.ReadEnvelopeAsync();
+            Assert.Equal(MessageTypes.ItemStart, itemStart.Type);
+
+            await channel.WriteEnvelopeAsync(
+                new Envelope(
+                    1,
+                    MessageTypes.ItemReady,
+                    new SessionId(bootstrap.SessionId),
+                    NewMessageId(),
+                    3,
+                    new JsonObject
+                    {
+                        ["batchId"] = batchId,
+                        ["itemId"] = NewUuid()
+                    }));
+        });
+
+        DesktopTransferResult result =
+            await new DesktopTransferEngine().SendAsync(
+                new DesktopSendRequest(
+                    "127.0.0.1",
+                    listener.BoundPort,
+                    [new DesktopTransferFile(path)],
+                    invitation,
+                    "Wrong Item Sender"),
+                new PassiveInteraction());
+
+        await serverTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.False(result.Success);
+        Assert.True(
+            result.Message.Contains("itemId", StringComparison.Ordinal),
+            result.Message);
+        Assert.True(
+            result.Message.Contains("does not match expected", StringComparison.OrdinalIgnoreCase),
+            result.Message);
+    }
+
+    [Fact]
     public async Task Sender_FailedItemReceipt_TerminatesBatchWithoutNextItemOrBatchEnd()
     {
         string first = Path.Combine(_root, "first.bin");
