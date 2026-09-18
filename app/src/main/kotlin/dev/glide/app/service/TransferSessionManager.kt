@@ -114,6 +114,10 @@ object TransferSessionManager {
                 ActiveSessionTracker.setSessionActive(coordinator.sessionId.value, isActive)
 
                 if (sessionState.phase.isTerminal) {
+                    // The reducer publishes its terminal state before terminal effects (history,
+                    // quarantine cleanup and transport disconnect) have necessarily finished.
+                    // Do not cancel coordinator jobs until that cleanup barrier is complete.
+                    coordinator.awaitTerminalCleanup()
                     coordinator.stop()
                     onTerminalCallback?.invoke()
                 }
