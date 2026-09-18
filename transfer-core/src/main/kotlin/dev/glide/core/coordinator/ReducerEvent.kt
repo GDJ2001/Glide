@@ -27,7 +27,11 @@ sealed class ReducerEvent {
     data class StartNegotiation(
         val ephemeralPeerId: String,
         val displayName: String,
-        override val timestampMs: Long
+        override val timestampMs: Long,
+        val optionalCapabilities: List<String> =
+            dev.glide.core.protocol.NegotiationConstants
+                .OPTIONAL_CAPABILITIES
+                .toList()
     ) : ReducerEvent()
 
     data class SubmitOffer(
@@ -50,7 +54,10 @@ sealed class ReducerEvent {
         val hello: HelloBody,
         val messageId: MessageId,
         val seq: Long,
-        override val timestampMs: Long
+        override val timestampMs: Long,
+        val supportedOptionalCapabilities: Set<String> =
+            dev.glide.core.protocol.NegotiationConstants
+                .OPTIONAL_CAPABILITIES
     ) : ReducerEvent()
 
     data class HelloAckReceived(
