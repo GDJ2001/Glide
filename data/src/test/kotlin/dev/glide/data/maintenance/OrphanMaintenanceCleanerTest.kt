@@ -321,7 +321,7 @@ class OrphanMaintenanceCleanerTest {
                     "%02x".format(it)
                 }
 
-        resumeStore.initSession(
+        resumeStore.initReceiverSession(
             originalSessionId =
                 "expired-original-session",
             itemId =
@@ -330,16 +330,12 @@ class OrphanMaintenanceCleanerTest {
                 "expired.bin",
             peerFingerprintHex =
                 "a".repeat(64),
-            sourceIdentity =
-                "content://expired-source",
             totalBytes =
                 chunk.size.toLong(),
             chunkSize =
                 chunk.size,
-            digestTree =
-                tree,
-            wholeFileSha256Hex =
-                wholeDigest,
+            chunkRootHashHex =
+                tree.rootHashHex,
             nowMs =
                 currentTimeMs -
                     dev.glide.core.resume
@@ -356,7 +352,7 @@ class OrphanMaintenanceCleanerTest {
         assertNotNull(journal)
         assertTrue(
             File(
-                journal!!.stagingPath
+                journal!!.stagingPath!!
             ).exists()
         )
 
@@ -385,7 +381,7 @@ class OrphanMaintenanceCleanerTest {
         )
         assertFalse(
             File(
-                journal.stagingPath
+                journal.stagingPath!!
             ).exists()
         )
     }
@@ -561,6 +557,7 @@ class FakeMaintenanceResumeDao :
         expectedContiguousByteOffset: Long,
         newVerifiedChunks: Long,
         newContiguousByteOffset: Long,
+        newVerifiedChunkHashesHex: String,
         updatedAtMs: Long
     ): Int = 0
 
@@ -569,6 +566,7 @@ class FakeMaintenanceResumeDao :
         itemId: String,
         verifiedChunks: Long,
         contiguousByteOffset: Long,
+        verifiedChunkHashesHex: String,
         updatedAtMs: Long
     ): Int = 0
 
