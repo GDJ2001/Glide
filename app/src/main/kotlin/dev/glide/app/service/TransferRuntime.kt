@@ -697,11 +697,11 @@ class TransferRuntime private constructor(
 
     private fun cancel(sessionId: String, reason: String): Boolean {
         val coordinator: TransferCoordinator?
-        val ownerScope: CoroutineScope?
+        val serviceAttached: Boolean
         synchronized(lock) {
             if (_activeSessionId.value != sessionId) return false
             coordinator = activeCoordinator
-            ownerScope = serviceScope
+            serviceAttached = serviceScope != null
             if (coordinator == null) {
                 val current = _transferState.value
                 _transferState.value = TransferUiState.Cancelled(
@@ -716,14 +716,14 @@ class TransferRuntime private constructor(
             }
         }
 
-        if (ownerScope == null) {
+        if (!serviceAttached) {
             coordinator?.cancel(reason)
             return true
         }
 
-        ownerScope.launch {
-            coordinator?.cancelAndAwaitCleanup(reason)
-            coordinator?.let(::finalizeTerminalCoordinator)
+        coordinator?.scope?.launch {
+            coordinator.cancelAndAwaitCleanup(reason)
+            finalizeTerminalCoordinator(coordinator)
         }
         return true
     }
@@ -829,10 +829,10 @@ class TransferRuntime private constructor(
 
     fun stopActiveSession(reason: String = "USER_STOPPED"): Boolean {
         val coordinator: TransferCoordinator
-        val ownerScope: CoroutineScope?
+        val serviceAttached: Boolean
         synchronized(lock) {
             coordinator = activeCoordinator ?: return false
-            ownerScope = serviceScope
+            serviceAttached = serviceScope != null
         }
 
         if (coordinator.state.value.phase.isTerminal) {
@@ -851,12 +851,12 @@ class TransferRuntime private constructor(
             return false
         }
 
-        if (ownerScope == null) {
+        if (!serviceAttached) {
             coordinator.cancel(reason)
             return true
         }
 
-        ownerScope.launch {
+        coordinator.scope.launch {
             coordinator.cancelAndAwaitCleanup(reason)
             finalizeTerminalCoordinator(coordinator)
         }
