@@ -487,7 +487,16 @@ class TransferRuntime private constructor(
             senderBatch = prepared.batch,
             sourceMap = prepared.sourceMap,
             transport = command.transport,
-            scope = scope
+            scope = scope,
+            persistentTrustManager =
+                persistentTrustManager,
+            expectedPeerFingerprintHex =
+                command.expectedPeerFingerprintHex,
+            onVerifiedPeerIdentity = { peer ->
+                stageVerifiedPeerForEnrollment(
+                    peer
+                )
+            }
         )
         return startCoordinator(coordinator, command.peerDisplayName)
     }
@@ -506,7 +515,16 @@ class TransferRuntime private constructor(
                 command.sessionId
                     ?: authenticatedSessionId,
             transport = command.transport,
-            scope = scope
+            scope = scope,
+            persistentTrustManager =
+                persistentTrustManager,
+            expectedPeerFingerprintHex =
+                command.expectedPeerFingerprintHex,
+            onVerifiedPeerIdentity = { peer ->
+                stageVerifiedPeerForEnrollment(
+                    peer
+                )
+            }
         )
         return startCoordinator(coordinator, command.peerDisplayName)
     }
@@ -1203,14 +1221,16 @@ sealed interface TransferRuntimeCommand {
         val selectionId: BatchId? = null,
         val transport: TransferTransport,
         val peerId: PeerId,
-        val peerDisplayName: String
+        val peerDisplayName: String,
+        val expectedPeerFingerprintHex: String? = null
     ) : TransferRuntimeCommand
 
     data class StartReceiver(
         val transport: TransferTransport,
         val peerId: PeerId,
         val peerDisplayName: String,
-        val sessionId: SessionId? = null
+        val sessionId: SessionId? = null,
+        val expectedPeerFingerprintHex: String? = null
     ) : TransferRuntimeCommand
 
     data class StartNearbySenderPairing(
