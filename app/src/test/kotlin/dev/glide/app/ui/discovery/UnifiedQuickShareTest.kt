@@ -8,7 +8,9 @@ import dev.glide.core.pairing.InvitationCodec
 import dev.glide.core.pairing.LanEndpoint
 import dev.glide.core.pairing.LanInvitation
 import dev.glide.transport.lan.pairing.InvitationAuthority
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -216,9 +218,12 @@ class UnifiedQuickShareTest {
         assertTrue("State must require explicit confirmation", confirmationState is QrScannerUiState.ConfirmationRequired)
 
         // Confirm connection
+        val eventDeferred = async(start = CoroutineStart.UNDISPATCHED) {
+            viewModel.events.first()
+        }
         viewModel.confirmConnection()
 
-        val event = viewModel.events.first()
+        val event = eventDeferred.await()
         assertTrue("Event must be ConnectConfirmed", event is QrPairingEvent.ConnectConfirmed)
         val confirmedEvent = event as QrPairingEvent.ConnectConfirmed
         assertEquals(invitation.invitationId, confirmedEvent.invitation.invitationId)
