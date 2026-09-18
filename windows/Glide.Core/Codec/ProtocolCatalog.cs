@@ -35,11 +35,34 @@ public static class ProtocolCatalog
         [MessageTypes.Error] = ["code", "batchId", "itemId", "detail"],
         [MessageTypes.Ping] = ["nonce"],
         [MessageTypes.Pong] = ["nonce"],
-        [MessageTypes.IdentityChallenge] = ["nonceHex"],
-        [MessageTypes.IdentityResponse] = ["signatureHex", "publicKeyDerHex"],
-        [MessageTypes.ResumeRequest] = ["sessionId", "itemId", "verifiedChunkCount", "contiguousByteOffset", "chunkRootHashHex", "sessionNonceHex", "signatureHex"],
-        [MessageTypes.ResumeAccept] = ["sessionId", "itemId", "startChunkIndex", "startByteOffset"],
-        [MessageTypes.ResumeReject] = ["sessionId", "itemId", "reason"],
+        [MessageTypes.IdentityChallenge] =
+        [
+            "profile", "challengeNonceHex", "verifierFingerprintHex",
+            "verifierRole", "signerRole", "channelBindingHex", "capabilityHashHex"
+        ],
+        [MessageTypes.IdentityResponse] =
+        [
+            "profile", "challengeMessageId", "challengeNonceHex",
+            "signerFingerprintHex", "publicKeyDerHex", "signatureHex"
+        ],
+        [MessageTypes.ResumeRequest] =
+        [
+            "profile", "originalSessionId", "itemId",
+            "requesterFingerprintHex", "responderFingerprintHex",
+            "requesterRole", "responderRole", "verifiedChunkCount",
+            "contiguousByteOffset", "chunkSize", "totalSizeBytes",
+            "chunkRootHashHex", "sessionNonceHex", "channelBindingHex",
+            "capabilityHashHex", "signatureHex"
+        ],
+        [MessageTypes.ResumeAccept] =
+        [
+            "profile", "requestMessageId", "originalSessionId",
+            "itemId", "startChunkIndex", "startByteOffset"
+        ],
+        [MessageTypes.ResumeReject] =
+        [
+            "profile", "requestMessageId", "originalSessionId", "itemId", "code"
+        ],
     };
 
     public static readonly HashSet<string> AllowedLimitsKeys = ["maxItems", "maxItemBytes", "maxBatchBytes", "maxControlBytes"];
