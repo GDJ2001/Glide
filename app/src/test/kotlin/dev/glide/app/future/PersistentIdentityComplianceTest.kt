@@ -14,13 +14,14 @@ import kotlinx.serialization.json.put
 /**
  * GLIDE-070: Persistent Identity and True Resume Compliance Verification Suite.
  *
- * Programmatically asserts:
- * 1. ADR-0015 exists, documents Keystore identity & Merkle digest verification, and is indexed in docs/adr/README.md.
- * 2. PERSISTENT_IDENTITY_AND_RESUME_SPECIFICATION.md specifies Android Keystore keys and TOFU pairing.
- * 3. Specification strictly rejects offset-only fake resume and mandates Merkle chunk digests.
- * 4. Retained-partial lifecycle enforces 24-hour expiration TTL and User Data Sanctity.
- * 5. Threat model matrix covers T01 through T08.
- * 6. Pure JVM ResumeToken and ContentDigestTree enforce security and validation boundaries.
+ * Programmatically asserts the HARD-018 revision:
+ * 1. ADR-0015 is indexed and no longer claims nonce-only authentication.
+ * 2. The specification requires protected P-256 identity keys, explicit first-use enrollment,
+ *    canonical transcript signatures and channel binding.
+ * 3. identity-v1/resume-v1 are versioned and offset-only resume is prohibited.
+ * 4. Retained partials remain private, bounded and subject to a 24-hour maximum TTL.
+ * 5. The revised threat invariants cover replay, role/capability/channel binding and source integrity.
+ * 6. Existing resume digest primitives retain their validation boundaries.
  */
 class PersistentIdentityComplianceTest {
 
@@ -52,50 +53,138 @@ class PersistentIdentityComplianceTest {
     }
 
     @Test
-    fun test2_specification_mandatesKeystoreAndTofuPairing() {
+    fun test2_specification_requiresBoundPersistentIdentityProofs() {
         val root = resolveProjectRoot()
-        val specFile = File(root, "docs/future/PERSISTENT_IDENTITY_AND_RESUME_SPECIFICATION.md")
-        assertTrue("PERSISTENT_IDENTITY_AND_RESUME_SPECIFICATION.md must exist", specFile.exists())
+        val specFile =
+            File(
+                root,
+                "docs/future/PERSISTENT_IDENTITY_AND_RESUME_SPECIFICATION.md"
+            )
+        assertTrue(
+            "PERSISTENT_IDENTITY_AND_RESUME_SPECIFICATION.md must exist",
+            specFile.exists()
+        )
 
         val specText = specFile.readText()
-        assertTrue("Must require Android Keystore", specText.contains("Android Keystore"))
-        assertTrue("Must specify PURPOSE_SIGN", specText.contains("PURPOSE_SIGN"))
-        assertTrue("Must specify PURPOSE_VERIFY", specText.contains("PURPOSE_VERIFY"))
-        assertTrue("Must document TOFU pairing flow", specText.contains("TOFU") || specText.contains("Trust-On-First-Use"))
+        assertTrue(
+            "Must require Android Keystore",
+            specText.contains("Android Keystore")
+        )
+        assertTrue(
+            "Must specify P-256 ECDSA",
+            specText.contains("P-256") &&
+                specText.contains("ECDSA")
+        )
+        assertTrue(
+            "Must bind persistent proof to the active channel",
+            specText.contains("channel binding", ignoreCase = true) &&
+                specText.contains("EXPORTER-GLIDE-IDENTITY-V1")
+        )
+        assertTrue(
+            "Must require explicit first-use trust enrollment",
+            specText.contains("Trust/Enroll") &&
+                specText.contains("explicit", ignoreCase = true)
+        )
+        assertTrue(
+            "Must prohibit nonce-only authentication",
+            specText.contains("nonce", ignoreCase = true) &&
+                specText.contains("never sufficient authority")
+        )
     }
 
     @Test
-    fun test3_specification_rejectsOffsetOnlyAndMandatesMerkleDigest() {
+    fun test3_specification_versionsIdentityAndTrueResume() {
         val root = resolveProjectRoot()
-        val specFile = File(root, "docs/future/PERSISTENT_IDENTITY_AND_RESUME_SPECIFICATION.md")
-        val specText = specFile.readText()
+        val specText =
+            File(
+                root,
+                "docs/future/PERSISTENT_IDENTITY_AND_RESUME_SPECIFICATION.md"
+            ).readText()
 
-        assertTrue("Must reject offset-only fake resume", specText.contains("offset-only"))
-        assertTrue("Must mandate Merkle digest tree", specText.contains("Merkle"))
-        assertTrue("Must specify CAP_PERSISTENT_IDENTITY", specText.contains("CAP_PERSISTENT_IDENTITY"))
-        assertTrue("Must specify CAP_TRUE_RESUME", specText.contains("CAP_TRUE_RESUME"))
+        assertTrue(
+            "Must reject offset-only fake resume",
+            specText.contains("Offset-only resume is prohibited")
+        )
+        assertTrue(
+            "Must define identity-v1",
+            specText.contains("identity-v1")
+        )
+        assertTrue(
+            "Must define resume-v1",
+            specText.contains("resume-v1")
+        )
+        assertTrue(
+            "resume-v1 must require identity-v1",
+            specText.contains(
+                "resume-v1 requires identity-v1"
+            )
+        )
+        assertTrue(
+            "Must define canonical shared vectors",
+            specText.contains(
+                "protocol/fixtures/identity_resume_v1_vectors.json"
+            )
+        )
     }
 
     @Test
     fun test4_retainedPartialLifecycle_enforces24HourTtlAndSanctity() {
         val root = resolveProjectRoot()
-        val specFile = File(root, "docs/future/PERSISTENT_IDENTITY_AND_RESUME_SPECIFICATION.md")
-        val specText = specFile.readText()
+        val specText =
+            File(
+                root,
+                "docs/future/PERSISTENT_IDENTITY_AND_RESUME_SPECIFICATION.md"
+            ).readText()
 
-        assertTrue("Must enforce 24-hour TTL", specText.contains("24") && (specText.contains("hour") || specText.contains("hours")))
-        assertTrue("Must specify staging isolation in cacheDir", specText.contains("cacheDir/staging/resumable"))
-        assertTrue("Must affirm User Data Sanctity", specText.contains("User Data Sanctity"))
+        assertTrue(
+            "Must enforce 24-hour maximum TTL",
+            specText.contains("Maximum 24 hours")
+        )
+        assertTrue(
+            "Retained bytes must remain in private staging",
+            specText.contains(
+                "Private application staging only"
+            )
+        )
+        assertTrue(
+            "Final public commit must require verification",
+            specText.contains(
+                "Only after complete-file verification"
+            )
+        )
+        assertTrue(
+            "Process death must not reconstruct a live connection",
+            specText.contains(
+                "No retained journal may reconstruct an active network connection"
+            )
+        )
     }
 
     @Test
-    fun test5_threatMatrix_coversAllCriticalThreats() {
+    fun test5_threatMatrix_coversBoundAuthenticationThreats() {
         val root = resolveProjectRoot()
-        val specFile = File(root, "docs/future/PERSISTENT_IDENTITY_AND_RESUME_SPECIFICATION.md")
-        val specText = specFile.readText()
+        val specText =
+            File(
+                root,
+                "docs/future/PERSISTENT_IDENTITY_AND_RESUME_SPECIFICATION.md"
+            ).readText()
 
-        val threats = listOf("T01", "T02", "T03", "T04", "T05", "T06", "T07", "T08")
-        for (threat in threats) {
-            assertTrue("Spec must analyze threat: $threat", specText.contains("**$threat**"))
+        val requiredThreats =
+            listOf(
+                "Replay",
+                "Role swap",
+                "Capability downgrade",
+                "Cross-connection signature reuse",
+                "Resume offset tampering",
+                "Source substitution",
+                "Unauthorized headless receive",
+                "Partial-file exposure"
+            )
+        requiredThreats.forEach { threat ->
+            assertTrue(
+                "Spec must analyze threat: $threat",
+                specText.contains(threat)
+            )
         }
     }
 
