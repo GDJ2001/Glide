@@ -25,6 +25,7 @@ import dev.glide.core.identity.LocalIdentityInitialization
 import dev.glide.core.identity.PersistentTrustManager
 import dev.glide.core.identity.VerifiedPeerIdentity
 import dev.glide.core.pairing.LanInvitation
+import dev.glide.core.ports.AuthenticatedChannelContextProvider
 import dev.glide.core.ports.ConnectionEvent
 import dev.glide.core.ports.TransferTransport
 import kotlinx.coroutines.CoroutineScope
@@ -473,8 +474,14 @@ class TransferRuntime private constructor(
         val factory = sessionFactory ?: return false
         val scope = synchronized(lock) { serviceScope } ?: return false
         val prepared = SelectedTransferStore.get(command.selectionId) ?: return false
+        val authenticatedSessionId =
+            (command.transport as? AuthenticatedChannelContextProvider)
+                ?.authenticatedChannelContext(command.peerId)
+                ?.sessionId
         val coordinator = factory.createSenderSession(
-            sessionId = SessionId(UUID.randomUUID().toString()),
+            sessionId =
+                authenticatedSessionId
+                    ?: SessionId(UUID.randomUUID().toString()),
             peerId = command.peerId,
             peerDisplayName = command.peerDisplayName,
             senderBatch = prepared.batch,
@@ -488,10 +495,16 @@ class TransferRuntime private constructor(
     private fun startReceiver(command: TransferRuntimeCommand.StartReceiver): Boolean {
         val factory = sessionFactory ?: return false
         val scope = synchronized(lock) { serviceScope } ?: return false
+        val authenticatedSessionId =
+            (command.transport as? AuthenticatedChannelContextProvider)
+                ?.authenticatedChannelContext(command.peerId)
+                ?.sessionId
         val coordinator = factory.createReceiverSession(
             peerId = command.peerId,
             peerDisplayName = command.peerDisplayName,
-            sessionId = command.sessionId,
+            sessionId =
+                command.sessionId
+                    ?: authenticatedSessionId,
             transport = command.transport,
             scope = scope
         )
