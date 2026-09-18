@@ -254,7 +254,9 @@ class ResumeSourceVerifier(
                     Charsets.UTF_8
                 )
         )
-        digest.update(0)
+        digest.update(
+            byteArrayOf(0)
+        )
         digest.update(
             handle.value
                 .toByteArray(
