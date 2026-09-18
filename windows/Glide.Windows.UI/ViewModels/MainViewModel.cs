@@ -7,6 +7,7 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
 using Glide.Core.Pairing;
+using Glide.Core.Security;
 using Glide.Core.Storage;
 using Glide.Desktop;
 using Glide.Transport.Discovery;
@@ -659,6 +660,18 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                 IsOfferModalVisible = false;
             });
         }
+    }
+
+    public Task<bool> ConfirmPeerEnrollmentAsync(
+        VerifiedDesktopPeerIdentity peer,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        // Windows UI trust enrollment is intentionally not auto-approved.
+        // HARD-021 keeps identity-v1 disabled for WPF until a dedicated
+        // fingerprint-confirmation surface is wired.
+        return Task.FromResult(false);
     }
 
     public void OnInvitationConsumed(DesktopTransferDirection direction)
