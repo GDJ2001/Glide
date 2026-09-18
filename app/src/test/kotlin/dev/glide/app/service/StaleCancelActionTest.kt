@@ -94,6 +94,28 @@ class StaleCancelActionTest {
     }
 
     @Test
+    fun staleAcceptAndRejectActions_doNotAffectCurrentOffer() {
+        val activeSessionId = "offer-session-1"
+        runtime.setTransferStateForTesting(
+            TransferUiState.AwaitingConsent(
+                sessionId = activeSessionId,
+                role = DeviceRole.Receiver,
+                peerName = "Sender device",
+                itemCount = 2,
+                totalBytes = 2048L,
+                firstItemName = "one.bin"
+            )
+        )
+
+        assertFalse(service.handleAcceptAction("stale-offer-session"))
+        assertFalse(service.handleRejectAction("stale-offer-session"))
+
+        val current = runtime.transferState.value
+        assertTrue(current is TransferUiState.AwaitingConsent)
+        assertEquals(activeSessionId, current.sessionId)
+    }
+
+    @Test
     fun mismatchedSessionId_isRejectedAndActiveSessionContinues() {
         val activeSessionId = "active-transfer-session-1"
         val activeState = TransferUiState.Transferring(
