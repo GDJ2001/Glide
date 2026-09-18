@@ -908,21 +908,68 @@ class TransferCoordinator(
             when (envelope.type) {
                 MessageTypes.HELLO -> {
                     val hello = ProtocolCodec.decodeBody<dev.glide.core.protocol.HelloBody>(envelope)
-                    dispatch(ReducerEvent.HelloReceived(hello, envelope.messageId, envelope.seq, now))
+                    remoteDisplayName =
+                        hello.displayName
+
+                    if (expectedPeerFingerprintHex != null &&
+                        NegotiationConstants
+                            .CAPABILITY_PERSISTENT_IDENTITY_V1 !in
+                        hello.optionalCapabilities
+                    ) {
+                        throw TrustedSessionAuthenticationException(
+                            "Known trusted peer omitted identity-v1 from HELLO."
+                        )
+                    }
+
+                    dispatch(
+                        ReducerEvent.HelloReceived(
+                            hello,
+                            envelope.messageId,
+                            envelope.seq,
+                            now,
+                            supportedOptionalCapabilities =
+                                localOptionalCapabilities()
+                                    .toSet()
+                        )
+                    )
+                    beginTrustedSessionAfterNegotiation()
                 }
                 MessageTypes.HELLO_ACK -> {
                     val ack = ProtocolCodec.decodeBody<dev.glide.core.protocol.HelloAckBody>(envelope)
-                    dispatch(ReducerEvent.HelloAckReceived(ack, envelope.messageId, envelope.seq, now))
+                    remoteDisplayName =
+                        ack.displayName
+                    dispatch(
+                        ReducerEvent.HelloAckReceived(
+                            ack,
+                            envelope.messageId,
+                            envelope.seq,
+                            now
+                        )
+                    )
+                    beginTrustedSessionAfterNegotiation()
+                }
+                MessageTypes.IDENTITY_CHALLENGE -> {
+                    handleIdentityChallenge(
+                        envelope
+                    )
+                }
+                MessageTypes.IDENTITY_RESPONSE -> {
+                    handleIdentityResponse(
+                        envelope
+                    )
                 }
                 MessageTypes.OFFER_BEGIN -> {
+                    requireIdentityReadyForOffer()
                     val begin = ProtocolCodec.decodeBody<dev.glide.core.protocol.OfferBeginBody>(envelope)
                     dispatch(ReducerEvent.OfferBeginReceived(begin, envelope.messageId, envelope.seq, now))
                 }
                 MessageTypes.OFFER_PAGE -> {
+                    requireIdentityReadyForOffer()
                     val page = ProtocolCodec.decodeBody<dev.glide.core.protocol.OfferPageBody>(envelope)
                     dispatch(ReducerEvent.OfferPageReceived(page, envelope.messageId, envelope.seq, now))
                 }
                 MessageTypes.OFFER_END -> {
+                    requireIdentityReadyForOffer()
                     val end = ProtocolCodec.decodeBody<dev.glide.core.protocol.OfferEndBody>(envelope)
                     dispatch(ReducerEvent.OfferEndReceived(end, envelope.messageId, envelope.seq, now))
                     _state.value.batch?.let { recordInitialHistory(it) }
@@ -1012,6 +1059,16 @@ class TransferCoordinator(
                     // Unknown envelope types safely ignored
                 }
             }
+        } catch (e: TrustedSessionAuthenticationException) {
+            dispatch(
+                ReducerEvent.TransportFailure(
+                    TransferFailure.AuthenticationMismatch(
+                        e.message
+                            ?: "Persistent identity authentication failed."
+                    ),
+                    now
+                )
+            )
         } catch (e: Exception) {
             dispatch(
                 ReducerEvent.TransportFailure(
