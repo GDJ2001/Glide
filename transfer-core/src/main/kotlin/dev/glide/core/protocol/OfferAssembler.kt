@@ -11,7 +11,8 @@ import java.nio.charset.StandardCharsets
 
 class OfferAssembler(
     val begin: OfferBeginBody,
-    val effectiveLimits: EffectiveLimits = EffectiveLimits()
+    val effectiveLimits: EffectiveLimits = EffectiveLimits(),
+    private val allowResumeMetadata: Boolean = false
 ) {
     private var expectedPageIndex: Int = 0
     private val items = mutableListOf<TransferItem>()
@@ -68,6 +69,19 @@ class OfferAssembler(
         }
 
         for (itemDto in page.items) {
+            val carriesResumeMetadata =
+                itemDto.rootHash != null ||
+                    itemDto.chunkSize != null
+            if (carriesResumeMetadata &&
+                !allowResumeMetadata
+            ) {
+                throw ProtocolViolationException(
+                    TransferFailure.UnsupportedProtocol(
+                        "OFFER_PAGE carried resume metadata without negotiated resume-v1"
+                    )
+                )
+            }
+
             if (!seenItemIds.add(itemDto.itemId)) {
                 throw ProtocolViolationException(
                     TransferFailure.MalformedMessage("Duplicate itemId '${itemDto.itemId}' detected in batch")
