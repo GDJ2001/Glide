@@ -442,40 +442,20 @@ public sealed class DesktopTransferEngine
             var bootstrap = LanBootstrapCodec.DecodeBootstrap(
                 bootstrapRecord.JsonBytes);
 
-            bool invitationMatches =
-                request.Invitation != null &&
-                string.Equals(
-                    request.Invitation.InvitationId,
-                    bootstrap.InvitationId,
-                    StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(
-                    request.Invitation.Token,
-                    bootstrap.Token,
-                    StringComparison.Ordinal) &&
-                string.Equals(
-                    request.Invitation.InvitationHash,
-                    bootstrap.InvitationHash,
-                    StringComparison.OrdinalIgnoreCase) &&
-                !request.Invitation.IsExpired();
-
-            if (!invitationMatches)
-            {
-                var code =
-                    request.Invitation?.IsExpired() == true
-                        ? LanBootstrapFailureCode.INVITATION_EXPIRED
-                        : LanBootstrapFailureCode.AUTHENTICATION_FAILED;
-
-                await channel.WriteBootstrapResultAsync(
-                    LanBootstrapResult.Rejected(code),
-                    cancellationToken);
-
-                return DesktopTransferResult.RejectedByPeer(
-                    $"Inbound pairing bootstrap rejected: {code}.");
-            }
+            LanBootstrapResult bootstrapResult =
+                request.InvitationAuthority?.Consume(bootstrap)
+                ?? LanBootstrapResult.Rejected(
+                    LanBootstrapFailureCode.AUTHENTICATION_FAILED);
 
             await channel.WriteBootstrapResultAsync(
-                LanBootstrapResult.Accepted(bootstrap.SessionId),
+                bootstrapResult,
                 cancellationToken);
+
+            if (!bootstrapResult.IsAccepted)
+            {
+                return DesktopTransferResult.RejectedByPeer(
+                    $"Inbound pairing bootstrap rejected: {bootstrapResult.Code}.");
+            }
 
             interaction.OnInvitationConsumed(DesktopTransferDirection.Receive);
             hello = await channel.ReadEnvelopeAsync(cancellationToken);
