@@ -386,7 +386,94 @@ object ProtocolCodec {
                 throw ProtocolViolationException(TransferFailure.MalformedMessage("Item mime is invalid: '$mime'"))
             }
 
-            requireByteCount(itemObj, "sizeBytes", MAX_ITEM_BYTES)
+            val itemSize =
+                requireByteCount(
+                    itemObj,
+                    "sizeBytes",
+                    MAX_ITEM_BYTES
+                )
+
+            val rootHashElem =
+                itemObj["rootHash"]
+            val chunkSizeElem =
+                itemObj["chunkSize"]
+            if ((rootHashElem == null) !=
+                (chunkSizeElem == null)
+            ) {
+                throw ProtocolViolationException(
+                    TransferFailure.MalformedMessage(
+                        "OFFER_PAGE resume metadata requires both rootHash and chunkSize"
+                    )
+                )
+            }
+            if (rootHashElem != null &&
+                chunkSizeElem != null
+            ) {
+                val rootHash =
+                    (rootHashElem as?
+                        JsonPrimitive)
+                        ?.takeIf {
+                            it.isString
+                        }
+                        ?.content
+                        ?: throw ProtocolViolationException(
+                            TransferFailure.MalformedMessage(
+                                "OFFER_PAGE rootHash must be a string"
+                            )
+                        )
+                if (rootHash.length != 64 ||
+                    rootHash.any {
+                        it !in '0'..'9' &&
+                            it !in 'a'..'f'
+                    }
+                ) {
+                    throw ProtocolViolationException(
+                        TransferFailure.MalformedMessage(
+                            "OFFER_PAGE rootHash must be canonical lowercase SHA-256"
+                        )
+                    )
+                }
+
+                val chunkPrimitive =
+                    chunkSizeElem as?
+                        JsonPrimitive
+                        ?: throw ProtocolViolationException(
+                            TransferFailure.MalformedMessage(
+                                "OFFER_PAGE chunkSize must be an integer"
+                            )
+                        )
+                if (chunkPrimitive.isString) {
+                    throw ProtocolViolationException(
+                        TransferFailure.MalformedMessage(
+                            "OFFER_PAGE chunkSize must be an integer"
+                        )
+                    )
+                }
+                val chunkSize =
+                    chunkPrimitive.content
+                        .toIntOrNull()
+                        ?: throw ProtocolViolationException(
+                            TransferFailure.MalformedMessage(
+                                "OFFER_PAGE chunkSize must be an integer"
+                            )
+                        )
+                if (chunkSize !in
+                    1..16 * 1024 * 1024
+                ) {
+                    throw ProtocolViolationException(
+                        TransferFailure.LimitExceeded(
+                            "OFFER_PAGE chunkSize must be in 1..16 MiB"
+                        )
+                    )
+                }
+                if (itemSize == 0L) {
+                    throw ProtocolViolationException(
+                        TransferFailure.MalformedMessage(
+                            "Zero-byte item cannot carry resume metadata"
+                        )
+                    )
+                }
+            }
 
             val relPathElem = itemObj["relativePath"] as? JsonPrimitive
             if (relPathElem != null) {
