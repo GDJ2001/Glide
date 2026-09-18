@@ -634,8 +634,11 @@ class ResumableStagingStore(
                     currentMs
                 )
         expired.forEach {
-            File(it.stagingPath)
-                .deleteRecursively()
+            val path =
+                File(it.stagingPath)
+            if (isInsideStagingRoot(path)) {
+                path.deleteRecursively()
+            }
         }
         resumableSessionDao
             .deleteExpired(
@@ -693,8 +696,11 @@ class ResumableStagingStore(
     private suspend fun purgeInternal(
         journal: ResumableSessionEntity
     ) {
-        File(journal.stagingPath)
-            .deleteRecursively()
+        val path =
+            File(journal.stagingPath)
+        if (isInsideStagingRoot(path)) {
+            path.deleteRecursively()
+        }
         resumableSessionDao.delete(
             journal.originalSessionId,
             journal.itemId
@@ -762,11 +768,18 @@ class ResumableStagingStore(
         }
 
         val expectedChunks =
-            ((totalBytes +
+            (totalBytes +
                 chunkSize - 1L) /
-                chunkSize).toInt()
+                chunkSize
         require(
-            digestTree.chunkHashes.size ==
+            expectedChunks <=
+                Int.MAX_VALUE.toLong()
+        ) {
+            "Chunk manifest is too large"
+        }
+        require(
+            digestTree.chunkHashes.size
+                .toLong() ==
                 expectedChunks
         ) {
             "Chunk digest count does not match item size/chunk size"
@@ -868,6 +881,21 @@ class ResumableStagingStore(
                     file.delete()
                 }
             }
+    }
+
+    private fun isInsideStagingRoot(
+        candidate: File
+    ): Boolean {
+        val root =
+            stagingBaseDir
+                .canonicalFile
+                .toPath()
+        val path =
+            candidate
+                .canonicalFile
+                .toPath()
+        return path.startsWith(root) &&
+            path != root
     }
 
     private fun itemDirectory(
@@ -987,10 +1015,15 @@ class ResumableStagingStore(
                 source,
                 destination
             )
-            return destination.length() ==
-                expectedSize &&
-                sha256Hex(destination) ==
-                    expectedSha256Hex
+            val valid =
+                destination.length() ==
+                    expectedSize &&
+                    sha256Hex(destination) ==
+                        expectedSha256Hex
+            if (!valid) {
+                destination.delete()
+            }
+            return valid
         } catch (_: java.io.IOException) {
             // Private staging and the final destination may be on different filesystems.
         }
