@@ -7,7 +7,7 @@ Plan: [`planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md`](planning/CODE_R
 Latest reconciliation: [`planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md`](planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md)  
 Review baseline: `ea2e811a7f2d8aaddc552e894fe04782cd08a499`  
 HARD-002 captured source boundary: `12681eabba26387fe7d1bbaf309971f345642e41`  
-**Next recommended verification action: restore current-head CI for the continuation branch, then review HARD-008/HARD-009/HARD-011–015 and HARD-018–020. HARD-010 and HARD-017 remain blocked on real-device/platform evidence. HARD-016 is IN_PROGRESS: peer-specific policy storage now exists, but live sender identity must still be bound by HARD-021. HARD-021 source preparation is the next safe development step; identity-v1/resume-v1 must remain disabled in production until HARD-019–021 are complete and verified.**
+**Next recommended verification action: restore current-head CI for the continuation branch, then review HARD-008/HARD-009/HARD-011–015 and HARD-018–020. HARD-010 and HARD-017 remain blocked on real-device/platform evidence. HARD-021 is IN_PROGRESS: desktop/CLI live mutual proof is wired, but Android coordinator identity exchange and WPF enrollment UI remain outstanding. Android identity-v1/resume-v1 must stay disabled until HARD-021 is complete and verified.**
 
 Source/configuration commits after the HARD-002 captured boundary are not silently certified by HARD-002; the task that consumes them must inspect/reconcile them before relying on their claims.
 
@@ -79,7 +79,7 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 | HARD-018 | M3 | REVIEW_REQUIRED | Finalize identity/resume protocol extension |
 | HARD-019 | M3 | REVIEW_REQUIRED | Integrate Android persistent identity/trust |
 | HARD-020 | M3 | REVIEW_REQUIRED | Integrate Windows/Linux persistent identity/trust |
-| HARD-021 | M3 | NOT_STARTED | Integrate mutually authenticated trusted sessions |
+| HARD-021 | M3 | IN_PROGRESS | Integrate mutually authenticated trusted sessions |
 | HARD-022 | M3 | NOT_STARTED | Implement Android durable true-resume journals |
 | HARD-023 | M3 | NOT_STARTED | Implement desktop durable true-resume storage |
 | HARD-024 | M3 | NOT_STARTED | Validate folders and resume across native platforms |
@@ -254,7 +254,7 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 - **Milestone / status:** M2 / IN_PROGRESS.
 - **Dependencies:** HARD-013, HARD-014; persistent peer identity storage/policy is prepared by HARD-020 and live session binding is completed by HARD-021.
 - **Implemented now:** CLI send requires an authenticated pairing invitation; interactive receive asks before accepting an offer; daemon startup fails closed unless `--accept-paired-offers` plus an enrolled `--trusted-peer` are supplied; HARD-020 binds stored headless policy to that peer, an exact destination and a byte ceiling; invitations rotate before expiry; Ctrl+C/SIGTERM cancellation is bounded through linked cancellation tokens.
-- **Remaining acceptance gap:** the current initial-pairing profile still does not prove the sender's persistent identity on the live session. `AuthenticatedPeerFingerprintHex` therefore remains unset and daemon offers fail closed. HARD-021 must provide mutually authenticated channel-bound proof before HARD-016 can complete.
+- **Remaining acceptance gap:** HARD-021 now provides desktop/CLI live mutual identity proof and the daemon consumes `AuthenticatedPeerFingerprintHex` only after that proof. Android still does not negotiate live `identity-v1`, current-head executable verification is unavailable, and native cross-platform daemon evidence therefore remains outstanding before HARD-016 can complete.
 - **Tests prepared:** daemon-without-explicit-policy fails closed; invitation/no-authority rejection; authenticated receive behavior.
 - **Evidence:** [HARD-016 implementation record](development/sessions/2026-09-18-hard-016.md).
 
@@ -303,10 +303,15 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 <a id="hard-021"></a>
 ## HARD-021 — Integrate mutually authenticated trusted sessions
 
-- **Milestone / status:** M3 / NOT_STARTED.
-- **Dependencies:** HARD-019, HARD-020.
-- **Acceptance:** Both peers prove enrolled identity bound to fresh challenge and secure channel/session; replay/downgrade/revoked trust fails closed; trust never auto-accepts arbitrary files.
-- **Tests/evidence:** MITM/pin mismatch, replay, revoked peer, challenge reuse and capability downgrade across platforms.
+- **Milestone / status:** M3 / IN_PROGRESS (partial pre-gate implementation).
+- **Dependencies:** HARD-019 and HARD-020 are REVIEW_REQUIRED; HARD-017 remains blocked.
+- **Implemented desktop path:** Native identity transcripts now use the portable `tls-server-spki-sha256-v1` binding: the exact SHA-256 SPKI of the TLS server certificate used by the active pinned connection, plus the active BOOTSTRAP session, fresh challenge, roles, both identity fingerprints and capability hash. Desktop peers can negotiate `identity-v1`, complete reciprocal challenge/response before `OFFER_BEGIN`, explicitly enroll verified peers, and populate `AuthenticatedPeerFingerprintHex` only after proof. Strict CLI `--trusted-peer` mode rejects missing/revoked enrollment and capability downgrade. Daemon mode never enrolls and requires live proof of its configured enrolled fingerprint before peer-specific auto-accept policy can apply.
+- **Android prerequisite repair:** LAN transport exposes the authenticated BOOTSTRAP session plus server-SPKI binding, and `TransferRuntime` reuses that exact session for its coordinator. This also repairs the Android BOOTSTRAP/HELLO session mismatch discovered during HARD-021.
+- **Safety state:** Android production negotiation still does **not** advertise `identity-v1`; WPF does not silently enroll and currently leaves its trust manager unwired until a dedicated fingerprint-confirmation UI exists. `resume-v1` remains disabled.
+- **Tests prepared:** desktop mutual proof before offer; authenticated offer fingerprint; explicit enrollment; expected-peer capability downgrade; wrong channel binding; Android LAN shared session/SPKI context; coordinator reuse of BOOTSTRAP session.
+- **Verification blocker:** continuation branch/current-head GitHub Actions runs and commit statuses remain absent. No current-head .NET/Gradle compile/test or real cross-platform trusted-session pass is claimed.
+- **Remaining work:** Android coordinator `IDENTITY_CHALLENGE`/`IDENTITY_RESPONSE` state machine + verified enrollment handoff; Android known/revoked-peer rules; WPF fingerprint enrollment surface; replay/challenge-reuse/revocation production-engine tests; executable and physical interoperability evidence.
+- **Evidence:** [HARD-021 trusted-session progress](development/sessions/2026-09-18-hard-021.md).
 
 <a id="hard-022"></a>
 ## HARD-022 — Implement Android durable true-resume journals
