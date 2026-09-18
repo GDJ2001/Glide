@@ -85,6 +85,12 @@ public static class IdentityResumeTranscript
         RequireLowerHex64(verifierFingerprintHex, nameof(verifierFingerprintHex));
         RequireLowerHex64(challengeNonceHex, nameof(challengeNonceHex));
         RequireLowerHex64(channelBindingHex, nameof(channelBindingHex));
+        if (channelBindingHex.All(static ch => ch == '0'))
+        {
+            throw new ArgumentException(
+                "channelBindingHex cannot be an all-zero synthetic binding.",
+                nameof(channelBindingHex));
+        }
         RequireLowerHex64(capabilityHashHex, nameof(capabilityHashHex));
 
         using var stream = new MemoryStream();
@@ -134,6 +140,12 @@ public static class IdentityResumeTranscript
         RequireLowerHex64(responderFingerprintHex, nameof(responderFingerprintHex));
         RequireLowerHex64(sessionNonceHex, nameof(sessionNonceHex));
         RequireLowerHex64(channelBindingHex, nameof(channelBindingHex));
+        if (channelBindingHex.All(static ch => ch == '0'))
+        {
+            throw new ArgumentException(
+                "channelBindingHex cannot be an all-zero synthetic binding.",
+                nameof(channelBindingHex));
+        }
         RequireLowerHex64(capabilityHashHex, nameof(capabilityHashHex));
         RequireLowerHex64(chunkRootHashHex, nameof(chunkRootHashHex));
 
