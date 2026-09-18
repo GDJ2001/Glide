@@ -436,7 +436,70 @@ public static class ProtocolCodec
                 throw new ProtocolViolationException(WireErrorCodes.MalformedMessage, $"Item mime is invalid: '{mime}'");
             }
 
-            RequireByteCount(itemObj, "sizeBytes", MaxItemBytes);
+            long itemSize =
+                RequireByteCount(
+                    itemObj,
+                    "sizeBytes",
+                    MaxItemBytes);
+
+            bool hasRoot =
+                itemObj.TryGetPropertyValue(
+                    "rootHash",
+                    out JsonNode? rootNode) &&
+                rootNode != null;
+            bool hasChunkSize =
+                itemObj.TryGetPropertyValue(
+                    "chunkSize",
+                    out JsonNode? chunkNode) &&
+                chunkNode != null;
+
+            if (hasRoot != hasChunkSize)
+            {
+                throw new ProtocolViolationException(
+                    WireErrorCodes.MalformedMessage,
+                    "OFFER_PAGE resume metadata requires both rootHash and chunkSize");
+            }
+
+            if (hasRoot)
+            {
+                if (rootNode is not JsonValue rootValue ||
+                    rootValue.GetValue<object>() is not string rootHash ||
+                    rootHash.Length != 64 ||
+                    rootHash.Any(
+                        ch =>
+                            !(ch is >= '0' and <= '9') &&
+                            !(ch is >= 'a' and <= 'f')))
+                {
+                    throw new ProtocolViolationException(
+                        WireErrorCodes.MalformedMessage,
+                        "OFFER_PAGE rootHash must be canonical lowercase SHA-256");
+                }
+
+                if (chunkNode is not JsonValue chunkValue ||
+                    chunkValue.GetValue<object>() is string ||
+                    !int.TryParse(
+                        chunkValue.ToString(),
+                        out int chunkSize))
+                {
+                    throw new ProtocolViolationException(
+                        WireErrorCodes.MalformedMessage,
+                        "OFFER_PAGE chunkSize must be an integer");
+                }
+
+                if (chunkSize is < 1 or > 16 * 1024 * 1024)
+                {
+                    throw new ProtocolViolationException(
+                        WireErrorCodes.LimitExceeded,
+                        "OFFER_PAGE chunkSize must be in 1..16 MiB");
+                }
+
+                if (itemSize == 0)
+                {
+                    throw new ProtocolViolationException(
+                        WireErrorCodes.MalformedMessage,
+                        "Zero-byte item cannot carry resume metadata");
+                }
+            }
 
             if (itemObj.TryGetPropertyValue("relativePath", out var relElem) && relElem != null)
             {
