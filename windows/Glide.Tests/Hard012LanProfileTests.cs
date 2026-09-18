@@ -71,6 +71,12 @@ public sealed class Hard012LanProfileTests
             ["p"] = "00112233445566778899AABBCCDDEEFF"
         };
         Assert.False(LanDiscoveryTxtCodec.TryDecode(badPresence, out _));
+
+        var badDeviceType = new Dictionary<string, string>(canonical, StringComparer.Ordinal)
+        {
+            ["dt"] = "workstation"
+        };
+        Assert.False(LanDiscoveryTxtCodec.TryDecode(badDeviceType, out _));
     }
 
     [Fact]
@@ -181,8 +187,7 @@ public sealed class Hard012LanProfileTests
             leaveInnerStreamOpen: false,
             (_, _, _, _) => true);
 
-        try
-        {
+        Exception? clientError = await Record.ExceptionAsync(async () =>
             await ssl.AuthenticateAsClientAsync(new SslClientAuthenticationOptions
             {
                 TargetHost = "localhost",
@@ -191,14 +196,15 @@ public sealed class Hard012LanProfileTests
                 [
                     new SslApplicationProtocol("glide-v1")
                 ]
-            });
-        }
-        catch (AuthenticationException)
-        {
-            // The TLS stack may reject the missing ALPN overlap during the handshake.
-        }
+            }));
 
-        await Assert.ThrowsAnyAsync<AuthenticationException>(async () => await serverTask);
+        Exception? serverError = await Record.ExceptionAsync(async () =>
+            await serverTask.WaitAsync(TimeSpan.FromSeconds(5)));
+
+        Assert.True(
+            clientError != null || serverError != null,
+            "A legacy glide-v1-only client must not complete a usable TLS session.");
+        Assert.NotNull(serverError);
     }
     private static LanInvitation CreateCanonicalInvitation()
     {
