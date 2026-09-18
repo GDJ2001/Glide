@@ -47,7 +47,7 @@ class QrPairingViewModel(
     private val _scannerState = MutableStateFlow<QrScannerUiState>(QrScannerUiState.Idle)
     val scannerState: StateFlow<QrScannerUiState> = _scannerState.asStateFlow()
 
-    private val _events = MutableSharedFlow<QrPairingEvent>(replay = 1, extraBufferCapacity = 16)
+    private val _events = MutableSharedFlow<QrPairingEvent>(replay = 0, extraBufferCapacity = 16)
     val events: SharedFlow<QrPairingEvent> = _events.asSharedFlow()
 
     private var countdownJob: Job? = null
