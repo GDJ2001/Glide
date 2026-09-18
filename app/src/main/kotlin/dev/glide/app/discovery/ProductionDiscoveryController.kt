@@ -72,7 +72,9 @@ class ProductionDiscoveryController private constructor(
     )
 
     private val lock = Any()
-    private var transport: TransferTransport? = null
+    private var discoveryTransport: TransferTransport? = null
+    private var sessionTransport: TransferTransport? = null
+    private var activeAdvertisingTransport: TransferTransport? = null
     private var discoveryJob: Job? = null
     private var discoveryTimerJob: Job? = null
     private var advertisingJob: Job? = null
@@ -103,7 +105,7 @@ class ProductionDiscoveryController private constructor(
             return false
         }
 
-        val activeTransport = getOrCreateTransport()
+        val activeTransport = getOrCreateDiscoveryTransport()
         _discoveryState.value = DiscoveryUiState.Searching()
 
         discoveryJob = runtimeScope.launch {
@@ -149,7 +151,7 @@ class ProductionDiscoveryController private constructor(
         discoveryJob?.cancel()
         discoveryJob = null
 
-        val activeTransport = synchronized(lock) { transport }
+        val activeTransport = synchronized(lock) { discoveryTransport }
         if (activeTransport != null) {
             runtimeScope.launch {
                 runCatching { activeTransport.stopDiscovery() }
@@ -157,7 +159,7 @@ class ProductionDiscoveryController private constructor(
         }
     }
 
-    fun startAdvertising(localDeviceName: String): Boolean {
+    fun startAdvertising(localDeviceName: String, transportOverride: TransferTransport? = null): Boolean {
         stopDiscovery()
         stopAdvertising()
 
@@ -167,7 +169,10 @@ class ProductionDiscoveryController private constructor(
             return false
         }
 
-        val activeTransport = getOrCreateTransport()
+        val activeTransport = transportOverride ?: getOrCreateDiscoveryTransport()
+        synchronized(lock) {
+            activeAdvertisingTransport = activeTransport
+        }
         val safeName = localDeviceName.trim().ifEmpty { "Glide Device" }
         _receiveReadinessState.value = ReceiveReadinessUiState.Advertising(
             localDeviceName = safeName,
@@ -231,7 +236,9 @@ class ProductionDiscoveryController private constructor(
         advertisingJob?.cancel()
         advertisingJob = null
 
-        val activeTransport = synchronized(lock) { transport }
+        val activeTransport = synchronized(lock) {
+            activeAdvertisingTransport.also { activeAdvertisingTransport = null }
+        }
         if (activeTransport != null) {
             runtimeScope.launch {
                 runCatching { activeTransport.stopAdvertising() }
@@ -269,9 +276,29 @@ class ProductionDiscoveryController private constructor(
         )
     }
 
-    private fun getOrCreateTransport(): TransferTransport {
+    /**
+     * Acquires the transport used for authenticated pairing/transfer. In production the caller
+     * supplies the foreground-service scope so connection timeouts/payload work cannot outlive it.
+     */
+    internal fun acquireSessionTransport(ownerScope: CoroutineScope): TransferTransport? {
+        val blockedReason = evaluateNearbyBlock()
+        if (blockedReason != null) {
+            _discoveryState.value = DiscoveryUiState.Blocked(blockedReason)
+            _receiveReadinessState.value = ReceiveReadinessUiState.Blocked(blockedReason)
+            return null
+        }
+
         return synchronized(lock) {
-            transport ?: transportFactory(runtimeScope).also { transport = it }
+            sessionTransport ?: transportFactory(ownerScope).also { sessionTransport = it }
+        }
+    }
+
+    internal fun currentSessionTransport(): TransferTransport? =
+        synchronized(lock) { sessionTransport }
+
+    private fun getOrCreateDiscoveryTransport(): TransferTransport {
+        return synchronized(lock) {
+            discoveryTransport ?: transportFactory(runtimeScope).also { discoveryTransport = it }
         }
     }
 
