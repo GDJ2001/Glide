@@ -60,8 +60,7 @@ public sealed class DesktopTransferEngineTests : IDisposable
                 connection,
                 new DesktopReceiveRequest(
                     receiverStore,
-                    invitation,
-                    AllowBootstrapWithoutInvitation: false,
+                    new LanInvitationAuthority(invitation),
                     LocalDeviceName: "Receiver-Desktop"),
                 receiverInteraction);
         });
@@ -168,8 +167,7 @@ public sealed class DesktopTransferEngineTests : IDisposable
                 connection,
                 new DesktopReceiveRequest(
                     receiverStore,
-                    invitation,
-                    false,
+                    new LanInvitationAuthority(invitation),
                     "Rejecting-Receiver"),
                 receiverInteraction);
         });
