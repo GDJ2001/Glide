@@ -83,7 +83,8 @@ public sealed record DaemonReceivePolicy
                 EnrollmentFile,
                 nameof(EnrollmentFile));
 
-        if (AllowedRemoteAddresses.Count is < 1 or > 32)
+        if (AllowedRemoteAddresses == null ||
+            AllowedRemoteAddresses.Count is < 1 or > 32)
         {
             throw new ArgumentException(
                 "Daemon policy requires 1-32 explicit remote IP addresses.",
@@ -264,14 +265,14 @@ public sealed class DaemonEnrollmentFile
     public DaemonEnrollmentFile(string path)
     {
         if (string.IsNullOrWhiteSpace(path) ||
-            !Path.IsPathFullyQualified(path))
+            !System.IO.Path.IsPathFullyQualified(path))
         {
             throw new ArgumentException(
                 "Enrollment file path must be absolute.",
                 nameof(path));
         }
 
-        _path = Path.GetFullPath(path);
+        _path = System.IO.Path.GetFullPath(path);
     }
 
     public string Path => _path;
@@ -335,17 +336,9 @@ public sealed class DaemonEnrollmentFile
 
     public void Delete()
     {
-        try
+        if (File.Exists(_path))
         {
-            if (File.Exists(_path))
-            {
-                File.Delete(_path);
-            }
-        }
-        catch
-        {
-            // A stale bearer file is security-sensitive; surface failure to callers that explicitly
-            // rotate/stop by verifying deletion separately when required.
+            File.Delete(_path);
         }
     }
 
