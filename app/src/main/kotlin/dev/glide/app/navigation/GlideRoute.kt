@@ -27,5 +27,5 @@ sealed interface GlideRoute : NavKey {
     data object Settings : GlideRoute
 
     @Serializable
-    data object QrScanner : GlideRoute
+    data class QrScanner(val batchId: String? = null) : GlideRoute
 }
