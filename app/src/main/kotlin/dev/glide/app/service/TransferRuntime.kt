@@ -760,6 +760,98 @@ class TransferRuntime private constructor(
         return true
     }
 
+    /**
+     * Initializes/refreshes persistent trust without requiring a transfer service scope.
+     * Settings uses this in its own lifecycle; no network or coordinator work is started.
+     */
+    suspend fun refreshPersistentTrustState(): Boolean {
+        val manager = persistentTrustManager ?: run {
+            _trustState.value = TrustRuntimeState(
+                errorMessage = "Persistent trust service is unavailable"
+            )
+            return false
+        }
+
+        return try {
+            val initialization = manager.initialize()
+            val notice = when (initialization) {
+                is LocalIdentityInitialization.Ready -> null
+                is LocalIdentityInitialization.ResetAfterKeyLoss ->
+                    "Local identity key was unavailable. " +
+                        "${initialization.revokedPeerCount} trusted peer record(s) were revoked and re-enrollment is required."
+            }
+            val peers = manager.trustedPeerSnapshot()
+            _trustState.value = _trustState.value.copy(
+                isInitialized = true,
+                localFingerprintHex = initialization.localFingerprintHex,
+                trustedPeers = peers,
+                securityNotice = notice,
+                errorMessage = null
+            )
+            true
+        } catch (t: Throwable) {
+            _trustState.value = _trustState.value.copy(
+                errorMessage =
+                    "Persistent identity initialization failed: " +
+                        (t.message ?: t::class.java.simpleName)
+            )
+            false
+        }
+    }
+
+    suspend fun revokeTrustedPeerNow(
+        fingerprintHex: String
+    ): Boolean {
+        val manager = persistentTrustManager ?: return false
+        return try {
+            manager.revokePeer(fingerprintHex)
+            _trustState.value = _trustState.value.copy(
+                trustedPeers = manager.trustedPeerSnapshot(),
+                securityNotice = "Device trust revoked.",
+                errorMessage = null
+            )
+            true
+        } catch (t: Throwable) {
+            _trustState.value = _trustState.value.copy(
+                errorMessage =
+                    "Could not revoke trusted device: " +
+                        (t.message ?: t::class.java.simpleName)
+            )
+            false
+        }
+    }
+
+    suspend fun rotateLocalIdentityNow(): Boolean {
+        val manager = persistentTrustManager ?: return false
+        synchronized(lock) {
+            pendingVerifiedPeer = null
+            _trustState.value = _trustState.value.copy(
+                pendingEnrollment = null
+            )
+        }
+
+        return try {
+            val result = manager.rotateLocalIdentity()
+            _trustState.value = _trustState.value.copy(
+                isInitialized = true,
+                localFingerprintHex = result.localFingerprintHex,
+                trustedPeers = emptyList(),
+                securityNotice =
+                    "Local identity rotated. " +
+                        "${result.revokedPeerCount} trusted peer record(s) were revoked.",
+                errorMessage = null
+            )
+            true
+        } catch (t: Throwable) {
+            _trustState.value = _trustState.value.copy(
+                errorMessage =
+                    "Could not rotate local identity: " +
+                        (t.message ?: t::class.java.simpleName)
+            )
+            false
+        }
+    }
+
     private fun startTrustObservation(scope: CoroutineScope) {
         val manager = persistentTrustManager ?: run {
             _trustState.value = TrustRuntimeState(
@@ -771,22 +863,8 @@ class TransferRuntime private constructor(
         synchronized(lock) {
             trustObservationJob?.cancel()
             trustObservationJob = scope.launch {
+                if (!refreshPersistentTrustState()) return@launch
                 try {
-                    val initialization = manager.initialize()
-                    val notice = when (initialization) {
-                        is LocalIdentityInitialization.Ready -> null
-                        is LocalIdentityInitialization.ResetAfterKeyLoss ->
-                            "Local identity key was unavailable. " +
-                                "${initialization.revokedPeerCount} trusted peer record(s) were revoked and re-enrollment is required."
-                    }
-
-                    _trustState.value = _trustState.value.copy(
-                        isInitialized = true,
-                        localFingerprintHex = initialization.localFingerprintHex,
-                        securityNotice = notice,
-                        errorMessage = null
-                    )
-
                     manager.trustedPeers.collect { peers ->
                         _trustState.value = _trustState.value.copy(
                             isInitialized = true,
@@ -797,14 +875,13 @@ class TransferRuntime private constructor(
                 } catch (t: Throwable) {
                     _trustState.value = _trustState.value.copy(
                         errorMessage =
-                            "Persistent identity initialization failed: " +
+                            "Persistent trust observation failed: " +
                                 (t.message ?: t::class.java.simpleName)
                     )
                 }
             }
         }
     }
-
     /**
      * HARD-021 calls this only after IdentityProofVerifier has validated the live channel-bound
      * proof. UI code may approve or reject the pending identity but cannot create it.
@@ -882,56 +959,19 @@ class TransferRuntime private constructor(
     private fun revokeTrustedPeer(
         fingerprintHex: String
     ): Boolean {
-        val manager = persistentTrustManager ?: return false
+        if (persistentTrustManager == null) return false
         val scope = synchronized(lock) { serviceScope } ?: return false
-
         scope.launch {
-            try {
-                manager.revokePeer(fingerprintHex)
-                _trustState.value = _trustState.value.copy(
-                    securityNotice = "Device trust revoked.",
-                    errorMessage = null
-                )
-            } catch (t: Throwable) {
-                _trustState.value = _trustState.value.copy(
-                    errorMessage =
-                        "Could not revoke trusted device: " +
-                            (t.message ?: t::class.java.simpleName)
-                )
-            }
+            revokeTrustedPeerNow(fingerprintHex)
         }
         return true
     }
 
     private fun rotateLocalIdentity(): Boolean {
-        val manager = persistentTrustManager ?: return false
+        if (persistentTrustManager == null) return false
         val scope = synchronized(lock) { serviceScope } ?: return false
-
-        synchronized(lock) {
-            pendingVerifiedPeer = null
-            _trustState.value = _trustState.value.copy(
-                pendingEnrollment = null
-            )
-        }
-
         scope.launch {
-            try {
-                val result = manager.rotateLocalIdentity()
-                _trustState.value = _trustState.value.copy(
-                    isInitialized = true,
-                    localFingerprintHex = result.localFingerprintHex,
-                    securityNotice =
-                        "Local identity rotated. " +
-                            "${result.revokedPeerCount} trusted peer record(s) were revoked.",
-                    errorMessage = null
-                )
-            } catch (t: Throwable) {
-                _trustState.value = _trustState.value.copy(
-                    errorMessage =
-                        "Could not rotate local identity: " +
-                            (t.message ?: t::class.java.simpleName)
-                )
-            }
+            rotateLocalIdentityNow()
         }
         return true
     }
