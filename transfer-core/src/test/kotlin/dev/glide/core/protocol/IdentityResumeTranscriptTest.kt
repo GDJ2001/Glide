@@ -168,6 +168,22 @@ class IdentityResumeTranscriptTest {
         )
     }
 
+    @Test(expected = IllegalArgumentException::class)
+    fun identityVector_zeroChannelBinding_isRejected() {
+        val vector = fixture["identityVector"]!!.jsonObject
+
+        IdentityResumeTranscript.identityProofBytes(
+            activeSessionId = value(vector, "activeSessionId"),
+            challengeMessageId = value(vector, "challengeMessageId"),
+            signerRole = value(vector, "signerRole"),
+            verifierRole = value(vector, "verifierRole"),
+            signerFingerprintHex = value(vector, "signerFingerprintHex"),
+            verifierFingerprintHex = value(vector, "verifierFingerprintHex"),
+            challengeNonceHex = value(vector, "challengeNonceHex"),
+            channelBindingHex = "0".repeat(64),
+            capabilityHashHex = value(vector, "capabilityHashHex")
+        )
+    }
     private fun value(
         objectValue: JsonObject,
         key: String
