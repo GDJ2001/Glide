@@ -262,6 +262,9 @@ class TransferCoordinatorTest {
                 kotlinx.coroutines.delay(20)
             }
 
+            senderCoordinator.awaitTerminalCleanup()
+            receiverCoordinator.awaitTerminalCleanup()
+
             assertEquals(SessionPhase.Completed, senderCoordinator.state.value.phase)
             assertEquals(SessionPhase.Completed, receiverCoordinator.state.value.phase)
 
@@ -361,6 +364,9 @@ class TransferCoordinatorTest {
                 receiverCoordinator.state.value.phase != SessionPhase.Cancelled) {
                 kotlinx.coroutines.delay(20)
             }
+
+            senderCoordinator.awaitTerminalCleanup()
+            receiverCoordinator.awaitTerminalCleanup()
 
             assertEquals(SessionPhase.Cancelled, receiverCoordinator.state.value.phase)
             assertEquals(SessionPhase.Cancelled, senderCoordinator.state.value.phase)
@@ -470,6 +476,9 @@ class TransferCoordinatorTest {
                 kotlinx.coroutines.delay(20)
             }
 
+            senderCoordinator.awaitTerminalCleanup()
+            receiverCoordinator.awaitTerminalCleanup()
+
             assertEquals(SessionPhase.Cancelled, senderCoordinator.state.value.phase)
             assertEquals(SessionPhase.Cancelled, receiverCoordinator.state.value.phase)
             assertTrue(rReceiveStore.committedFiles.isEmpty())
@@ -556,6 +565,9 @@ class TransferCoordinatorTest {
                 senderCoordinator.state.value.phase != SessionPhase.Failed) {
                 kotlinx.coroutines.delay(20)
             }
+
+            senderCoordinator.awaitTerminalCleanup()
+            receiverCoordinator.awaitTerminalCleanup()
 
             assertEquals(SessionPhase.Failed, receiverCoordinator.state.value.phase)
             assertEquals(SessionPhase.Failed, senderCoordinator.state.value.phase)
@@ -657,6 +669,9 @@ class TransferCoordinatorTest {
                 receiverCoordinator.state.value.phase != SessionPhase.Completed) {
                 kotlinx.coroutines.delay(20)
             }
+
+            senderCoordinator.awaitTerminalCleanup()
+            receiverCoordinator.awaitTerminalCleanup()
 
             assertEquals(SessionPhase.Completed, senderCoordinator.state.value.phase)
             assertEquals(SessionPhase.Completed, receiverCoordinator.state.value.phase)
@@ -770,6 +785,9 @@ class TransferCoordinatorTest {
                 receiverCoordinator.state.value.phase != SessionPhase.Failed) {
                 kotlinx.coroutines.delay(20)
             }
+
+            senderCoordinator.awaitTerminalCleanup()
+            receiverCoordinator.awaitTerminalCleanup()
 
             assertEquals(SessionPhase.Failed, senderCoordinator.state.value.phase)
             assertEquals(SessionPhase.Failed, receiverCoordinator.state.value.phase)
@@ -897,6 +915,9 @@ class TransferCoordinatorTest {
                 kotlinx.coroutines.delay(20)
             }
 
+            senderCoordinator.awaitTerminalCleanup()
+            receiverCoordinator.awaitTerminalCleanup()
+
             assertEquals(SessionPhase.Cancelled, senderCoordinator.state.value.phase)
             assertEquals(SessionPhase.Cancelled, receiverCoordinator.state.value.phase)
 
@@ -993,6 +1014,8 @@ class TransferCoordinatorTest {
             while (receiverCoordinator.state.value.phase != SessionPhase.Completed) {
                 kotlinx.coroutines.delay(20)
             }
+
+            receiverCoordinator.awaitTerminalCleanup()
             assertEquals(SessionPhase.Completed, receiverCoordinator.state.value.phase)
             assertEquals(2, receiverCoordinator.committedFiles.size)
 
@@ -1338,6 +1361,8 @@ class TransferCoordinatorTest {
                 kotlinx.coroutines.delay(10)
             }
 
+            receiverCoordinator.awaitTerminalCleanup()
+
             // Stream arrives after terminal cancellation
             val lateTrackingStream = TestTrackingInputStream("Late data".toByteArray(Charsets.UTF_8))
             val lateStream = IncomingStream(
@@ -1427,6 +1452,9 @@ class TransferCoordinatorTest {
                 kotlinx.coroutines.delay(20)
             }
 
+            senderCoordinator.awaitTerminalCleanup()
+            receiverCoordinator.awaitTerminalCleanup()
+
             assertEquals(SessionPhase.Completed, senderCoordinator.state.value.phase)
             assertEquals(SessionPhase.Completed, receiverCoordinator.state.value.phase)
 
@@ -1507,6 +1535,9 @@ class TransferCoordinatorTest {
                 receiverCoordinator.state.value.phase != SessionPhase.Completed) {
                 kotlinx.coroutines.delay(20)
             }
+
+            senderCoordinator.awaitTerminalCleanup()
+            receiverCoordinator.awaitTerminalCleanup()
 
             // Exactly one open and underlying stream is closed
             assertEquals(1, openCount)
@@ -1702,6 +1733,9 @@ class TransferCoordinatorTest {
                 receiverCoordinator.state.value.phase != SessionPhase.Completed) {
                 kotlinx.coroutines.delay(20)
             }
+
+            senderCoordinator.awaitTerminalCleanup()
+            receiverCoordinator.awaitTerminalCleanup()
 
             assertEquals(SessionPhase.Completed, senderCoordinator.state.value.phase)
             assertEquals(SessionPhase.Completed, receiverCoordinator.state.value.phase)
@@ -1943,6 +1977,9 @@ class TransferCoordinatorTest {
                 receiverCoordinator.state.value.phase != SessionPhase.Completed) {
                 kotlinx.coroutines.delay(20)
             }
+
+            senderCoordinator.awaitTerminalCleanup()
+            receiverCoordinator.awaitTerminalCleanup()
 
             assertEquals(SessionPhase.Completed, senderCoordinator.state.value.phase)
             assertEquals(SessionPhase.Completed, receiverCoordinator.state.value.phase)
