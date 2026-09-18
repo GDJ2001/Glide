@@ -689,7 +689,17 @@ fun SelectionScreen(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Button(
-                    onClick = { onProceedToSend(state.handle) },
+                    onClick = {
+                        val prepared = viewModel.prepareReadyFileForTransfer()
+                        if (prepared != null) {
+                            val (batch, _) = prepared
+                            if (onProceedToSendBatch != null) {
+                                onProceedToSendBatch(batch)
+                            } else {
+                                onProceedToSend(state.handle)
+                            }
+                        }
+                    },
                     shape = PrimaryButtonShape,
                     modifier = Modifier
                         .fillMaxWidth()
