@@ -59,6 +59,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     private string _activeInvitationUri = "";
     private LanInvitation? _activeInvitation;
     private LanInvitation? _pairedInvitation;
+    private readonly LanInvitationAuthority _invitationAuthority = new();
 
     private GlideWebGateway? _webGateway;
     private bool _isWebShareModalVisible;
@@ -129,7 +130,9 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             if (param is TransferItemViewModel item) SelectedFiles.Remove(item);
         });
         ClearFilesCommand = new RelayCommand(() => SelectedFiles.Clear());
-        SendFilesCommand = new RelayCommand(async () => await ExecuteSendFilesAsync(), () => !IsTransferActive && SelectedFiles.Count > 0);
+        SendFilesCommand = new RelayCommand(
+            async () => await ExecuteSendFilesAsync(),
+            () => !IsTransferActive && SelectedFiles.Count > 0 && _pairedInvitation != null);
         ToggleListenerCommand = new RelayCommand(async () => await ToggleListenerAsync());
         ConfirmSasCommand = new RelayCommand(() => _sasConfirmationTcs?.TrySetResult(true));
         RejectSasCommand = new RelayCommand(() => _sasConfirmationTcs?.TrySetResult(false));
@@ -144,7 +147,9 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             {
                 PeerHost = peer.Host;
                 PeerPort = peer.Port;
-                StatusMessage = $"Selected peer: {peer.DeviceName} ({peer.Host}:{peer.Port})";
+                StatusMessage =
+                    $"Found {peer.DeviceName} ({peer.Host}:{peer.Port}). " +
+                    "Scan or paste that device's pairing invitation before sending.";
             }
         });
         RefreshPeersCommand = new RelayCommand(() =>
@@ -388,6 +393,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                 StatusMessage = $"Paired with {invitation.Name} ({targetEndpoint.Address}:{targetEndpoint.Port}) via invitation";
                 IsPairModalVisible = false;
                 PairInputUri = "";
+                CommandManager.InvalidateRequerySuggested();
             }
         }
         catch (Exception ex)
@@ -401,6 +407,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         if (IsListening)
         {
             _mdnsService.StopAdvertising();
+            _invitationAuthority.RevokeActive();
             ActiveInvitationUri = "";
             _activeInvitation = null;
             _listener?.Dispose();
@@ -424,7 +431,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
 
         try
         {
-            string presence = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
+            string presence = LanDiscoveryConstants.GeneratePresenceId();
             byte[] tokenBytes = RandomNumberGenerator.GetBytes(32);
             string token = Convert.ToBase64String(tokenBytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
             byte[] spkiHashBytes = SHA256.HashData(_listener.ServerCertificate.PublicKey.ExportSubjectPublicKeyInfo());
@@ -453,14 +460,15 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                 expiresAt: expiresAt.ToString(),
                 ttlSeconds: 120);
 
-            _activeInvitation = invitation;
-            ActiveInvitationUri = InvitationCodec.Encode(invitation);
+            LanInvitation canonicalInvitation =
+                _invitationAuthority.Publish(invitation);
+            _activeInvitation = canonicalInvitation;
+            ActiveInvitationUri = InvitationCodec.Encode(canonicalInvitation);
 
             _mdnsService.StartAdvertising(
                 deviceName: Environment.MachineName,
                 port: ListeningPort,
-                certFingerprintPrefix: spkiSha256[..8],
-                capabilities: LanDiscoveryConstants.DefaultCapabilities);
+                presenceId: canonicalInvitation.Presence);
         }
         catch (Exception ex)
         {
@@ -509,8 +517,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                     conn,
                     new DesktopReceiveRequest(
                         new QuarantineStagingStore(),
-                        _activeInvitation,
-                        AllowBootstrapWithoutInvitation: false,
+                        _invitationAuthority,
                         LocalDeviceName: Environment.MachineName),
                     this,
                     cancellationToken);
@@ -532,6 +539,13 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
 private async Task ExecuteSendFilesAsync()
     {
         if (SelectedFiles.Count == 0) return;
+        if (_pairedInvitation == null)
+        {
+            StatusMessage =
+                "Authenticated pairing is required. Scan or paste the receiver's current pairing invitation.";
+            IsPairModalVisible = true;
+            return;
+        }
 
         _activeTransferCts?.Dispose();
         _activeTransferCts = new CancellationTokenSource();
@@ -625,6 +639,7 @@ private async Task ExecuteSendFilesAsync()
             if (direction == DesktopTransferDirection.Send)
             {
                 _pairedInvitation = null;
+                CommandManager.InvalidateRequerySuggested();
             }
             else
             {
