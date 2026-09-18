@@ -650,13 +650,17 @@ class ResumableStagingStoreTest {
                 ResumableSessionEntity
             >()
 
-        override suspend fun insertOrUpdate(
+        override suspend fun insertIfAbsent(
             session: ResumableSessionEntity
-        ) {
-            sessions[
+        ): Long {
+            val key =
                 session.originalSessionId to
                     session.itemId
-            ] = session
+            if (sessions.containsKey(key)) {
+                return -1L
+            }
+            sessions[key] = session
+            return 1L
         }
 
         override suspend fun get(
