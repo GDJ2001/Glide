@@ -7,7 +7,7 @@ Plan: [`planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md`](planning/CODE_R
 Latest reconciliation: [`planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md`](planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md)  
 Review baseline: `ea2e811a7f2d8aaddc552e894fe04782cd08a499`  
 HARD-002 captured source boundary: `12681eabba26387fe7d1bbaf309971f345642e41`  
-**Next recommended task: restore current-head CI and review HARD-008/HARD-009/HARD-011/HARD-012. HARD-012 implementation is prepared on `hardening/hard-012-native-lan-profile`, but it cannot satisfy its HARD-011 dependency or interoperability evidence gate while Actions remains unscheduled. HARD-010 still requires two physical Android devices.**
+**Next recommended task: restore current-head CI and review HARD-008/HARD-009/HARD-011/HARD-012/HARD-013. HARD-013 is prepared as a stacked branch on HARD-012, but neither task can satisfy its completion gate while Actions remains unscheduled and physical interoperability evidence is unavailable. HARD-010 still requires two physical Android devices.**
 
 Source/configuration commits after the HARD-002 captured boundary are not silently certified by HARD-002; the task that consumes them must inspect/reconcile them before relying on their claims.
 
@@ -71,7 +71,7 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 | HARD-010 | M1 | BLOCKED | Prove two-device Android production journey |
 | HARD-011 | M2 | REVIEW_REQUIRED | Extract shared desktop transfer engine |
 | HARD-012 | M2 | REVIEW_REQUIRED | Align native LAN discovery/TLS/bootstrap profile |
-| HARD-013 | M2 | NOT_STARTED | Implement strict desktop session/protocol state machine |
+| HARD-013 | M2 | REVIEW_REQUIRED | Implement strict desktop session/protocol state machine |
 | HARD-014 | M2 | NOT_STARTED | Make desktop hashing/storage bounded and shared |
 | HARD-015 | M2 | NOT_STARTED | Complete desktop consent/history/settings/state |
 | HARD-016 | M2 | NOT_STARTED | Harden Linux CLI/daemon receiving lifecycle |
@@ -223,10 +223,14 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 <a id="hard-013"></a>
 ## HARD-013 — Implement strict desktop session/protocol state machine
 
-- **Milestone / status:** M2 / NOT_STARTED.
-- **Dependencies:** HARD-011, HARD-012.
-- **Acceptance:** Monotonic sequence, paged offers, exact IDs/correlation, deadlines, consent ordering and truthful item/batch terminal outcomes match protocol semantics.
-- **Tests/evidence:** Multi-page offers, duplicate/gapped sequence, mismatched IDs, failed middle item and lost terminal receipt; state-machine tests and golden parity.
+- **Milestone / status:** M2 / REVIEW_REQUIRED.
+- **Dependencies:** HARD-011, HARD-012; both remain REVIEW_REQUIRED because current-head CI is unscheduled.
+- **Implementation state:** Prepared on stacked branch `hardening/hard-013-desktop-session-state-machine`. The shared desktop engine now owns independent monotonic inbound/outbound control sequences, exact session/type/batch/item correlation, required V1 capability negotiation, real <=32-item/<=control-limit offer pagination, full receiver offer assembly before consent, unique bulkRef binding, truthful failed-item termination, exact batch receipts and cancellable protocol deadlines.
+- **HARD-003 progression:** the fixed daemon/auth, pagination and sequence probes are expected to turn green; the whole-file pre-hashing probe remains intentionally red for HARD-014, so the expected-red meta-gate still has a real owner-task failure.
+- **Tests prepared:** 33-item/two-page monotonic flow, mismatched batch correlation, invalid page order before consent, failed item terminating without BATCH_END, HELLO timeout, explicit inbound sequence gap, and lost BATCH_RESULT deadline, plus existing paired shared-engine tests.
+- **Verification blocker:** No GitHub Actions run/status is being scheduled, this environment cannot resolve GitHub for a local checkout, and the .NET SDK is not installed locally. No current-head compile/test claim is made.
+- **Evidence:** [HARD-013 strict desktop session implementation](development/sessions/2026-09-18-hard-013.md).
+- **Completion gate:** HARD-011/HARD-012 certification, current-head Windows/Linux test gates, HARD-003 remaining-red attribution to HARD-014, and real Android↔desktop multi-page/multi-item positive and negative protocol traces.
 
 <a id="hard-014"></a>
 ## HARD-014 — Make desktop hashing/storage bounded and shared
