@@ -43,13 +43,15 @@ Android uses Android Keystore. Windows/Linux storage selection and lifecycle are
 
 Every `identity-v1` or `resume-v1` signature contains a **32-byte binding to the active secure channel**, represented as 64 lowercase hexadecimal characters.
 
-For native TLS LAN sessions, HARD-021 derives the binding from TLS exporter keying material with:
+For native TLS LAN sessions, HARD-021 defines the binding as:
 
-- exporter label: `EXPORTER-GLIDE-IDENTITY-V1`;
-- output length: 32 bytes;
+- scheme: `tls-server-spki-sha256-v1`;
+- value: the 32-byte SHA-256 fingerprint of the TLS server certificate SubjectPublicKeyInfo actually used by the active pinned TLS connection;
 - no synthetic fallback.
 
-If the active transport cannot produce a trustworthy binding, `identity-v1` and `resume-v1` are unavailable on that transport.
+The signature transcript also binds the fresh active session/challenge and negotiated capabilities. A proof therefore cannot be transplanted to another pinned TLS server identity or another session.
+
+If the active transport cannot expose a trustworthy authenticated server-SPKI binding, `identity-v1` and `resume-v1` are unavailable on that transport.
 
 ### 2.3 Freshness
 
@@ -111,7 +113,7 @@ Common prefix:
 After the common prefix:
 
 1. `"identity-v1"`
-2. `"tls-exporter-v1"`
+2. `"tls-server-spki-sha256-v1"`
 3. active session UUID
 4. challenge message UUID
 5. signer role
@@ -129,7 +131,7 @@ Roles are exactly `sender` or `receiver` and must be opposite.
 After the common prefix:
 
 1. `"resume-v1"`
-2. `"tls-exporter-v1"`
+2. `"tls-server-spki-sha256-v1"`
 3. active reconnect session UUID
 4. original transfer session UUID
 5. item UUID
