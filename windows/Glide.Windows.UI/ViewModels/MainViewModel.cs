@@ -844,19 +844,60 @@ private async Task ExecuteSendFilesAsync()
         }
     }
 
-    public Task<bool> ConfirmOfferAsync(
+    public async Task<bool> ConfirmOfferAsync(
         DesktopOffer offer,
         CancellationToken cancellationToken)
     {
-        RunOnUi(() =>
+        ArgumentNullException.ThrowIfNull(offer);
+
+        var confirmation =
+            new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+
+        await _uiDispatcher.InvokeAsync(() =>
         {
-            SasPeerName = offer.PeerName;
+            _incomingOfferConfirmationTcs = confirmation;
+            IncomingOfferPeerName = offer.PeerName;
+            IncomingOfferSummary =
+                $"{offer.Items.Count} file(s) • " +
+                TransferItemViewModel.FormatSize(offer.TotalBytes);
+
+            IncomingOfferItems.Clear();
+            foreach (DesktopOfferItem item in offer.Items)
+            {
+                IncomingOfferItems.Add(
+                    new IncomingOfferItemViewModel(
+                        item.Name,
+                        item.SizeBytes,
+                        item.RelativePath));
+            }
+
             TransferTitle =
-                $"Receiving {offer.Items.Count} file(s) from {offer.PeerName}";
+                $"Incoming offer from {offer.PeerName}";
+            IsIncomingOfferModalVisible = true;
         });
 
-        // Preserve current WPF behavior. HARD-015 adds explicit incoming-offer consent.
-        return Task.FromResult(true);
+        try
+        {
+            return await confirmation.Task.WaitAsync(
+                cancellationToken);
+        }
+        finally
+        {
+            await _uiDispatcher.InvokeAsync(() =>
+            {
+                if (ReferenceEquals(
+                        _incomingOfferConfirmationTcs,
+                        confirmation))
+                {
+                    _incomingOfferConfirmationTcs = null;
+                }
+
+                IsIncomingOfferModalVisible = false;
+                IncomingOfferItems.Clear();
+                IncomingOfferSummary = "";
+            });
+        }
     }
 
     public void OnInvitationConsumed(DesktopTransferDirection direction)
@@ -943,39 +984,45 @@ private async Task ExecuteSendFilesAsync()
         });
     }
 
-    public void OnHistory(DesktopHistoryEntry entry)
+    public async Task OnHistoryAsync(
+        DesktopHistoryEntry entry,
+        CancellationToken cancellationToken = default)
     {
-        RunOnUi(() =>
+        bool persisted = true;
+
+        try
+        {
+            await _stateStore.AppendHistoryAsync(
+                entry,
+                cancellationToken);
+        }
+        catch
+        {
+            persisted = false;
+        }
+
+        await _uiDispatcher.InvokeAsync(() =>
         {
             HistoryItems.Insert(
                 0,
-                new HistoryItemViewModel
-                {
-                    Direction =
-                        entry.Direction == DesktopTransferDirection.Send
-                            ? "Sent"
-                            : "Received",
-                    ItemName = entry.ItemName,
-                    FormattedSize =
-                        TransferItemViewModel.FormatSize(entry.SizeBytes),
-                    TargetPath = entry.Path,
-                    PeerName = entry.PeerName,
-                    Timestamp = entry.Timestamp.LocalDateTime
-                });
+                CreateHistoryItem(entry));
+
+            while (HistoryItems.Count > HistoryLimit)
+            {
+                HistoryItems.RemoveAt(
+                    HistoryItems.Count - 1);
+            }
+
+            if (!persisted)
+            {
+                StatusMessage =
+                    "Transfer verified, but history could not be saved.";
+            }
         });
     }
 
-    private static void RunOnUi(Action action)
-    {
-        var dispatcher = Application.Current?.Dispatcher;
-        if (dispatcher == null || dispatcher.CheckAccess())
-        {
-            action();
-            return;
-        }
-
-        dispatcher.Invoke(action);
-    }
+    private void RunOnUi(Action action) =>
+        _uiDispatcher.Invoke(action);
 
 private void ExecuteOpenDownloads()
     {
