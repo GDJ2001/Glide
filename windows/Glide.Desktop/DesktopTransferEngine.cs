@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using Glide.Core.Codec;
 using Glide.Core.Models;
 using Glide.Core.Pairing;
+using Glide.Core.Security;
 using Glide.Core.Storage;
 using Glide.Core.Transport.Lan;
 using Glide.Transport.Framing;
@@ -243,6 +244,26 @@ public sealed class DesktopTransferEngine
                 ? Environment.MachineName
                 : request.LocalDeviceName;
 
+        DesktopPersistentTrustManager? trustManager =
+            request.TrustManager;
+        if (request.ExpectedPeerFingerprintHex != null &&
+            trustManager == null)
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.AuthenticationFailed,
+                "A trusted peer was requested but no persistent trust manager is available.");
+        }
+
+        trustManager?.Initialize();
+
+        JsonArray optionalCapabilities =
+            trustManager == null
+                ? new JsonArray(
+                    ProtocolCapabilities.FolderV1)
+                : new JsonArray(
+                    ProtocolCapabilities.FolderV1,
+                    ProtocolCapabilities.IdentityV1);
+
         await channel.WriteEnvelopeAsync(
             sequence.Create(
                 MessageTypes.Hello,
@@ -255,8 +276,7 @@ public sealed class DesktopTransferEngine
                             ProtocolCapabilities.StreamV1,
                             ProtocolCapabilities.Sha256),
                     ["optionalCapabilities"] =
-                        new JsonArray(
-                            ProtocolCapabilities.FolderV1),
+                        optionalCapabilities,
                     ["role"] = "sender",
                     ["ephemeralPeerId"] =
                         Guid.NewGuid()
@@ -273,7 +293,13 @@ public sealed class DesktopTransferEngine
                 sessionId,
                 cancellationToken);
 
-        ValidateHelloAckCapabilities(helloAck);
+        HashSet<string> negotiatedCapabilities =
+            ValidateHelloAckCapabilities(
+                helloAck,
+                identityOffered:
+                    trustManager != null,
+                requireIdentity:
+                    request.ExpectedPeerFingerprintHex != null);
 
         string peerName =
             helloAck.Body["displayName"]?.ToString()
@@ -281,6 +307,37 @@ public sealed class DesktopTransferEngine
         interaction.OnPeerIdentified(
             DesktopTransferDirection.Send,
             peerName);
+
+        if (negotiatedCapabilities.Contains(
+                ProtocolCapabilities.IdentityV1))
+        {
+            if (trustManager == null)
+            {
+                throw new ProtocolViolationException(
+                    WireErrorCodes.AuthenticationFailed,
+                    "Peer selected identity-v1 when no local persistent identity authority was offered.");
+            }
+
+            DesktopAuthenticatedPeer authenticated =
+                await DesktopTrustedSessionAuthenticator
+                    .AuthenticateSenderAsync(
+                        channel,
+                        sequence,
+                        connection,
+                        sessionId,
+                        negotiatedCapabilities,
+                        peerName,
+                        trustManager,
+                        request.ExpectedPeerFingerprintHex,
+                        interaction,
+                        cancellationToken);
+
+            interaction.OnStatus(
+                DesktopTransferDirection.Send,
+                authenticated.IsEnrolled
+                    ? $"Trusted identity authenticated: {authenticated.FingerprintHex[..12]}..."
+                    : $"Peer identity cryptographically verified: {authenticated.FingerprintHex[..12]}...");
+        }
 
         var preparedItems =
             new List<PreparedSendItem>(request.Files.Count);
@@ -718,8 +775,32 @@ public sealed class DesktopTransferEngine
                     "Inbound transfer HELLO must use sender role.");
             }
 
+            DesktopPersistentTrustManager? trustManager =
+                request.TrustManager;
+            if (request.ExpectedPeerFingerprintHex != null &&
+                trustManager == null)
+            {
+                throw new ProtocolViolationException(
+                    WireErrorCodes.AuthenticationFailed,
+                    "A trusted peer was required but no persistent trust manager is available.");
+            }
+
+            trustManager?.Initialize();
+
             HashSet<string> negotiatedCapabilities =
-                NegotiateHelloCapabilities(hello);
+                NegotiateHelloCapabilities(
+                    hello,
+                    allowIdentity:
+                        trustManager != null);
+
+            if (request.ExpectedPeerFingerprintHex != null &&
+                !negotiatedCapabilities.Contains(
+                    ProtocolCapabilities.IdentityV1))
+            {
+                throw new ProtocolViolationException(
+                    WireErrorCodes.AuthenticationFailed,
+                    "Known trusted peer attempted a capability downgrade that omitted identity-v1.");
+            }
 
             string peerName =
                 hello.Body["displayName"]?.ToString()
@@ -771,6 +852,40 @@ public sealed class DesktopTransferEngine
                         }
                     }),
                 cancellationToken);
+
+            string? authenticatedPeerFingerprint = null;
+            if (negotiatedCapabilities.Contains(
+                    ProtocolCapabilities.IdentityV1))
+            {
+                if (trustManager == null)
+                {
+                    throw new ProtocolViolationException(
+                        WireErrorCodes.AuthenticationFailed,
+                        "identity-v1 was negotiated without a local persistent trust authority.");
+                }
+
+                DesktopAuthenticatedPeer authenticated =
+                    await DesktopTrustedSessionAuthenticator
+                        .AuthenticateReceiverAsync(
+                            channel,
+                            sequence,
+                            connection,
+                            sessionId,
+                            negotiatedCapabilities,
+                            peerName,
+                            trustManager,
+                            request.ExpectedPeerFingerprintHex,
+                            interaction,
+                            cancellationToken);
+                authenticatedPeerFingerprint =
+                    authenticated.FingerprintHex;
+
+                interaction.OnStatus(
+                    DesktopTransferDirection.Receive,
+                    authenticated.IsEnrolled
+                        ? $"Trusted identity authenticated: {authenticated.FingerprintHex[..12]}..."
+                        : $"Peer identity cryptographically verified: {authenticated.FingerprintHex[..12]}...");
+            }
 
             Envelope offerBegin =
                 await sequence.ReadExpectedAsync(
@@ -916,7 +1031,8 @@ public sealed class DesktopTransferEngine
                         peerName,
                         items,
                         totalBytes,
-                        AuthenticatedPeerFingerprintHex: null),
+                        AuthenticatedPeerFingerprintHex:
+                            authenticatedPeerFingerprint),
                     cancellationToken);
 
             var decisionBody =
@@ -1313,7 +1429,8 @@ public sealed class DesktopTransferEngine
     }
 
     private static HashSet<string> NegotiateHelloCapabilities(
-        Envelope hello)
+        Envelope hello,
+        bool allowIdentity)
     {
         HashSet<string> required =
             ReadCapabilitySet(
@@ -1345,7 +1462,12 @@ public sealed class DesktopTransferEngine
         foreach (string capability in optional)
         {
             if (ProtocolCapabilities.ProductionOptional.Contains(
-                    capability))
+                    capability) ||
+                (allowIdentity &&
+                 string.Equals(
+                     capability,
+                     ProtocolCapabilities.IdentityV1,
+                     StringComparison.Ordinal)))
             {
                 negotiated.Add(capability);
             }
@@ -1356,8 +1478,10 @@ public sealed class DesktopTransferEngine
         return negotiated;
     }
 
-    private static void ValidateHelloAckCapabilities(
-        Envelope helloAck)
+    private static HashSet<string> ValidateHelloAckCapabilities(
+        Envelope helloAck,
+        bool identityOffered,
+        bool requireIdentity)
     {
         if (helloAck.Body["selectedMajor"]?.GetValue<int>() != 1)
         {
@@ -1387,6 +1511,11 @@ public sealed class DesktopTransferEngine
                 StringComparer.Ordinal);
         allowed.UnionWith(
             ProtocolCapabilities.ProductionOptional);
+        if (identityOffered)
+        {
+            allowed.Add(
+                ProtocolCapabilities.IdentityV1);
+        }
 
         if (capabilities.Except(
                 allowed,
@@ -1397,8 +1526,18 @@ public sealed class DesktopTransferEngine
                 "HELLO_ACK selected an unsupported or unoffered capability.");
         }
 
+        if (requireIdentity &&
+            !capabilities.Contains(
+                ProtocolCapabilities.IdentityV1))
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.AuthenticationFailed,
+                "Known trusted peer omitted identity-v1 from HELLO_ACK.");
+        }
+
         ProtocolCapabilities.ValidateDependencies(
             capabilities);
+        return capabilities;
     }
 
     private static HashSet<string> ReadCapabilitySet(
