@@ -236,20 +236,20 @@ public static class Program
             string pairingUri = InvitationCodec.Encode(invitation);
 
             Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine($"\\n[READY] Listening for incoming transfers on port {boundPort}");
+            Console.WriteLine($"\n[READY] Listening for incoming transfers on port {boundPort}");
             Console.WriteLine($"[INFO] Local IP addresses: {string.Join(", ", ips)}");
             Console.WriteLine($"[INFO] Staging sandbox: {stagingStore.StagingRoot}");
             Console.WriteLine($"[INFO] Destination: {stagingStore.DestinationRoot}");
             Console.ResetColor();
 
             Console.ForegroundColor = ConsoleColor.Cyan;
-            Console.WriteLine("\\n[PAIRING INVITATION] Scan or paste into peer device:");
-            Console.WriteLine($"  {pairingUri}\\n");
+            Console.WriteLine("\n[PAIRING INVITATION] Scan or paste into peer device:");
+            Console.WriteLine($"  {pairingUri}\n");
             Console.ResetColor();
 
             var qr = QrCodeGenerator.EncodeText(pairingUri);
             Console.Write(qr.ToTerminalString(border: 2));
-            Console.WriteLine("\\nWaiting for peer connection (Ctrl+C to cancel)...");
+            Console.WriteLine("\nWaiting for peer connection (Ctrl+C to cancel)...");
 
             await using var connection = await listener.AcceptConnectionAsync();
             var engine = new DesktopTransferEngine();
