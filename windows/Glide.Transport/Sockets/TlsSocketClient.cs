@@ -45,8 +45,7 @@ public sealed class TlsSocketClient
             EnabledSslProtocols = SslProtocols.Tls13,
             ApplicationProtocols = new List<SslApplicationProtocol>
             {
-                new SslApplicationProtocol("glide-lan/1"),
-                new SslApplicationProtocol("glide-v1")
+                new SslApplicationProtocol("glide-lan/1")
             },
             CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
             LocalCertificateSelectionCallback = (sender, targetHost, localCertificates, remoteCertificate, acceptableIssuers) =>
@@ -86,6 +85,13 @@ public sealed class TlsSocketClient
         };
 
         await sslStream.AuthenticateAsClientAsync(options, cancellationToken);
+
+        if (sslStream.NegotiatedApplicationProtocol != new SslApplicationProtocol("glide-lan/1"))
+        {
+            await sslStream.DisposeAsync();
+            tcpClient.Dispose();
+            throw new AuthenticationException("Peer did not negotiate required ALPN 'glide-lan/1'.");
+        }
 
         if (remotePublicKey == null)
         {
