@@ -7,6 +7,7 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
 using Glide.Core.Pairing;
+using Glide.Core.Storage;
 using Glide.Desktop;
 using Glide.Transport.Discovery;
 using Glide.Transport.Sockets;
@@ -531,7 +532,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         }
     }
 
-private async Task ExecuteSendFilesAsync()
+    private async Task ExecuteSendFilesAsync()
     {
         if (SelectedFiles.Count == 0) return;
         if (_pairedInvitation == null)
@@ -885,7 +886,7 @@ private async Task ExecuteSendFilesAsync()
                 canonicalInvitation.Presence);
     }
 
-private void ExecuteOpenDownloads()
+    private void ExecuteOpenDownloads()
     {
         string downloads = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
         if (Directory.Exists(downloads))
