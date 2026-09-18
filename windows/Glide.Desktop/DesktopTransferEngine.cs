@@ -491,14 +491,15 @@ public sealed class DesktopTransferEngine
                 DesktopTransferDirection.Send,
                 entry.File.Name,
                 "Verified");
-            interaction.OnHistory(
+            await interaction.OnHistoryAsync(
                 new DesktopHistoryEntry(
                     DesktopTransferDirection.Send,
                     entry.File.Name,
                     entry.ExpectedSize,
                     entry.File.FilePath,
                     peerName,
-                    DateTimeOffset.Now));
+                    DateTimeOffset.Now),
+                cancellationToken);
         }
 
         if (verifiedCount != offeredItems.Count ||
@@ -1104,7 +1105,8 @@ public sealed class DesktopTransferEngine
                         item.SizeBytes,
                         finalPath,
                         peerName,
-                        DateTimeOffset.Now));
+                        DateTimeOffset.Now),
+                cancellationToken);
             }
 
             if (verifiedCount != items.Count ||
