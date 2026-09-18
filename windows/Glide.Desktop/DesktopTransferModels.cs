@@ -1,3 +1,6 @@
+using Glide.Core.Pairing;
+using Glide.Core.Storage;
+
 namespace Glide.Desktop;
 
 public enum DesktopTransferDirection
@@ -102,3 +105,17 @@ public abstract class DesktopTransferInteractionBase : IDesktopTransferInteracti
     public virtual void OnItemStatus(DesktopTransferDirection direction, string itemName, string status) { }
     public virtual void OnHistory(DesktopHistoryEntry entry) { }
 }
+
+
+public sealed record DesktopSendRequest(
+    string Host,
+    int Port,
+    IReadOnlyList<DesktopTransferFile> Files,
+    LanInvitation? Invitation = null,
+    string LocalDeviceName = "");
+
+public sealed record DesktopReceiveRequest(
+    QuarantineStagingStore StagingStore,
+    LanInvitation? Invitation = null,
+    bool AllowBootstrapWithoutInvitation = false,
+    string LocalDeviceName = "");
