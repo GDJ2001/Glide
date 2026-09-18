@@ -1,11 +1,11 @@
 package dev.glide.app.discovery
 
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.content.ContextCompat
 import dagger.hilt.android.qualifiers.ApplicationContext
-import dev.glide.app.BuildConfig
 import dev.glide.app.permission.PermissionPolicy
 import dev.glide.app.ui.discovery.BlockedReason
 import dev.glide.app.ui.discovery.DeviceType
@@ -64,7 +64,11 @@ class ProductionDiscoveryController private constructor(
         },
         hardwareChecker = AndroidNearbyAvailabilityChecker(context.applicationContext),
         apiLevelProvider = { Build.VERSION.SDK_INT },
-        serviceIdProvider = { NearbyConfig.serviceId(BuildConfig.DEBUG) }
+        serviceIdProvider = {
+            val isDebuggable =
+                (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+            NearbyConfig.serviceId(isDebuggable)
+        }
     )
 
     private val lock = Any()
