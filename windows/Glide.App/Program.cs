@@ -67,12 +67,11 @@ public static class Program
         Console.WriteLine("\nUsage:");
         Console.WriteLine("  glide receive [--port <port>]");
         Console.WriteLine("      Start listening for incoming files from Glide Android or Desktop.");
-        Console.WriteLine("      Defaults to port 42424 (or dynamic ephemeral port if unavailable).");
+        Console.WriteLine("      Uses a dynamic ephemeral port by default; --port pins an explicit listener port.");
         Console.WriteLine("      Outputs a pairing invitation link and UTF-8 QR code for instant pairing.\n");
         Console.WriteLine("  glide daemon [--port <port>]");
-        Console.WriteLine("      Run headless background daemon listening continuously for incoming transfers.");
-        Console.WriteLine("      Ideal for systemd user services, home servers, and NAS appliances.\n");
-        Console.WriteLine("  glide send <peer-host> <peer-port> <file-paths...>");
+        Console.WriteLine("      Starts the daemon transport host, but unauthenticated receiving is disabled.");
+        Console.WriteLine("      Peer-specific trusted receiving policy is completed by HARD-016.\n");
         Console.WriteLine("  glide send --pair <pairing-invitation-uri> <file-paths...>");
         Console.WriteLine("      Connect to a Glide peer and send files over authenticated TLS 1.3.\n");
         Console.WriteLine("  glide web [--port <port>] <file-paths...>");
@@ -80,7 +79,6 @@ public static class Program
         Console.WriteLine("Examples:");
         Console.WriteLine("  glide receive");
         Console.WriteLine("  glide daemon");
-        Console.WriteLine("  glide send 192.168.1.50 42424 \"C:\\Photos\\vacation.jpg\"");
         Console.WriteLine("  glide send --pair glide://pair/v1#... \"C:\\Photos\\vacation.jpg\"");
         Console.WriteLine("  glide web \"C:\\Photos\\vacation.jpg\"\n");
     }
@@ -173,7 +171,7 @@ public static class Program
 
     private static async Task<int> RunReceiveAsync(string[] args)
     {
-        int port = LanDiscoveryConstants.DefaultPort;
+        int port = 0;
         for (int i = 0; i < args.Length; i++)
         {
             if (args[i] is "--port" or "-p" &&
@@ -270,7 +268,7 @@ public static class Program
 
     private static async Task<int> RunDaemonAsync(string[] args)
     {
-        int port = LanDiscoveryConstants.DefaultPort;
+        int port = 0;
         for (int i = 0; i < args.Length; i++)
         {
             if (args[i] is "--port" or "-p" &&
@@ -336,7 +334,7 @@ public static class Program
                             new DesktopReceiveRequest(
                                 stagingStore,
                                 Invitation: null,
-                                AllowBootstrapWithoutInvitation: true,
+                                AllowBootstrapWithoutInvitation: false,
                                 LocalDeviceName: Environment.MachineName),
                             interaction,
                             cts.Token);
@@ -388,33 +386,20 @@ public static class Program
     {
         string? pairUri = null;
         string host = "127.0.0.1";
-        int port = LanDiscoveryConstants.DefaultPort;
+        int port = 0;
         var fileArgs = new List<string>();
 
-        if (args.Length >= 2 && args[0] is "--pair" or "-p")
+        if (args.Length >= 3 && args[0] is "--pair" or "-p")
         {
             pairUri = args[1];
-            fileArgs.AddRange(args[2..]);
-        }
-        else if (args.Length >= 3)
-        {
-            host = args[0];
-            if (!int.TryParse(args[1], out port))
-            {
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine($"[ERROR] Invalid port: '{args[1]}'");
-                Console.ResetColor();
-                return 1;
-            }
-
             fileArgs.AddRange(args[2..]);
         }
         else
         {
             Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine("[ERROR] Insufficient arguments for send.");
+            Console.WriteLine("[ERROR] LAN sending requires --pair <pairing-invitation-uri> <file-paths...>.");
+            Console.WriteLine("        Raw host/port sending is disabled because discovery endpoints are not authentication.");
             Console.ResetColor();
-            PrintUsage();
             return 1;
         }
 
