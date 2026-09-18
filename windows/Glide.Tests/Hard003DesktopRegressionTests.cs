@@ -20,11 +20,10 @@ public sealed class Hard003ConsoleRuntimeCollectionDefinition
 /// <summary>
 /// Executable regressions discovered by HARD-003.
 ///
-/// The authentication regressions now pass after HARD-012. Pagination, sequencing, and bounded
-/// hashing remain expected-red until HARD-013/HARD-014 land; the suite keeps exercising those
-/// defects through the authenticated production send path.
+/// These cases now serve as ordinary permanent regression gates for HARD-012 through HARD-014:
+/// unauthenticated bootstrap/direct send must fail closed, offers must paginate, controls must
+/// sequence monotonically, and large-file preparation must remain bounded-memory.
 /// </summary>
-[Trait("HARD", "003-red")]
 [Collection("HARD-003 console/runtime")]
 public sealed class Hard003DesktopRegressionTests : IDisposable
 {
@@ -204,7 +203,7 @@ public sealed class Hard003DesktopRegressionTests : IDisposable
                     MessageTypes.OfferDecision,
                     hello.SessionId,
                     NewMessageId(),
-                    3,
+                    2,
                     decisionBody));
 
             Envelope itemStart =
@@ -222,7 +221,7 @@ public sealed class Hard003DesktopRegressionTests : IDisposable
                     MessageTypes.ItemReady,
                     hello.SessionId,
                     NewMessageId(),
-                    4,
+                    3,
                     readyBody));
 
             while (true)
@@ -261,7 +260,7 @@ public sealed class Hard003DesktopRegressionTests : IDisposable
                     MessageTypes.ItemResult,
                     hello.SessionId,
                     NewMessageId(),
-                    5,
+                    4,
                     resultBody));
 
             Envelope nextItemStart =
