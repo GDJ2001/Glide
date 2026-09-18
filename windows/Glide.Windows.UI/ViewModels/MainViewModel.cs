@@ -144,7 +144,8 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             {
                 PeerHost = peer.Host;
                 PeerPort = peer.Port;
-                StatusMessage = $"Selected peer: {peer.DeviceName} ({peer.Host}:{peer.Port})";
+                _pairedInvitation = null;
+                StatusMessage = $"Discovered {peer.DeviceName} ({peer.Host}:{peer.Port}). Scan/paste its pairing invitation before sending.";
             }
         });
         RefreshPeersCommand = new RelayCommand(() =>
@@ -412,7 +413,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
 
         try
         {
-            _listener = new TlsSocketListener(LanDiscoveryConstants.DefaultPort);
+            _listener = new TlsSocketListener(0);
         }
         catch
         {
@@ -531,6 +532,31 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
 private async Task ExecuteSendFilesAsync()
     {
         if (SelectedFiles.Count == 0) return;
+
+        if (_pairedInvitation == null)
+        {
+            MessageBox.Show(
+                "A fresh QR/pairing invitation is required before sending over LAN. Discovery only identifies a nearby endpoint and is not authentication.",
+                "Pairing Required",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            StatusMessage = "Pairing invitation required before sending.";
+            IsPairModalVisible = true;
+            return;
+        }
+
+        if (_pairedInvitation.IsExpired())
+        {
+            _pairedInvitation = null;
+            MessageBox.Show(
+                "The pairing invitation has expired. Ask the receiver to generate a new one.",
+                "Pairing Expired",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            StatusMessage = "Pairing invitation expired.";
+            IsPairModalVisible = true;
+            return;
+        }
 
         _activeTransferCts?.Dispose();
         _activeTransferCts = new CancellationTokenSource();
