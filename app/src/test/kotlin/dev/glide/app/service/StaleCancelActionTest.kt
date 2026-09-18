@@ -40,6 +40,18 @@ class StaleCancelActionTest {
     }
 
     @Test
+    fun duplicateServiceStartKey_isIdempotentUntilReset() {
+        assertTrue(service.claimStartRequestForTesting("nearby-sender:batch-1:peer-1"))
+        assertFalse(service.claimStartRequestForTesting("nearby-sender:batch-1:peer-1"))
+
+        assertTrue(service.claimStartRequestForTesting("nearby-sender:batch-1:peer-2"))
+        assertFalse(service.claimStartRequestForTesting("nearby-sender:batch-1:peer-2"))
+
+        service.resetStartRequestForTesting()
+        assertTrue(service.claimStartRequestForTesting("nearby-sender:batch-1:peer-1"))
+    }
+
+    @Test
     fun policy_evaluatesStaleAndMatchingCancelActions() {
         val activeSession = "active-session-100"
 
