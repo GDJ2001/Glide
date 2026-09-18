@@ -616,6 +616,16 @@ public sealed class DesktopTransferEngine
                 totalBytes),
             cancellationToken);
 
+        var decisionBody = new JsonObject
+        {
+            ["batchId"] = batchId,
+            ["accepted"] = offerAccepted
+        };
+        if (!offerAccepted)
+        {
+            decisionBody["code"] = "USER_REJECTED";
+        }
+
         await channel.WriteEnvelopeAsync(
             new Envelope(
                 1,
@@ -623,12 +633,7 @@ public sealed class DesktopTransferEngine
                 hello.SessionId,
                 NewMessageId(),
                 3,
-                new JsonObject
-                {
-                    ["batchId"] = batchId,
-                    ["accepted"] = offerAccepted,
-                    ["code"] = offerAccepted ? null : "USER_REJECTED"
-                }),
+                decisionBody),
             cancellationToken);
 
         if (!offerAccepted)
