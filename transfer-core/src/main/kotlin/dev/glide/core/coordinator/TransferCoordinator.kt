@@ -30,6 +30,11 @@ import dev.glide.core.protocol.IdentityResponseDto
 import dev.glide.core.protocol.MessageTypes
 import dev.glide.core.protocol.NegotiationConstants
 import dev.glide.core.protocol.ProtocolCodec
+import dev.glide.core.resume.ResumeAuthorityLookup
+import dev.glide.core.resume.ResumeReconnectPlan
+import dev.glide.core.resume.ResumeReconnectState
+import dev.glide.core.resume.ResumeRequestAuthority
+import dev.glide.core.resume.ResumeSenderReadySource
 import dev.glide.core.resume.ResumeSourcePreflight
 import dev.glide.core.security.ProtocolRateLimiter
 import dev.glide.core.security.ProtocolSequencer
@@ -109,6 +114,25 @@ class TransferCoordinator(
             SessionId,
             ItemId
         ) -> Unit)? = null,
+    val resumeReconnectPlan:
+        ResumeReconnectPlan? = null,
+    val loadReceiverResumeAuthority:
+        (suspend (
+            SessionId,
+            ItemId,
+            String
+        ) -> ResumeAuthorityLookup<
+            ResumeRequestAuthority
+                .ReceiverJournal
+        >)? = null,
+    val loadSenderResumeAuthority:
+        (suspend (
+            SessionId,
+            ItemId,
+            String
+        ) -> ResumeAuthorityLookup<
+            ResumeSenderReadySource
+        >)? = null,
     val enableTrueResumeCapability: Boolean = false
 ) {
     private class ResumeJournalException(
@@ -122,6 +146,25 @@ class TransferCoordinator(
         get() = boundSessionId ?: _state.value.sessionId
 
     init {
+        resumeReconnectPlan?.let { plan ->
+            require(
+                expectedPeerFingerprintHex ==
+                    plan.expectedPeerFingerprintHex
+            ) {
+                "Resume reconnect requires the exact expected enrolled peer fingerprint"
+            }
+            require(
+                when (plan) {
+                    is ResumeReconnectPlan.Sender ->
+                        role == DeviceRole.Sender
+                    is ResumeReconnectPlan.Receiver ->
+                        role == DeviceRole.Receiver
+                }
+            ) {
+                "Resume reconnect plan role does not match coordinator role"
+            }
+        }
+
         if (role == DeviceRole.Sender) {
             requireNotNull(sessionId) { "Sender must specify an explicit non-null sessionId" }
             if (senderBatch != null) {
@@ -180,6 +223,21 @@ class TransferCoordinator(
     }
 
     private var identityTimeoutJob: Job? = null
+    private var resumeTimeoutJob: Job? = null
+    private var pendingResumeRequest:
+        Envelope? = null
+    private var pendingReceiverResumeJournal:
+        ResumeRequestAuthority
+            .ReceiverJournal? = null
+
+    private val _resumeReconnectState =
+        MutableStateFlow<
+            ResumeReconnectState
+        >(ResumeReconnectState.Idle)
+    val resumeReconnectState:
+        StateFlow<ResumeReconnectState> =
+        _resumeReconnectState
+            .asStateFlow()
 
     private val stagingHandles: MutableMap<ItemId, StagingHandle> = Collections.synchronizedMap(mutableMapOf())
     private var currentStagingHandle: StagingHandle? = null
@@ -494,6 +552,8 @@ class TransferCoordinator(
     fun stop() {
         identityTimeoutJob?.cancel()
         identityTimeoutJob = null
+        resumeTimeoutJob?.cancel()
+        resumeTimeoutJob = null
         activeJobs.forEach { it.cancel() }
         activeJobs.clear()
         closePreparedSources()
@@ -539,17 +599,33 @@ class TransferCoordinator(
                 ).toMutableSet()
 
         val resumeRuntimeAvailable =
-            when (role) {
-                DeviceRole.Sender ->
-                    resumeSourcePreflight !=
-                        null &&
-                        persistSenderResumeAuthority !=
-                        null
-                DeviceRole.Receiver ->
-                    persistReceiverResumeAuthority !=
-                        null &&
-                        recordReceiverResumeChunk !=
-                        null
+            when (
+                val plan =
+                    resumeReconnectPlan
+            ) {
+                is ResumeReconnectPlan.Sender ->
+                    role ==
+                        DeviceRole.Sender &&
+                        loadSenderResumeAuthority !=
+                            null
+                is ResumeReconnectPlan.Receiver ->
+                    role ==
+                        DeviceRole.Receiver &&
+                        loadReceiverResumeAuthority !=
+                            null
+                null ->
+                    when (role) {
+                        DeviceRole.Sender ->
+                            resumeSourcePreflight !=
+                                null &&
+                                persistSenderResumeAuthority !=
+                                null
+                        DeviceRole.Receiver ->
+                            persistReceiverResumeAuthority !=
+                                null &&
+                                recordReceiverResumeChunk !=
+                                null
+                    }
             }
 
         if (enableTrueResumeCapability &&
@@ -596,6 +672,9 @@ class TransferCoordinator(
     }
 
     private suspend fun maybeSubmitSenderOffer() {
+        if (resumeReconnectPlan != null) {
+            return
+        }
         val batch =
             senderBatch ?: return
         if (_state.value.role !=
@@ -905,6 +984,9 @@ class TransferCoordinator(
             response
         )
         cancelIdentityTimeoutIfComplete()
+        if (handshake.isComplete) {
+            maybeStartReceiverResumeRequest()
+        }
     }
 
     private suspend fun executeEffects(effects: List<ReducerEffect>) {
@@ -1256,6 +1338,21 @@ class TransferCoordinator(
                 }
                 MessageTypes.IDENTITY_RESPONSE -> {
                     handleIdentityResponse(
+                        envelope
+                    )
+                }
+                MessageTypes.RESUME_REQUEST -> {
+                    handleResumeRequest(
+                        envelope
+                    )
+                }
+                MessageTypes.RESUME_ACCEPT -> {
+                    handleResumeAccept(
+                        envelope
+                    )
+                }
+                MessageTypes.RESUME_REJECT -> {
+                    handleResumeReject(
                         envelope
                     )
                 }
