@@ -218,7 +218,17 @@ class DatabaseMigrationTest {
         )
         assertTrue(
             combined.contains(
-                "`source_identity` TEXT NOT NULL"
+                "`journal_role` TEXT NOT NULL"
+            )
+        )
+        assertTrue(
+            combined.contains(
+                "`source_handle` TEXT"
+            )
+        )
+        assertTrue(
+            combined.contains(
+                "`source_identity` TEXT"
             )
         )
         assertTrue(
@@ -228,12 +238,17 @@ class DatabaseMigrationTest {
         )
         assertTrue(
             combined.contains(
-                "`chunk_hashes_hex` TEXT NOT NULL"
+                "`verified_chunk_hashes_hex` TEXT NOT NULL"
             )
         )
         assertTrue(
             combined.contains(
-                "`whole_file_sha256_hex` TEXT NOT NULL"
+                "`whole_file_sha256_hex` TEXT"
+            )
+        )
+        assertTrue(
+            combined.contains(
+                "`staging_path` TEXT"
             )
         )
         assertTrue(
