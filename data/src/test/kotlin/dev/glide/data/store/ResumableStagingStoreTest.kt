@@ -7,7 +7,6 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertIs
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -284,10 +283,13 @@ class ResumableStagingStoreTest {
                         tree.rootHashHex
                 )
 
-            val ready =
-                assertIs<
+            assertTrue(
+                result is
                     ResumeRevalidationResult.Ready
-                >(result)
+            )
+            val ready =
+                result as
+                    ResumeRevalidationResult.Ready
             assertEquals(
                 1L,
                 ready.verifiedChunks
@@ -345,9 +347,10 @@ class ResumableStagingStoreTest {
                     currentChunkRootHashHex =
                         tree.rootHashHex
                 )
-            assertIs<
-                ResumeRevalidationResult.Unauthorized
-            >(revoked)
+            assertTrue(
+                revoked is
+                    ResumeRevalidationResult.Unauthorized
+            )
 
             val substituted =
                 store.reconcileForResume(
@@ -362,9 +365,10 @@ class ResumableStagingStoreTest {
                     currentChunkRootHashHex =
                         tree.rootHashHex
                 )
-            assertIs<
-                ResumeRevalidationResult.Unauthorized
-            >(substituted)
+            assertTrue(
+                substituted is
+                    ResumeRevalidationResult.Unauthorized
+            )
         }
 
     @Test
@@ -394,9 +398,10 @@ class ResumableStagingStoreTest {
                     currentChunkRootHashHex =
                         tree.rootHashHex
                 )
-            assertIs<
-                ResumeRevalidationResult.SourceUnavailable
-            >(unavailable)
+            assertTrue(
+                unavailable is
+                    ResumeRevalidationResult.SourceUnavailable
+            )
 
             val changed =
                 store.reconcileForResume(
@@ -411,9 +416,10 @@ class ResumableStagingStoreTest {
                     currentChunkRootHashHex =
                         tree.rootHashHex
                 )
-            assertIs<
-                ResumeRevalidationResult.SourceChanged
-            >(changed)
+            assertTrue(
+                changed is
+                    ResumeRevalidationResult.SourceChanged
+            )
         }
 
     @Test
@@ -449,10 +455,10 @@ class ResumableStagingStoreTest {
                                 .ResumeToken
                                 .MAX_TTL_MILLIS
                 )
-
-            assertIs<
-                ResumeRevalidationResult.Expired
-            >(result)
+            assertTrue(
+                result is
+                    ResumeRevalidationResult.Expired
+            )
             assertNull(
                 fakeDao.get(
                     "expired-session",
