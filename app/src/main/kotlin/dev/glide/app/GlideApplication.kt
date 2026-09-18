@@ -62,7 +62,9 @@ class GlideApplication : Application(), OrphanMaintenanceCleanerProvider, Orphan
 
         appScope.launch {
             try {
-                val summary = reconciler.reconcile()
+                val summary = reconciler.reconcile(
+                    activeSessionId = transferRuntime.activeSessionId.value
+                )
                 if (summary.totalActions > 0) {
                     Log.i("GlideReconciler", "Startup reconciliation complete: $summary")
                 }
