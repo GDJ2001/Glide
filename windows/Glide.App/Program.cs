@@ -538,7 +538,9 @@ public static class Program
             Console.WriteLine($"[{status.ToUpperInvariant()}] {itemName}");
         }
 
-        public override void OnHistory(DesktopHistoryEntry entry)
+        public override Task OnHistoryAsync(
+            DesktopHistoryEntry entry,
+            CancellationToken cancellationToken = default)
         {
             if (entry.Direction == DesktopTransferDirection.Receive)
             {
@@ -546,6 +548,8 @@ public static class Program
                 Console.WriteLine($"[VERIFIED & COMMITTED] {entry.ItemName} -> {entry.Path}");
                 Console.ResetColor();
             }
+
+            return Task.CompletedTask;
         }
     }
 
