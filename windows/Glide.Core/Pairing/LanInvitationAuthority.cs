@@ -41,9 +41,13 @@ public sealed class LanInvitationAuthority
         }
 
         long remainingSeconds = Math.Max(0, expiresAtEpochSeconds - nowEpochSeconds);
-        double ticksToExpiry = remainingSeconds * (double)Stopwatch.Frequency;
-        _monotonicExpiresAt = Stopwatch.GetTimestamp() +
-            (long)Math.Min(ticksToExpiry, long.MaxValue - Stopwatch.GetTimestamp());
+        long nowTicks = Stopwatch.GetTimestamp();
+        double requestedTicks = remainingSeconds * (double)Stopwatch.Frequency;
+        long maxDelta = long.MaxValue - nowTicks;
+        long expiryDelta = requestedTicks >= maxDelta
+            ? maxDelta
+            : (long)requestedTicks;
+        _monotonicExpiresAt = nowTicks + expiryDelta;
     }
 
     public LanInvitation Invitation => _invitation;
