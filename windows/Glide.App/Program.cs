@@ -475,6 +475,17 @@ public static class Program
                             // Enrollment TTL elapsed while no connection was accepted.
                             break;
                         }
+                        catch (OperationCanceledException)
+                            when (shutdownToken.IsCancellationRequested)
+                        {
+                            throw;
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine(
+                                $"[{DateTime.UtcNow:O}] [DAEMON REJECT] TLS/connection setup failed: {ex.Message}");
+                            continue;
+                        }
 
                         await using (connection)
                         {
