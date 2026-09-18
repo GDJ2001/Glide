@@ -33,6 +33,14 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     private string _incomingOfferSummary = "";
     private TaskCompletionSource<bool>? _offerConfirmationTcs;
 
+    private bool _isTrustEnrollmentModalVisible;
+    private string _trustEnrollmentPeerName = "";
+    private string _trustEnrollmentFingerprint = "";
+    private TaskCompletionSource<bool>? _trustEnrollmentTcs;
+    private DesktopPersistentTrustManager? _trustManager;
+    private string _localIdentityFingerprint = "Unavailable";
+    private int _trustedDeviceCount;
+
     private bool _isTransferActive;
     private string _transferTitle = "";
     private double _totalProgress;
@@ -107,6 +115,8 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     public RelayCommand ToggleListenerCommand { get; }
     public RelayCommand AcceptOfferCommand { get; }
     public RelayCommand RejectOfferCommand { get; }
+    public RelayCommand AcceptTrustEnrollmentCommand { get; }
+    public RelayCommand RejectTrustEnrollmentCommand { get; }
     public RelayCommand BrowseReceiveFolderCommand { get; }
     public RelayCommand CancelTransferCommand { get; }
     public RelayCommand OpenDownloadsCommand { get; }
@@ -130,6 +140,8 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             HistoryItems.Add(ToHistoryViewModel(entry));
         }
 
+        InitializePersistentTrust();
+
         SwitchTabCommand = new RelayCommand(param => CurrentTab = param?.ToString() ?? "Send");
         AddFilesCommand = new RelayCommand(ExecuteAddFiles);
         RemoveFileCommand = new RelayCommand(param =>
@@ -143,6 +155,8 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         ToggleListenerCommand = new RelayCommand(async () => await ToggleListenerAsync());
         AcceptOfferCommand = new RelayCommand(() => _offerConfirmationTcs?.TrySetResult(true));
         RejectOfferCommand = new RelayCommand(() => _offerConfirmationTcs?.TrySetResult(false));
+        AcceptTrustEnrollmentCommand = new RelayCommand(() => _trustEnrollmentTcs?.TrySetResult(true));
+        RejectTrustEnrollmentCommand = new RelayCommand(() => _trustEnrollmentTcs?.TrySetResult(false));
         BrowseReceiveFolderCommand = new RelayCommand(ExecuteBrowseReceiveFolder);
         CancelTransferCommand = new RelayCommand(() => _activeTransferCts?.Cancel());
         OpenDownloadsCommand = new RelayCommand(ExecuteOpenDownloads);
@@ -272,6 +286,36 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     {
         get => _incomingOfferSummary;
         set => SetProperty(ref _incomingOfferSummary, value);
+    }
+
+    public bool IsTrustEnrollmentModalVisible
+    {
+        get => _isTrustEnrollmentModalVisible;
+        set => SetProperty(ref _isTrustEnrollmentModalVisible, value);
+    }
+
+    public string TrustEnrollmentPeerName
+    {
+        get => _trustEnrollmentPeerName;
+        set => SetProperty(ref _trustEnrollmentPeerName, value);
+    }
+
+    public string TrustEnrollmentFingerprint
+    {
+        get => _trustEnrollmentFingerprint;
+        set => SetProperty(ref _trustEnrollmentFingerprint, value);
+    }
+
+    public string LocalIdentityFingerprint
+    {
+        get => _localIdentityFingerprint;
+        set => SetProperty(ref _localIdentityFingerprint, value);
+    }
+
+    public int TrustedDeviceCount
+    {
+        get => _trustedDeviceCount;
+        set => SetProperty(ref _trustedDeviceCount, value);
     }
 
     public string ReceiveDirectory
@@ -553,7 +597,8 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                         new QuarantineStagingStore(
                             destinationRoot: ReceiveDirectory),
                         _invitationAuthority,
-                        LocalDeviceName: Environment.MachineName),
+                        LocalDeviceName: Environment.MachineName,
+                        TrustManager: _trustManager),
                     this,
                     cancellationToken);
 
@@ -607,7 +652,8 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                     PeerPort,
                     files,
                     _pairedInvitation,
-                    Environment.MachineName),
+                    Environment.MachineName,
+                    TrustManager: _trustManager),
                 this,
                 cancellationToken);
 
@@ -662,16 +708,59 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         }
     }
 
-    public Task<bool> ConfirmPeerEnrollmentAsync(
+    public async Task<bool> ConfirmPeerEnrollmentAsync(
         VerifiedDesktopPeerIdentity peer,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        // Windows UI trust enrollment is intentionally not auto-approved.
-        // HARD-021 keeps identity-v1 disabled for WPF until a dedicated
-        // fingerprint-confirmation surface is wired.
-        return Task.FromResult(false);
+        if (_trustManager == null)
+        {
+            return false;
+        }
+
+        var confirmation =
+            new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+
+        RunOnUi(() =>
+        {
+            _trustEnrollmentTcs
+                ?.TrySetResult(false);
+            _trustEnrollmentTcs =
+                confirmation;
+            TrustEnrollmentPeerName =
+                peer.DisplayName;
+            TrustEnrollmentFingerprint =
+                FormatFingerprint(
+                    peer.FingerprintHex);
+            TransferTitle =
+                $"Verify identity for {peer.DisplayName}";
+            IsTrustEnrollmentModalVisible =
+                true;
+        });
+
+        try
+        {
+            return await confirmation.Task.WaitAsync(
+                cancellationToken);
+        }
+        finally
+        {
+            RunOnUi(() =>
+            {
+                if (ReferenceEquals(
+                        _trustEnrollmentTcs,
+                        confirmation))
+                {
+                    _trustEnrollmentTcs =
+                        null;
+                }
+
+                IsTrustEnrollmentModalVisible =
+                    false;
+            });
+        }
     }
 
     public void OnInvitationConsumed(DesktopTransferDirection direction)
@@ -709,6 +798,13 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         DesktopTransferDirection direction,
         string message)
     {
+        if (message.Contains(
+                "Trusted identity authenticated",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            RefreshTrustSummary();
+        }
+
         RunOnUi(() =>
         {
             StatusMessage = message;
@@ -783,6 +879,108 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                 0,
                 ToHistoryViewModel(entry));
         });
+    }
+
+    private void InitializePersistentTrust()
+    {
+        try
+        {
+            _trustManager =
+                new DesktopPersistentTrustManager(
+                    new DesktopPersistentIdentityStore(),
+                    new DesktopTrustStore());
+
+            DesktopTrustInitialization initialization =
+                _trustManager.Initialize();
+
+            LocalIdentityFingerprint =
+                FormatFingerprint(
+                    initialization.LocalFingerprintHex);
+            TrustedDeviceCount =
+                _trustManager
+                    .GetTrustedPeers()
+                    .Count;
+
+            if (initialization
+                .ResetAfterIdentityLossOrChange)
+            {
+                StatusMessage =
+                    $"Persistent identity changed or was restored without its protected key. " +
+                    $"{initialization.RevokedPeerCount} trusted device(s) were revoked.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _trustManager = null;
+            LocalIdentityFingerprint =
+                "Unavailable";
+            TrustedDeviceCount = 0;
+            StatusMessage =
+                "Persistent identity is unavailable. " +
+                "One-use invitation pairing remains available, but trusted-device mode is disabled. " +
+                ex.Message;
+        }
+    }
+
+    private void RefreshTrustSummary()
+    {
+        DesktopPersistentTrustManager? manager =
+            _trustManager;
+        if (manager == null)
+        {
+            return;
+        }
+
+        try
+        {
+            string fingerprint =
+                FormatFingerprint(
+                    manager.LocalFingerprintHex());
+            int count =
+                manager.GetTrustedPeers().Count;
+
+            RunOnUi(() =>
+            {
+                LocalIdentityFingerprint =
+                    fingerprint;
+                TrustedDeviceCount =
+                    count;
+            });
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine(
+                $"Failed to refresh persistent trust summary: {ex.Message}");
+        }
+    }
+
+    private static string FormatFingerprint(
+        string fingerprintHex)
+    {
+        if (string.IsNullOrWhiteSpace(
+                fingerprintHex))
+        {
+            return "Unavailable";
+        }
+
+        return string.Join(
+            " ",
+            Enumerable.Range(
+                    0,
+                    (fingerprintHex.Length + 7) / 8)
+                .Select(index =>
+                {
+                    int start =
+                        index * 8;
+                    int length =
+                        Math.Min(
+                            8,
+                            fingerprintHex.Length -
+                                start);
+                    return fingerprintHex.Substring(
+                        start,
+                        length);
+                }));
     }
 
     private static HistoryItemViewModel ToHistoryViewModel(
