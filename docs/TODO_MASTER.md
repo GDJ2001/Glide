@@ -7,7 +7,7 @@ Plan: [`planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md`](planning/CODE_R
 Latest reconciliation: [`planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md`](planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md)  
 Review baseline: `ea2e811a7f2d8aaddc552e894fe04782cd08a499`  
 HARD-002 captured source boundary: `12681eabba26387fe7d1bbaf309971f345642e41`  
-**Next recommended verification action: restore current-head CI for the continuation branch, then review HARD-008/HARD-009/HARD-011–016 and HARD-018–021. HARD-010 and HARD-017 remain blocked on real-device/platform evidence. HARD-021 source implementation now covers Android LAN, CLI/daemon and WPF explicit persistent-identity verification/enrollment; current-head executable/platform evidence is still absent. `resume-v1` stays disabled until HARD-022/HARD-023.**
+**Next recommended verification action: restore current-head CI for the continuation branch, then review HARD-008/HARD-009/HARD-011–016 and HARD-018–022. HARD-010 and HARD-017 remain blocked on real-device/platform evidence. HARD-022 now has role-aware Android durable sender/receiver resume journals, bounded source/chunk validation and 24-hour lifecycle handling, but no current-head executable evidence. Proceed with HARD-023 desktop durable resume storage; `resume-v1` remains production-disabled until native parity and HARD-024 interoperability validation.**
 
 Source/configuration commits after the HARD-002 captured boundary are not silently certified by HARD-002; the task that consumes them must inspect/reconcile them before relying on their claims.
 
@@ -80,7 +80,7 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 | HARD-019 | M3 | REVIEW_REQUIRED | Integrate Android persistent identity/trust |
 | HARD-020 | M3 | REVIEW_REQUIRED | Integrate Windows/Linux persistent identity/trust |
 | HARD-021 | M3 | REVIEW_REQUIRED | Integrate mutually authenticated trusted sessions |
-| HARD-022 | M3 | NOT_STARTED | Implement Android durable true-resume journals |
+| HARD-022 | M3 | REVIEW_REQUIRED | Implement Android durable true-resume journals |
 | HARD-023 | M3 | NOT_STARTED | Implement desktop durable true-resume storage |
 | HARD-024 | M3 | NOT_STARTED | Validate folders and resume across native platforms |
 | HARD-025 | M4 | NOT_STARTED | Specify secure browser transport and static client |
@@ -316,10 +316,13 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 <a id="hard-022"></a>
 ## HARD-022 — Implement Android durable true-resume journals
 
-- **Milestone / status:** M3 / NOT_STARTED.
+- **Milestone / status:** M3 / REVIEW_REQUIRED.
 - **Dependencies:** HARD-018, HARD-021.
-- **Acceptance:** Journal is keyed by transfer+item, stores negotiated chunk identity and only contiguous verified progress; source/permission/peer changes are revalidated; partials expire after 24h.
-- **Tests/evidence:** Missing/corrupt chunk, process death, modified source, expiry, revoked peer and disk pressure; migration/recovery and byte-identical result.
+- **Implemented source:** Room v5 role-aware sender/receiver journals are keyed by original transfer+item and bound to the authenticated peer. Receiver progress advances only as an exact contiguous verified prefix with locally hashed retained chunks; restart reconciliation re-hashes retained files and rewinds at the first gap/corruption. Sender journals persist source handle/identity, size, chunk parameters, complete root and whole-file SHA authority for fresh source revalidation. Explicit cancel/trust revocation/identity rotation and 24-hour/storage-pressure cleanup invalidate retained authority. Final receiver promotion recomputes the complete chunk root and whole-file SHA before public commit.
+- **Protocol handoff:** Resume-capable offer metadata is the paired `rootHash` + `chunkSize` extension, validated by Kotlin/.NET codecs and rejected when not negotiated. Android sender/receiver journal hooks are wired into the coordinator, but production `resume-v1` advertisement remains disabled pending HARD-023 parity and HARD-024 native interoperability.
+- **Prepared tests/evidence:** Gap/out-of-order chunk, missing/corrupt retained chunk after process death, modified/unavailable source and permission loss, expiry/maintenance purge, revoked/substituted peer, disk pressure, Room 4→5 fail-closed migration, byte-identical assembly/root mismatch, and bounded chunk-aware receive streaming.
+- **Verification blocker:** PR head `3dfc08e16eae192fb2aaa23880d87a3feb3566f9` had no associated workflow runs when checked. No current-head Gradle/KSP/Room/.NET/emulator/device pass is claimed; Room v5 exported-schema identity is left to the real KSP build rather than fabricated.
+- **Evidence:** [HARD-022 durable-resume progress](development/sessions/2026-09-18-hard-022.md).
 
 <a id="hard-023"></a>
 ## HARD-023 — Implement desktop durable true-resume storage
