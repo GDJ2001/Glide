@@ -73,7 +73,7 @@ Rules:
 
 1. `resume-v1` requires `identity-v1`.
 2. A HELLO_ACK may select only capabilities offered by HELLO.
-3. Current production defaults **do not advertise** `identity-v1` or `resume-v1` until HARD-019–021 enforce persistent keys, enrollment, channel binding, and trusted sessions.
+3. `identity-v1` is advertised dynamically only when the active native LAN session has persistent identity authority plus the authenticated server-SPKI/BOOTSTRAP channel context required by HARD-021. `resume-v1` remains disabled until durable resume storage is implemented.
 4. A trusted policy that requires identity/resume must fail closed if a peer attempts to downgrade the required capability set.
 5. Capability comparison is performed over a deterministic hash described below.
 
