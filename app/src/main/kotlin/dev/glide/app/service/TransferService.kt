@@ -316,9 +316,6 @@ class TransferService : Service() {
     }
 
     private fun handleTerminalTeardown() {
-        synchronized(startRequestLock) {
-            lastStartRequestKey = null
-        }
         notificationObserverJob?.cancel()
         notificationObserverJob = null
         try {
