@@ -1098,7 +1098,7 @@ public sealed class DesktopTransferEngine
                     DesktopTransferDirection.Receive,
                     item.Name,
                     "Verified");
-                interaction.OnHistory(
+                await interaction.OnHistoryAsync(
                     new DesktopHistoryEntry(
                         DesktopTransferDirection.Receive,
                         item.Name,
@@ -1106,7 +1106,7 @@ public sealed class DesktopTransferEngine
                         finalPath,
                         peerName,
                         DateTimeOffset.Now),
-                cancellationToken);
+                    cancellationToken);
             }
 
             if (verifiedCount != items.Count ||
