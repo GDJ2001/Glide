@@ -68,46 +68,50 @@ public sealed class TlsSocketListener : IDisposable
         var options = new SslServerAuthenticationOptions
         {
             ServerCertificate = _serverCertificate,
-            ClientCertificateRequired = true,
+            ClientCertificateRequired = false,
             EnabledSslProtocols = SslProtocols.Tls13,
             ApplicationProtocols = new List<SslApplicationProtocol>
             {
-                new SslApplicationProtocol("glide-lan/1"),
-                new SslApplicationProtocol("glide-v1")
+                new SslApplicationProtocol("glide-lan/1")
             },
             CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
             RemoteCertificateValidationCallback = (sender, certificate, chain, sslPolicyErrors) =>
             {
-                if (certificate != null)
+                if (certificate == null)
                 {
-                    remotePublicKey = certificate.GetPublicKey();
-                    if (certificate is X509Certificate2 x509)
-                    {
-                        remoteSpkiSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(x509.PublicKey.ExportSubjectPublicKeyInfo())).ToLowerInvariant();
-                    }
-                    else
-                    {
-                        using var tempCert = new X509Certificate2(certificate);
-                        remoteSpkiSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(tempCert.PublicKey.ExportSubjectPublicKeyInfo())).ToLowerInvariant();
-                    }
+                    // QR-first LAN authentication is performed by the atomically consumed
+                    // bootstrap invitation. Android clients do not present a TLS client cert.
                     return true;
                 }
-                return false;
+
+                remotePublicKey = certificate.GetPublicKey();
+                if (certificate is X509Certificate2 x509)
+                {
+                    remoteSpkiSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(x509.PublicKey.ExportSubjectPublicKeyInfo())).ToLowerInvariant();
+                }
+                else
+                {
+                    using var tempCert = new X509Certificate2(certificate);
+                    remoteSpkiSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(tempCert.PublicKey.ExportSubjectPublicKeyInfo())).ToLowerInvariant();
+                }
+                return true;
             }
         };
 
         await sslStream.AuthenticateAsServerAsync(options, cancellationToken);
 
-        if (remotePublicKey == null)
+        if (sslStream.NegotiatedApplicationProtocol != new SslApplicationProtocol("glide-lan/1"))
         {
-            throw new AuthenticationException("Peer client certificate did not provide a valid public key.");
+            await sslStream.DisposeAsync();
+            tcpClient.Dispose();
+            throw new AuthenticationException("Peer did not negotiate required ALPN 'glide-lan/1'.");
         }
 
         return new TlsSocketConnection(
             tcpClient,
             sslStream,
             _serverCertificate.GetPublicKey(),
-            remotePublicKey,
+            remotePublicKey ?? Array.Empty<byte>(),
             LocalSpkiSha256,
             remoteSpkiSha256);
     }
