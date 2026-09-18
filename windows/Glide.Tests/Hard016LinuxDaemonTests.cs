@@ -69,6 +69,33 @@ public sealed class Hard016LinuxDaemonTests : IDisposable
     }
 
     [Fact]
+    public async Task PolicyLoad_NullRemoteAllowlist_IsRejected()
+    {
+        string policyPath =
+            Path.Combine(_root, "null-allowlist-policy.json");
+
+        await File.WriteAllTextAsync(
+            policyPath,
+            $"""
+            {
+              "destinationDirectory": "{{EscapeJson(Path.Combine(_root, "downloads-null"))}}",
+              "enrollmentFile": "{{EscapeJson(Path.Combine(_root, "enrollment-null.txt"))}}",
+              "allowedRemoteAddresses": null,
+              "maxItemBytes": 1024,
+              "maxBatchBytes": 4096,
+              "maxItems": 10,
+              "invitationTtlSeconds": 120,
+              "deviceName": "Null Allowlist"
+            }
+            """);
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            async () =>
+                await DaemonReceivePolicy.LoadAsync(
+                    policyPath));
+    }
+
+    [Fact]
     public void Policy_RejectsWrongRemotePeerAndOversizeOffer()
     {
         DaemonReceivePolicy policy =
