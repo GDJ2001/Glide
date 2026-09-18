@@ -866,10 +866,28 @@ public sealed class QuarantineWriteSession : IAsyncDisposable
             return;
         }
 
-        await _stream!.WriteAsync(
-            data,
-            cancellationToken);
-        _sha256.Append(data.Span);
+        try
+        {
+            await _stream!.WriteAsync(
+                data,
+                cancellationToken);
+            _sha256.Append(data.Span);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (ProtocolViolationException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.WriteFailure,
+                "Failed while writing inbound bytes to quarantine storage.",
+                ex);
+        }
     }
 
     public async Task<(string committedPath, Sha256Digest actualDigest)>
@@ -919,10 +937,23 @@ public sealed class QuarantineWriteSession : IAsyncDisposable
                 committedPath,
                 actualDigest);
         }
-        catch
+        catch (ProtocolViolationException)
         {
             await DisposeAsync();
             throw;
+        }
+        catch (OperationCanceledException)
+        {
+            await DisposeAsync();
+            throw;
+        }
+        catch (Exception ex)
+        {
+            await DisposeAsync();
+            throw new ProtocolViolationException(
+                WireErrorCodes.WriteFailure,
+                "Failed while flushing or committing verified quarantine storage.",
+                ex);
         }
     }
 
