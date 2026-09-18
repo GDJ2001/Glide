@@ -76,13 +76,44 @@ data class TrustedPeerRecord(
     val lastSeenAtMs: Long
 ) {
     init {
-        require(peerFingerprintHex.length == 64) { "Fingerprint must be 64 hex characters (32 bytes)" }
-        require(publicKeyDerHex.isNotBlank()) { "Public key DER hex cannot be blank" }
-        require(displayName.isNotBlank() && displayName.length <= 64) {
-            "Display name must be between 1 and 64 characters"
+        require(
+            peerFingerprintHex.length == 64 &&
+                peerFingerprintHex.all {
+                    it in '0'..'9' ||
+                        it in 'a'..'f'
+                }
+        ) {
+            "Fingerprint must be exactly 64 lowercase hexadecimal characters"
         }
-        require(pairedAtMs > 0) { "pairedAtMs must be positive" }
-        require(lastSeenAtMs >= pairedAtMs) { "lastSeenAtMs must be >= pairedAtMs" }
+        require(
+            publicKeyDerHex.isNotEmpty() &&
+                publicKeyDerHex.length % 2 == 0 &&
+                publicKeyDerHex.length <= 4096 &&
+                publicKeyDerHex.all {
+                    it in '0'..'9' ||
+                        it in 'a'..'f'
+                }
+        ) {
+            "Public key DER must be non-empty canonical lowercase hexadecimal"
+        }
+        require(
+            displayName.isNotBlank() &&
+                displayName.codePointCount(
+                    0,
+                    displayName.length
+                ) in 1..64 &&
+                displayName
+                    .toByteArray(Charsets.UTF_8)
+                    .size <= 256
+        ) {
+            "Display name must be 1..64 code points and <= 256 UTF-8 bytes"
+        }
+        require(pairedAtMs > 0) {
+            "pairedAtMs must be positive"
+        }
+        require(lastSeenAtMs >= pairedAtMs) {
+            "lastSeenAtMs must be >= pairedAtMs"
+        }
     }
 }
 
