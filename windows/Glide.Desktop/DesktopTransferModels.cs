@@ -116,6 +116,5 @@ public sealed record DesktopSendRequest(
 
 public sealed record DesktopReceiveRequest(
     QuarantineStagingStore StagingStore,
-    LanInvitation? Invitation = null,
-    bool AllowBootstrapWithoutInvitation = false,
+    LanInvitationAuthority? InvitationAuthority = null,
     string LocalDeviceName = "");
