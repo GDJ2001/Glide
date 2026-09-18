@@ -59,9 +59,9 @@
                                 Command="{Binding SwitchTabCommand}" CommandParameter="Settings" Width="90" />
                     </StackPanel>
 
-                    <!-- Quick Action: Downloads Folder -->
-                    <Button Grid.Column="2" Style="{StaticResource SecondaryButtonStyle}" Content="📂 Downloads"
-                            Command="{Binding OpenDownloadsCommand}" ToolTip="Open received files in Downloads" />
+                    <!-- Quick Action: Configured Receive Folder -->
+                    <Button Grid.Column="2" Style="{StaticResource SecondaryButtonStyle}" Content="📂 Received Files"
+                            Command="{Binding OpenDownloadsCommand}" ToolTip="Open configured receive folder" />
                 </Grid>
             </Border>
 
