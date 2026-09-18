@@ -22,6 +22,7 @@
     <ProjectReference Include="..\Glide.Core\Glide.Core.csproj" />
     <ProjectReference Include="..\Glide.Transport\Glide.Transport.csproj" />
     <ProjectReference Include="..\Glide.App\Glide.App.csproj" />
+    <ProjectReference Include="..\Glide.Desktop\Glide.Desktop.csproj" />
   </ItemGroup>
 
 </Project>
