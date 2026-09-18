@@ -75,6 +75,7 @@ class TransferCoordinatorTest {
         var dropControlMessagePredicate: ((Envelope) -> Boolean)? = null
         var streamCounter: Int = 0
         var sendStreamDelayMs: Long = 0L
+        var disconnectCalls: Int = 0
 
         override suspend fun startDiscovery(serviceId: String): Flow<DiscoveryEvent> = emptyFlow()
         override suspend fun stopDiscovery() {}
@@ -169,6 +170,7 @@ class TransferCoordinatorTest {
         }
 
         override suspend fun disconnect(peerId: PeerId) {
+            disconnectCalls++
             remote.connectionEventsChannel.send(ConnectionEvent.Disconnected(localPeerId))
         }
     }
@@ -374,6 +376,29 @@ class TransferCoordinatorTest {
 
             senderCoordinator.stop()
             receiverCoordinator.stop()
+        }
+    }
+
+    @Test
+    fun cancelAndAwaitCleanup_returnsOnlyAfterTransportDisconnect() = runBlocking {
+        withTimeout(5_000) {
+            val (senderTransport, receiverTransport) = createPair()
+            val coordinator = TransferCoordinator(
+                sessionId = SessionId(UUID.randomUUID().toString()),
+                role = DeviceRole.Sender,
+                peerId = receiverTransport.localPeerId,
+                localDisplayName = "Sender Device",
+                transport = senderTransport,
+                sourceAccess = FakeSourceAccess(),
+                receiveStore = FakeReceiveStore(),
+                scope = this
+            )
+
+            coordinator.cancelAndAwaitCleanup("USER_CANCELLED")
+
+            assertEquals(SessionPhase.Cancelled, coordinator.state.value.phase)
+            assertEquals(1, senderTransport.disconnectCalls)
+            coordinator.stop()
         }
     }
 
