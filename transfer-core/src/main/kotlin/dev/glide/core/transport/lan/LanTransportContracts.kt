@@ -16,7 +16,16 @@ data class LanMdnsRecord(
     }
 
     val protocolVersion: Int
-        get() = attributes["v"]?.toIntOrNull() ?: 1
+        get() = attributes["v"]?.toIntOrNull() ?: 0
+
+    val transportProfileVersion: Int
+        get() = attributes["tv"]?.toIntOrNull() ?: 0
+
+    val invitationRequired: Boolean
+        get() = attributes["q"] == "1"
+
+    val presenceId: String?
+        get() = attributes["p"]
 
     val deviceName: String
         get() = attributes["dn"] ?: serviceName
@@ -24,34 +33,37 @@ data class LanMdnsRecord(
     val deviceType: String
         get() = attributes["dt"] ?: "unknown"
 
-    val certFingerprintPrefix: String?
-        get() = attributes["fp"]
-
-    val capabilityMask: Int
-        get() = attributes["cap"]?.removePrefix("0x")?.toIntOrNull(16) ?: 0
-
     companion object {
         const val DEFAULT_SERVICE_TYPE = "_glide._tcp.local."
-        const val ALPN_TOKEN = "glide-v1"
+        const val ALPN_TOKEN = "glide-lan/1"
 
         fun createTxtAttributes(
-            version: Int = 1,
+            presenceId: String,
             deviceName: String,
-            deviceType: String = "desktop",
-            certFingerprintPrefix: String? = null,
-            capabilityMask: Int = 0x07
+            deviceType: String = "desktop"
         ): Map<String, String> {
-            val map = mutableMapOf(
-                "v" to version.toString(),
-                "dn" to deviceName.take(32),
-                "dt" to deviceType,
-                "alpn" to ALPN_TOKEN,
-                "cap" to "0x%02X".format(capabilityMask)
-            )
-            if (certFingerprintPrefix != null) {
-                map["fp"] = certFingerprintPrefix.take(8)
+            require(Regex("^[0-9a-f]{32}$").matches(presenceId)) {
+                "presenceId must be exactly 32 lowercase hexadecimal characters"
             }
-            return map
+            require(deviceName.isNotBlank()) { "deviceName must not be blank" }
+            require(deviceName.codePointCount(0, deviceName.length) <= 64) {
+                "deviceName exceeds 64 Unicode code points"
+            }
+            require(deviceName.toByteArray(Charsets.UTF_8).size <= 128) {
+                "deviceName exceeds 128 UTF-8 bytes"
+            }
+            require(deviceType in setOf("phone", "tablet", "desktop", "unknown")) {
+                "unsupported deviceType: $deviceType"
+            }
+
+            return linkedMapOf(
+                "v" to "1",
+                "tv" to "1",
+                "q" to "1",
+                "p" to presenceId,
+                "dn" to deviceName,
+                "dt" to deviceType
+            )
         }
     }
 }
