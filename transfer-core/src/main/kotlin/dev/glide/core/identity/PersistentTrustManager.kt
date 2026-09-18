@@ -46,6 +46,13 @@ object IdentityProofVerifier {
         require(response.challengeNonceHex == context.challengeNonceHex) {
             "Identity response challenge nonce mismatch"
         }
+        require(
+            dev.glide.core.protocol.NegotiationConstants
+                .CAPABILITY_PERSISTENT_IDENTITY_V1 in
+                context.negotiatedCapabilities
+        ) {
+            "identity-v1 was not negotiated for this session"
+        }
         require(displayName.isNotBlank()) {
             "Peer display name cannot be blank"
         }
@@ -264,6 +271,7 @@ class PersistentTrustManager(
         trustedPeerStore.getByFingerprint(
             fingerprintHex
         )
+
     suspend fun markSeen(
         fingerprintHex: String
     ) {
