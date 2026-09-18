@@ -125,6 +125,11 @@ public static class IdentityResumeTranscript
         RequireUuid(originalSessionId, nameof(originalSessionId));
         RequireUuid(itemId, nameof(itemId));
         RequireOppositeRoles(requesterRole, responderRole);
+        if (requesterRole != "receiver" || responderRole != "sender")
+        {
+            throw new ArgumentException(
+                "resume-v1 request roles must be receiver -> sender.");
+        }
         RequireLowerHex64(requesterFingerprintHex, nameof(requesterFingerprintHex));
         RequireLowerHex64(responderFingerprintHex, nameof(responderFingerprintHex));
         RequireLowerHex64(sessionNonceHex, nameof(sessionNonceHex));
