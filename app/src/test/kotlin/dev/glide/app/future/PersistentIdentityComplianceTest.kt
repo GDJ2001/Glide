@@ -425,24 +425,94 @@ class PersistentIdentityComplianceTest {
 
             val chunk0 = "Chunk zero content".toByteArray(Charsets.UTF_8)
             val chunk1 = "Chunk one content".toByteArray(Charsets.UTF_8)
-            val hash0 = dev.glide.core.resume.ContentDigestTree.sha256(chunk0)
-            val hash1 = dev.glide.core.resume.ContentDigestTree.sha256(chunk1)
-            val digestTree = dev.glide.core.resume.ContentDigestTree(listOf(hash0, hash1))
+            val digestTree =
+                dev.glide.core.resume.ContentDigestTree(
+                    listOf(
+                        dev.glide.core.resume.ContentDigestTree.sha256(chunk0),
+                        dev.glide.core.resume.ContentDigestTree.sha256(chunk1)
+                    )
+                )
+            val wholeDigest =
+                java.security.MessageDigest.getInstance("SHA-256")
+                    .apply {
+                        update(chunk0)
+                        update(chunk1)
+                    }
+                    .digest()
+                    .joinToString("") { "%02x".format(it) }
 
-            store.initSession(sessionId, fileId, "test.bin", (chunk0.size + chunk1.size).toLong(), chunk0.size, "dummyRoot")
-            assertTrue("Chunk 0 must write", store.writeAndVerifyChunk(sessionId, 0, chunk0, digestTree))
-            assertTrue("Chunk 1 must write", store.writeAndVerifyChunk(sessionId, 1, chunk1, digestTree))
+            store.initSession(
+                originalSessionId = sessionId,
+                itemId = fileId,
+                itemName = "test.bin",
+                peerFingerprintHex = "a".repeat(64),
+                sourceIdentity = "compliance-source:v1",
+                totalBytes = (chunk0.size + chunk1.size).toLong(),
+                chunkSize = chunk0.size,
+                digestTree = digestTree,
+                wholeFileSha256Hex = wholeDigest
+            )
+
+            assertFalse(
+                "Out-of-order chunk must not skip the contiguous prefix",
+                store.writeAndVerifyChunk(
+                    sessionId,
+                    fileId,
+                    1L,
+                    chunk1
+                )
+            )
+            assertTrue(
+                "Chunk 0 must write",
+                store.writeAndVerifyChunk(
+                    sessionId,
+                    fileId,
+                    0L,
+                    chunk0
+                )
+            )
+            assertTrue(
+                "Chunk 1 must write",
+                store.writeAndVerifyChunk(
+                    sessionId,
+                    fileId,
+                    1L,
+                    chunk1
+                )
+            )
 
             val corruptedChunk = "Tampered".toByteArray(Charsets.UTF_8)
-            assertFalse("Corrupted chunk must be rejected", store.writeAndVerifyChunk(sessionId, 0, corruptedChunk, digestTree))
+            assertFalse(
+                "Already-verified/corrupt duplicate chunk must be rejected",
+                store.writeAndVerifyChunk(
+                    sessionId,
+                    fileId,
+                    1L,
+                    corruptedChunk
+                )
+            )
 
             val destinationFile = File(tempDir, "assembled.bin")
-            val assembled = store.assembleVerifiedFile(sessionId, destinationFile)
+            val assembled =
+                store.assembleVerifiedFile(
+                    sessionId,
+                    fileId,
+                    destinationFile
+                )
             assertTrue("Assembled file must succeed", assembled)
-            assertEquals((chunk0.size + chunk1.size).toLong(), destinationFile.length())
+            assertEquals(
+                (chunk0.size + chunk1.size).toLong(),
+                destinationFile.length()
+            )
 
-            store.purgeSession(sessionId)
-            assertFalse(File(tempDir, sessionId).exists())
+            store.purgeSession(
+                sessionId,
+                fileId
+            )
+            assertEquals(
+                0,
+                dao.getSessionCount()
+            )
         } finally {
             tempDir.deleteRecursively()
         }
@@ -524,40 +594,135 @@ class PersistentIdentityComplianceTest {
 }
 
 private class ComplianceResumableSessionDao : dev.glide.data.db.ResumableSessionDao {
-    private val sessions = mutableMapOf<String, dev.glide.data.db.ResumableSessionEntity>()
+    private val sessions =
+        mutableMapOf<
+            Pair<String, String>,
+            dev.glide.data.db.ResumableSessionEntity
+        >()
 
-    override suspend fun insertOrUpdate(session: dev.glide.data.db.ResumableSessionEntity) {
-        sessions[session.sessionId] = session
+    override suspend fun insertOrUpdate(
+        session: dev.glide.data.db.ResumableSessionEntity
+    ) {
+        sessions[
+            session.originalSessionId to
+                session.itemId
+        ] = session
     }
 
-    override suspend fun getBySessionId(sessionId: String): dev.glide.data.db.ResumableSessionEntity? {
-        return sessions[sessionId]
-    }
+    override suspend fun get(
+        originalSessionId: String,
+        itemId: String
+    ): dev.glide.data.db.ResumableSessionEntity? =
+        sessions[
+            originalSessionId to
+                itemId
+        ]
 
-    override suspend fun getAllResumableSessions(): List<dev.glide.data.db.ResumableSessionEntity> {
-        return sessions.values.toList()
-    }
+    override suspend fun getAllResumableSessions():
+        List<dev.glide.data.db.ResumableSessionEntity> =
+        sessions.values.toList()
 
-    override suspend fun updateVerifiedChunks(sessionId: String, verifiedChunks: Long) {
-        sessions[sessionId]?.let {
-            sessions[sessionId] = it.copy(verifiedChunks = verifiedChunks)
+    override suspend fun compareAndAdvance(
+        originalSessionId: String,
+        itemId: String,
+        expectedVerifiedChunks: Long,
+        expectedContiguousByteOffset: Long,
+        newVerifiedChunks: Long,
+        newContiguousByteOffset: Long,
+        updatedAtMs: Long
+    ): Int {
+        val key =
+            originalSessionId to
+                itemId
+        val current =
+            sessions[key]
+                ?: return 0
+        if (current.verifiedChunks !=
+                expectedVerifiedChunks ||
+            current.contiguousByteOffset !=
+                expectedContiguousByteOffset
+        ) {
+            return 0
         }
+
+        sessions[key] =
+            current.copy(
+                verifiedChunks =
+                    newVerifiedChunks,
+                contiguousByteOffset =
+                    newContiguousByteOffset,
+                updatedAtMs =
+                    updatedAtMs
+            )
+        return 1
     }
 
-    override suspend fun deleteBySessionId(sessionId: String) {
-        sessions.remove(sessionId)
+    override suspend fun rewindProgress(
+        originalSessionId: String,
+        itemId: String,
+        verifiedChunks: Long,
+        contiguousByteOffset: Long,
+        updatedAtMs: Long
+    ): Int {
+        val key =
+            originalSessionId to
+                itemId
+        val current =
+            sessions[key]
+                ?: return 0
+        if (current.verifiedChunks <
+                verifiedChunks ||
+            current.contiguousByteOffset <
+                contiguousByteOffset
+        ) {
+            return 0
+        }
+
+        sessions[key] =
+            current.copy(
+                verifiedChunks =
+                    verifiedChunks,
+                contiguousByteOffset =
+                    contiguousByteOffset,
+                updatedAtMs =
+                    updatedAtMs
+            )
+        return 1
     }
 
-    override suspend fun deleteExpired(currentMs: Long): Int {
-        val expired = sessions.values.filter { it.expiresAtMs <= currentMs }
-        expired.forEach { sessions.remove(it.sessionId) }
-        return expired.size
+    override suspend fun delete(
+        originalSessionId: String,
+        itemId: String
+    ) {
+        sessions.remove(
+            originalSessionId to
+                itemId
+        )
     }
 
-    override suspend fun getExpiredSessions(currentMs: Long): List<dev.glide.data.db.ResumableSessionEntity> {
-        return sessions.values.filter { it.expiresAtMs <= currentMs }
+    override suspend fun getExpiredSessions(
+        currentMs: Long
+    ): List<dev.glide.data.db.ResumableSessionEntity> =
+        sessions.values.filter {
+            it.expiresAtMs <= currentMs
+        }
+
+    override suspend fun deleteExpired(
+        currentMs: Long
+    ): Int {
+        val expiredKeys =
+            sessions
+                .filterValues {
+                    it.expiresAtMs <= currentMs
+                }
+                .keys
+                .toList()
+        expiredKeys.forEach {
+            sessions.remove(it)
+        }
+        return expiredKeys.size
     }
 
-    override suspend fun getSessionCount(): Int = sessions.size
+    override suspend fun getSessionCount(): Int =
+        sessions.size
 }
-
