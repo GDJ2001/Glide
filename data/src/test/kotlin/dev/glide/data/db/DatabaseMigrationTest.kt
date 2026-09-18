@@ -179,17 +179,103 @@ class DatabaseMigrationTest {
     }
 
     // -------------------------------------------------------------------------
-    // 7. Schema-gap detection: MIGRATION_3_4.endVersion must equal current DB version (4).
+    // 7. MIGRATION_4_5 replaces unauthenticated offset-only resume rows fail-closed.
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun migration4To5_versionBounds_are4And5() {
+        val migration =
+            GlideDatabase.MIGRATION_4_5
+        assertEquals(4, migration.startVersion)
+        assertEquals(5, migration.endVersion)
+    }
+
+    @Test
+    fun migration4To5_discardsLegacyResumeAuthorityAndCreatesContiguousJournal() {
+        val sqls =
+            captureMigrationSql { db ->
+                GlideDatabase.MIGRATION_4_5
+                    .migrate(db)
+            }
+        val combined =
+            sqls.joinToString("\n")
+
+        assertTrue(
+            "Legacy resumable rows must be dropped fail-closed",
+            combined.contains(
+                "DROP TABLE IF EXISTS `resumable_sessions`"
+            )
+        )
+        assertTrue(
+            combined.contains(
+                "`original_session_id` TEXT NOT NULL"
+            )
+        )
+        assertTrue(
+            combined.contains(
+                "`peer_fingerprint` TEXT NOT NULL"
+            )
+        )
+        assertTrue(
+            combined.contains(
+                "`source_identity` TEXT NOT NULL"
+            )
+        )
+        assertTrue(
+            combined.contains(
+                "`contiguous_byte_offset` INTEGER NOT NULL"
+            )
+        )
+        assertTrue(
+            combined.contains(
+                "`chunk_hashes_hex` TEXT NOT NULL"
+            )
+        )
+        assertTrue(
+            combined.contains(
+                "`whole_file_sha256_hex` TEXT NOT NULL"
+            )
+        )
+        assertTrue(
+            combined.contains(
+                "PRIMARY KEY(\n        `original_session_id`,\n        `item_id`"
+            ) ||
+                combined.contains(
+                    "PRIMARY KEY(\r\n        `original_session_id`,\r\n        `item_id`"
+                )
+        )
+        assertTrue(
+            combined.contains(
+                "index_resumable_sessions_peer_fingerprint"
+            )
+        )
+        assertTrue(
+            combined.contains(
+                "index_resumable_sessions_expires_at_ms"
+            )
+        )
+        assertTrue(
+            combined.contains(
+                "index_resumable_sessions_updated_at_ms"
+            )
+        )
+    }
+
+    // -------------------------------------------------------------------------
+    // 8. Schema-gap detection: latest migration must equal current DB version.
     // -------------------------------------------------------------------------
 
     @Test
     fun migrationEndVersion_matchesCurrentDatabaseVersion() {
-        val EXPECTED_CURRENT_DB_VERSION = 4
-        val migrationEndVersion = GlideDatabase.MIGRATION_3_4.endVersion
+        val expectedCurrentDbVersion = 5
+        val migrationEndVersion =
+            GlideDatabase.MIGRATION_4_5
+                .endVersion
 
         assertEquals(
-            "MIGRATION_3_4.endVersion ($migrationEndVersion) must equal the current @Database version ($EXPECTED_CURRENT_DB_VERSION).",
-            EXPECTED_CURRENT_DB_VERSION, migrationEndVersion
+            "Latest migration endVersion must equal current @Database version.",
+            expectedCurrentDbVersion,
+            migrationEndVersion
         )
     }
 }
