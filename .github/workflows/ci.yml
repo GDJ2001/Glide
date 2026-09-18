@@ -187,11 +187,16 @@ jobs:
       - name: Run ordinary .NET tests on Windows
         run: dotnet test windows/Glide.Tests/Glide.Tests.csproj -c Release --no-build --filter "HARD!=003-red" --logger "trx;LogFileName=ordinary-windows.trx"
 
+      - name: Run Windows UI state/consent tests
+        run: dotnet test windows/Glide.Windows.UI.Tests/Glide.Windows.UI.Tests.csproj -c Release --no-build --logger "trx;LogFileName=windows-ui.trx"
+
       - name: Upload Windows test reports
         if: always()
         uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
         with:
           name: windows-dotnet-verification
-          path: windows/Glide.Tests/TestResults/
+          path: |
+            windows/Glide.Tests/TestResults/
+            windows/Glide.Windows.UI.Tests/TestResults/
           if-no-files-found: ignore
           retention-days: 14
