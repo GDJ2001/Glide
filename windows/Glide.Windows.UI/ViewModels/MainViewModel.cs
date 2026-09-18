@@ -474,6 +474,12 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                 DeviceName = settings.DeviceName;
                 ReceiveDirectory = settings.ReceiveDirectory;
                 HistoryLimit = settings.HistoryLimit;
+
+                while (HistoryItems.Count > settings.HistoryLimit)
+                {
+                    HistoryItems.RemoveAt(HistoryItems.Count - 1);
+                }
+
                 StatusMessage = IsListening
                     ? "Settings saved. Restart listening to advertise the new device name."
                     : "Settings saved.";
@@ -600,6 +606,8 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
 
     private async Task ToggleListenerAsync()
     {
+        await InitializationTask;
+
         if (IsListening)
         {
             _mdnsService.StopAdvertising();
@@ -649,7 +657,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             var invitation = new LanInvitation(
                 invitationId: Guid.NewGuid().ToString().ToLowerInvariant(),
                 presence: presence,
-                name: Environment.MachineName,
+                name: DeviceName,
                 platform: "windows",
                 endpoints: endpoints,
                 spkiSha256: spkiSha256,
@@ -662,7 +670,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             _activeInvitationAuthority = new LanInvitationAuthority(_activeInvitation);
 
             _mdnsService.StartAdvertising(
-                deviceName: Environment.MachineName,
+                deviceName: DeviceName,
                 port: ListeningPort,
                 presenceId: presence);
         }
@@ -693,6 +701,8 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
 
     private async Task HandleInboundTransferAsync(TlsSocketConnection conn)
     {
+        await InitializationTask;
+
         await using (conn)
         {
             _activeTransferCts?.Dispose();
@@ -712,9 +722,10 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                 var result = await _desktopTransferEngine.ReceiveAsync(
                     conn,
                     new DesktopReceiveRequest(
-                        new QuarantineStagingStore(),
+                        new QuarantineStagingStore(
+                            destinationRoot: ReceiveDirectory),
                         _activeInvitationAuthority,
-                        LocalDeviceName: Environment.MachineName),
+                        LocalDeviceName: DeviceName),
                     this,
                     cancellationToken);
 
@@ -734,6 +745,8 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
 
 private async Task ExecuteSendFilesAsync()
     {
+        await InitializationTask;
+
         if (SelectedFiles.Count == 0) return;
 
         if (_pairedInvitation == null)
@@ -782,7 +795,7 @@ private async Task ExecuteSendFilesAsync()
                     PeerPort,
                     files,
                     _pairedInvitation,
-                    Environment.MachineName),
+                    DeviceName),
                 this,
                 cancellationToken);
 
@@ -966,7 +979,7 @@ private async Task ExecuteSendFilesAsync()
 
 private void ExecuteOpenDownloads()
     {
-        string downloads = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
+        string downloads = ReceiveDirectory;
         if (Directory.Exists(downloads))
         {
             Process.Start(new ProcessStartInfo
@@ -979,6 +992,8 @@ private void ExecuteOpenDownloads()
 
     private async Task ExecuteStartWebShareAsync()
     {
+        await InitializationTask;
+
         if (SelectedFiles.Count == 0)
         {
             StatusMessage = "Please add at least one file to share via Web.";
@@ -1009,7 +1024,7 @@ private void ExecuteOpenDownloads()
                 host: localIp,
                 port: 0,
                 offeredItems: offeredItems,
-                deviceName: Environment.MachineName);
+                deviceName: DeviceName);
 
             await _webGateway.StartAsync();
 
