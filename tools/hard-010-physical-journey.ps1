@@ -258,21 +258,31 @@ switch ($Mode) {
         $run = Get-Content $runPath -Raw | ConvertFrom-Json
         $sender=$run.senderSerial; $receiver=$run.receiverSerial
 
+        $combinedLogs = ""
         foreach ($entry in @(@($sender,"sender"),@($receiver,"receiver"))) {
             $serial=$entry[0]; $label=$entry[1]
-            (& $script:Adb -s $serial logcat -d -v threadtime 2>&1 | Out-String) | Set-Content (Join-Path $folder ($label + "-logcat.txt")) -Encoding utf8
+            $logText = (& $script:Adb -s $serial logcat -d -v threadtime 2>&1 | Out-String)
+            $logText | Set-Content (Join-Path $folder ($label + "-logcat.txt")) -Encoding utf8
+            $combinedLogs += [Environment]::NewLine + $logText
             Save-Screenshot $serial (Join-Path $folder ($label + "-after.png"))
         }
 
+        $before = Get-Content (Join-Path $folder "private-state-before.json") -Raw | ConvertFrom-Json
         $senderAfter=Get-PrivateState $sender
         $receiverAfter=Get-PrivateState $receiver
         Write-Json (Join-Path $folder "private-state-after.json") ([pscustomobject]@{ sender=$senderAfter; receiver=$receiverAfter })
 
         $expected=[string]$run.expectedPayloadSha256
-        $hashMatched=$false
+        $beforeLines = @(([string]$before.receiver.receivedHashes -split "\r?\n") | Where-Object { $_ })
+        $afterLines = @(([string]$receiverAfter.receivedHashes -split "\r?\n") | Where-Object { $_ })
+        $newReceivedLines = @($afterLines | Where-Object { $beforeLines -notcontains $_ })
+        $newHashMatched=$false
         if ($expected -and ([string]$receiverAfter.receivedHashes) -notmatch "^UNAVAILABLE:") {
-            $hashMatched=([string]$receiverAfter.receivedHashes).ToLowerInvariant().Contains($expected.ToLowerInvariant())
+            $newHashMatched = ($newReceivedLines -join [Environment]::NewLine).ToLowerInvariant().Contains($expected.ToLowerInvariant())
         }
+        $privateInspectionAvailable = ([string]$receiverAfter.stagingFiles) -notmatch "^UNAVAILABLE:"
+        $stagingEmpty = $privateInspectionAvailable -and [string]::IsNullOrWhiteSpace([string]$receiverAfter.stagingFiles)
+        $fatalCrashDetected = $combinedLogs -match "(?i)FATAL EXCEPTION.*dev\.glide\.app|ANR in dev\.glide\.app"
 
         $run.status="recorded"
         $run | Add-Member -NotePropertyName endedAtUtc -NotePropertyValue ((Get-Date).ToUniversalTime().ToString("o")) -Force
@@ -281,10 +291,15 @@ switch ($Mode) {
         $run | Add-Member -NotePropertyName offerConsentVerified -NotePropertyValue ([bool]$OfferConsentVerified) -Force
         $run | Add-Member -NotePropertyName openVerified -NotePropertyValue ([bool]$OpenVerified) -Force
         $run | Add-Member -NotePropertyName historyVerified -NotePropertyValue ([bool]$HistoryVerified) -Force
-        $run | Add-Member -NotePropertyName receiverPrivateHashMatched -NotePropertyValue $hashMatched -Force
+        $run | Add-Member -NotePropertyName receiverNewPrivateHashMatched -NotePropertyValue $newHashMatched -Force
+        $run | Add-Member -NotePropertyName receiverStagingEmpty -NotePropertyValue $stagingEmpty -Force
+        $run | Add-Member -NotePropertyName fatalCrashDetected -NotePropertyValue $fatalCrashDetected -Force
+        $run | Add-Member -NotePropertyName privateInspectionAvailable -NotePropertyValue $privateInspectionAvailable -Force
         $run | Add-Member -NotePropertyName notes -NotePropertyValue $Notes -Force
         Write-Json $runPath $run
-        Write-Host "Recorded $RunId. Receiver SHA-256 matched expected payload: $hashMatched"
+        Write-Host "Recorded $RunId. New receiver SHA-256 match: $newHashMatched"
+        Write-Host "Receiver staging empty: $stagingEmpty"
+        Write-Host "Fatal Glide crash/ANR detected: $fatalCrashDetected"
     }
 
     "Audit" {
@@ -296,12 +311,29 @@ switch ($Mode) {
             if (-not (Test-Path $path)) { $problems += "Missing run: $($req.id)"; continue }
             $run=Get-Content $path -Raw | ConvertFrom-Json
             $ok=$run.observedResult -eq "pass"
+            $ok=$ok -and -not [bool]$run.fatalCrashDetected
             if ($req.scenario -eq "success") {
-                $ok=$ok -and [bool]$run.sasOrPinVerified -and [bool]$run.offerConsentVerified -and [bool]$run.receiverPrivateHashMatched -and [bool]$run.openVerified -and [bool]$run.historyVerified
+                $ok=$ok -and
+                    [bool]$run.sasOrPinVerified -and
+                    [bool]$run.offerConsentVerified -and
+                    [bool]$run.privateInspectionAvailable -and
+                    [bool]$run.receiverNewPrivateHashMatched -and
+                    [bool]$run.receiverStagingEmpty -and
+                    [bool]$run.openVerified -and
+                    [bool]$run.historyVerified
             } elseif ($req.scenario -eq "reject") {
-                $ok=$ok -and [bool]$run.sasOrPinVerified
+                $ok=$ok -and
+                    [bool]$run.sasOrPinVerified -and
+                    [bool]$run.privateInspectionAvailable -and
+                    -not [bool]$run.receiverNewPrivateHashMatched -and
+                    [bool]$run.receiverStagingEmpty
             } elseif ($req.scenario -eq "cancel") {
-                $ok=$ok -and [bool]$run.sasOrPinVerified -and [bool]$run.offerConsentVerified
+                $ok=$ok -and
+                    [bool]$run.sasOrPinVerified -and
+                    [bool]$run.offerConsentVerified -and
+                    [bool]$run.privateInspectionAvailable -and
+                    -not [bool]$run.receiverNewPrivateHashMatched -and
+                    [bool]$run.receiverStagingEmpty
             }
             $summary += [pscustomobject]@{ runId=$req.id; transport=$req.transport; direction=$req.direction; payload=$req.payload; scenario=$req.scenario; pass=$ok }
             if (-not $ok) { $problems += "Incomplete/failed evidence: $($req.id)" }
