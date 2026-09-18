@@ -46,6 +46,9 @@ class ResumableStagingStore(
         originalSessionId: String,
         itemId: String,
         itemName: String,
+        mimeType: String =
+            "application/octet-stream",
+        relativePath: String? = null,
         peerFingerprintHex: String,
         totalBytes: Long,
         chunkSize: Int,
@@ -56,6 +59,8 @@ class ResumableStagingStore(
             originalSessionId = originalSessionId,
             itemId = itemId,
             itemName = itemName,
+            mimeType = mimeType,
+            relativePath = relativePath,
             peerFingerprintHex = peerFingerprintHex,
             totalBytes = totalBytes,
             chunkSize = chunkSize,
@@ -68,6 +73,16 @@ class ResumableStagingStore(
             nowMs
         )
         if (existing != null) {
+            require(
+                existing.itemName ==
+                    itemName &&
+                    existing.mimeType ==
+                    mimeType &&
+                    existing.relativePath ==
+                    relativePath
+            ) {
+                "Existing receiver output metadata does not match this item"
+            }
             requireReceiverAuthority(
                 existing,
                 peerFingerprintHex,
@@ -104,6 +119,9 @@ class ResumableStagingStore(
                     ResumableSessionEntity
                         .ROLE_RECEIVER,
                 itemName = itemName,
+                mimeType = mimeType,
+                relativePath =
+                    relativePath,
                 peerFingerprintHex =
                     peerFingerprintHex,
                 sourceHandle = null,
@@ -136,6 +154,9 @@ class ResumableStagingStore(
         originalSessionId: String,
         itemId: String,
         itemName: String,
+        mimeType: String =
+            "application/octet-stream",
+        relativePath: String? = null,
         peerFingerprintHex: String,
         sourceHandle: String,
         sourceIdentity: String,
@@ -151,6 +172,8 @@ class ResumableStagingStore(
                     originalSessionId,
                 itemId = itemId,
                 itemName = itemName,
+                mimeType = mimeType,
+                relativePath = relativePath,
                 peerFingerprintHex =
                     peerFingerprintHex,
                 totalBytes = totalBytes,
@@ -187,6 +210,16 @@ class ResumableStagingStore(
                     nowMs
                 )
             if (existing != null) {
+                require(
+                    existing.itemName ==
+                        itemName &&
+                        existing.mimeType ==
+                            mimeType &&
+                        existing.relativePath ==
+                            relativePath
+                ) {
+                    "Existing sender output metadata does not match this item"
+                }
                 requireSenderAuthority(
                     existing =
                         existing,
@@ -217,6 +250,9 @@ class ResumableStagingStore(
                         ResumableSessionEntity
                             .ROLE_SENDER,
                     itemName = itemName,
+                    mimeType = mimeType,
+                    relativePath =
+                        relativePath,
                     peerFingerprintHex =
                         peerFingerprintHex,
                     sourceHandle =
@@ -1105,6 +1141,16 @@ class ResumableStagingStore(
                 ?: throw IllegalStateException(
                     "Resume journal conflicted but no persisted row is available"
                 )
+        require(
+            raced.itemName ==
+                entity.itemName &&
+                raced.mimeType ==
+                    entity.mimeType &&
+                raced.relativePath ==
+                    entity.relativePath
+        ) {
+            "Raced receiver output metadata does not match this item"
+        }
         requireReceiverAuthority(
             raced,
             entity.peerFingerprintHex,
@@ -1118,6 +1164,8 @@ class ResumableStagingStore(
         originalSessionId: String,
         itemId: String,
         itemName: String,
+        mimeType: String,
+        relativePath: String?,
         peerFingerprintHex: String,
         totalBytes: Long,
         chunkSize: Int,
@@ -1137,6 +1185,19 @@ class ResumableStagingStore(
             itemName.isNotBlank()
         ) {
             "Item name cannot be blank"
+        }
+        require(
+            mimeType.isNotBlank() &&
+                mimeType.length <= 255
+        ) {
+            "MIME type is missing or too large"
+        }
+        require(
+            relativePath == null ||
+                relativePath.length <=
+                    1024
+        ) {
+            "Relative path is too large"
         }
         require(
             LOWER_HEX_64.matches(
