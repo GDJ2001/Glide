@@ -51,7 +51,7 @@ class UnifiedQuickShareTest {
 
     @Test
     fun unifiedDiscovery_presentsNearbyAndLanPeers_withAccurateRouteSubtitles() = runTest(testDispatcher) {
-        val viewModel = DiscoveryViewModel()
+        val viewModel = DiscoveryViewModel.forTesting()
 
         val nearbyPeer = DiscoveredPeer(
             id = PeerId("nearby-pixel-9"),
@@ -91,7 +91,7 @@ class UnifiedQuickShareTest {
 
     @Test
     fun busyPeer_cannotBeSelected_andDisplaysBusyState() = runTest(testDispatcher) {
-        val viewModel = DiscoveryViewModel()
+        val viewModel = DiscoveryViewModel.forTesting()
 
         val idlePeer = DiscoveredPeer(
             id = PeerId("peer-idle"),
@@ -134,7 +134,7 @@ class UnifiedQuickShareTest {
 
     @Test
     fun singleSelectionLock_freezesSelection_andIgnoresDuplicateOrOtherPeerTaps() = runTest(testDispatcher) {
-        val viewModel = DiscoveryViewModel()
+        val viewModel = DiscoveryViewModel.forTesting()
 
         val peerA = DiscoveredPeer(id = PeerId("peer-a"), displayName = "Device A")
         val peerB = DiscoveredPeer(id = PeerId("peer-b"), displayName = "Device B")
@@ -170,7 +170,7 @@ class UnifiedQuickShareTest {
 
     @Test
     fun peerLost_marksPeerUnavailable_withoutRemovingFromListOrChangingIndices() = runTest(testDispatcher) {
-        val viewModel = DiscoveryViewModel()
+        val viewModel = DiscoveryViewModel.forTesting()
 
         val peer1 = DiscoveredPeer(id = PeerId("peer-1"), displayName = "Device 1")
         val peer2 = DiscoveredPeer(id = PeerId("peer-2"), displayName = "Device 2")
