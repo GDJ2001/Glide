@@ -78,10 +78,10 @@ foreach ($device in $requiredDosDevices) {
 Write-Host "  PASS: WindowsPathSanitizer enforces traversal, UNC, drive letter, and DOS device checks." -ForegroundColor Green
 
 $stagingCode = Get-Content $StagingFile -Raw
-if ($stagingCode -notmatch "staging" -or $stagingCode -notmatch "quarantine" -or $stagingCode -notmatch "IncrementalHash") {
-    Write-Error "FAIL: QuarantineStagingStore missing incremental SHA-256 or quarantine staging."
+if ($stagingCode -notmatch "staging" -or $stagingCode -notmatch "quarantine" -or $stagingCode -notmatch "StreamingSha256" -or $stagingCode -notmatch "ReserveIncoming") {
+    Write-Error "FAIL: QuarantineStagingStore missing shared streaming SHA-256, reservations, or quarantine staging."
 }
-Write-Host "  PASS: QuarantineStagingStore enforces sandboxed quarantine and atomic commit." -ForegroundColor Green
+Write-Host "  PASS: QuarantineStagingStore enforces reservation-backed quarantine, shared streaming SHA-256, and centralized commit." -ForegroundColor Green
 
 # --- Check 5: Length-Prefixed TLS 1.3 Framing & SAS Derivation Audit ---
 Write-Host "`n[Check 5/8] Auditing Length-Prefixed Framing and SAS Derivation..." -ForegroundColor Yellow
