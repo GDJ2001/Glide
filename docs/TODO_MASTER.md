@@ -7,7 +7,7 @@ Plan: [`planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md`](planning/CODE_R
 Latest reconciliation: [`planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md`](planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md)  
 Review baseline: `ea2e811a7f2d8aaddc552e894fe04782cd08a499`  
 HARD-002 captured source boundary: `12681eabba26387fe7d1bbaf309971f345642e41`  
-**Next recommended task: HARD-008 (REVIEW_REQUIRED).**
+**Next recommended task: restore current-head CI execution, then verify HARD-008 and HARD-009. HARD-010 remains blocked until both are COMPLETE.**
 
 Source/configuration commits after the HARD-002 captured boundary are not silently certified by HARD-002; the task that consumes them must inspect/reconcile them before relying on their claims.
 
@@ -67,7 +67,7 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 | HARD-006 | M1 | COMPLETE | Wire production discovery and permissions |
 | HARD-007 | M1 | COMPLETE | Wire complete Nearby send/receive lifecycle |
 | HARD-008 | M1 | REVIEW_REQUIRED | Wire real LAN listener and QR invitation lifecycle |
-| HARD-009 | M1 | NOT_STARTED | Complete service/session/background lifecycle |
+| HARD-009 | M1 | REVIEW_REQUIRED | Complete service/session/background lifecycle |
 | HARD-010 | M1 | NOT_STARTED | Prove two-device Android production journey |
 | HARD-011 | M2 | NOT_STARTED | Extract shared desktop transfer engine |
 | HARD-012 | M2 | NOT_STARTED | Align native LAN discovery/TLS/bootstrap profile |
@@ -179,10 +179,12 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 <a id="hard-009"></a>
 ## HARD-009 — Complete service/session/background lifecycle
 
-- **Milestone / status:** M1 / NOT_STARTED.
+- **Milestone / status:** M1 / REVIEW_REQUIRED.
 - **Dependencies:** HARD-007, HARD-008.
-- **Acceptance:** One session survives supported rotation/background transitions; notification actions target the exact session; process death never reports false success; cancel tears down transport/storage safely.
-- **Tests/evidence:** FGS restrictions, lock/background, process death, stale notification and duplicate service start with lifecycle traces.
+- **Implementation state:** Service/session/background lifecycle hardening is implemented on `main`: terminal cleanup is awaited before service teardown, explicit service stop requests protocol cancellation, duplicate service starts are idempotent, stale notification actions remain exact-session, and startup reconciliation preserves any live in-process session while abandoned work is interrupted.
+- **Verification blocker:** HARD-008 is still REVIEW_REQUIRED and GitHub Actions is not scheduling current-head push or pull-request runs. No compile/test/lint claim is made for the current HARD-009 source graph.
+- **Evidence:** [HARD-009 lifecycle implementation record](development/sessions/2026-09-18-hard-009.md).
+- **Tests prepared/retained:** FGS restriction matrix, activity/runtime rebind, lock-before-consent, process-death reconciliation, stale accept/reject/cancel actions, duplicate service-start idempotence, and terminal transport/storage cleanup ordering.
 
 <a id="hard-010"></a>
 ## HARD-010 — Prove two-device Android production journey
