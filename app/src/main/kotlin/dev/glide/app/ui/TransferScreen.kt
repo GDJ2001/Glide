@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -34,6 +35,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.activity.compose.BackHandler
 import dev.glide.app.navigation.GlideRoute
+import dev.glide.app.service.TrustRuntimeState
 import dev.glide.app.ui.pairing.PairingUiState
 import dev.glide.app.ui.pairing.PairingVerificationCard
 import dev.glide.app.ui.transfer.ExportUiStatus
@@ -70,7 +72,10 @@ fun TransferScreen(
     onShareItem: (VerifiedItemUiState) -> Unit = { onShareFile() },
     onExportItem: (VerifiedItemUiState) -> Unit = { onExportFile() },
     onExportAll: () -> Unit = { onExportFile() },
-    onShareAll: () -> Unit = { onShareFile() }
+    onShareAll: () -> Unit = { onShareFile() },
+    trustState: TrustRuntimeState = TrustRuntimeState(),
+    onApproveTrust: () -> Unit = {},
+    onRejectTrust: () -> Unit = {}
 ) {
     val scrollState = rememberScrollState()
     val isActivelyVerifying = pairingState !is PairingUiState.Idle && pairingState !is PairingUiState.Connected
@@ -269,4 +274,53 @@ fun TransferScreen(
 }
 }
 
+    val pendingTrust = trustState.pendingEnrollment
+    if (pendingTrust != null) {
+        val fingerprint = pendingTrust.fingerprintHex
+        val shortFingerprint = if (fingerprint.length > 16) {
+            "${fingerprint.take(8)}...${fingerprint.takeLast(8)}"
+        } else {
+            fingerprint
+        }
+
+        AlertDialog(
+            onDismissRequest = onRejectTrust,
+            title = { Text("Trust this device?") },
+            text = {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text =
+                            "${pendingTrust.displayName} has proven possession of its persistent identity key on this secure connection."
+                    )
+                    Text(
+                        text = "Identity: SHA-256 $shortFingerprint",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    Text(
+                        text =
+                            "Trusting remembers this cryptographic identity for future authenticated sessions. It does not automatically accept future file offers.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = onApproveTrust
+                ) {
+                    Text("Trust device")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = onRejectTrust
+                ) {
+                    Text("Not now")
+                }
+            }
+        )
+    }
 }
