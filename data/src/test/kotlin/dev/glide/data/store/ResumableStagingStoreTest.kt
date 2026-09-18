@@ -7,165 +7,774 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertIs
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.security.MessageDigest
 
 class ResumableStagingStoreTest {
 
     @get:Rule
     val tempFolder = TemporaryFolder()
 
-    private val testDispatcher = StandardTestDispatcher()
+    private val testDispatcher =
+        StandardTestDispatcher()
     private lateinit var stagingDir: File
-    private lateinit var fakeDao: FakeResumableSessionDao
-    private lateinit var store: ResumableStagingStore
+    private lateinit var fakeDao:
+        FakeResumableSessionDao
+    private lateinit var store:
+        ResumableStagingStore
 
     @Before
     fun setUp() {
-        stagingDir = tempFolder.newFolder("resumable_staging")
-        fakeDao = FakeResumableSessionDao()
-        store = ResumableStagingStore(stagingDir, fakeDao, testDispatcher)
-    }
-
-    @Test
-    fun initSession_createsDirectoryAndEntity() = runTest(testDispatcher) {
-        val sessionDir = store.initSession(
-            sessionId = "s1",
-            itemId = "i1",
-            itemName = "big_file.bin",
-            totalBytes = 2000L,
-            chunkSize = 1000,
-            rootHashHex = "root123",
-            nowMs = 1000L
-        )
-
-        assertTrue(sessionDir.exists())
-        assertEquals(1, fakeDao.sessions.size)
-        val entity = fakeDao.sessions["s1"]
-        assertEquals("big_file.bin", entity?.itemName)
-        assertEquals(0L, entity?.verifiedChunks)
-    }
-
-    @Test
-    fun writeAndVerifyChunk_validAndInvalidChunks() = runTest(testDispatcher) {
-        val chunk0 = "hello world chunk 0".toByteArray()
-        val chunk1 = "hello world chunk 1".toByteArray()
-
-        val digestTree = ContentDigestTree(
-            listOf(
-                ContentDigestTree.sha256(chunk0),
-                ContentDigestTree.sha256(chunk1)
+        stagingDir =
+            tempFolder.newFolder(
+                "resumable_staging"
             )
-        )
-
-        store.initSession("s1", "i1", "file.bin", 200L, 100, digestTree.rootHashHex)
-
-        // Write valid chunk 0
-        val ok0 = store.writeAndVerifyChunk("s1", 0L, chunk0, digestTree)
-        assertTrue("Valid chunk 0 should succeed", ok0)
-        assertEquals(1L, store.getVerifiedChunkCount("s1"))
-
-        // Write corrupted chunk 1
-        val corruptedChunk1 = "corrupted data".toByteArray()
-        val okCorrupt = store.writeAndVerifyChunk("s1", 1L, corruptedChunk1, digestTree)
-        assertFalse("Corrupted chunk should be rejected", okCorrupt)
-        assertEquals(1L, store.getVerifiedChunkCount("s1"))
-
-        // Write valid chunk 1
-        val ok1 = store.writeAndVerifyChunk("s1", 1L, chunk1, digestTree)
-        assertTrue("Valid chunk 1 should succeed", ok1)
-        assertEquals(2L, store.getVerifiedChunkCount("s1"))
-    }
-
-    @Test
-    fun assembleVerifiedFile_combinesChunksContiguously() = runTest(testDispatcher) {
-        val chunk0 = "AAAA".toByteArray()
-        val chunk1 = "BBBB".toByteArray()
-
-        val digestTree = ContentDigestTree(
-            listOf(
-                ContentDigestTree.sha256(chunk0),
-                ContentDigestTree.sha256(chunk1)
+        fakeDao =
+            FakeResumableSessionDao()
+        store =
+            ResumableStagingStore(
+                stagingDir,
+                fakeDao,
+                testDispatcher
             )
-        )
-
-        store.initSession("s1", "i1", "assembled.txt", 8L, 4, digestTree.rootHashHex)
-        store.writeAndVerifyChunk("s1", 0L, chunk0, digestTree)
-        store.writeAndVerifyChunk("s1", 1L, chunk1, digestTree)
-
-        val destinationFile = File(tempFolder.root, "output/assembled.txt")
-        val assembled = store.assembleVerifiedFile("s1", destinationFile)
-        assertTrue(assembled)
-        assertTrue(destinationFile.exists())
-        assertEquals("AAAABBBB", destinationFile.readText())
     }
 
     @Test
-    fun purgeExpiredSessions_deletesExpiredDirectoriesAndEntities() = runTest(testDispatcher) {
-        val now = 100_000_000L
-        store.initSession("expired_session", "i1", "f1", 100L, 50, "hash", nowMs = 100L)
-        store.initSession("active_session", "i2", "f2", 100L, 50, "hash", nowMs = now)
+    fun initSession_persistsCompositeAuthorityAndZeroPrefix() =
+        runTest(testDispatcher) {
+            val chunks =
+                listOf(
+                    "AAAA".toByteArray(),
+                    "BBBB".toByteArray()
+                )
+            val tree =
+                digestTree(chunks)
 
-        val purgedCount = store.purgeExpiredSessions(currentMs = now)
-        assertEquals(1, purgedCount)
-        assertFalse(File(stagingDir, "expired_session").exists())
-        assertTrue(File(stagingDir, "active_session").exists())
-    }
+            val sessionDir =
+                store.initSession(
+                    originalSessionId =
+                        "session-1",
+                    itemId = "item-1",
+                    itemName = "big.bin",
+                    peerFingerprintHex =
+                        fingerprint('a'),
+                    sourceIdentity =
+                        "content://source/v1",
+                    totalBytes = 8L,
+                    chunkSize = 4,
+                    digestTree = tree,
+                    wholeFileSha256Hex =
+                        wholeDigest(chunks),
+                    nowMs = 1_000L
+                )
 
-    @Test
-    fun evictUnderStoragePressure_purgesOldestSessionFirst() = runTest(testDispatcher) {
-        store.initSession("old_session", "i1", "f1", 100L, 50, "hash", nowMs = 1000L)
-        store.initSession("new_session", "i2", "f2", 100L, 50, "hash", nowMs = 2000L)
-
-        var simulatedFreeSpace = 500L
-        val minFreeThreshold = 1000L
-
-        val evicted = store.evictUnderStoragePressure(minFreeThreshold) {
-            simulatedFreeSpace += 500L // Each eviction frees 500L
-            simulatedFreeSpace - 500L
+            assertTrue(sessionDir.isDirectory)
+            val entity =
+                fakeDao.get(
+                    "session-1",
+                    "item-1"
+                )
+            assertNotNull(entity)
+            assertEquals(
+                fingerprint('a'),
+                entity?.peerFingerprintHex
+            )
+            assertEquals(
+                "content://source/v1",
+                entity?.sourceIdentity
+            )
+            assertEquals(
+                0L,
+                entity?.verifiedChunks
+            )
+            assertEquals(
+                0L,
+                entity?.contiguousByteOffset
+            )
+            assertEquals(
+                tree.rootHashHex,
+                entity?.chunkRootHashHex
+            )
         }
 
-        assertEquals(1, evicted)
-        assertFalse("Old session should be evicted first", File(stagingDir, "old_session").exists())
-        assertTrue("New session should remain", File(stagingDir, "new_session").exists())
-    }
+    @Test
+    fun outOfOrderChunk_cannotAdvanceAcrossGap() =
+        runTest(testDispatcher) {
+            val chunks =
+                listOf(
+                    "0000".toByteArray(),
+                    "1111".toByteArray(),
+                    "2222".toByteArray()
+                )
+            init(
+                session = "gap-session",
+                item = "gap-item",
+                chunks = chunks,
+                nowMs = 1_000L
+            )
 
-    private class FakeResumableSessionDao : ResumableSessionDao {
-        val sessions = mutableMapOf<String, ResumableSessionEntity>()
+            assertFalse(
+                store.writeAndVerifyChunk(
+                    "gap-session",
+                    "gap-item",
+                    1L,
+                    chunks[1],
+                    nowMs = 1_100L
+                )
+            )
+            assertEquals(
+                0L,
+                store.getVerifiedChunkCount(
+                    "gap-session",
+                    "gap-item"
+                )
+            )
 
-        override suspend fun insertOrUpdate(session: ResumableSessionEntity) {
-            sessions[session.sessionId] = session
+            assertTrue(
+                store.writeAndVerifyChunk(
+                    "gap-session",
+                    "gap-item",
+                    0L,
+                    chunks[0],
+                    nowMs = 1_200L
+                )
+            )
+            assertEquals(
+                1L,
+                store.getVerifiedChunkCount(
+                    "gap-session",
+                    "gap-item"
+                )
+            )
+
+            assertFalse(
+                store.writeAndVerifyChunk(
+                    "gap-session",
+                    "gap-item",
+                    2L,
+                    chunks[2],
+                    nowMs = 1_300L
+                )
+            )
+            assertEquals(
+                1L,
+                store.getVerifiedChunkCount(
+                    "gap-session",
+                    "gap-item"
+                )
+            )
         }
 
-        override suspend fun getBySessionId(sessionId: String): ResumableSessionEntity? =
-            sessions[sessionId]
+    @Test
+    fun corruptedChunk_isRejectedWithoutJournalAdvance() =
+        runTest(testDispatcher) {
+            val chunks =
+                listOf(
+                    "AAAA".toByteArray(),
+                    "BBBB".toByteArray()
+                )
+            init(
+                "corrupt-session",
+                "corrupt-item",
+                chunks
+            )
 
-        override suspend fun getAllResumableSessions(): List<ResumableSessionEntity> =
-            sessions.values.sortedByDescending { it.createdAtMs }
+            assertTrue(
+                store.writeAndVerifyChunk(
+                    "corrupt-session",
+                    "corrupt-item",
+                    0L,
+                    chunks[0]
+                )
+            )
+            assertFalse(
+                store.writeAndVerifyChunk(
+                    "corrupt-session",
+                    "corrupt-item",
+                    1L,
+                    "XXXX".toByteArray()
+                )
+            )
+            val entity =
+                store.getJournal(
+                    "corrupt-session",
+                    "corrupt-item"
+                )
+            assertEquals(
+                1L,
+                entity?.verifiedChunks
+            )
+            assertEquals(
+                4L,
+                entity?.contiguousByteOffset
+            )
+        }
 
-        override suspend fun updateVerifiedChunks(sessionId: String, verifiedChunks: Long) {
-            sessions[sessionId]?.let {
-                sessions[sessionId] = it.copy(verifiedChunks = verifiedChunks)
+    @Test
+    fun processDeathRevalidation_rewindsAtFirstCorruptRetainedChunk() =
+        runTest(testDispatcher) {
+            val chunks =
+                listOf(
+                    "AAAA".toByteArray(),
+                    "BBBB".toByteArray(),
+                    "CCCC".toByteArray()
+                )
+            val tree =
+                init(
+                    "restart-session",
+                    "restart-item",
+                    chunks
+                )
+
+            chunks.forEachIndexed {
+                index,
+                bytes ->
+                assertTrue(
+                    store.writeAndVerifyChunk(
+                        "restart-session",
+                        "restart-item",
+                        index.toLong(),
+                        bytes
+                    )
+                )
             }
+
+            val journal =
+                store.getJournal(
+                    "restart-session",
+                    "restart-item"
+                )!!
+            File(
+                journal.stagingPath,
+                "chunk_000000000001.part"
+            ).writeBytes(
+                "FAIL".toByteArray()
+            )
+
+            // Simulate a process restart by constructing a new store over the same persisted DAO.
+            val restarted =
+                ResumableStagingStore(
+                    stagingDir,
+                    fakeDao,
+                    testDispatcher
+                )
+            val result =
+                restarted.reconcileForResume(
+                    originalSessionId =
+                        "restart-session",
+                    itemId =
+                        "restart-item",
+                    authenticatedPeerFingerprintHex =
+                        fingerprint('a'),
+                    peerStillTrusted = true,
+                    sourceStillAvailable = true,
+                    currentSourceIdentity =
+                        "source:v1",
+                    currentTotalBytes =
+                        12L,
+                    currentChunkRootHashHex =
+                        tree.rootHashHex
+                )
+
+            val ready =
+                assertIs<
+                    ResumeRevalidationResult.Ready
+                >(result)
+            assertEquals(
+                1L,
+                ready.verifiedChunks
+            )
+            assertEquals(
+                4L,
+                ready.contiguousByteOffset
+            )
+            assertFalse(
+                File(
+                    journal.stagingPath,
+                    "chunk_000000000001.part"
+                ).exists()
+            )
+            assertFalse(
+                File(
+                    journal.stagingPath,
+                    "chunk_000000000002.part"
+                ).exists()
+            )
         }
 
-        override suspend fun deleteBySessionId(sessionId: String) {
-            sessions.remove(sessionId)
+    @Test
+    fun revokedOrDifferentPeer_cannotAuthorizeRetainedPrefix() =
+        runTest(testDispatcher) {
+            val chunks =
+                listOf(
+                    "AAAA".toByteArray()
+                )
+            val tree =
+                init(
+                    "peer-session",
+                    "peer-item",
+                    chunks
+                )
+            assertTrue(
+                store.writeAndVerifyChunk(
+                    "peer-session",
+                    "peer-item",
+                    0L,
+                    chunks[0]
+                )
+            )
+
+            val revoked =
+                store.reconcileForResume(
+                    "peer-session",
+                    "peer-item",
+                    fingerprint('a'),
+                    peerStillTrusted = false,
+                    sourceStillAvailable = true,
+                    currentSourceIdentity =
+                        "source:v1",
+                    currentTotalBytes = 4L,
+                    currentChunkRootHashHex =
+                        tree.rootHashHex
+                )
+            assertIs<
+                ResumeRevalidationResult.Unauthorized
+            >(revoked)
+
+            val substituted =
+                store.reconcileForResume(
+                    "peer-session",
+                    "peer-item",
+                    fingerprint('b'),
+                    peerStillTrusted = true,
+                    sourceStillAvailable = true,
+                    currentSourceIdentity =
+                        "source:v1",
+                    currentTotalBytes = 4L,
+                    currentChunkRootHashHex =
+                        tree.rootHashHex
+                )
+            assertIs<
+                ResumeRevalidationResult.Unauthorized
+            >(substituted)
         }
 
-        override suspend fun deleteExpired(currentMs: Long): Int {
-            val toRemove = sessions.values.filter { it.expiresAtMs <= currentMs }.map { it.sessionId }
-            toRemove.forEach { sessions.remove(it) }
-            return toRemove.size
+    @Test
+    fun changedOrUnavailableSource_isRejected() =
+        runTest(testDispatcher) {
+            val chunks =
+                listOf(
+                    "AAAA".toByteArray()
+                )
+            val tree =
+                init(
+                    "source-session",
+                    "source-item",
+                    chunks
+                )
+
+            val unavailable =
+                store.reconcileForResume(
+                    "source-session",
+                    "source-item",
+                    fingerprint('a'),
+                    peerStillTrusted = true,
+                    sourceStillAvailable = false,
+                    currentSourceIdentity =
+                        "source:v1",
+                    currentTotalBytes = 4L,
+                    currentChunkRootHashHex =
+                        tree.rootHashHex
+                )
+            assertIs<
+                ResumeRevalidationResult.SourceUnavailable
+            >(unavailable)
+
+            val changed =
+                store.reconcileForResume(
+                    "source-session",
+                    "source-item",
+                    fingerprint('a'),
+                    peerStillTrusted = true,
+                    sourceStillAvailable = true,
+                    currentSourceIdentity =
+                        "source:v2",
+                    currentTotalBytes = 4L,
+                    currentChunkRootHashHex =
+                        tree.rootHashHex
+                )
+            assertIs<
+                ResumeRevalidationResult.SourceChanged
+            >(changed)
         }
 
-        override suspend fun getExpiredSessions(currentMs: Long): List<ResumableSessionEntity> =
-            sessions.values.filter { it.expiresAtMs <= currentMs }
+    @Test
+    fun expiredJournal_isPurgedAtResumeBoundary() =
+        runTest(testDispatcher) {
+            val chunks =
+                listOf(
+                    "AAAA".toByteArray()
+                )
+            val tree =
+                init(
+                    "expired-session",
+                    "expired-item",
+                    chunks,
+                    nowMs = 100L
+                )
 
-        override suspend fun getSessionCount(): Int = sessions.size
+            val result =
+                store.reconcileForResume(
+                    "expired-session",
+                    "expired-item",
+                    fingerprint('a'),
+                    peerStillTrusted = true,
+                    sourceStillAvailable = true,
+                    currentSourceIdentity =
+                        "source:v1",
+                    currentTotalBytes = 4L,
+                    currentChunkRootHashHex =
+                        tree.rootHashHex,
+                    nowMs =
+                        100L +
+                            dev.glide.core.resume
+                                .ResumeToken
+                                .MAX_TTL_MILLIS
+                )
+
+            assertIs<
+                ResumeRevalidationResult.Expired
+            >(result)
+            assertNull(
+                fakeDao.get(
+                    "expired-session",
+                    "expired-item"
+                )
+            )
+        }
+
+    @Test
+    fun assembly_requiresCompletePrefixAndWholeFileDigest() =
+        runTest(testDispatcher) {
+            val chunks =
+                listOf(
+                    "AAAA".toByteArray(),
+                    "BBBB".toByteArray()
+                )
+            init(
+                "assemble-session",
+                "assemble-item",
+                chunks
+            )
+            val destination =
+                File(
+                    tempFolder.root,
+                    "output/assembled.bin"
+                )
+
+            assertTrue(
+                store.writeAndVerifyChunk(
+                    "assemble-session",
+                    "assemble-item",
+                    0L,
+                    chunks[0]
+                )
+            )
+            assertFalse(
+                store.assembleVerifiedFile(
+                    "assemble-session",
+                    "assemble-item",
+                    destination
+                )
+            )
+            assertFalse(destination.exists())
+
+            assertTrue(
+                store.writeAndVerifyChunk(
+                    "assemble-session",
+                    "assemble-item",
+                    1L,
+                    chunks[1]
+                )
+            )
+            assertTrue(
+                store.assembleVerifiedFile(
+                    "assemble-session",
+                    "assemble-item",
+                    destination
+                )
+            )
+            assertEquals(
+                chunks
+                    .flatMap {
+                        it.toList()
+                    }
+                    .toByteArray()
+                    .toList(),
+                destination
+                    .readBytes()
+                    .toList()
+            )
+        }
+
+    @Test
+    fun storagePressure_evictsOldestRetainedItemFirst() =
+        runTest(testDispatcher) {
+            val chunks =
+                listOf(
+                    "AAAA".toByteArray()
+                )
+            init(
+                "old-session",
+                "old-item",
+                chunks,
+                nowMs = 1_000L
+            )
+            init(
+                "new-session",
+                "new-item",
+                chunks,
+                nowMs = 2_000L
+            )
+
+            var call = 0
+            val evicted =
+                store.evictUnderStoragePressure(
+                    minFreeBytes = 1_000L
+                ) {
+                    call++
+                    if (call == 1) {
+                        500L
+                    } else {
+                        1_500L
+                    }
+                }
+
+            assertEquals(1, evicted)
+            assertNull(
+                fakeDao.get(
+                    "old-session",
+                    "old-item"
+                )
+            )
+            assertNotNull(
+                fakeDao.get(
+                    "new-session",
+                    "new-item"
+                )
+            )
+        }
+
+    private suspend fun init(
+        session: String,
+        item: String,
+        chunks: List<ByteArray>,
+        nowMs: Long = 1_000L
+    ): ContentDigestTree {
+        val tree =
+            digestTree(chunks)
+        store.initSession(
+            originalSessionId = session,
+            itemId = item,
+            itemName = "$item.bin",
+            peerFingerprintHex =
+                fingerprint('a'),
+            sourceIdentity =
+                "source:v1",
+            totalBytes =
+                chunks.sumOf {
+                    it.size.toLong()
+                },
+            chunkSize =
+                chunks.first().size,
+            digestTree = tree,
+            wholeFileSha256Hex =
+                wholeDigest(chunks),
+            nowMs = nowMs
+        )
+        return tree
+    }
+
+    private fun digestTree(
+        chunks: List<ByteArray>
+    ): ContentDigestTree =
+        ContentDigestTree(
+            chunks.map {
+                ContentDigestTree
+                    .sha256(it)
+            }
+        )
+
+    private fun wholeDigest(
+        chunks: List<ByteArray>
+    ): String {
+        val digest =
+            MessageDigest.getInstance(
+                "SHA-256"
+            )
+        chunks.forEach {
+            digest.update(it)
+        }
+        return digest.digest()
+            .joinToString("") {
+                "%02x".format(it)
+            }
+    }
+
+    private fun fingerprint(
+        value: Char
+    ): String =
+        value.toString()
+            .repeat(64)
+
+    private class FakeResumableSessionDao :
+        ResumableSessionDao {
+
+        val sessions =
+            mutableMapOf<
+                Pair<String, String>,
+                ResumableSessionEntity
+            >()
+
+        override suspend fun insertOrUpdate(
+            session: ResumableSessionEntity
+        ) {
+            sessions[
+                session.originalSessionId to
+                    session.itemId
+            ] = session
+        }
+
+        override suspend fun get(
+            originalSessionId: String,
+            itemId: String
+        ): ResumableSessionEntity? =
+            sessions[
+                originalSessionId to
+                    itemId
+            ]
+
+        override suspend fun getAllResumableSessions():
+            List<ResumableSessionEntity> =
+            sessions.values
+                .sortedByDescending {
+                    it.updatedAtMs
+                }
+
+        override suspend fun compareAndAdvance(
+            originalSessionId: String,
+            itemId: String,
+            expectedVerifiedChunks: Long,
+            expectedContiguousByteOffset: Long,
+            newVerifiedChunks: Long,
+            newContiguousByteOffset: Long,
+            updatedAtMs: Long
+        ): Int {
+            val key =
+                originalSessionId to
+                    itemId
+            val existing =
+                sessions[key]
+                    ?: return 0
+            if (existing.verifiedChunks !=
+                    expectedVerifiedChunks ||
+                existing.contiguousByteOffset !=
+                    expectedContiguousByteOffset
+            ) {
+                return 0
+            }
+
+            sessions[key] =
+                existing.copy(
+                    verifiedChunks =
+                        newVerifiedChunks,
+                    contiguousByteOffset =
+                        newContiguousByteOffset,
+                    updatedAtMs =
+                        updatedAtMs
+                )
+            return 1
+        }
+
+        override suspend fun rewindProgress(
+            originalSessionId: String,
+            itemId: String,
+            verifiedChunks: Long,
+            contiguousByteOffset: Long,
+            updatedAtMs: Long
+        ): Int {
+            val key =
+                originalSessionId to
+                    itemId
+            val existing =
+                sessions[key]
+                    ?: return 0
+            if (existing.verifiedChunks <
+                    verifiedChunks ||
+                existing.contiguousByteOffset <
+                    contiguousByteOffset
+            ) {
+                return 0
+            }
+
+            sessions[key] =
+                existing.copy(
+                    verifiedChunks =
+                        verifiedChunks,
+                    contiguousByteOffset =
+                        contiguousByteOffset,
+                    updatedAtMs =
+                        updatedAtMs
+                )
+            return 1
+        }
+
+        override suspend fun delete(
+            originalSessionId: String,
+            itemId: String
+        ) {
+            sessions.remove(
+                originalSessionId to
+                    itemId
+            )
+        }
+
+        override suspend fun getExpiredSessions(
+            currentMs: Long
+        ): List<ResumableSessionEntity> =
+            sessions.values
+                .filter {
+                    it.expiresAtMs <=
+                        currentMs
+                }
+
+        override suspend fun deleteExpired(
+            currentMs: Long
+        ): Int {
+            val keys =
+                sessions
+                    .filterValues {
+                        it.expiresAtMs <=
+                            currentMs
+                    }
+                    .keys
+                    .toList()
+            keys.forEach {
+                sessions.remove(it)
+            }
+            return keys.size
+        }
+
+        override suspend fun getSessionCount():
+            Int =
+            sessions.size
     }
 }
