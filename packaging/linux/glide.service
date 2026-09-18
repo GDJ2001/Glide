@@ -2,6 +2,7 @@
 Description=Glide Local File Sharing Daemon
 After=network.target network-online.target
 Wants=network-online.target
+ConditionPathExists=%h/.config/glide/daemon.env
 
 [Service]
 Type=simple
