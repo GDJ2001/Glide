@@ -370,6 +370,10 @@ class FakeTestTrustedPeerDao(
         peersFlow.value = peersFlow.value.filter { it.peerFingerprint != fingerprint }
     }
 
+    override suspend fun deleteAll() {
+        peersFlow.value = emptyList()
+    }
+
     override suspend fun getPeerCount(): Int = peersFlow.value.size
 }
 
