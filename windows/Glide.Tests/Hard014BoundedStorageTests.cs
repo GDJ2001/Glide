@@ -289,6 +289,48 @@ public sealed class Hard014BoundedStorageTests : IDisposable
     }
 
     [Fact]
+    public async Task CancelledWrite_PurgesPartialAndReleasesReservation()
+    {
+        var store = CreateStore(
+            "cancel-token",
+            () => 1024 * 1024);
+
+        SessionId session = NewSessionId();
+        ItemId item = NewItemId();
+        string quarantine =
+            store.GetQuarantinePath(
+                session,
+                item);
+
+        using IncomingFileReservation reservation =
+            store.ReserveIncoming(
+                session,
+                item,
+                "cancel-token.bin",
+                4096);
+
+        await using (QuarantineWriteSession writer =
+            reservation.OpenWriter())
+        {
+            await writer.WriteAsync(
+                new byte[1024]);
+
+            using var cts =
+                new CancellationTokenSource();
+            cts.Cancel();
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(
+                async () =>
+                    await writer.WriteAsync(
+                        new byte[1024],
+                        cts.Token));
+        }
+
+        Assert.False(File.Exists(quarantine));
+        Assert.Equal(0L, store.ReservedBytes);
+    }
+
+    [Fact]
     public void Reservation_RejectsTraversalBeforeCreatingQuarantine()
     {
         var store = CreateStore(
