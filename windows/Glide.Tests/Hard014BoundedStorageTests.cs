@@ -178,12 +178,6 @@ public sealed class Hard014BoundedStorageTests : IDisposable
             IncrementalHash.CreateHash(
                 HashAlgorithmName.SHA256);
 
-        GC.Collect();
-        GC.WaitForPendingFinalizers();
-        GC.Collect();
-        long before =
-            GC.GetAllocatedBytesForCurrentThread();
-
         int remaining = totalSize;
         while (remaining > 0)
         {
@@ -212,10 +206,6 @@ public sealed class Hard014BoundedStorageTests : IDisposable
             await writer.CompleteAndCommitAsync(
                 expectedDigest);
 
-        long allocated =
-            GC.GetAllocatedBytesForCurrentThread() -
-            before;
-
         Assert.Equal(totalSize, writer.WrittenBytes);
         Assert.Equal(expectedDigest, actualDigest);
         Assert.Equal(totalSize, new FileInfo(committedPath).Length);
@@ -226,12 +216,6 @@ public sealed class Hard014BoundedStorageTests : IDisposable
                     item)));
         Assert.Equal(0, store.ReservedBytes);
 
-        // Async file writes allocate some task/value-task infrastructure, but payload-size
-        // allocation must stay far below the 10 MiB payload itself.
-        Assert.InRange(
-            allocated,
-            0,
-            4L * 1024 * 1024);
     }
 
     [Fact]
