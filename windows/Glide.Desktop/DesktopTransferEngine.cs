@@ -57,6 +57,8 @@ public sealed class DesktopTransferEngine
 
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             if (request.Invitation == null)
             {
                 return DesktopTransferResult.Failed(
