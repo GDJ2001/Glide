@@ -126,20 +126,124 @@ class RoomMigrationTest {
     }
 
     @Test
-    fun schemaFiles_version1And2And3And4ExistAndAreValidJson() {
-        val schema1File = File("schemas/dev.glide.data.db.GlideDatabase/1.json")
-        val schema2File = File("schemas/dev.glide.data.db.GlideDatabase/2.json")
-        val schema3File = File("schemas/dev.glide.data.db.GlideDatabase/3.json")
-        val schema4File = File("schemas/dev.glide.data.db.GlideDatabase/4.json")
+    fun migration4To5_replacesLegacyResumeTableWithAuthenticatedCompositeJournal() {
+        val executedSql =
+            mutableListOf<String>()
+        val fakeDb =
+            Proxy.newProxyInstance(
+                SupportSQLiteDatabase::class.java.classLoader,
+                arrayOf(
+                    SupportSQLiteDatabase::class.java
+                )
+            ) { _, method, args ->
+                if (method.name == "execSQL") {
+                    val sql =
+                        args?.get(0) as? String
+                    if (sql != null) {
+                        executedSql.add(
+                            sql.trim()
+                        )
+                    }
+                }
+                null
+            } as SupportSQLiteDatabase
 
-        assertTrue("Schema version 1 file must exist", schema1File.exists())
-        assertTrue("Schema version 2 file must exist", schema2File.exists())
-        assertTrue("Schema version 3 file must exist", schema3File.exists())
-        assertTrue("Schema version 4 file must exist", schema4File.exists())
+        val migration =
+            GlideDatabase.MIGRATION_4_5
+        assertEquals(4, migration.startVersion)
+        assertEquals(5, migration.endVersion)
 
-        val schema4Content = schema4File.readText()
-        assertTrue(schema4Content.contains("\"version\": 4"))
-        assertTrue(schema4Content.contains("\"tableName\": \"trusted_peers\""))
-        assertTrue(schema4Content.contains("\"tableName\": \"resumable_sessions\""))
+        migration.migrate(fakeDb)
+        val sqlOutput =
+            executedSql.joinToString("\n")
+
+        assertTrue(
+            sqlOutput.contains(
+                "DROP TABLE IF EXISTS `resumable_sessions`"
+            )
+        )
+        assertTrue(
+            sqlOutput.contains(
+                "`original_session_id` TEXT NOT NULL"
+            )
+        )
+        assertTrue(
+            sqlOutput.contains(
+                "`peer_fingerprint` TEXT NOT NULL"
+            )
+        )
+        assertTrue(
+            sqlOutput.contains(
+                "`source_identity` TEXT NOT NULL"
+            )
+        )
+        assertTrue(
+            sqlOutput.contains(
+                "`contiguous_byte_offset` INTEGER NOT NULL"
+            )
+        )
+        assertTrue(
+            sqlOutput.contains(
+                "`chunk_hashes_hex` TEXT NOT NULL"
+            )
+        )
+        assertTrue(
+            sqlOutput.contains(
+                "`whole_file_sha256_hex` TEXT NOT NULL"
+            )
+        )
+    }
+
+    @Test
+    fun schemaFiles_version1Through5ExistAndV5ContainsHardenedResumeAuthority() {
+        val schemaFiles =
+            (1..5).map { version ->
+                File(
+                    "schemas/dev.glide.data.db.GlideDatabase/$" + "version.json"
+                )
+            }
+
+        schemaFiles.forEachIndexed {
+            index,
+            file ->
+            assertTrue(
+                "Schema version $" + "{index + 1} file must exist",
+                file.exists()
+            )
+        }
+
+        val schema5Content =
+            schemaFiles.last()
+                .readText()
+        assertTrue(
+            schema5Content.contains(
+                "\"version\": 5"
+            )
+        )
+        assertTrue(
+            schema5Content.contains(
+                "\"tableName\": \"trusted_peers\""
+            )
+        )
+        assertTrue(
+            schema5Content.contains(
+                "\"tableName\": \"resumable_sessions\""
+            )
+        )
+        assertTrue(
+            schema5Content.contains(
+                "\"columnName\": \"original_session_id\""
+            )
+        )
+        assertTrue(
+            schema5Content.contains(
+                "\"columnName\": \"peer_fingerprint\""
+            )
+        )
+        assertTrue(
+            schema5Content.contains(
+                "\"columnName\": \"contiguous_byte_offset\""
+            )
+        )
     }
 }
