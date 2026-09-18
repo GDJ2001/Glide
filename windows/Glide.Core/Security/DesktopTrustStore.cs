@@ -159,6 +159,30 @@ public sealed class DesktopTrustStore
 
             string json =
                 File.ReadAllText(_path);
+
+            using (JsonDocument parsed =
+                JsonDocument.Parse(json))
+            {
+                if (parsed.RootElement.ValueKind !=
+                        JsonValueKind.Object ||
+                    !parsed.RootElement.TryGetProperty(
+                        "version",
+                        out _) ||
+                    !parsed.RootElement.TryGetProperty(
+                        "localIdentityFingerprintHex",
+                        out _) ||
+                    !parsed.RootElement.TryGetProperty(
+                        "peers",
+                        out _) ||
+                    !parsed.RootElement.TryGetProperty(
+                        "headlessPolicies",
+                        out _))
+                {
+                    throw new InvalidDataException(
+                        "Desktop trust document is missing required versioned fields.");
+                }
+            }
+
             DesktopTrustDocument document =
                 JsonSerializer.Deserialize<
                     DesktopTrustDocument>(
