@@ -88,7 +88,7 @@ public sealed record HeadlessReceivePolicy(
 
         if (MaxOfferBytes <= 0 ||
             MaxOfferBytes >
-                Models.ProtocolCatalog.MaxBatchBytes)
+                Glide.Core.Codec.ProtocolCatalog.MaxBatchBytes)
         {
             throw new InvalidDataException(
                 $"Headless policy max offer bytes must be in 1..{Models.ProtocolCatalog.MaxBatchBytes}.");
