@@ -113,17 +113,19 @@ By pairing two vertical pixels per character cell, the QR code displays with squ
 # Listen for incoming transfers from Android, Windows, or Apple peers:
 glide receive [--port <port>]
 
-# Send files to a specific peer endpoint:
-glide send <peer-ip> <peer-port> <file-paths...>
-
-# Send files using an out-of-band pairing invitation link:
+# Send files using an authenticated out-of-band pairing invitation:
 glide send --pair "glide://pair/v1#..." <file-paths...>
 
 # Launch zero-install web gateway for any browser on the local Wi-Fi:
 glide web [--port <port>] <file-paths...>
 
-# Run as background daemon:
-glide daemon [--port <port>]
+# Run as a peer-specific background receiver.
+# The fingerprint must already be enrolled by verified persistent-identity proof.
+glide daemon --accept-paired-offers \
+  --trusted-peer <64-lowercase-hex-fingerprint> \
+  --max-offer-bytes <bytes> \
+  --destination <absolute-path> \
+  [--port <port>]
 ```
 
 ---
@@ -192,27 +194,37 @@ On Linux desktops supporting the FreeDesktop Notification Specification (via `li
 
 ## 8. Service Management with systemd
 
-For home servers, NAS units, and background operation on workstations, Glide provides a standard systemd user service unit:
+For home servers, NAS units, and background operation on workstations, Glide provides a standard systemd user service unit. **Headless offer acceptance is never global.** It requires a previously enrolled persistent peer identity plus a peer-specific destination and byte ceiling. The live session must also carry that same authenticated fingerprint; until HARD-021 wires `identity-v1` proof into the session engine, offers remain fail-closed even when a policy exists.
+
+The unit intentionally requires `~/.config/glide/daemon.env`. If that file is absent, empty, or references an unenrolled fingerprint, the service does not become a permissive receiver.
+
+Example `daemon.env`:
+
+```bash
+GLIDE_TRUSTED_PEER=<64-lowercase-hex-enrolled-fingerprint>
+GLIDE_MAX_OFFER_BYTES=1073741824
+GLIDE_DESTINATION=/home/<user>/Downloads
+```
+
+Protect the file with `chmod 600 ~/.config/glide/daemon.env`.
+
 
 ### 8.1 User Unit File (`~/.config/systemd/user/glide.service`)
 ```ini
 [Unit]
 Description=Glide Local File Sharing Daemon
-Documentation=https://github.com/GDJ2001/Glide
-After=network.target
+After=network.target network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/glide daemon --port 42424
+EnvironmentFile=%h/.config/glide/daemon.env
+Environment=XDG_DATA_HOME=%h/.local/share
+Environment=XDG_CONFIG_HOME=%h/.config
+ExecStart=/usr/local/bin/glide daemon --accept-paired-offers --trusted-peer ${GLIDE_TRUSTED_PEER} --max-offer-bytes ${GLIDE_MAX_OFFER_BYTES} --destination ${GLIDE_DESTINATION}
 Restart=on-failure
 RestartSec=5s
-StandardOutput=journal
-StandardError=journal
-
-# Sandboxing
-ProtectSystem=strict
-ProtectHome=read-only
-ReadWritePaths=%h/Downloads %h/.local/share/glide
+KillMode=process
 
 [Install]
 WantedBy=default.target
