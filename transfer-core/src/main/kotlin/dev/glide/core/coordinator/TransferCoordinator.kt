@@ -1087,8 +1087,36 @@ class TransferCoordinator(
                 if (currentStagingHandle == staging) {
                     currentStagingHandle = null
                 }
-                historyStore?.updateItemOutcome(itemId, "Verified", itemState.transferredBytes, digest)
-                dispatch(ReducerEvent.LocalCommitSuccess(itemId, clock()))
+                historyStore?.updateItemOutcome(
+                    itemId,
+                    "Verified",
+                    itemState.transferredBytes,
+                    digest
+                )
+
+                if (isTrueResumeNegotiated() &&
+                    itemHasResumeMetadata(
+                        itemState.item
+                    )
+                ) {
+                    try {
+                        purgeResumeItemAuthority
+                            ?.invoke(
+                                sessionId,
+                                itemId
+                            )
+                    } catch (_: Exception) {
+                        // The verified public commit is authoritative. Any stale private resume
+                        // journal remains non-public and is bounded by the 24-hour maintenance TTL.
+                    }
+                }
+
+                dispatch(
+                    ReducerEvent.LocalCommitSuccess(
+                        itemId,
+                        clock()
+                    )
+                )
             } catch (e: Exception) {
                 dispatch(ReducerEvent.TransportFailure(TransferFailure.WriteFailure("Commit failed: ${e.message}"), clock()))
             }
