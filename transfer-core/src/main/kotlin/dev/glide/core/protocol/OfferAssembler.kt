@@ -102,7 +102,19 @@ class OfferAssembler(
 
             val nameBytes = itemDto.name.toByteArray(StandardCharsets.UTF_8).size
             val mimeBytes = itemDto.mime.toByteArray(StandardCharsets.UTF_8).size
-            val itemMetadataEstimate = 36 + nameBytes + mimeBytes + itemDto.sizeBytes.length + 32
+            val resumeMetadataBytes =
+                if (itemDto.rootHash != null) {
+                    96
+                } else {
+                    0
+                }
+            val itemMetadataEstimate =
+                36 +
+                    nameBytes +
+                    mimeBytes +
+                    itemDto.sizeBytes.length +
+                    resumeMetadataBytes +
+                    32
             accumulatedMetadataBytes += itemMetadataEstimate
             if (accumulatedMetadataBytes > ProtocolLimits.MAX_OFFER_METADATA_BYTES) {
                 throw ProtocolViolationException(
@@ -117,7 +129,11 @@ class OfferAssembler(
                 name = itemDto.name,
                 mimeType = itemDto.mime,
                 sizeBytes = sizeBytes,
-                relativePath = itemDto.relativePath
+                relativePath = itemDto.relativePath,
+                resumeChunkSize =
+                    itemDto.chunkSize,
+                resumeChunkRootHashHex =
+                    itemDto.rootHash
             )
             items.add(domainItem)
         }
