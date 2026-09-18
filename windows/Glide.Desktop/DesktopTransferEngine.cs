@@ -569,8 +569,9 @@ public sealed class DesktopTransferEngine
             cancellationToken);
 
         var offerBegin = await channel.ReadEnvelopeAsync(cancellationToken);
-        int itemCount =
-            offerBegin.Body["itemCount"]?.GetValue<int>() ?? 0;
+        // ProtocolCodec has already validated itemCount as an integer in 1..1000.
+        // Strict JSON parsing may materialize numeric values as Int64, so do not
+        // re-cast JsonValue directly to Int32 here.
         long totalBytes = long.Parse(
             offerBegin.Body["totalBytes"]?.ToString() ?? "0");
 
