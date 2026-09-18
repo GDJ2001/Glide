@@ -49,10 +49,16 @@ Adopt **Option 3: Shared Cross-Platform .NET 10 Engine (`Glide.Core`, `Glide.Tra
 ### 1. CLI & Daemon Architecture (`Glide.App`)
 The native Linux executable provides command-driven operation:
 - `glide receive [--port <port>]`: Starts the LAN Profile 1 listener on port 42424 (or dynamic), prints local network endpoints, displays the pairing invitation URI, and renders an ASCII QR code in the terminal.
-- `glide send <host> <port> <files...>`: Direct TLS 1.3 connection to a known peer.
 - `glide send --pair <pairing-uri> <files...>`: Instant QR-bootstrapped connection with SPKI hash pinning and SAS bypass.
 - `glide web [--port <port>] <files...>`: Launches the zero-install local web transfer gateway (ADR-0019) to share files with any browser.
-- `glide daemon [--port <port>]`: Runs as a persistent background listener suited for `systemd` user services.
+- `glide daemon --accept-paired-offers --trusted-peer <fingerprint> --max-offer-bytes <bytes> --destination <absolute-path> [--port <port>]`: Runs a persistent listener only under an explicit peer-specific authorization policy. The fingerprint must already be enrolled through verified persistent identity proof, and the live session must prove that same identity before an offer can be accepted headlessly.
+
+### Headless authorization hardening (HARD-020 revision)
+- A one-use QR/invitation proves possession of temporary pairing authority; it is not sufficient for unattended future file acceptance.
+- Headless auto-accept is disabled unless an enrolled peer has an explicit local policy binding fingerprint, destination root, and maximum offer bytes.
+- Display name, address, DNS-SD metadata, or invitation identity never satisfy the peer fingerprint check.
+- If the session has no cryptographically authenticated persistent fingerprint, the daemon rejects the offer. HARD-021 owns populating that fingerprint from the live channel-bound `identity-v1` exchange.
+- Linux persistent private identity material is stored under the XDG configuration directory with owner-only directory/file permissions (0700/0600); Windows uses a non-exportable current-user CNG key.
 
 ### 2. XDG Base Directory Compliance
 All filesystem operations strictly adhere to the FreeDesktop.org XDG Base Directory Specification:
