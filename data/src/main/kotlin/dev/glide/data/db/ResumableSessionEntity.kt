@@ -89,10 +89,10 @@ data class ResumableSessionEntity(
 @Dao
 interface ResumableSessionDao {
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertOrUpdate(
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIfAbsent(
         session: ResumableSessionEntity
-    )
+    ): Long
 
     @Query(
         """
