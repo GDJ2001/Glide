@@ -1,7 +1,9 @@
 using System.Diagnostics;
 using System.Net;
 using System.Reflection;
+using System.Security.Cryptography;
 using Glide.App;
+using Glide.Core.Codec;
 using Glide.Core.Models;
 using Glide.Core.Pairing;
 using Glide.Core.Storage;
@@ -304,10 +306,11 @@ public sealed class Hard016LinuxDaemonTests : IDisposable
 
         Assert.False(result.Success);
         Assert.Equal(0, interaction.ConfirmOfferCalls);
-        Assert.Contains(
-            WireErrorCodes.LimitExceeded,
-            result.Message,
-            StringComparison.OrdinalIgnoreCase);
+        Assert.True(
+            result.Message.Contains(
+                "configured receive policy",
+                StringComparison.OrdinalIgnoreCase),
+            result.Message);
     }
 
     [Fact]
