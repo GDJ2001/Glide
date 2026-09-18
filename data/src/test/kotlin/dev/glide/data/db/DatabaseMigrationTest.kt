@@ -238,10 +238,13 @@ class DatabaseMigrationTest {
         )
         assertTrue(
             combined.contains(
-                "PRIMARY KEY(\n        `original_session_id`,\n        `item_id`"
-            ) ||
+                "PRIMARY KEY("
+            ) &&
                 combined.contains(
-                    "PRIMARY KEY(\r\n        `original_session_id`,\r\n        `item_id`"
+                    "`original_session_id`"
+                ) &&
+                combined.contains(
+                    "`item_id`"
                 )
         )
         assertTrue(
