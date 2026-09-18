@@ -7,7 +7,7 @@ Plan: [`planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md`](planning/CODE_R
 Latest reconciliation: [`planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md`](planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md)  
 Review baseline: `ea2e811a7f2d8aaddc552e894fe04782cd08a499`  
 HARD-002 captured source boundary: `12681eabba26387fe7d1bbaf309971f345642e41`  
-**Next recommended task: HARD-007 (IN_PROGRESS).**
+**Next recommended task: HARD-008 (IN_PROGRESS).**
 
 Source/configuration commits after the HARD-002 captured boundary are not silently certified by HARD-002; the task that consumes them must inspect/reconcile them before relying on their claims.
 
@@ -28,14 +28,14 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 | Milestone | Tasks | Complete | Status |
 | --- | --- | ---: | --- |
 | M0 Honest baseline | HARD-001–004 | 4 / 4 | COMPLETE |
-| M1 Android production flow | HARD-005–010 | 2 / 6 | IN PROGRESS |
+| M1 Android production flow | HARD-005–010 | 3 / 6 | IN PROGRESS |
 | M2 Desktop/native interoperability | HARD-011–017 | 0 / 7 | NOT STARTED |
 | M3 Trust, folders and true resume | HARD-018–024 | 0 / 7 | NOT STARTED |
 | M4 Secure browser sharing | HARD-025–030 | 0 / 6 | NOT STARTED |
 | M5 Structure/developer experience | HARD-031–035 | 0 / 5 | NOT STARTED |
 | M6 Product quality/hardening | HARD-036–040 | 0 / 5 | NOT STARTED |
 | M7 Release/operations | HARD-041–043 | 0 / 3 | NOT STARTED |
-| **Total** | **HARD-001–043** | **6 / 43** | **14.0%** |
+| **Total** | **HARD-001–043** | **7 / 43** | **16.3%** |
 
 ## Finding → remediation map
 
@@ -65,8 +65,8 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 | HARD-004 | M0 | COMPLETE | Establish Android/Windows/Linux CI baseline |
 | HARD-005 | M1 | COMPLETE | Introduce service-owned Android TransferRuntime |
 | HARD-006 | M1 | COMPLETE | Wire production discovery and permissions |
-| HARD-007 | M1 | IN_PROGRESS | Wire complete Nearby send/receive lifecycle |
-| HARD-008 | M1 | NOT_STARTED | Wire real LAN listener and QR invitation lifecycle |
+| HARD-007 | M1 | COMPLETE | Wire complete Nearby send/receive lifecycle |
+| HARD-008 | M1 | IN_PROGRESS | Wire real LAN listener and QR invitation lifecycle |
 | HARD-009 | M1 | NOT_STARTED | Complete service/session/background lifecycle |
 | HARD-010 | M1 | NOT_STARTED | Prove two-device Android production journey |
 | HARD-011 | M2 | NOT_STARTED | Extract shared desktop transfer engine |
@@ -161,18 +161,18 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 <a id="hard-007"></a>
 ## HARD-007 — Wire complete Nearby send/receive lifecycle
 
-- **Milestone / status:** M1 / IN_PROGRESS.
+- **Milestone / status:** M1 / COMPLETE.
 - **Dependencies:** HARD-006.
-- **Acceptance:** Selected sources survive navigation; explicit Nearby authentication and receiver offer consent precede bytes; multi-file batches use the production runtime.
-- **Current focus:** bind discovered peer selection to the controller's real Nearby transport, route initiation/authentication through `TransferRuntime`, start sender/receiver coordinators only after authenticated connection, and preserve explicit receiver offer consent before any bulk bytes.
-- **Tests/evidence:** Reject, cancel, peer loss, multi-file, stale action and source revocation through production-flow tests/manual journey trace.
+- **Acceptance satisfied:** Selected sources survive navigation; explicit Nearby authentication and receiver offer consent precede bytes; multi-file batches use the production runtime.
+- **Evidence:** [HARD-007 Nearby lifecycle evidence](development/sessions/2026-09-18-hard-007.md). Authoritative green CI run **35293020239** at `3e79e7a80cae2c2383535952c8f2c8f6724e1908`.
 
 <a id="hard-008"></a>
 ## HARD-008 — Wire real LAN listener and QR invitation lifecycle
 
-- **Milestone / status:** M1 / NOT_STARTED.
+- **Milestone / status:** M1 / IN_PROGRESS.
 - **Dependencies:** HARD-005, HARD-006.
 - **Acceptance:** QR is produced from a live listener with actual endpoint/pin/fingerprint; invitation is atomically consumed; scan/paste enters the same production runtime.
+- **Current focus:** replace the fixed `192.168.1.50:4242` and example SPKI production values with a service-owned `LanNetworkScope` + `LanLeaseIdentity` + `LanListener`, bind the same `InvitationAuthority` to `LanTransferTransport`, and route sender scan/paste confirmation through the production runtime.
 - **Tests/evidence:** Reject fixed/example data, expiry/replay, bind failure and wrong pin; record live QR payload/listener/pairing traces.
 
 <a id="hard-009"></a>
