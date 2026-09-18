@@ -496,7 +496,7 @@ public sealed class DesktopTransferEngine
                 new DesktopHistoryEntry(
                     DesktopTransferDirection.Send,
                     entry.File.Name,
-                    entry.File.SizeBytes,
+                    entry.ExpectedSize,
                     entry.File.FilePath,
                     peerName,
                     DateTimeOffset.Now));
