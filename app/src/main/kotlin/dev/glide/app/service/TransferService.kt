@@ -53,6 +53,9 @@ class TransferService : Service() {
 
     private var notificationObserverJob: kotlinx.coroutines.Job? = null
 
+    private val startRequestLock = Any()
+    private var lastStartRequestKey: String? = null
+
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
@@ -63,6 +66,10 @@ class TransferService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action ?: ACTION_START
+        val startRequestKey = startRequestKey(action, intent)
+        if (startRequestKey != null && !claimStartRequest(startRequestKey)) {
+            return START_NOT_STICKY
+        }
 
         when (action) {
             ACTION_START -> {
@@ -150,8 +157,10 @@ class TransferService : Service() {
             }
 
             ACTION_STOP -> {
-                runtime().stopActiveSession()
-                handleTerminalTeardown()
+                val cancellationStarted = runtime().stopActiveSession()
+                if (!cancellationStarted) {
+                    handleTerminalTeardown()
+                }
             }
 
             ACTION_ACCEPT -> {
@@ -307,6 +316,9 @@ class TransferService : Service() {
     }
 
     private fun handleTerminalTeardown() {
+        synchronized(startRequestLock) {
+            lastStartRequestKey = null
+        }
         notificationObserverJob?.cancel()
         notificationObserverJob = null
         try {
@@ -324,12 +336,63 @@ class TransferService : Service() {
         super.onDestroy()
         notificationObserverJob?.cancel()
         notificationObserverJob = null
-        runtime().detachServiceScope()
-        serviceScope.cancel()
+        synchronized(startRequestLock) {
+            lastStartRequestKey = null
+        }
+        val cleanupJob = runtime().detachServiceScope()
+        if (cleanupJob == null) {
+            serviceScope.cancel()
+        } else {
+            cleanupJob.invokeOnCompletion {
+                serviceScope.cancel()
+            }
+        }
         transferNotificationManager.reset()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun startRequestKey(action: String, intent: Intent?): String? {
+        return when (action) {
+            ACTION_START -> "generic:${intent?.getStringExtra(EXTRA_SESSION_ID).orEmpty()}"
+            ACTION_START_NEARBY_SENDER -> {
+                val selection = intent?.getStringExtra(EXTRA_SELECTION_ID).orEmpty()
+                val peer = intent?.getStringExtra(EXTRA_PEER_ID).orEmpty()
+                "nearby-sender:$selection:$peer"
+            }
+            ACTION_START_NEARBY_RECEIVER -> {
+                "nearby-receiver:${intent?.getStringExtra(EXTRA_LOCAL_DEVICE_NAME).orEmpty()}"
+            }
+            ACTION_START_LAN_SENDER -> {
+                val selection = intent?.getStringExtra(EXTRA_SELECTION_ID).orEmpty()
+                val encoded = intent?.getStringExtra(EXTRA_LAN_INVITATION)
+                val invitationId = encoded?.let {
+                    runCatching { InvitationCodec.decode(it).invitationId }.getOrNull()
+                }.orEmpty()
+                "lan-sender:$selection:$invitationId"
+            }
+            ACTION_START_LAN_RECEIVER -> {
+                "lan-receiver:${intent?.getStringExtra(EXTRA_LOCAL_DEVICE_NAME).orEmpty()}"
+            }
+            else -> null
+        }
+    }
+
+    private fun claimStartRequest(key: String): Boolean {
+        synchronized(startRequestLock) {
+            if (lastStartRequestKey == key) return false
+            lastStartRequestKey = key
+            return true
+        }
+    }
+
+    internal fun claimStartRequestForTesting(key: String): Boolean = claimStartRequest(key)
+
+    internal fun resetStartRequestForTesting() {
+        synchronized(startRequestLock) {
+            lastStartRequestKey = null
+        }
+    }
 
     companion object {
         const val ACTION_START = "dev.glide.app.action.START_TRANSFER"
