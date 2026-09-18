@@ -199,7 +199,9 @@ class RoomMigrationTest {
         val schemaFiles =
             (1..5).map { version ->
                 File(
-                    "schemas/dev.glide.data.db.GlideDatabase/$" + "version.json"
+                    "schemas/dev.glide.data.db.GlideDatabase/" +
+                        version +
+                        ".json"
                 )
             }
 
@@ -207,7 +209,9 @@ class RoomMigrationTest {
             index,
             file ->
             assertTrue(
-                "Schema version $" + "{index + 1} file must exist",
+                "Schema version " +
+                    (index + 1) +
+                    " file must exist",
                 file.exists()
             )
         }
