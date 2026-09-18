@@ -31,15 +31,18 @@ public sealed class Hard014BoundedStorageTests : IDisposable
             digest.Value);
     }
 
-    [Fact]
-    public void StreamingSha256_AboveFiveGiB_UsesLongCounterWithoutAllocationScaling()
+    [Theory]
+    [InlineData(1L * 1024 * 1024 * 1024)]
+    [InlineData((5L * 1024 * 1024 * 1024) + (3L * 1024 * 1024))]
+    public void StreamingSha256_LargeLogicalPayload_UsesLongCounterWithoutAllocationScaling(
+        long logicalSize)
     {
-        const long logicalSize =
-            (5L * 1024 * 1024 * 1024) +
-            (3L * 1024 * 1024);
-
         byte[] block = new byte[1024 * 1024];
         using var hash = new StreamingSha256();
+
+        // Warm the append path before allocation accounting so JIT setup is not attributed to
+        // payload processing.
+        hash.Append(ReadOnlySpan<byte>.Empty);
 
         GC.Collect();
         GC.WaitForPendingFinalizers();
