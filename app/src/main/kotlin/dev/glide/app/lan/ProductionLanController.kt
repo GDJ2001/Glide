@@ -173,19 +173,31 @@ class ProductionLanController private constructor(
                         "No eligible local Wi-Fi/Ethernet network is available."
                     )
 
-                identity = identityFactory()
-                listenerScope = childScope(ownerScope)
-                transportScope = childScope(ownerScope)
+                val activeIdentity = identityFactory()
+                identity = activeIdentity
+                val activeListenerScope = childScope(ownerScope)
+                listenerScope = activeListenerScope
+                val activeTransportScope = childScope(ownerScope)
+                transportScope = activeTransportScope
 
-                listener = listenerFactory(identity, networkScope, listenerScope)
-                transport = transportFactory(networkScope, transportScope)
+                val activeListener = listenerFactory(
+                    activeIdentity,
+                    networkScope,
+                    activeListenerScope
+                )
+                listener = activeListener
+                val activeTransport = transportFactory(
+                    networkScope,
+                    activeTransportScope
+                )
+                transport = activeTransport
 
                 val authority = InvitationAuthority()
-                transport.attachServerListener(listener, authority)
+                activeTransport.attachServerListener(activeListener, authority)
 
                 val endpoints = endpointsFor(
                     addresses = available.localAddresses,
-                    port = listener.localPort
+                    port = activeListener.localPort
                 )
                 if (endpoints.isEmpty()) {
                     throw IllegalStateException(
@@ -195,22 +207,22 @@ class ProductionLanController private constructor(
 
                 val invitation = authority.mintInvitation(
                     endpoints = endpoints,
-                    spkiSha256 = identity.spkiSha256,
+                    spkiSha256 = activeIdentity.spkiSha256,
                     deviceName = deviceName.trim().ifEmpty { "Glide Device" },
                     platform = "android",
                     networkGeneration = available.generation
                 )
 
                 lateinit var connectionJob: Job
-                connectionJob = transportScope.launch {
-                    transport.observeConnectionEvents().collect { event ->
+                connectionJob = activeTransportScope.launch {
+                    activeTransport.observeConnectionEvents().collect { event ->
                         when (event) {
                             is ConnectionEvent.Connected -> {
                                 authority.revokeActiveInvitation()
-                                runCatching { listener.close() }
+                                runCatching { activeListener.close() }
                                 _receiverState.value =
                                     LanReceiverRuntimeState.Connected(event.peer)
-                                onConnected(transport, event.peer)
+                                onConnected(activeTransport, event.peer)
                             }
                             is ConnectionEvent.Failed -> {
                                 _receiverState.value =
@@ -231,12 +243,12 @@ class ProductionLanController private constructor(
                 synchronized(lock) {
                     receiverResources = ReceiverResources(
                         networkScope = networkScope,
-                        identity = identity,
-                        listener = listener,
+                        identity = activeIdentity,
+                        listener = activeListener,
                         authority = authority,
-                        transport = transport,
-                        listenerScope = listenerScope,
-                        transportScope = transportScope,
+                        transport = activeTransport,
+                        listenerScope = activeListenerScope,
+                        transportScope = activeTransportScope,
                         connectionJob = connectionJob
                     )
                 }
@@ -298,17 +310,19 @@ class ProductionLanController private constructor(
                     )
                 }
 
-                transportScope = childScope(ownerScope)
-                transport = transportFactory(networkScope, transportScope)
+                val activeTransportScope = childScope(ownerScope)
+                transportScope = activeTransportScope
+                val activeTransport = transportFactory(networkScope, activeTransportScope)
+                transport = activeTransport
                 val peerId = PeerId("lan-${invitation.invitationId}")
-                transport.registerPendingInvitation(peerId, invitation)
+                activeTransport.registerPendingInvitation(peerId, invitation)
 
                 lateinit var connectionJob: Job
-                connectionJob = transportScope.launch {
-                    transport.observeConnectionEvents().collect { event ->
+                connectionJob = activeTransportScope.launch {
+                    activeTransport.observeConnectionEvents().collect { event ->
                         when (event) {
                             is ConnectionEvent.Connected ->
-                                onConnected(transport, event.peer)
+                                onConnected(activeTransport, event.peer)
                             is ConnectionEvent.Failed ->
                                 onFailure(event.reason)
                             is ConnectionEvent.Rejected ->
@@ -322,13 +336,13 @@ class ProductionLanController private constructor(
                 synchronized(lock) {
                     senderResources = SenderResources(
                         networkScope = networkScope,
-                        transport = transport,
-                        transportScope = transportScope,
+                        transport = activeTransport,
+                        transportScope = activeTransportScope,
                         connectionJob = connectionJob
                     )
                 }
 
-                transport.initiateConnection(
+                activeTransport.initiateConnection(
                     peerId = peerId,
                     localDeviceName = localDeviceName.trim().ifEmpty { "Glide Device" }
                 )
