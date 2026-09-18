@@ -60,6 +60,7 @@ class TransferRuntimeTest {
         val connectionEvents = MutableSharedFlow<ConnectionEvent>(extraBufferCapacity = 8)
         val acceptedPeers = mutableListOf<PeerId>()
         val rejectedPeers = mutableListOf<PeerId>()
+        var disconnectCalls: Int = 0
 
         override suspend fun startDiscovery(serviceId: String): Flow<DiscoveryEvent> = emptyFlow()
         override suspend fun stopDiscovery() {}
@@ -85,7 +86,9 @@ class TransferRuntimeTest {
         ): Flow<BulkProgress> = emptyFlow()
         override fun observeIncomingStream(): Flow<IncomingStream> = emptyFlow()
         override suspend fun cancelPayload(bulkRef: BulkRef) {}
-        override suspend fun disconnect(peerId: PeerId) {}
+        override suspend fun disconnect(peerId: PeerId) {
+            disconnectCalls++
+        }
     }
 
     private class TestSourceAccess : SourceAccess {
@@ -273,7 +276,9 @@ class TransferRuntimeTest {
             assertTrue(runtime.attachCoordinatorForTesting(coordinator, "Sender"))
             testScheduler.runCurrent()
 
-            runtime.detachServiceScope()
+            val cleanupJob = runtime.detachServiceScope()
+            testScheduler.advanceUntilIdle()
+            cleanupJob?.join()
 
             val state = runtime.transferState.value
             assertTrue(state is TransferUiState.Failed)
@@ -284,6 +289,8 @@ class TransferRuntimeTest {
             assertNull(runtime.activeSessionId.value)
             assertNull(runtime.activeCoordinatorForTesting())
             assertFalse(runtime.isServiceAttached())
+            assertTrue(coordinator.state.value.phase.isTerminal)
+            assertTrue((coordinator.transport as TestTransport).disconnectCalls >= 1)
         }
 
     @Test
