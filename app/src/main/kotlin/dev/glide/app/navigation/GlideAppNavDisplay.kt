@@ -590,14 +590,30 @@ fun GlideAppNavDisplay(
                         )
                     }
                 }
-                val trustedPeerDao = androidx.compose.runtime.remember(customTrustedPeerDao, context) {
-                    customTrustedPeerDao ?: run {
+                val trustedPeerDao = androidx.compose.runtime.remember(
+                    customTrustedPeerDao,
+                    context,
+                    transferRuntime
+                ) {
+                    customTrustedPeerDao ?: if (transferRuntime == null) {
                         val db = dev.glide.app.di.DatabaseModule.provideGlideDatabase(context)
                         db.trustedPeerDao()
+                    } else {
+                        null
                     }
                 }
-                val factory = androidx.compose.runtime.remember(settingsStore, fileManager, trustedPeerDao) {
-                    dev.glide.app.ui.settings.SettingsViewModel.provideFactory(settingsStore, fileManager, trustedPeerDao)
+                val factory = androidx.compose.runtime.remember(
+                    settingsStore,
+                    fileManager,
+                    trustedPeerDao,
+                    transferRuntime
+                ) {
+                    dev.glide.app.ui.settings.SettingsViewModel.provideFactory(
+                        settingsStore = settingsStore,
+                        fileManager = fileManager,
+                        trustedPeerDao = trustedPeerDao,
+                        transferRuntime = transferRuntime
+                    )
                 }
                 val viewModel: dev.glide.app.ui.settings.SettingsViewModel = androidx.lifecycle.viewmodel.compose.viewModel(factory = factory)
                 androidx.compose.runtime.LaunchedEffect(initialSettingsState) {
