@@ -61,16 +61,18 @@ public static class Program
     private static void PrintUsage()
     {
         Console.WriteLine("\nUsage:");
-        Console.WriteLine("  glide receive [--port <port>]");
+        Console.WriteLine("  glide receive [--port <port>] [--trusted-peer <fingerprint>]");
         Console.WriteLine("      Start listening for incoming files from Glide Android or Desktop.");
         Console.WriteLine("      Defaults to port 42424 (or dynamic ephemeral port if unavailable).");
-        Console.WriteLine("      Outputs a pairing invitation link and UTF-8 QR code for instant pairing.\n");
+        Console.WriteLine("      Outputs a pairing invitation link and UTF-8 QR code for instant pairing.");
+        Console.WriteLine("      --trusted-peer requires that exact enrolled identity to prove itself before any offer.\n");
         Console.WriteLine("  glide daemon --accept-paired-offers --trusted-peer <fingerprint> [--port <port>] [--max-offer-bytes <bytes>] [--destination <path>]");
         Console.WriteLine("      Run a long-lived listener with one-use invitation bootstrap plus peer-specific trust policy.");
         Console.WriteLine("      Headless offer acceptance requires an already-enrolled persistent identity and a live authenticated peer fingerprint.");
-        Console.WriteLine("      Until identity-v1 live proof is wired by HARD-021, daemon offers fail closed.\n");
-        Console.WriteLine("  glide send --pair <pairing-invitation-uri> <file-paths...>");
-        Console.WriteLine("      Connect to a Glide peer with pinned TLS 1.3 and one-use invitation authentication.\n");
+        Console.WriteLine("      The configured peer must complete live identity-v1 proof before any daemon offer can be accepted.\n");
+        Console.WriteLine("  glide send --pair <pairing-invitation-uri> [--trusted-peer <fingerprint>] <file-paths...>");
+        Console.WriteLine("      Connect with pinned TLS 1.3 + one-use invitation authentication.");
+        Console.WriteLine("      --trusted-peer additionally requires the enrolled persistent identity and rejects downgrade.\n");
         Console.WriteLine("  glide identity show");
         Console.WriteLine("  glide identity rotate --yes");
         Console.WriteLine("      Inspect or explicitly rotate this device's persistent identity. Rotation revokes all remembered peers.\n");
@@ -292,6 +294,7 @@ public static class Program
     private static async Task<int> RunReceiveAsync(string[] args)
     {
         int port = LanDiscoveryConstants.DefaultPort;
+        string? trustedPeerFingerprint = null;
         for (int i = 0; i < args.Length; i++)
         {
             if (args[i] is "--port" or "-p" &&
@@ -299,8 +302,30 @@ public static class Program
                 int.TryParse(args[i + 1], out int parsedPort))
             {
                 port = parsedPort;
-                break;
+                i++;
             }
+            else if (args[i] == "--trusted-peer" &&
+                     i + 1 < args.Length)
+            {
+                trustedPeerFingerprint =
+                    args[++i];
+            }
+        }
+
+        var trustManager =
+            CreateDesktopTrustManager();
+        trustManager.Initialize();
+
+        if (trustedPeerFingerprint != null &&
+            trustManager.GetTrustedPeer(
+                trustedPeerFingerprint) == null)
+        {
+            Console.ForegroundColor =
+                ConsoleColor.Red;
+            Console.WriteLine(
+                "[ERROR] --trusted-peer is not an enrolled persistent identity.");
+            Console.ResetColor();
+            return 1;
         }
 
         TlsSocketListener listener;
@@ -379,9 +404,6 @@ public static class Program
                             invitationCts.Token);
                     var engine =
                         new DesktopTransferEngine();
-                    var trustManager =
-                        CreateDesktopTrustManager();
-                    trustManager.Initialize();
                     var interaction =
                         new ConsoleDesktopTransferInteraction(
                             isDaemon: false,
@@ -397,7 +419,9 @@ public static class Program
                                 LocalDeviceName:
                                     Environment.MachineName,
                                 TrustManager:
-                                    trustManager),
+                                    trustManager,
+                                ExpectedPeerFingerprintHex:
+                                    trustedPeerFingerprint),
                             interaction);
 
                     return result.Success ? 0 : 1;
@@ -662,8 +686,24 @@ public static class Program
         }
 
         string pairUri = args[1];
-        var fileArgs = args[2..];
-        if (fileArgs.Length == 0)
+        string? trustedPeerFingerprint = null;
+        var fileArgs = new List<string>();
+
+        for (int i = 2; i < args.Length; i++)
+        {
+            if (args[i] == "--trusted-peer" &&
+                i + 1 < args.Length)
+            {
+                trustedPeerFingerprint =
+                    args[++i];
+            }
+            else
+            {
+                fileArgs.Add(args[i]);
+            }
+        }
+
+        if (fileArgs.Count == 0)
         {
             Console.ForegroundColor = ConsoleColor.Red;
             Console.WriteLine("[ERROR] Please provide at least one file path to send.");
@@ -714,6 +754,19 @@ public static class Program
         var trustManager =
             CreateDesktopTrustManager();
         trustManager.Initialize();
+
+        if (trustedPeerFingerprint != null &&
+            trustManager.GetTrustedPeer(
+                trustedPeerFingerprint) == null)
+        {
+            Console.ForegroundColor =
+                ConsoleColor.Red;
+            Console.WriteLine(
+                "[ERROR] --trusted-peer is not an enrolled persistent identity.");
+            Console.ResetColor();
+            return 1;
+        }
+
         var interaction =
             new ConsoleDesktopTransferInteraction(
                 isDaemon: false,
@@ -725,7 +778,9 @@ public static class Program
                 files,
                 invitation,
                 Environment.MachineName,
-                TrustManager: trustManager),
+                TrustManager: trustManager,
+                ExpectedPeerFingerprintHex:
+                    trustedPeerFingerprint),
             interaction);
 
         return result.Success ? 0 : 1;
