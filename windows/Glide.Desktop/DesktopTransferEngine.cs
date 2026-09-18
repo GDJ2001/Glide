@@ -737,13 +737,18 @@ public sealed class DesktopTransferEngine
         }
 
         // Consent is requested only after every page/count/size/identifier invariant is valid.
-        bool offerAccepted = await interaction.ConfirmOfferAsync(
-            new DesktopOffer(
-                batchId,
-                peerName,
-                items,
-                expectedTotalBytes),
-            cancellationToken);
+        bool offerAccepted =
+            await DesktopSessionProtocol.WithDeadlineAsync(
+                ct => interaction.ConfirmOfferAsync(
+                    new DesktopOffer(
+                        batchId,
+                        peerName,
+                        items,
+                        expectedTotalBytes),
+                    ct),
+                _deadlines.OfferDecision,
+                "offer consent",
+                cancellationToken);
 
         var decisionBody = new JsonObject
         {
