@@ -10,6 +10,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.OutputStream
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
@@ -770,6 +771,190 @@ class ResumableStagingStore(
                         journal
                             .wholeFileSha256Hex
                 )
+        }
+
+    /**
+     * Reconstructs a complete receiver item into caller-owned private staging while verifying
+     * every retained chunk, the complete chunk root, and the sender's freshly revalidated whole
+     * file digest. The durable journal is intentionally not purged here; callers purge only after
+     * their normal ReceiveStore commit succeeds.
+     */
+    suspend fun copyVerifiedReceiverTo(
+        originalSessionId: String,
+        itemId: String,
+        expectedWholeFileSha256Hex: String,
+        output: OutputStream
+    ): VerifiedResumeCopy? =
+        withContext(ioDispatcher) {
+            if (!LOWER_HEX_64.matches(
+                    expectedWholeFileSha256Hex
+                )
+            ) {
+                return@withContext null
+            }
+
+            val journal =
+                resumableSessionDao.get(
+                    originalSessionId,
+                    itemId
+                ) ?: return@withContext null
+            if (journal.journalRole !=
+                ResumableSessionEntity
+                    .ROLE_RECEIVER
+            ) {
+                return@withContext null
+            }
+
+            val prefix =
+                try {
+                    decodeVerifiedPrefix(
+                        journal
+                            .verifiedChunkHashesHex
+                    )
+                } catch (
+                    _: IllegalArgumentException
+                ) {
+                    return@withContext null
+                }
+            val chunkCount =
+                totalChunkCount(
+                    journal.totalBytes,
+                    journal.chunkSize
+                )
+            if (journal.verifiedChunks !=
+                    chunkCount ||
+                journal.contiguousByteOffset !=
+                    journal.totalBytes ||
+                prefix.size.toLong() !=
+                    chunkCount
+            ) {
+                return@withContext null
+            }
+
+            val prefixRoot =
+                ContentDigestTree(
+                    prefix.map(
+                        ::hexToBytes
+                    )
+                ).rootHashHex
+            if (prefixRoot !=
+                journal.chunkRootHashHex
+            ) {
+                return@withContext null
+            }
+
+            val itemDir =
+                journal.stagingPath
+                    ?.let(::File)
+                    ?: return@withContext null
+            if (!itemDir.isDirectory ||
+                !isInsideStagingRoot(
+                    itemDir
+                )
+            ) {
+                return@withContext null
+            }
+
+            val wholeDigest =
+                MessageDigest.getInstance(
+                    "SHA-256"
+                )
+            var copied = 0L
+
+            for (index in prefix.indices) {
+                val chunk =
+                    chunkFile(
+                        itemDir,
+                        index.toLong()
+                    )
+                val expectedLength =
+                    expectedChunkLength(
+                        journal.totalBytes,
+                        journal.chunkSize,
+                        index.toLong()
+                    )
+                if (!chunk.isFile ||
+                    chunk.length() !=
+                        expectedLength.toLong()
+                ) {
+                    return@withContext null
+                }
+
+                val chunkDigest =
+                    MessageDigest.getInstance(
+                        "SHA-256"
+                    )
+                FileInputStream(
+                    chunk
+                ).use { input ->
+                    val buffer =
+                        ByteArray(
+                            COPY_BUFFER_BYTES
+                        )
+                    while (true) {
+                        val read =
+                            input.read(buffer)
+                        if (read < 0) {
+                            break
+                        }
+                        if (read == 0) {
+                            continue
+                        }
+                        chunkDigest.update(
+                            buffer,
+                            0,
+                            read
+                        )
+                        wholeDigest.update(
+                            buffer,
+                            0,
+                            read
+                        )
+                        output.write(
+                            buffer,
+                            0,
+                            read
+                        )
+                        copied +=
+                            read.toLong()
+                    }
+                }
+
+                if (toHex(
+                        chunkDigest.digest()
+                    ) !=
+                    prefix[index]
+                ) {
+                    return@withContext null
+                }
+            }
+
+            output.flush()
+
+            val completeSha =
+                toHex(
+                    wholeDigest.digest()
+                )
+            if (copied !=
+                    journal.totalBytes ||
+                completeSha !=
+                    expectedWholeFileSha256Hex
+            ) {
+                return@withContext null
+            }
+
+            VerifiedResumeCopy(
+                itemName =
+                    journal.itemName,
+                mimeType =
+                    journal.mimeType,
+                relativePath =
+                    journal.relativePath,
+                sizeBytes =
+                    journal.totalBytes,
+                sha256Hex =
+                    completeSha
+            )
         }
 
     /**
@@ -1727,3 +1912,12 @@ sealed interface ResumeSenderRevalidationResult {
     data object SourceChanged :
         ResumeSenderRevalidationResult
 }
+
+
+data class VerifiedResumeCopy(
+    val itemName: String,
+    val mimeType: String,
+    val relativePath: String?,
+    val sizeBytes: Long,
+    val sha256Hex: String
+)
