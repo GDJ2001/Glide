@@ -490,7 +490,7 @@ class ProductionLanController private constructor(
                 LanListener(
                     identity = identity,
                     networkScope = networkScope,
-                    bindAddress = InetAddress.getLoopbackAddress(),
+                    bindAddress = InetAddress.getByName("127.0.0.1"),
                     port = 0,
                     allowLoopbackForTesting = true,
                     coroutineScope = scope
