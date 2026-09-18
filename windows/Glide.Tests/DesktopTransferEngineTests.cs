@@ -290,13 +290,6 @@ public sealed class DesktopTransferEngineTests : IDisposable
         public List<(DesktopTransferDirection Direction, string Item, string Status)>
             ItemStatuses { get; } = [];
 
-        public override Task<bool> ConfirmSasAsync(
-            DesktopTransferDirection direction,
-            string peerName,
-            int sixDigitCode,
-            CancellationToken cancellationToken) =>
-            Task.FromResult(true);
-
         public override Task<bool> ConfirmOfferAsync(
             DesktopOffer offer,
             CancellationToken cancellationToken) =>
