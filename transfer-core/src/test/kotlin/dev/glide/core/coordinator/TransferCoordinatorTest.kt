@@ -1038,6 +1038,10 @@ class TransferCoordinatorTest {
             assertEquals(SessionPhase.DeliveryUnconfirmed, terminalState.phase)
             assertTrue(terminalState.failure is TransferFailure.DeliveryUnconfirmed)
 
+            // Terminal state publication precedes asynchronous history persistence.
+            // The cleanup barrier is the deterministic point at which terminal bookkeeping is complete.
+            senderCoordinator.awaitTerminalCleanup()
+
             // Both files on sender were verified
             assertEquals(2, terminalState.verifiedCount)
             val sItems = sHistory.getItemsForSession(sessionId)
