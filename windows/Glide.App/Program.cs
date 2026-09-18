@@ -2,6 +2,7 @@ using System.Net;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using Glide.Core.Pairing;
+using Glide.Core.Security;
 using Glide.Core.Storage;
 using Glide.Desktop;
 using Glide.Transport.Discovery;
@@ -31,6 +32,8 @@ public static class Program
                 "receive" => await RunReceiveAsync(args[1..]),
                 "daemon" => await RunDaemonAsync(args[1..]),
                 "send" => await RunSendAsync(args[1..]),
+                "identity" => await RunIdentityAsync(args[1..]),
+                "trust" => await RunTrustAsync(args[1..]),
                 "web" => await RunWebAsync(args[1..]),
                 _ => HandleUnknownCommand(command)
             };
@@ -62,17 +65,23 @@ public static class Program
         Console.WriteLine("      Start listening for incoming files from Glide Android or Desktop.");
         Console.WriteLine("      Defaults to port 42424 (or dynamic ephemeral port if unavailable).");
         Console.WriteLine("      Outputs a pairing invitation link and UTF-8 QR code for instant pairing.\n");
-        Console.WriteLine("  glide daemon --accept-paired-offers [--port <port>] [--max-offer-bytes <bytes>] [--destination <path>]");
-        Console.WriteLine("      Run a long-lived listener with one-use authenticated invitations.");
-        Console.WriteLine("      Headless receiving is disabled unless --accept-paired-offers is explicitly supplied.");
-        Console.WriteLine("      The optional byte ceiling and destination form the local authorization policy.\n");
+        Console.WriteLine("  glide daemon --accept-paired-offers --trusted-peer <fingerprint> [--port <port>] [--max-offer-bytes <bytes>] [--destination <path>]");
+        Console.WriteLine("      Run a long-lived listener with one-use invitation bootstrap plus peer-specific trust policy.");
+        Console.WriteLine("      Headless offer acceptance requires an already-enrolled persistent identity and a live authenticated peer fingerprint.");
+        Console.WriteLine("      Until identity-v1 live proof is wired by HARD-021, daemon offers fail closed.\n");
         Console.WriteLine("  glide send --pair <pairing-invitation-uri> <file-paths...>");
         Console.WriteLine("      Connect to a Glide peer with pinned TLS 1.3 and one-use invitation authentication.\n");
+        Console.WriteLine("  glide identity show");
+        Console.WriteLine("  glide identity rotate --yes");
+        Console.WriteLine("      Inspect or explicitly rotate this device's persistent identity. Rotation revokes all remembered peers.\n");
+        Console.WriteLine("  glide trust list");
+        Console.WriteLine("  glide trust revoke <fingerprint>");
+        Console.WriteLine("      Inspect or revoke enrolled peer identities. Enrollment itself requires verified identity proof.\n");
         Console.WriteLine("  glide web [--port <port>] <file-paths...>");
         Console.WriteLine("      Start zero-install web gateway to share files with any browser (iOS, Mac, Linux).\n");
         Console.WriteLine("Examples:");
         Console.WriteLine("  glide receive");
-        Console.WriteLine("  glide daemon --accept-paired-offers --max-offer-bytes 1073741824");
+        Console.WriteLine("  glide daemon --accept-paired-offers --trusted-peer <64-lowercase-hex> --max-offer-bytes 1073741824");
         Console.WriteLine("  glide send --pair glide://pair/v1#... \"C:\\Photos\\vacation.jpg\"");
         Console.WriteLine("  glide web \"C:\\Photos\\vacation.jpg\"\n");
     }
@@ -85,6 +94,123 @@ public static class Program
         PrintUsage();
         return 1;
     }
+
+    private static Task<int> RunIdentityAsync(
+        string[] args)
+    {
+        var manager =
+            CreateDesktopTrustManager();
+        DesktopTrustInitialization initialization =
+            manager.Initialize();
+
+        if (args.Length == 1 &&
+            string.Equals(
+                args[0],
+                "show",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            Console.WriteLine(
+                $"Persistent identity: {initialization.LocalFingerprintHex}");
+            if (initialization.ResetAfterIdentityLossOrChange)
+            {
+                Console.WriteLine(
+                    $"[SECURITY] Local identity changed or was restored without its key; {initialization.RevokedPeerCount} peer trust record(s) were revoked.");
+            }
+            return Task.FromResult(0);
+        }
+
+        if (args.Length == 2 &&
+            string.Equals(
+                args[0],
+                "rotate",
+                StringComparison.OrdinalIgnoreCase) &&
+            args[1] == "--yes")
+        {
+            DesktopTrustInitialization rotated =
+                manager.RotateLocalIdentity();
+            Console.WriteLine(
+                $"Persistent identity rotated: {rotated.LocalFingerprintHex}");
+            Console.WriteLine(
+                $"Revoked peer trust records: {rotated.RevokedPeerCount}");
+            return Task.FromResult(0);
+        }
+
+        Console.ForegroundColor = ConsoleColor.Red;
+        Console.WriteLine(
+            "[ERROR] Usage: glide identity show | glide identity rotate --yes");
+        Console.ResetColor();
+        return Task.FromResult(1);
+    }
+
+    private static Task<int> RunTrustAsync(
+        string[] args)
+    {
+        var manager =
+            CreateDesktopTrustManager();
+        manager.Initialize();
+
+        if (args.Length == 1 &&
+            string.Equals(
+                args[0],
+                "list",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            IReadOnlyList<DesktopTrustedPeer> peers =
+                manager.GetTrustedPeers();
+            if (peers.Count == 0)
+            {
+                Console.WriteLine(
+                    "No enrolled trusted peers.");
+                return Task.FromResult(0);
+            }
+
+            foreach (DesktopTrustedPeer peer in peers)
+            {
+                HeadlessReceivePolicy? policy =
+                    manager.GetHeadlessPolicy(
+                        peer.FingerprintHex);
+                Console.WriteLine(
+                    $"{peer.FingerprintHex}  {peer.DisplayName}  headless={(policy?.Enabled == true ? "enabled" : "disabled")}");
+            }
+            return Task.FromResult(0);
+        }
+
+        if (args.Length == 2 &&
+            string.Equals(
+                args[0],
+                "revoke",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            bool revoked =
+                manager.RevokePeer(
+                    args[1]);
+            if (!revoked)
+            {
+                Console.ForegroundColor =
+                    ConsoleColor.Yellow;
+                Console.WriteLine(
+                    "[WARN] No enrolled peer matched that fingerprint.");
+                Console.ResetColor();
+                return Task.FromResult(1);
+            }
+
+            Console.WriteLine(
+                "Peer trust and its headless policy were revoked.");
+            return Task.FromResult(0);
+        }
+
+        Console.ForegroundColor = ConsoleColor.Red;
+        Console.WriteLine(
+            "[ERROR] Usage: glide trust list | glide trust revoke <fingerprint>");
+        Console.ResetColor();
+        return Task.FromResult(1);
+    }
+
+    private static DesktopPersistentTrustManager
+        CreateDesktopTrustManager() =>
+        new(
+            new DesktopPersistentIdentityStore(),
+            new DesktopTrustStore());
 
     private static async Task<int> RunWebAsync(string[] args)
     {
@@ -285,6 +411,7 @@ public static class Program
         int port =
             LanDiscoveryConstants.DefaultPort;
         bool acceptPairedOffers = false;
+        string? trustedPeerFingerprint = null;
         long maxOfferBytes =
             1L * 1024 * 1024 * 1024;
         string? destination = null;
@@ -304,6 +431,13 @@ public static class Program
                      "--accept-paired-offers")
             {
                 acceptPairedOffers = true;
+            }
+            else if (args[i] ==
+                     "--trusted-peer" &&
+                     i + 1 < args.Length)
+            {
+                trustedPeerFingerprint =
+                    args[++i];
             }
             else if (args[i] ==
                      "--max-offer-bytes" &&
@@ -326,12 +460,14 @@ public static class Program
             }
         }
 
-        if (!acceptPairedOffers)
+        if (!acceptPairedOffers ||
+            string.IsNullOrWhiteSpace(
+                trustedPeerFingerprint))
         {
             Console.ForegroundColor =
                 ConsoleColor.Red;
             Console.WriteLine(
-                "[ERROR] Headless receiving is disabled by default. Re-run daemon with --accept-paired-offers and an appropriate --max-offer-bytes policy.");
+                "[ERROR] Headless receiving requires --accept-paired-offers plus --trusted-peer <enrolled-fingerprint>.");
             Console.ResetColor();
             return 1;
         }
@@ -360,20 +496,55 @@ public static class Program
                 new QuarantineStagingStore(
                     destinationRoot:
                         destination);
+            var trustManager =
+                CreateDesktopTrustManager();
+            DesktopTrustInitialization trustInitialization =
+                trustManager.Initialize();
+
+            DesktopTrustedPeer? trustedPeer =
+                trustManager.GetTrustedPeer(
+                    trustedPeerFingerprint);
+            if (trustedPeer == null)
+            {
+                Console.ForegroundColor =
+                    ConsoleColor.Red;
+                Console.WriteLine(
+                    "[ERROR] --trusted-peer is not an enrolled persistent identity. Enrollment requires verified identity proof; manual fingerprint trust is not supported.");
+                Console.ResetColor();
+                return 1;
+            }
+
+            HeadlessReceivePolicy headlessPolicy =
+                trustManager.SetHeadlessPolicy(
+                    trustedPeer.FingerprintHex,
+                    stagingStore.DestinationRoot,
+                    maxOfferBytes,
+                    enabled: true);
+
             var engine =
                 new DesktopTransferEngine();
             var interaction =
                 new ConsoleDesktopTransferInteraction(
                     isDaemon: true,
-                    allowHeadlessOffers: true,
-                    maxOfferBytes:
-                        maxOfferBytes);
+                    trustManager:
+                        trustManager,
+                    authorizedPeerFingerprintHex:
+                        headlessPolicy.PeerFingerprintHex,
+                    destinationRoot:
+                        headlessPolicy.DestinationRoot);
             var invitationAuthority = new LanInvitationAuthority();
 
             Console.ForegroundColor = ConsoleColor.Green;
             Console.WriteLine($"[{DateTime.UtcNow:O}] [DAEMON READY] Glide daemon listening on port {boundPort}");
             Console.WriteLine($"[{DateTime.UtcNow:O}] [DAEMON INFO] Staging: {stagingStore.StagingRoot}");
             Console.WriteLine($"[{DateTime.UtcNow:O}] [DAEMON INFO] Destination: {stagingStore.DestinationRoot}");
+            Console.WriteLine($"[{DateTime.UtcNow:O}] [DAEMON POLICY] Enrolled peer: {trustedPeer.FingerprintHex}");
+            Console.WriteLine($"[{DateTime.UtcNow:O}] [DAEMON POLICY] Maximum offer: {headlessPolicy.MaxOfferBytes} bytes");
+            if (trustInitialization.ResetAfterIdentityLossOrChange)
+            {
+                Console.WriteLine(
+                    $"[{DateTime.UtcNow:O}] [SECURITY] Local identity changed; {trustInitialization.RevokedPeerCount} trust record(s) were revoked.");
+            }
             Console.ResetColor();
 
             using var cts = new CancellationTokenSource();
@@ -545,9 +716,9 @@ public static class Program
 
     private sealed class ConsoleDesktopTransferInteraction(
         bool isDaemon,
-        bool allowHeadlessOffers = false,
-        long maxOfferBytes =
-            1L * 1024 * 1024 * 1024)
+        DesktopPersistentTrustManager? trustManager = null,
+        string? authorizedPeerFingerprintHex = null,
+        string? destinationRoot = null)
         : DesktopTransferInteractionBase
     {
         public override Task<bool> ConfirmOfferAsync(
@@ -566,14 +737,36 @@ public static class Program
 
             if (isDaemon)
             {
+                bool fingerprintMatches =
+                    !string.IsNullOrWhiteSpace(
+                        authorizedPeerFingerprintHex) &&
+                    string.Equals(
+                        offer.AuthenticatedPeerFingerprintHex,
+                        authorizedPeerFingerprintHex,
+                        StringComparison.Ordinal);
+
                 bool authorized =
-                    allowHeadlessOffers &&
-                    offer.TotalBytes <=
-                    maxOfferBytes;
-                Console.WriteLine(
-                    authorized
-                        ? $"{prefix}[AUTH] Offer accepted by explicit headless policy (limit {maxOfferBytes} bytes)."
-                        : $"{prefix}[AUTH] Offer rejected by headless policy.");
+                    fingerprintMatches &&
+                    trustManager != null &&
+                    destinationRoot != null &&
+                    trustManager.AuthorizeHeadlessOffer(
+                        offer.AuthenticatedPeerFingerprintHex,
+                        offer.TotalBytes,
+                        destinationRoot);
+
+                if (offer.AuthenticatedPeerFingerprintHex == null)
+                {
+                    Console.WriteLine(
+                        $"{prefix}[AUTH] Offer rejected: no live persistent identity proof is attached to this session. HARD-021 must authenticate the peer before headless acceptance can be enabled.");
+                }
+                else
+                {
+                    Console.WriteLine(
+                        authorized
+                            ? $"{prefix}[AUTH] Offer accepted by enrolled peer-specific headless policy."
+                            : $"{prefix}[AUTH] Offer rejected by peer-specific headless policy.");
+                }
+
                 return Task.FromResult(
                     authorized);
             }
