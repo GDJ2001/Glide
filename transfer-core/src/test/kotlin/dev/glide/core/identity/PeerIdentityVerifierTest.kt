@@ -40,38 +40,80 @@ class PeerIdentityVerifierTest {
     }
 
     @Test
-    fun signAndVerifyNonce_validSignature_returnsTrue() {
+    fun signAndVerifyTranscript_validSignature_returnsTrue() {
         val keyPair = generateEcKeyPair()
-        val nonce = PeerIdentityVerifier.generateNonce()
+        val transcript =
+            "GLIDE-SIGN-V1-bound-test-transcript"
+                .toByteArray(Charsets.UTF_8)
 
-        val signature = PeerIdentityVerifier.signNonce(keyPair.private, nonce)
+        val signature =
+            PeerIdentityVerifier.signTranscript(
+                keyPair.private,
+                transcript
+            )
         assertNotNull(signature)
         assertTrue(signature.isNotEmpty())
 
-        val isValid = PeerIdentityVerifier.verifyNonceSignature(keyPair.public.encoded, nonce, signature)
+        val isValid =
+            PeerIdentityVerifier.verifyTranscriptSignature(
+                keyPair.public.encoded,
+                transcript,
+                signature
+            )
         assertTrue("Signature should verify successfully", isValid)
     }
 
     @Test
-    fun verifyNonceSignature_tamperedNonce_returnsFalse() {
+    fun verifyTranscriptSignature_tamperedTranscript_returnsFalse() {
         val keyPair = generateEcKeyPair()
-        val nonce = PeerIdentityVerifier.generateNonce()
-        val signature = PeerIdentityVerifier.signNonce(keyPair.private, nonce)
+        val transcript =
+            "GLIDE-SIGN-V1-bound-test-transcript"
+                .toByteArray(Charsets.UTF_8)
+        val signature =
+            PeerIdentityVerifier.signTranscript(
+                keyPair.private,
+                transcript
+            )
 
-        val tamperedNonce = nonce.clone().apply { this[0] = (this[0] + 1).toByte() }
-        val isValid = PeerIdentityVerifier.verifyNonceSignature(keyPair.public.encoded, tamperedNonce, signature)
-        assertFalse("Tampered nonce must fail verification", isValid)
+        val tampered = transcript.clone().apply {
+            this[lastIndex] =
+                (this[lastIndex].toInt() xor 1).toByte()
+        }
+        val isValid =
+            PeerIdentityVerifier.verifyTranscriptSignature(
+                keyPair.public.encoded,
+                tampered,
+                signature
+            )
+        assertFalse(
+            "Tampered transcript must fail verification",
+            isValid
+        )
     }
 
     @Test
-    fun verifyNonceSignature_differentPublicKey_returnsFalse() {
+    fun verifyTranscriptSignature_differentPublicKey_returnsFalse() {
         val keyPair1 = generateEcKeyPair()
         val keyPair2 = generateEcKeyPair()
-        val nonce = PeerIdentityVerifier.generateNonce()
-        val signature = PeerIdentityVerifier.signNonce(keyPair1.private, nonce)
+        val transcript =
+            "GLIDE-SIGN-V1-bound-test-transcript"
+                .toByteArray(Charsets.UTF_8)
+        val signature =
+            PeerIdentityVerifier.signTranscript(
+                keyPair1.private,
+                transcript
+            )
 
-        val isValid = PeerIdentityVerifier.verifyNonceSignature(keyPair2.public.encoded, nonce, signature)
-        assertFalse("Different public key must fail verification", isValid)
+        val isValid =
+            PeerIdentityVerifier.verifyTranscriptSignature(
+                keyPair2.public.encoded,
+                transcript,
+                signature
+            )
+        assertFalse(
+            "Different public key must fail verification",
+            isValid
+        )
     }
 
     @Test
