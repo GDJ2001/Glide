@@ -1,5 +1,6 @@
 package dev.glide.app.lan
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
@@ -145,6 +146,7 @@ class ProductionLanController private constructor(
         MutableStateFlow<LanReceiverRuntimeState>(LanReceiverRuntimeState.Idle)
     val receiverState: StateFlow<LanReceiverRuntimeState> = _receiverState.asStateFlow()
 
+    @SuppressLint("NewApi")
     fun startReceiver(
         ownerScope: CoroutineScope,
         deviceName: String,
@@ -286,6 +288,7 @@ class ProductionLanController private constructor(
         return true
     }
 
+    @SuppressLint("NewApi")
     fun startSender(
         ownerScope: CoroutineScope,
         invitation: LanInvitation,
