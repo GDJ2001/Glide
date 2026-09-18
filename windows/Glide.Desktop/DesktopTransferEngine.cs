@@ -250,9 +250,13 @@ public sealed class DesktopTransferEngine
                 new JsonObject
                 {
                     ["supportedMajors"] = new JsonArray(1),
-                    ["requiredCapabilities"] = new JsonArray(),
+                    ["requiredCapabilities"] =
+                        new JsonArray(
+                            ProtocolCapabilities.StreamV1,
+                            ProtocolCapabilities.Sha256),
                     ["optionalCapabilities"] =
-                        new JsonArray("folder-v1"),
+                        new JsonArray(
+                            ProtocolCapabilities.FolderV1),
                     ["role"] = "sender",
                     ["ephemeralPeerId"] =
                         Guid.NewGuid()
@@ -268,6 +272,8 @@ public sealed class DesktopTransferEngine
                 MessageTypes.HelloAck,
                 sessionId,
                 cancellationToken);
+
+        ValidateHelloAckCapabilities(helloAck);
 
         string peerName =
             helloAck.Body["displayName"]?.ToString()
@@ -712,6 +718,9 @@ public sealed class DesktopTransferEngine
                     "Inbound transfer HELLO must use sender role.");
             }
 
+            HashSet<string> negotiatedCapabilities =
+                NegotiateHelloCapabilities(hello);
+
             string peerName =
                 hello.Body["displayName"]?.ToString()
                 ?? "Remote Peer";
@@ -734,8 +743,15 @@ public sealed class DesktopTransferEngine
                         ["selectedMajor"] = 1,
                         ["capabilities"] =
                             new JsonArray(
-                                "lan-v1",
-                                "folder-v1"),
+                                negotiatedCapabilities
+                                    .OrderBy(
+                                        static capability =>
+                                            capability,
+                                        StringComparer.Ordinal)
+                                    .Select(
+                                        static capability =>
+                                            JsonValue.Create(capability))
+                                    .ToArray()),
                         ["ephemeralPeerId"] =
                             Guid.NewGuid()
                                 .ToString("D")
@@ -1293,6 +1309,132 @@ public sealed class DesktopTransferEngine
                 sessionId);
             throw;
         }
+    }
+
+    private static HashSet<string> NegotiateHelloCapabilities(
+        Envelope hello)
+    {
+        HashSet<string> required =
+            ReadCapabilitySet(
+                hello.Body["requiredCapabilities"],
+                "HELLO requiredCapabilities");
+        if (!required.Contains(
+                ProtocolCapabilities.StreamV1) ||
+            !required.Contains(
+                ProtocolCapabilities.Sha256))
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.UnsupportedProtocol,
+                "HELLO must require stream-v1 and sha256.");
+        }
+
+        HashSet<string> optional =
+            ReadCapabilitySet(
+                hello.Body["optionalCapabilities"],
+                "HELLO optionalCapabilities");
+
+        ProtocolCapabilities.ValidateDependencies(
+            optional);
+
+        var negotiated =
+            new HashSet<string>(
+                ProtocolCapabilities.Required,
+                StringComparer.Ordinal);
+
+        foreach (string capability in optional)
+        {
+            if (ProtocolCapabilities.ProductionOptional.Contains(
+                    capability))
+            {
+                negotiated.Add(capability);
+            }
+        }
+
+        ProtocolCapabilities.ValidateDependencies(
+            negotiated);
+        return negotiated;
+    }
+
+    private static void ValidateHelloAckCapabilities(
+        Envelope helloAck)
+    {
+        if (helloAck.Body["selectedMajor"]?.GetValue<int>() != 1)
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.UnsupportedProtocol,
+                "HELLO_ACK selectedMajor must be 1.");
+        }
+
+        HashSet<string> capabilities =
+            ReadCapabilitySet(
+                helloAck.Body["capabilities"],
+                "HELLO_ACK capabilities");
+
+        if (!capabilities.Contains(
+                ProtocolCapabilities.StreamV1) ||
+            !capabilities.Contains(
+                ProtocolCapabilities.Sha256))
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.UnsupportedProtocol,
+                "HELLO_ACK must include stream-v1 and sha256.");
+        }
+
+        var allowed =
+            new HashSet<string>(
+                ProtocolCapabilities.Required,
+                StringComparer.Ordinal);
+        allowed.UnionWith(
+            ProtocolCapabilities.ProductionOptional);
+
+        if (capabilities.Except(
+                allowed,
+                StringComparer.Ordinal).Any())
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.UnsupportedProtocol,
+                "HELLO_ACK selected an unsupported or unoffered capability.");
+        }
+
+        ProtocolCapabilities.ValidateDependencies(
+            capabilities);
+    }
+
+    private static HashSet<string> ReadCapabilitySet(
+        JsonNode? node,
+        string fieldName)
+    {
+        if (node is not JsonArray array)
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.MalformedMessage,
+                $"{fieldName} must be an array.");
+        }
+
+        var result =
+            new HashSet<string>(
+                StringComparer.Ordinal);
+
+        foreach (JsonNode? item in array)
+        {
+            if (item is not JsonValue value ||
+                value.GetValue<object>() is not string capability ||
+                string.IsNullOrWhiteSpace(capability))
+            {
+                throw new ProtocolViolationException(
+                    WireErrorCodes.MalformedMessage,
+                    $"{fieldName} must contain only non-empty strings.");
+            }
+
+            if (!result.Add(capability))
+            {
+                throw new ProtocolViolationException(
+                    WireErrorCodes.MalformedMessage,
+                    $"{fieldName} contains duplicate capability '{capability}'.");
+            }
+        }
+
+        return result;
     }
 
     private static List<JsonArray> BuildOfferPages(
