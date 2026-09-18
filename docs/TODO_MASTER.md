@@ -7,7 +7,7 @@ Plan: [`planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md`](planning/CODE_R
 Latest reconciliation: [`planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md`](planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md)  
 Review baseline: `ea2e811a7f2d8aaddc552e894fe04782cd08a499`  
 HARD-002 captured source boundary: `12681eabba26387fe7d1bbaf309971f345642e41`  
-**Next recommended task: restore current-head CI execution, then verify HARD-008 and HARD-009. HARD-010 remains blocked until both are COMPLETE.**
+**Next recommended task: HARD-011 (IN_PROGRESS) while M1 physical/CI blockers remain open. Restore current-head CI to verify HARD-008/HARD-009, then execute HARD-010 on two physical devices.**
 
 Source/configuration commits after the HARD-002 captured boundary are not silently certified by HARD-002; the task that consumes them must inspect/reconcile them before relying on their claims.
 
@@ -68,8 +68,8 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 | HARD-007 | M1 | COMPLETE | Wire complete Nearby send/receive lifecycle |
 | HARD-008 | M1 | REVIEW_REQUIRED | Wire real LAN listener and QR invitation lifecycle |
 | HARD-009 | M1 | REVIEW_REQUIRED | Complete service/session/background lifecycle |
-| HARD-010 | M1 | NOT_STARTED | Prove two-device Android production journey |
-| HARD-011 | M2 | NOT_STARTED | Extract shared desktop transfer engine |
+| HARD-010 | M1 | BLOCKED | Prove two-device Android production journey |
+| HARD-011 | M2 | IN_PROGRESS | Extract shared desktop transfer engine |
 | HARD-012 | M2 | NOT_STARTED | Align native LAN discovery/TLS/bootstrap profile |
 | HARD-013 | M2 | NOT_STARTED | Implement strict desktop session/protocol state machine |
 | HARD-014 | M2 | NOT_STARTED | Make desktop hashing/storage bounded and shared |
@@ -189,16 +189,19 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 <a id="hard-010"></a>
 ## HARD-010 — Prove two-device Android production journey
 
-- **Milestone / status:** M1 / NOT_STARTED.
+- **Milestone / status:** M1 / BLOCKED.
 - **Dependencies:** HARD-007, HARD-008, HARD-009.
-- **Acceptance:** Two physical Android devices complete selection → pairing/authentication → offer consent → transfer → SHA-256 verification → open/history in both directions; reject/cancel use the same production path.
-- **Tests/evidence:** At least 10 MB and 1 GB payloads repeated both directions plus reject/cancel; record device/API/build identities, hashes, logs/screens and exact path trace.
+- **Blockers:** HARD-008/HARD-009 still require current-head CI verification, and this execution environment has no two attached physical Android devices. Emulator/loopback evidence cannot substitute for this gate.
+- **Preparation complete:** `tools/hard-010-physical-journey.ps1` and [HARD-010 two-device Android runbook](testing/HARD_010_TWO_DEVICE_ANDROID_RUNBOOK.md) define an auditable 12-run Nearby/LAN matrix with exact candidate/device identity, SHA-256, staging, logcat and screenshot capture.
+- **Evidence record:** [HARD-010 physical gate preparation](development/sessions/2026-09-18-hard-010-preparation.md).
+- **Acceptance remains:** Two physical Android devices complete selection → pairing/authentication → offer consent → transfer → SHA-256 verification → open/history in both directions; reject/cancel use the same production path. No physical pass has been claimed.
 
 <a id="hard-011"></a>
 ## HARD-011 — Extract shared desktop transfer engine
 
-- **Milestone / status:** M2 / NOT_STARTED.
+- **Milestone / status:** M2 / IN_PROGRESS.
 - **Dependencies:** HARD-004.
+- **Current focus:** inventory the CLI and WPF pairing/consent/protocol/streaming loops, extract one shared desktop application/session engine, and make both entrypoints delegate to it without changing protocol semantics.
 - **Acceptance:** WPF and CLI share one pairing/consent/sequencing/streaming/completion/cancellation engine; no duplicated protocol loop remains in UI/entrypoint code.
 - **Tests/evidence:** CLI/WPF parity through the same engine fixtures/fakes and a dependency/responsibility map.
 
