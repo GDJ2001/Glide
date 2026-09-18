@@ -4,10 +4,12 @@ import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import dev.glide.core.domain.BatchId
 import dev.glide.core.domain.ItemId
 import dev.glide.core.domain.ProtocolLimits
 import dev.glide.core.domain.SourceHandle
 import dev.glide.core.domain.TransferBatch
+import dev.glide.core.domain.TransferItem
 import dev.glide.core.ports.SourceAccess
 import dev.glide.core.ports.SourceAccessException
 import dev.glide.data.source.AndroidContentResolverWrapper
@@ -287,6 +289,29 @@ class SelectionViewModel(
         } else {
             SelectionUiState.BatchReady(items = remaining)
         }
+    }
+
+    /**
+     * Converts the retained legacy single-file Ready state into the same canonical PreparedBatch
+     * used by multi-file selection before navigation reaches discovery.
+     */
+    fun prepareReadyFileForTransfer(): Pair<TransferBatch, Map<ItemId, SourceHandle>>? {
+        val ready = _uiState.value as? SelectionUiState.Ready ?: return null
+        val itemId = ItemId(UUID.randomUUID().toString())
+        val batch = TransferBatch(
+            id = BatchId(UUID.randomUUID().toString()),
+            items = listOf(
+                TransferItem(
+                    id = itemId,
+                    name = ready.displayName,
+                    mimeType = ready.mimeType,
+                    sizeBytes = ready.sizeBytes
+                )
+            )
+        )
+        val sourceMap = mapOf(itemId to ready.handle)
+        SelectedTransferStore.store(batch, sourceMap)
+        return batch to sourceMap
     }
 
     /**
