@@ -13,6 +13,11 @@ import dev.glide.data.db.ItemDao
 import dev.glide.data.db.ReceivedFileDao
 import dev.glide.data.db.SessionDao
 import dev.glide.data.store.RoomHistoryStore
+import dev.glide.core.identity.PersistentIdentityStore
+import dev.glide.core.identity.PersistentTrustManager
+import dev.glide.core.identity.TrustedPeerStore
+import dev.glide.data.identity.AndroidDeviceIdentityKeyStore
+import dev.glide.data.identity.RoomTrustedPeerStore
 import javax.inject.Singleton
 
 /**
@@ -48,7 +53,41 @@ object DatabaseModule {
     fun provideReceivedFileDao(db: GlideDatabase): ReceivedFileDao = db.receivedFileDao()
 
     @Provides
-    fun provideTrustedPeerDao(db: GlideDatabase): dev.glide.data.db.TrustedPeerDao = db.trustedPeerDao()
+    fun provideTrustedPeerDao(
+        db: GlideDatabase
+    ): dev.glide.data.db.TrustedPeerDao =
+        db.trustedPeerDao()
+
+    @Provides
+    @Singleton
+    fun providePersistentIdentityStore():
+        PersistentIdentityStore =
+        AndroidDeviceIdentityKeyStore()
+
+    @Provides
+    @Singleton
+    fun provideTrustedPeerStore(
+        trustedPeerDao:
+            dev.glide.data.db.TrustedPeerDao
+    ): TrustedPeerStore =
+        RoomTrustedPeerStore(
+            trustedPeerDao
+        )
+
+    @Provides
+    @Singleton
+    fun providePersistentTrustManager(
+        identityStore:
+            PersistentIdentityStore,
+        trustedPeerStore:
+            TrustedPeerStore
+    ): PersistentTrustManager =
+        PersistentTrustManager(
+            identityStore =
+                identityStore,
+            trustedPeerStore =
+                trustedPeerStore
+        )
 
     @Provides
     fun provideResumableSessionDao(db: GlideDatabase): dev.glide.data.db.ResumableSessionDao = db.resumableSessionDao()
