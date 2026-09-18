@@ -140,6 +140,8 @@ abstract class GlideDatabase : RoomDatabase() {
                             `item_id` TEXT NOT NULL,
                             `journal_role` TEXT NOT NULL,
                             `item_name` TEXT NOT NULL,
+                            `mime_type` TEXT NOT NULL,
+                            `relative_path` TEXT,
                             `peer_fingerprint` TEXT NOT NULL,
                             `source_handle` TEXT,
                             `source_identity` TEXT,
