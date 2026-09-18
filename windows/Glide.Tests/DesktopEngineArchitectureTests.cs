@@ -57,6 +57,28 @@ public sealed class DesktopEngineArchitectureTests
     }
 
     [Fact]
+    public void CliAndWpf_SurfaceSharedTerminalOutcomeMessage()
+    {
+        string root = ResolveRepositoryRoot();
+        string cli = File.ReadAllText(
+            Path.Combine(
+                root,
+                "windows",
+                "Glide.App",
+                "Program.cs"));
+        string wpf = File.ReadAllText(
+            Path.Combine(
+                root,
+                "windows",
+                "Glide.Windows.UI",
+                "ViewModels",
+                "MainViewModel.cs"));
+
+        Assert.Contains("[RESULT] {result.Message}", cli);
+        Assert.Contains("StatusMessage = result.Message", wpf);
+    }
+
+    [Fact]
     public void SolutionAndEntrypoints_ReferenceSharedDesktopProject()
     {
         string root = ResolveRepositoryRoot();
