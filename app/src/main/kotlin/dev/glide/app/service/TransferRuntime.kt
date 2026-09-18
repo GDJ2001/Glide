@@ -61,6 +61,7 @@ class TransferRuntime private constructor(
 
     private var serviceScope: CoroutineScope? = null
     private var terminalCallback: (() -> Unit)? = null
+    private var terminalCallbackSessionId: String? = null
 
     private var activeCoordinator: TransferCoordinator? = null
     private var activeCoordinatorJob: Job? = null
@@ -135,6 +136,7 @@ class TransferRuntime private constructor(
 
             serviceScope = scope
             terminalCallback = onTerminal
+            terminalCallbackSessionId = null
         }
     }
 
@@ -188,6 +190,7 @@ class TransferRuntime private constructor(
             _activeSessionId.value = null
             serviceScope = null
             terminalCallback = null
+            terminalCallbackSessionId = null
             rateTracker.reset()
         }
 
@@ -500,6 +503,7 @@ class TransferRuntime private constructor(
 
             activeCoordinator = coordinator
             activePeerDisplayName = peerDisplayName
+            terminalCallbackSessionId = null
             lastTerminalState = null
             lastSenderBatch = null
             lastSourceMap = emptyMap()
@@ -568,7 +572,7 @@ class TransferRuntime private constructor(
                         if (!stillOwned) return@collect
                         captureTerminalSnapshot(coordinator)
                         coordinator.stop()
-                        terminalCallback?.invoke()
+                        notifyTerminalCleanupComplete(coordinator)
                     }
                 }
             }
@@ -695,9 +699,11 @@ class TransferRuntime private constructor(
 
     private fun cancel(sessionId: String, reason: String): Boolean {
         val coordinator: TransferCoordinator?
+        val ownerScope: CoroutineScope?
         synchronized(lock) {
             if (_activeSessionId.value != sessionId) return false
             coordinator = activeCoordinator
+            ownerScope = serviceScope
             if (coordinator == null) {
                 val current = _transferState.value
                 _transferState.value = TransferUiState.Cancelled(
@@ -711,7 +717,16 @@ class TransferRuntime private constructor(
                 return true
             }
         }
-        coordinator?.cancel(reason)
+
+        if (ownerScope == null) {
+            coordinator?.cancel(reason)
+            return true
+        }
+
+        ownerScope.launch {
+            coordinator?.cancelAndAwaitCleanup(reason)
+            coordinator?.let(::notifyTerminalCleanupComplete)
+        }
         return true
     }
 
@@ -815,7 +830,12 @@ class TransferRuntime private constructor(
     }
 
     fun stopActiveSession(reason: String = "USER_STOPPED"): Boolean {
-        val coordinator = synchronized(lock) { activeCoordinator } ?: return false
+        val coordinator: TransferCoordinator
+        val ownerScope: CoroutineScope?
+        synchronized(lock) {
+            coordinator = activeCoordinator ?: return false
+            ownerScope = serviceScope
+        }
 
         if (coordinator.state.value.phase.isTerminal) {
             synchronized(lock) {
@@ -830,10 +850,19 @@ class TransferRuntime private constructor(
                 }
             }
             coordinator.stop()
+            notifyTerminalCleanupComplete(coordinator)
             return false
         }
 
-        coordinator.cancel(reason)
+        if (ownerScope == null) {
+            coordinator.cancel(reason)
+            return true
+        }
+
+        ownerScope.launch {
+            coordinator.cancelAndAwaitCleanup(reason)
+            notifyTerminalCleanupComplete(coordinator)
+        }
         return true
     }
 
@@ -887,6 +916,7 @@ class TransferRuntime private constructor(
         pairingJob = null
         pairingSuccessCallback = null
         terminalCallback = null
+        terminalCallbackSessionId = null
         serviceScope = null
         activePeerDisplayName = "Nearby device"
         lastTerminalState = null
@@ -913,6 +943,20 @@ class TransferRuntime private constructor(
         lastTerminalState = coordinator.state.value
         lastSenderBatch = coordinator.senderBatch
         lastSourceMap = coordinator.sourceMap.toMap()
+    }
+
+    private fun notifyTerminalCleanupComplete(coordinator: TransferCoordinator) {
+        val callback = synchronized(lock) {
+            if (activeCoordinator !== coordinator || !coordinator.state.value.phase.isTerminal) {
+                return
+            }
+            if (terminalCallbackSessionId == coordinator.sessionId.value) {
+                return
+            }
+            terminalCallbackSessionId = coordinator.sessionId.value
+            terminalCallback
+        }
+        callback?.invoke()
     }
 
     companion object {
