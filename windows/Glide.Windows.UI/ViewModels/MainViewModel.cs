@@ -58,6 +58,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     private string _pairInputUri = "";
     private string _activeInvitationUri = "";
     private LanInvitation? _activeInvitation;
+    private LanInvitationAuthority? _activeInvitationAuthority;
     private LanInvitation? _pairedInvitation;
 
     private GlideWebGateway? _webGateway;
@@ -403,6 +404,8 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         {
             _mdnsService.StopAdvertising();
             ActiveInvitationUri = "";
+            _activeInvitationAuthority?.Revoke();
+            _activeInvitationAuthority = null;
             _activeInvitation = null;
             _listener?.Dispose();
             _listener = null;
@@ -454,8 +457,9 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                 expiresAt: expiresAt.ToString(),
                 ttlSeconds: 120);
 
-            _activeInvitation = invitation;
             ActiveInvitationUri = InvitationCodec.Encode(invitation);
+            _activeInvitation = InvitationCodec.Decode(ActiveInvitationUri);
+            _activeInvitationAuthority = new LanInvitationAuthority(_activeInvitation);
 
             _mdnsService.StartAdvertising(
                 deviceName: Environment.MachineName,
@@ -509,8 +513,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                     conn,
                     new DesktopReceiveRequest(
                         new QuarantineStagingStore(),
-                        _activeInvitation,
-                        AllowBootstrapWithoutInvitation: false,
+                        _activeInvitationAuthority,
                         LocalDeviceName: Environment.MachineName),
                     this,
                     cancellationToken);
@@ -653,6 +656,7 @@ private async Task ExecuteSendFilesAsync()
             }
             else
             {
+                _activeInvitationAuthority = null;
                 _activeInvitation = null;
                 ActiveInvitationUri = "";
             }
