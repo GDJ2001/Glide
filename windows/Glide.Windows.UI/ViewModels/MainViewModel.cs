@@ -386,6 +386,48 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         set => SetProperty(ref _currentFileName, value);
     }
 
+    public bool IsIncomingOfferModalVisible
+    {
+        get => _isIncomingOfferModalVisible;
+        set
+        {
+            if (SetProperty(ref _isIncomingOfferModalVisible, value))
+            {
+                CommandManager.InvalidateRequerySuggested();
+            }
+        }
+    }
+
+    public string IncomingOfferPeerName
+    {
+        get => _incomingOfferPeerName;
+        set => SetProperty(ref _incomingOfferPeerName, value);
+    }
+
+    public string IncomingOfferSummary
+    {
+        get => _incomingOfferSummary;
+        set => SetProperty(ref _incomingOfferSummary, value);
+    }
+
+    public string DeviceName
+    {
+        get => _deviceName;
+        set => SetProperty(ref _deviceName, value);
+    }
+
+    public string ReceiveDirectory
+    {
+        get => _receiveDirectory;
+        set => SetProperty(ref _receiveDirectory, value);
+    }
+
+    public int HistoryLimit
+    {
+        get => _historyLimit;
+        set => SetProperty(ref _historyLimit, value);
+    }
+
     public void AddDroppedFiles(string[] filePaths)
     {
         foreach (var path in filePaths)
