@@ -1,5 +1,5 @@
-using System.Diagnostics;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json.Nodes;
 using Glide.Core.Codec;
 using Glide.Core.Models;
@@ -14,12 +14,23 @@ namespace Glide.Desktop;
 /// <summary>
 /// Shared desktop application/session engine for CLI and WPF.
 ///
-/// HARD-011 centralized the desktop session semantics. HARD-012 removes the unauthenticated
-/// direct/SAS path and requires the canonical pinned-TLS + one-use invitation bootstrap.
-/// HARD-013/HARD-014 still own sequencing/pagination and bounded hashing respectively.
+/// LAN profile 1 is invitation-authenticated and server-pinned. Control envelopes use independent
+/// strictly monotonic sequences per direction. Offers are paged at the cross-platform 32-item
+/// ceiling, all identifiers are correlated exactly, control/data reads have deadlines, and file
+/// hashing is performed incrementally while bytes are streamed.
 /// </summary>
 public sealed class DesktopTransferEngine
 {
+    private const int MaxOfferPageItems = 32;
+    private const int SafeOfferPagePayloadBytes = 14_000;
+    private const int StreamBufferBytes = 65_520;
+
+    private sealed record PreparedSendItem(
+        ItemId ItemId,
+        DesktopTransferFile File,
+        long DeclaredSize,
+        DateTime LastWriteTimeUtc);
+
     public async Task<DesktopTransferResult> SendAsync(
         DesktopSendRequest request,
         IDesktopTransferInteraction interaction,
@@ -39,29 +50,66 @@ public sealed class DesktopTransferEngine
                 "Authenticated pairing invitation required. Scan or paste a current Glide pairing invitation before sending.");
         }
 
+        if (request.Invitation.InvitationHash.Length != 64)
+        {
+            return DesktopTransferResult.Failed(
+                "Pairing invitation is not canonical. Scan or paste the encoded pairing invitation again.");
+        }
+
         if (request.Files.Count == 0)
         {
             return DesktopTransferResult.Failed("No files were selected for transfer.");
         }
 
-        foreach (var file in request.Files)
+        if (request.Files.Count > 1_000)
+        {
+            return DesktopTransferResult.Failed(
+                "A transfer batch cannot contain more than 1,000 items.");
+        }
+
+        long totalBytes = 0;
+        foreach (DesktopTransferFile file in request.Files)
         {
             if (!File.Exists(file.FilePath))
             {
-                return DesktopTransferResult.Failed($"File not found: '{file.FilePath}'.");
+                return DesktopTransferResult.Failed(
+                    $"File not found: '{file.FilePath}'.");
+            }
+
+            long size = file.SizeBytes;
+            if (size < 0 || size > ProtocolCatalog.MaxItemBytes)
+            {
+                return DesktopTransferResult.Failed(
+                    $"File '{file.Name}' exceeds the protocol item-size limit.");
+            }
+
+            try
+            {
+                totalBytes = checked(totalBytes + size);
+            }
+            catch (OverflowException)
+            {
+                return DesktopTransferResult.Failed(
+                    "Selected files exceed the protocol batch-size limit.");
+            }
+
+            if (totalBytes > ProtocolCatalog.MaxBatchBytes)
+            {
+                return DesktopTransferResult.Failed(
+                    "Selected files exceed the protocol batch-size limit.");
             }
         }
 
         try
         {
-            var invitation = request.Invitation;
+            LanInvitation invitation = request.Invitation;
             if (invitation.IsExpired())
             {
                 return DesktopTransferResult.Failed(
                     "Pairing invitation has expired. Request a new pairing code.");
             }
 
-            var endpoint = invitation.Endpoints.First();
+            LanEndpoint endpoint = invitation.Endpoints.First();
             string host = endpoint.Address;
             int port = endpoint.Port;
 
@@ -70,27 +118,36 @@ public sealed class DesktopTransferEngine
                 $"Connecting to {host}:{port} over TLS 1.3...");
 
             var client = new TlsSocketClient();
-            await using var connection = await client.ConnectAsync(
-                host,
-                port,
-                expectedSpkiSha256: invitation.SpkiSha256,
-                cancellationToken);
+            await using TlsSocketConnection connection =
+                await client.ConnectAsync(
+                    host,
+                    port,
+                    expectedSpkiSha256: invitation.SpkiSha256,
+                    cancellationToken);
 
             return await RunSenderSessionAsync(
                 connection,
                 request,
+                totalBytes,
                 interaction,
                 cancellationToken);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
         {
-            interaction.OnStatus(DesktopTransferDirection.Send, "Transfer cancelled.");
-            return DesktopTransferResult.CancelledByUser("Transfer cancelled.");
+            interaction.OnStatus(
+                DesktopTransferDirection.Send,
+                "Transfer cancelled.");
+            return DesktopTransferResult.CancelledByUser(
+                "Transfer cancelled.");
         }
         catch (Exception ex)
         {
-            interaction.OnStatus(DesktopTransferDirection.Send, $"Send failed: {ex.Message}");
-            return DesktopTransferResult.Failed($"Send failed: {ex.Message}");
+            interaction.OnStatus(
+                DesktopTransferDirection.Send,
+                $"Send failed: {ex.Message}");
+            return DesktopTransferResult.Failed(
+                $"Send failed: {ex.Message}");
         }
     }
 
@@ -112,28 +169,38 @@ public sealed class DesktopTransferEngine
                 interaction,
                 cancellationToken);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
         {
-            interaction.OnStatus(DesktopTransferDirection.Receive, "Transfer cancelled.");
-            return DesktopTransferResult.CancelledByUser("Transfer cancelled.");
+            interaction.OnStatus(
+                DesktopTransferDirection.Receive,
+                "Transfer cancelled.");
+            return DesktopTransferResult.CancelledByUser(
+                "Transfer cancelled.");
         }
         catch (Exception ex)
         {
-            interaction.OnStatus(DesktopTransferDirection.Receive, $"Receive failed: {ex.Message}");
-            return DesktopTransferResult.Failed($"Receive failed: {ex.Message}");
+            interaction.OnStatus(
+                DesktopTransferDirection.Receive,
+                $"Receive failed: {ex.Message}");
+            return DesktopTransferResult.Failed(
+                $"Receive failed: {ex.Message}");
         }
     }
 
     private static async Task<DesktopTransferResult> RunSenderSessionAsync(
         TlsSocketConnection connection,
         DesktopSendRequest request,
+        long totalBytes,
         IDesktopTransferInteraction interaction,
         CancellationToken cancellationToken)
     {
-        await using var channel = new LanRecordChannel(connection.SslStream);
-        var sessionId = NewSessionId();
+        await using var channel =
+            new LanRecordChannel(connection.SslStream);
+        var sequence = new DesktopControlSequence();
+        SessionId sessionId = NewSessionId();
 
-        var invitation = request.Invitation
+        LanInvitation invitation = request.Invitation
             ?? throw new InvalidOperationException(
                 "Authenticated pairing invitation is required.");
 
@@ -144,177 +211,245 @@ public sealed class DesktopTransferEngine
             sessionId: sessionId.Value,
             role: LanBootstrapMessage.RoleSender);
 
-        await channel.WriteBootstrapAsync(bootstrap, cancellationToken);
-        var bootstrapResult =
-            await channel.ReadBootstrapResultAsync(cancellationToken);
+        await channel.WriteBootstrapAsync(
+            bootstrap,
+            cancellationToken);
+
+        LanBootstrapResult bootstrapResult =
+            await DesktopControlSequence.ReadBootstrapResultAsync(
+                channel,
+                cancellationToken);
         if (!bootstrapResult.IsAccepted)
         {
             return DesktopTransferResult.RejectedByPeer(
                 $"Pairing bootstrap rejected by peer: {bootstrapResult.Code}");
         }
 
-        interaction.OnInvitationConsumed(DesktopTransferDirection.Send);
-
-        string localName = string.IsNullOrWhiteSpace(request.LocalDeviceName)
-            ? Environment.MachineName
-            : request.LocalDeviceName;
-
-        var helloBody = new JsonObject
+        if (!string.Equals(
+                bootstrapResult.SessionId,
+                sessionId.Value,
+                StringComparison.Ordinal))
         {
-            ["supportedMajors"] = new JsonArray(1),
-            ["requiredCapabilities"] = new JsonArray(),
-            ["optionalCapabilities"] = new JsonArray("folder-v1"),
-            ["role"] = "sender",
-            ["ephemeralPeerId"] = Guid.NewGuid().ToString("D").ToLowerInvariant(),
-            ["displayName"] = localName
-        };
-
-        await channel.WriteEnvelopeAsync(
-            new Envelope(
-                1,
-                MessageTypes.Hello,
-                sessionId,
-                NewMessageId(),
-                1,
-                helloBody),
-            cancellationToken);
-
-        var helloAck = await channel.ReadEnvelopeAsync(cancellationToken);
-        string peerName = helloAck.Body["displayName"]?.ToString() ?? request.Host;
-        interaction.OnPeerIdentified(DesktopTransferDirection.Send, peerName);
-
-        var batchId = new BatchId(Guid.NewGuid().ToString("D").ToLowerInvariant());
-        long totalBytes = request.Files.Sum(static file => file.SizeBytes);
-
-        var offerBeginBody = new JsonObject
-        {
-            ["batchId"] = batchId.Value,
-            ["itemCount"] = request.Files.Count,
-            ["totalBytes"] = totalBytes.ToString(),
-            ["pageCount"] = 1
-        };
-
-        await channel.WriteEnvelopeAsync(
-            new Envelope(
-                1,
-                MessageTypes.OfferBegin,
-                sessionId,
-                NewMessageId(),
-                2,
-                offerBeginBody),
-            cancellationToken);
-
-        var itemsArray = new JsonArray();
-        var itemMap =
-            new Dictionary<string, (DesktopTransferFile File, Sha256Digest Digest)>();
-
-        foreach (var file in request.Files)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var itemId = new ItemId(Guid.NewGuid().ToString("D").ToLowerInvariant());
-
-            // Preserved current behavior. HARD-014 replaces this with bounded streaming hashing.
-            byte[] bytes = await File.ReadAllBytesAsync(file.FilePath, cancellationToken);
-            var digest = new Sha256Digest(
-                Convert.ToHexStringLower(SHA256.HashData(bytes)));
-
-            itemMap[itemId.Value] = (file, digest);
-            itemsArray.Add(
-                new JsonObject
-                {
-                    ["itemId"] = itemId.Value,
-                    ["name"] = file.Name,
-                    ["mime"] = "application/octet-stream",
-                    ["sizeBytes"] = file.SizeBytes.ToString(),
-                    ["relativePath"] = file.Name
-                });
+            throw new ProtocolViolationException(
+                WireErrorCodes.AuthenticationFailed,
+                "Accepted bootstrap returned a different sessionId.");
         }
 
+        interaction.OnInvitationConsumed(
+            DesktopTransferDirection.Send);
+
+        string localName =
+            string.IsNullOrWhiteSpace(request.LocalDeviceName)
+                ? Environment.MachineName
+                : request.LocalDeviceName;
+
         await channel.WriteEnvelopeAsync(
-            new Envelope(
-                1,
-                MessageTypes.OfferPage,
+            sequence.Create(
+                MessageTypes.Hello,
                 sessionId,
-                NewMessageId(),
-                3,
                 new JsonObject
                 {
-                    ["batchId"] = batchId.Value,
-                    ["pageIndex"] = 0,
-                    ["items"] = itemsArray
+                    ["supportedMajors"] = new JsonArray(1),
+                    ["requiredCapabilities"] = new JsonArray(),
+                    ["optionalCapabilities"] =
+                        new JsonArray("folder-v1"),
+                    ["role"] = "sender",
+                    ["ephemeralPeerId"] =
+                        Guid.NewGuid()
+                            .ToString("D")
+                            .ToLowerInvariant(),
+                    ["displayName"] = localName
                 }),
             cancellationToken);
 
+        Envelope helloAck =
+            await sequence.ReadExpectedAsync(
+                channel,
+                MessageTypes.HelloAck,
+                sessionId,
+                cancellationToken);
+
+        string peerName =
+            helloAck.Body["displayName"]?.ToString()
+            ?? invitation.Name;
+        interaction.OnPeerIdentified(
+            DesktopTransferDirection.Send,
+            peerName);
+
+        var preparedItems =
+            new List<PreparedSendItem>(request.Files.Count);
+        foreach (DesktopTransferFile file in request.Files)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var info = new FileInfo(file.FilePath);
+            preparedItems.Add(
+                new PreparedSendItem(
+                    new ItemId(
+                        Guid.NewGuid()
+                            .ToString("D")
+                            .ToLowerInvariant()),
+                    file,
+                    info.Length,
+                    info.LastWriteTimeUtc));
+        }
+
+        var batchId = new BatchId(
+            Guid.NewGuid()
+                .ToString("D")
+                .ToLowerInvariant());
+        List<JsonArray> offerPages =
+            BuildOfferPages(preparedItems);
+
         await channel.WriteEnvelopeAsync(
-            new Envelope(
-                1,
+            sequence.Create(
+                MessageTypes.OfferBegin,
+                sessionId,
+                new JsonObject
+                {
+                    ["batchId"] = batchId.Value,
+                    ["itemCount"] = preparedItems.Count,
+                    ["totalBytes"] = totalBytes.ToString(),
+                    ["pageCount"] = offerPages.Count
+                }),
+            cancellationToken);
+
+        for (int pageIndex = 0;
+             pageIndex < offerPages.Count;
+             pageIndex++)
+        {
+            await channel.WriteEnvelopeAsync(
+                sequence.Create(
+                    MessageTypes.OfferPage,
+                    sessionId,
+                    new JsonObject
+                    {
+                        ["batchId"] = batchId.Value,
+                        ["pageIndex"] = pageIndex,
+                        ["items"] = offerPages[pageIndex]
+                    }),
+                cancellationToken);
+        }
+
+        await channel.WriteEnvelopeAsync(
+            sequence.Create(
                 MessageTypes.OfferEnd,
                 sessionId,
-                NewMessageId(),
-                4,
-                new JsonObject { ["batchId"] = batchId.Value }),
+                new JsonObject
+                {
+                    ["batchId"] = batchId.Value
+                }),
             cancellationToken);
 
         interaction.OnStatus(
             DesktopTransferDirection.Send,
             "Waiting for peer approval...");
 
-        var offerDecision = await channel.ReadEnvelopeAsync(cancellationToken);
-        bool accepted = offerDecision.Body["accepted"]?.GetValue<bool>() ?? false;
+        Envelope offerDecision =
+            await sequence.ReadExpectedAsync(
+                channel,
+                MessageTypes.OfferDecision,
+                sessionId,
+                cancellationToken);
+        RequireExactString(
+            offerDecision,
+            "batchId",
+            batchId.Value);
+
+        bool accepted =
+            offerDecision.Body["accepted"]?.GetValue<bool>()
+            ?? false;
         if (!accepted)
         {
+            string code =
+                offerDecision.Body["code"]?.ToString()
+                ?? WireErrorCodes.UserRejected;
             return DesktopTransferResult.RejectedByPeer(
-                "Peer rejected the transfer offer.");
+                $"Peer rejected the transfer offer ({code}).");
         }
 
         long cumulativeTransferred = 0;
         int verifiedCount = 0;
         long verifiedBytes = 0;
+        int failedCount = 0;
 
-        foreach (var (itemId, entry) in itemMap)
+        foreach (PreparedSendItem prepared in preparedItems)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var file = entry.File;
+            DesktopTransferFile file = prepared.File;
 
             interaction.OnItemStatus(
                 DesktopTransferDirection.Send,
                 file.Name,
                 "Sending");
 
-            string bulkRef = Guid.NewGuid().ToString("D").ToLowerInvariant();
+            var bulkRef = new BulkRef(
+                Guid.NewGuid()
+                    .ToString("D")
+                    .ToLowerInvariant());
+
             await channel.WriteEnvelopeAsync(
-                new Envelope(
-                    1,
+                sequence.Create(
                     MessageTypes.ItemStart,
                     sessionId,
-                    NewMessageId(),
-                    5,
                     new JsonObject
                     {
                         ["batchId"] = batchId.Value,
-                        ["itemId"] = itemId,
-                        ["bulkRef"] = bulkRef,
-                        ["sizeBytes"] = file.SizeBytes.ToString()
+                        ["itemId"] = prepared.ItemId.Value,
+                        ["bulkRef"] = bulkRef.Value,
+                        ["sizeBytes"] =
+                            prepared.DeclaredSize.ToString()
                     }),
                 cancellationToken);
 
-            await channel.ReadEnvelopeAsync(cancellationToken); // ITEM_READY
+            Envelope itemReady =
+                await sequence.ReadExpectedAsync(
+                    channel,
+                    MessageTypes.ItemReady,
+                    sessionId,
+                    cancellationToken);
+            RequireExactString(
+                itemReady,
+                "batchId",
+                batchId.Value);
+            RequireExactString(
+                itemReady,
+                "itemId",
+                prepared.ItemId.Value);
 
-            using (var stream = new FileStream(
+            long actualBytes = 0;
+            byte[] digestBytes;
+            using (var hash =
+                IncrementalHash.CreateHash(
+                    HashAlgorithmName.SHA256))
+            await using (var stream = new FileStream(
                 file.FilePath,
                 FileMode.Open,
                 FileAccess.Read,
                 FileShare.Read,
-                65536,
+                StreamBufferBytes,
                 useAsync: true))
             {
-                byte[] buffer = new byte[65520];
+                byte[] buffer =
+                    new byte[StreamBufferBytes];
                 int read;
                 while ((read = await stream.ReadAsync(
                     buffer.AsMemory(0, buffer.Length),
                     cancellationToken)) > 0)
                 {
+                    actualBytes = checked(
+                        actualBytes + read);
+                    if (actualBytes >
+                        prepared.DeclaredSize)
+                    {
+                        throw new ProtocolViolationException(
+                            WireErrorCodes.SourceUnavailable,
+                            $"Source '{file.Name}' grew while it was being transferred.");
+                    }
+
+                    hash.AppendData(
+                        buffer,
+                        0,
+                        read);
                     await channel.WriteDataChunkAsync(
                         bulkRef,
                         buffer.AsMemory(0, read),
@@ -330,94 +465,178 @@ public sealed class DesktopTransferEngine
                             totalBytes));
                 }
 
-                byte[] extra = new byte[1];
-                int extraRead = await stream.ReadAsync(
-                    extra.AsMemory(0, 1),
-                    cancellationToken);
-                if (extraRead > 0)
-                {
-                    throw new InvalidOperationException(
-                        $"File {file.Name} grew while streaming.");
-                }
+                digestBytes = hash.GetHashAndReset();
             }
+
+            if (actualBytes != prepared.DeclaredSize)
+            {
+                throw new ProtocolViolationException(
+                    WireErrorCodes.SourceUnavailable,
+                    $"Source '{file.Name}' changed size while it was being transferred.");
+            }
+
+            var afterTransfer = new FileInfo(
+                file.FilePath);
+            if (afterTransfer.Length !=
+                    prepared.DeclaredSize ||
+                afterTransfer.LastWriteTimeUtc !=
+                    prepared.LastWriteTimeUtc)
+            {
+                throw new ProtocolViolationException(
+                    WireErrorCodes.SourceUnavailable,
+                    $"Source '{file.Name}' changed during transfer.");
+            }
+
+            string digest =
+                Convert.ToHexStringLower(
+                    digestBytes);
 
             await channel.WriteStreamEndAsync(
                 bulkRef,
-                file.SizeBytes,
+                actualBytes,
                 cancellationToken);
 
             await channel.WriteEnvelopeAsync(
-                new Envelope(
-                    1,
+                sequence.Create(
                     MessageTypes.ItemEnd,
                     sessionId,
-                    NewMessageId(),
-                    6,
                     new JsonObject
                     {
                         ["batchId"] = batchId.Value,
-                        ["itemId"] = itemId,
-                        ["actualBytes"] = file.SizeBytes.ToString(),
-                        ["sha256"] = entry.Digest.Value
+                        ["itemId"] = prepared.ItemId.Value,
+                        ["actualBytes"] =
+                            actualBytes.ToString(),
+                        ["sha256"] = digest
                     }),
                 cancellationToken);
 
-            var itemResult = await channel.ReadEnvelopeAsync(cancellationToken);
+            Envelope itemResult =
+                await sequence.ReadExpectedAsync(
+                    channel,
+                    MessageTypes.ItemResult,
+                    sessionId,
+                    cancellationToken);
+            RequireExactString(
+                itemResult,
+                "batchId",
+                batchId.Value);
+            RequireExactString(
+                itemResult,
+                "itemId",
+                prepared.ItemId.Value);
+
             bool verified = string.Equals(
                 itemResult.Body["status"]?.ToString(),
                 "verified",
-                StringComparison.OrdinalIgnoreCase);
-
-            interaction.OnItemStatus(
-                DesktopTransferDirection.Send,
-                file.Name,
-                verified ? "Verified" : "Failed");
-
+                StringComparison.Ordinal);
             if (verified)
             {
+                RequireExactLong(
+                    itemResult,
+                    "sizeBytes",
+                    actualBytes);
+                RequireExactString(
+                    itemResult,
+                    "sha256",
+                    digest);
+
                 verifiedCount++;
-                verifiedBytes += file.SizeBytes;
+                verifiedBytes += actualBytes;
+                interaction.OnItemStatus(
+                    DesktopTransferDirection.Send,
+                    file.Name,
+                    "Verified");
                 interaction.OnHistory(
                     new DesktopHistoryEntry(
                         DesktopTransferDirection.Send,
                         file.Name,
-                        file.SizeBytes,
+                        actualBytes,
                         file.FilePath,
                         peerName,
                         DateTimeOffset.Now));
             }
+            else
+            {
+                failedCount++;
+                interaction.OnItemStatus(
+                    DesktopTransferDirection.Send,
+                    file.Name,
+                    "Failed");
+            }
         }
 
         await channel.WriteEnvelopeAsync(
-            new Envelope(
-                1,
+            sequence.Create(
                 MessageTypes.BatchEnd,
                 sessionId,
-                NewMessageId(),
-                7,
-                new JsonObject { ["batchId"] = batchId.Value }),
+                new JsonObject
+                {
+                    ["batchId"] = batchId.Value
+                }),
             cancellationToken);
 
-        var batchResult = await channel.ReadEnvelopeAsync(cancellationToken);
-        if (int.TryParse(
-            batchResult.Body["verifiedCount"]?.ToString(),
-            out int peerVerifiedCount))
+        Envelope terminal =
+            await sequence.ReadExpectedOneOfAsync(
+                channel,
+                [MessageTypes.BatchResult, MessageTypes.Error],
+                sessionId,
+                cancellationToken);
+
+        if (terminal.Type == MessageTypes.Error)
         {
-            verifiedCount = peerVerifiedCount;
+            string detail =
+                terminal.Body["detail"]?.ToString()
+                ?? "Peer reported a terminal transfer error.";
+            string message =
+                $"Transfer failed after verification: {detail}";
+            interaction.OnStatus(
+                DesktopTransferDirection.Send,
+                message);
+            return DesktopTransferResult.Failed(
+                message);
         }
 
-        if (long.TryParse(
-            batchResult.Body["totalVerifiedBytes"]?.ToString(),
-            out long peerVerifiedBytes))
+        RequireExactString(
+            terminal,
+            "batchId",
+            batchId.Value);
+
+        int peerVerifiedCount =
+            terminal.Body["verifiedCount"]!
+                .GetValue<int>();
+        long peerVerifiedBytes = long.Parse(
+            terminal.Body["totalVerifiedBytes"]!
+                .ToString());
+
+        if (peerVerifiedCount != verifiedCount ||
+            peerVerifiedBytes != verifiedBytes)
         {
-            verifiedBytes = peerVerifiedBytes;
+            throw new ProtocolViolationException(
+                WireErrorCodes.ProtocolOrder,
+                "BATCH_RESULT verification totals disagree with ITEM_RESULT outcomes.");
         }
 
-        string message =
+        if (failedCount != 0 ||
+            verifiedCount != preparedItems.Count ||
+            verifiedBytes != totalBytes)
+        {
+            string partialMessage =
+                $"Transfer ended with {failedCount} failed item(s); " +
+                $"{verifiedCount}/{preparedItems.Count} item(s) were verified.";
+            interaction.OnStatus(
+                DesktopTransferDirection.Send,
+                partialMessage);
+            return DesktopTransferResult.Failed(
+                partialMessage);
+        }
+
+        string successMessage =
             $"Transfer complete: peer verified {verifiedCount} item(s) ({verifiedBytes} bytes).";
-        interaction.OnStatus(DesktopTransferDirection.Send, message);
+        interaction.OnStatus(
+            DesktopTransferDirection.Send,
+            successMessage);
         return DesktopTransferResult.Completed(
-            message,
+            successMessage,
             verifiedCount,
             verifiedBytes);
     }
@@ -428,26 +647,33 @@ public sealed class DesktopTransferEngine
         IDesktopTransferInteraction interaction,
         CancellationToken cancellationToken)
     {
-        await using var channel = new LanRecordChannel(connection.SslStream);
+        await using var channel =
+            new LanRecordChannel(connection.SslStream);
 
-        var firstRecord = await channel.ReadRecordAsync(cancellationToken);
+        LanRecord? firstRecord =
+            await DesktopControlSequence.ReadRecordAsync(
+                channel,
+                cancellationToken);
         if (firstRecord == null)
         {
             return DesktopTransferResult.Failed(
                 "Peer disconnected before sending the first record.");
         }
 
-        if (firstRecord is not LanRecord.Bootstrap bootstrapRecord)
+        if (firstRecord is not
+            LanRecord.Bootstrap bootstrapRecord)
         {
             throw new ProtocolViolationException(
                 WireErrorCodes.ProtocolOrder,
                 "Authenticated BOOTSTRAP must be the first LAN record.");
         }
 
-        var bootstrap = LanBootstrapCodec.DecodeBootstrap(
-            bootstrapRecord.JsonBytes);
+        LanBootstrapMessage bootstrap =
+            LanBootstrapCodec.DecodeBootstrap(
+                bootstrapRecord.JsonBytes);
         LanBootstrapResult bootstrapResult =
-            request.InvitationAuthority.Consume(bootstrap);
+            request.InvitationAuthority.Consume(
+                bootstrap);
 
         await channel.WriteBootstrapResultAsync(
             bootstrapResult,
@@ -459,373 +685,731 @@ public sealed class DesktopTransferEngine
                 $"Inbound pairing bootstrap rejected: {bootstrapResult.Code}.");
         }
 
-        interaction.OnInvitationConsumed(DesktopTransferDirection.Receive);
-        Envelope hello = await channel.ReadEnvelopeAsync(cancellationToken);
+        var sessionId =
+            new SessionId(bootstrap.SessionId);
+        var sequence =
+            new DesktopControlSequence();
 
-        if (!string.Equals(
-                hello.SessionId.Value,
-                bootstrap.SessionId,
-                StringComparison.Ordinal))
+        try
         {
-            throw new ProtocolViolationException(
-                WireErrorCodes.ProtocolOrder,
-                "HELLO sessionId must match the authenticated bootstrap session.");
-        }
+            interaction.OnInvitationConsumed(
+                DesktopTransferDirection.Receive);
 
-        string peerName =
-            hello.Body["displayName"]?.ToString() ?? "Remote Peer";
-        interaction.OnPeerIdentified(
-            DesktopTransferDirection.Receive,
-            peerName);
+            Envelope hello =
+                await sequence.ReadExpectedAsync(
+                    channel,
+                    MessageTypes.Hello,
+                    sessionId,
+                    cancellationToken);
 
-        string localName = string.IsNullOrWhiteSpace(request.LocalDeviceName)
-            ? Environment.MachineName
-            : request.LocalDeviceName;
-
-        var limits = new JsonObject
-        {
-            ["maxItems"] = 1000,
-            ["maxItemBytes"] = ProtocolCatalog.MaxItemBytes.ToString(),
-            ["maxBatchBytes"] = ProtocolCatalog.MaxBatchBytes.ToString(),
-            ["maxControlBytes"] = ProtocolCatalog.MaxControlBytes
-        };
-
-        await channel.WriteEnvelopeAsync(
-            new Envelope(
-                1,
-                MessageTypes.HelloAck,
-                hello.SessionId,
-                NewMessageId(),
-                2,
-                new JsonObject
-                {
-                    ["selectedMajor"] = 1,
-                    ["capabilities"] = new JsonArray("lan-v1", "folder-v1"),
-                    ["ephemeralPeerId"] =
-                        Guid.NewGuid().ToString("D").ToLowerInvariant(),
-                    ["displayName"] = localName,
-                    ["limits"] = limits
-                }),
-            cancellationToken);
-
-        var offerBegin = await channel.ReadEnvelopeAsync(cancellationToken);
-        int itemCount =
-            offerBegin.Body["itemCount"]?.GetValue<int>() ?? 0;
-        long totalBytes = long.Parse(
-            offerBegin.Body["totalBytes"]?.ToString() ?? "0");
-
-        var offerPage = await channel.ReadEnvelopeAsync(cancellationToken);
-        var items = new List<DesktopOfferItem>();
-        if (offerPage.Body["items"] is JsonArray itemArray)
-        {
-            foreach (var node in itemArray)
+            if (!string.Equals(
+                    hello.Body["role"]?.ToString(),
+                    "sender",
+                    StringComparison.Ordinal))
             {
-                if (node is not JsonObject itemObject)
-                {
-                    continue;
-                }
-
-                string itemId = itemObject["itemId"]!.ToString();
-                string name = itemObject["name"]!.ToString();
-                long size = long.Parse(itemObject["sizeBytes"]!.ToString());
-                string relativePath =
-                    itemObject.TryGetPropertyValue(
-                        "relativePath",
-                        out var relative) &&
-                    relative != null
-                        ? relative.ToString()
-                        : name;
-
-                items.Add(
-                    new DesktopOfferItem(
-                        itemId,
-                        name,
-                        size,
-                        relativePath));
+                throw new ProtocolViolationException(
+                    WireErrorCodes.ProtocolOrder,
+                    "Inbound transfer HELLO must use sender role.");
             }
-        }
 
-        await channel.ReadEnvelopeAsync(cancellationToken); // OFFER_END
-
-        string batchId = offerBegin.Body["batchId"]!.ToString();
-        bool offerAccepted = await interaction.ConfirmOfferAsync(
-            new DesktopOffer(
-                batchId,
-                peerName,
-                items,
-                totalBytes),
-            cancellationToken);
-
-        var decisionBody = new JsonObject
-        {
-            ["batchId"] = batchId,
-            ["accepted"] = offerAccepted
-        };
-        if (!offerAccepted)
-        {
-            decisionBody["code"] = "USER_REJECTED";
-        }
-
-        await channel.WriteEnvelopeAsync(
-            new Envelope(
-                1,
-                MessageTypes.OfferDecision,
-                hello.SessionId,
-                NewMessageId(),
-                3,
-                decisionBody),
-            cancellationToken);
-
-        if (!offerAccepted)
-        {
-            return DesktopTransferResult.RejectedByPeer(
-                "Transfer offer was rejected.");
-        }
-
-        long cumulativeTransferred = 0;
-        int verifiedCount = 0;
-        long verifiedBytes = 0;
-
-        foreach (var item in items)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            interaction.OnItemStatus(
+            string peerName =
+                hello.Body["displayName"]?.ToString()
+                ?? "Remote Peer";
+            interaction.OnPeerIdentified(
                 DesktopTransferDirection.Receive,
-                item.Name,
-                "Receiving");
+                peerName);
 
-            var itemStart = await channel.ReadEnvelopeAsync(cancellationToken);
-            string bulkRef =
-                itemStart.Body["bulkRef"]?.ToString() ??
-                Guid.NewGuid().ToString("D").ToLowerInvariant();
+            string localName =
+                string.IsNullOrWhiteSpace(
+                    request.LocalDeviceName)
+                    ? Environment.MachineName
+                    : request.LocalDeviceName;
 
             await channel.WriteEnvelopeAsync(
-                new Envelope(
-                    1,
-                    MessageTypes.ItemReady,
-                    hello.SessionId,
-                    NewMessageId(),
-                    4,
+                sequence.Create(
+                    MessageTypes.HelloAck,
+                    sessionId,
                     new JsonObject
                     {
-                        ["batchId"] = batchId,
-                        ["itemId"] = item.ItemId
+                        ["selectedMajor"] = 1,
+                        ["capabilities"] =
+                            new JsonArray(
+                                "lan-v1",
+                                "folder-v1"),
+                        ["ephemeralPeerId"] =
+                            Guid.NewGuid()
+                                .ToString("D")
+                                .ToLowerInvariant(),
+                        ["displayName"] = localName,
+                        ["limits"] = new JsonObject
+                        {
+                            ["maxItems"] = 1000,
+                            ["maxItemBytes"] =
+                                ProtocolCatalog.MaxItemBytes
+                                    .ToString(),
+                            ["maxBatchBytes"] =
+                                ProtocolCatalog.MaxBatchBytes
+                                    .ToString(),
+                            ["maxControlBytes"] =
+                                ProtocolCatalog.MaxControlBytes
+                        }
                     }),
                 cancellationToken);
 
-            string quarantinePath = request.StagingStore.GetQuarantinePath(
-                hello.SessionId,
-                new ItemId(item.ItemId));
-            string? quarantineDirectory =
-                Path.GetDirectoryName(quarantinePath);
-            if (quarantineDirectory != null &&
-                !Directory.Exists(quarantineDirectory))
-            {
-                Directory.CreateDirectory(quarantineDirectory);
-            }
+            Envelope offerBegin =
+                await sequence.ReadExpectedAsync(
+                    channel,
+                    MessageTypes.OfferBegin,
+                    sessionId,
+                    cancellationToken);
 
-            byte[] hash;
-            using (var fileStream = new FileStream(
-                quarantinePath,
-                FileMode.Create,
-                FileAccess.Write,
-                FileShare.None,
-                65536,
-                useAsync: true))
-            using (var sha256 =
-                IncrementalHash.CreateHash(HashAlgorithmName.SHA256))
+            string batchId =
+                offerBegin.Body["batchId"]!
+                    .ToString();
+            int itemCount =
+                offerBegin.Body["itemCount"]!
+                    .GetValue<int>();
+            long totalBytes = long.Parse(
+                offerBegin.Body["totalBytes"]!
+                    .ToString());
+            int pageCount =
+                offerBegin.Body["pageCount"]!
+                    .GetValue<int>();
+
+            var items =
+                new List<DesktopOfferItem>(
+                    itemCount);
+            var itemIds =
+                new HashSet<string>(
+                    StringComparer.Ordinal);
+            long offeredBytes = 0;
+
+            for (int pageIndex = 0;
+                 pageIndex < pageCount;
+                 pageIndex++)
             {
-                long receivedBytes = 0;
-                while (true)
+                Envelope offerPage =
+                    await sequence.ReadExpectedAsync(
+                        channel,
+                        MessageTypes.OfferPage,
+                        sessionId,
+                        cancellationToken);
+                RequireExactString(
+                    offerPage,
+                    "batchId",
+                    batchId);
+
+                int actualPageIndex =
+                    offerPage.Body["pageIndex"]!
+                        .GetValue<int>();
+                if (actualPageIndex != pageIndex)
                 {
-                    var record =
-                        await channel.ReadRecordAsync(cancellationToken);
-                    if (record == null)
-                    {
-                        throw new EndOfStreamException(
-                            "Connection terminated during payload transfer.");
-                    }
-
-                    if (record is LanRecord.Data dataRecord)
-                    {
-                        if (!string.Equals(
-                            dataRecord.BulkRef.Value,
-                            bulkRef,
-                            StringComparison.OrdinalIgnoreCase))
-                        {
-                            throw new ProtocolViolationException(
-                                WireErrorCodes.MalformedMessage,
-                                "Unmatched bulkRef in DATA record.");
-                        }
-
-                        await fileStream.WriteAsync(
-                            dataRecord.Chunk.AsMemory(),
-                            cancellationToken);
-                        sha256.AppendData(dataRecord.Chunk);
-                        receivedBytes += dataRecord.Chunk.Length;
-                        cumulativeTransferred += dataRecord.Chunk.Length;
-
-                        interaction.OnProgress(
-                            new DesktopTransferProgress(
-                                DesktopTransferDirection.Receive,
-                                peerName,
-                                item.Name,
-                                cumulativeTransferred,
-                                totalBytes));
-                    }
-                    else if (record is LanRecord.StreamEnd streamEnd)
-                    {
-                        if (!string.Equals(
-                            streamEnd.BulkRef.Value,
-                            bulkRef,
-                            StringComparison.OrdinalIgnoreCase))
-                        {
-                            throw new ProtocolViolationException(
-                                WireErrorCodes.MalformedMessage,
-                                "Unmatched bulkRef in STREAM_END record.");
-                        }
-
-                        if (streamEnd.ActualBytes != receivedBytes ||
-                            receivedBytes != item.SizeBytes)
-                        {
-                            throw new ProtocolViolationException(
-                                WireErrorCodes.IntegrityMismatch,
-                                $"STREAM_END actualBytes {streamEnd.ActualBytes} " +
-                                $"does not match expected {item.SizeBytes}.");
-                        }
-
-                        break;
-                    }
-                    else
-                    {
-                        throw new ProtocolViolationException(
-                            WireErrorCodes.ProtocolOrder,
-                            $"Unexpected record kind during data stream: {record.Kind}");
-                    }
+                    throw new ProtocolViolationException(
+                        WireErrorCodes.ProtocolOrder,
+                        $"Expected OFFER_PAGE index {pageIndex}, received {actualPageIndex}.");
                 }
 
-                hash = sha256.GetHashAndReset();
+                JsonArray itemArray =
+                    offerPage.Body["items"]
+                    as JsonArray
+                    ?? throw new ProtocolViolationException(
+                        WireErrorCodes.MalformedMessage,
+                        "OFFER_PAGE items must be an array.");
+
+                foreach (JsonNode? node in itemArray)
+                {
+                    if (node is not JsonObject itemObject)
+                    {
+                        throw new ProtocolViolationException(
+                            WireErrorCodes.MalformedMessage,
+                            "OFFER_PAGE item must be an object.");
+                    }
+
+                    string itemId =
+                        itemObject["itemId"]!
+                            .ToString();
+                    if (!itemIds.Add(itemId))
+                    {
+                        throw new ProtocolViolationException(
+                            WireErrorCodes.MalformedMessage,
+                            $"Duplicate offer itemId '{itemId}'.");
+                    }
+
+                    string name =
+                        itemObject["name"]!
+                            .ToString();
+                    long size = long.Parse(
+                        itemObject["sizeBytes"]!
+                            .ToString());
+                    string rawRelativePath =
+                        itemObject[
+                            "relativePath"]?
+                            .ToString()
+                        ?? name;
+                    string relativePath =
+                        WindowsPathSanitizer
+                            .SanitizeRelativePath(
+                                rawRelativePath);
+
+                    offeredBytes =
+                        checked(offeredBytes + size);
+                    items.Add(
+                        new DesktopOfferItem(
+                            itemId,
+                            name,
+                            size,
+                            relativePath));
+                }
             }
 
-            var itemEnd = await channel.ReadEnvelopeAsync(cancellationToken);
-            string declaredSha =
-                itemEnd.Body["sha256"]!.ToString();
-            string actualSha = Convert.ToHexStringLower(hash);
+            Envelope offerEnd =
+                await sequence.ReadExpectedAsync(
+                    channel,
+                    MessageTypes.OfferEnd,
+                    sessionId,
+                    cancellationToken);
+            RequireExactString(
+                offerEnd,
+                "batchId",
+                batchId);
 
-            if (!string.Equals(
-                actualSha,
-                declaredSha,
-                StringComparison.OrdinalIgnoreCase))
+            if (items.Count != itemCount)
             {
-                request.StagingStore.PurgeQuarantine(
-                    hello.SessionId,
-                    new ItemId(item.ItemId));
+                throw new ProtocolViolationException(
+                    WireErrorCodes.ProtocolOrder,
+                    $"Offer declared {itemCount} item(s) but supplied {items.Count}.");
+            }
+
+            if (offeredBytes != totalBytes)
+            {
+                throw new ProtocolViolationException(
+                    WireErrorCodes.ProtocolOrder,
+                    $"Offer declared {totalBytes} bytes but item metadata totals {offeredBytes}.");
+            }
+
+            bool hasStorage =
+                request.StagingStore
+                    .GetAvailableFreeSpaceBytes()
+                >= totalBytes;
+
+            bool offerAccepted =
+                hasStorage &&
+                await interaction.ConfirmOfferAsync(
+                    new DesktopOffer(
+                        batchId,
+                        peerName,
+                        items,
+                        totalBytes),
+                    cancellationToken);
+
+            var decisionBody =
+                new JsonObject
+                {
+                    ["batchId"] = batchId,
+                    ["accepted"] = offerAccepted
+                };
+            if (!offerAccepted)
+            {
+                decisionBody["code"] =
+                    hasStorage
+                        ? WireErrorCodes.UserRejected
+                        : WireErrorCodes.InsufficientStorage;
+            }
+
+            await channel.WriteEnvelopeAsync(
+                sequence.Create(
+                    MessageTypes.OfferDecision,
+                    sessionId,
+                    decisionBody),
+                cancellationToken);
+
+            if (!offerAccepted)
+            {
+                return DesktopTransferResult.RejectedByPeer(
+                    hasStorage
+                        ? "Transfer offer was rejected."
+                        : "Transfer offer rejected because there is insufficient staging storage.");
+            }
+
+            long cumulativeTransferred = 0;
+            int verifiedCount = 0;
+            long verifiedBytes = 0;
+            int failedCount = 0;
+
+            foreach (DesktopOfferItem item in items)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                interaction.OnItemStatus(
+                    DesktopTransferDirection.Receive,
+                    item.Name,
+                    "Receiving");
+
+                Envelope itemStart =
+                    await sequence.ReadExpectedAsync(
+                        channel,
+                        MessageTypes.ItemStart,
+                        sessionId,
+                        cancellationToken);
+                RequireExactString(
+                    itemStart,
+                    "batchId",
+                    batchId);
+                RequireExactString(
+                    itemStart,
+                    "itemId",
+                    item.ItemId);
+                RequireExactLong(
+                    itemStart,
+                    "sizeBytes",
+                    item.SizeBytes);
+
+                string bulkRefText =
+                    itemStart.Body["bulkRef"]!
+                        .ToString();
+                var bulkRef =
+                    new BulkRef(bulkRefText);
 
                 await channel.WriteEnvelopeAsync(
-                    new Envelope(
-                        1,
+                    sequence.Create(
+                        MessageTypes.ItemReady,
+                        sessionId,
+                        new JsonObject
+                        {
+                            ["batchId"] = batchId,
+                            ["itemId"] = item.ItemId
+                        }),
+                    cancellationToken);
+
+                var itemId =
+                    new ItemId(item.ItemId);
+                string quarantinePath =
+                    request.StagingStore
+                        .GetQuarantinePath(
+                            sessionId,
+                            itemId);
+                string? quarantineDirectory =
+                    Path.GetDirectoryName(
+                        quarantinePath);
+                if (quarantineDirectory != null)
+                {
+                    Directory.CreateDirectory(
+                        quarantineDirectory);
+                }
+
+                byte[] hash;
+                long receivedBytes = 0;
+                try
+                {
+                    await using var fileStream =
+                        new FileStream(
+                            quarantinePath,
+                            FileMode.Create,
+                            FileAccess.Write,
+                            FileShare.None,
+                            65_536,
+                            useAsync: true);
+                    using var sha256 =
+                        IncrementalHash.CreateHash(
+                            HashAlgorithmName.SHA256);
+
+                    while (true)
+                    {
+                        LanRecord? record =
+                            await DesktopControlSequence
+                                .ReadRecordAsync(
+                                    channel,
+                                    cancellationToken);
+                        if (record == null)
+                        {
+                            throw new EndOfStreamException(
+                                "Connection terminated during payload transfer.");
+                        }
+
+                        if (record is
+                            LanRecord.Data dataRecord)
+                        {
+                            if (!string.Equals(
+                                    dataRecord.BulkRef.Value,
+                                    bulkRef.Value,
+                                    StringComparison.Ordinal))
+                            {
+                                throw new ProtocolViolationException(
+                                    WireErrorCodes.MalformedMessage,
+                                    "Unmatched bulkRef in DATA record.");
+                            }
+
+                            receivedBytes =
+                                checked(
+                                    receivedBytes +
+                                    dataRecord.Chunk.Length);
+                            if (receivedBytes >
+                                item.SizeBytes)
+                            {
+                                throw new ProtocolViolationException(
+                                    WireErrorCodes.LimitExceeded,
+                                    $"Item '{item.Name}' exceeded its declared size.");
+                            }
+
+                            await fileStream.WriteAsync(
+                                dataRecord.Chunk.AsMemory(),
+                                cancellationToken);
+                            sha256.AppendData(
+                                dataRecord.Chunk);
+
+                            cumulativeTransferred +=
+                                dataRecord.Chunk.Length;
+                            interaction.OnProgress(
+                                new DesktopTransferProgress(
+                                    DesktopTransferDirection.Receive,
+                                    peerName,
+                                    item.Name,
+                                    cumulativeTransferred,
+                                    totalBytes));
+                        }
+                        else if (record is
+                            LanRecord.StreamEnd streamEnd)
+                        {
+                            if (!string.Equals(
+                                    streamEnd.BulkRef.Value,
+                                    bulkRef.Value,
+                                    StringComparison.Ordinal))
+                            {
+                                throw new ProtocolViolationException(
+                                    WireErrorCodes.MalformedMessage,
+                                    "Unmatched bulkRef in STREAM_END record.");
+                            }
+
+                            if (streamEnd.ActualBytes !=
+                                    receivedBytes ||
+                                receivedBytes !=
+                                    item.SizeBytes)
+                            {
+                                throw new ProtocolViolationException(
+                                    WireErrorCodes.IntegrityMismatch,
+                                    $"STREAM_END actualBytes {streamEnd.ActualBytes} does not match expected {item.SizeBytes}.");
+                            }
+
+                            break;
+                        }
+                        else
+                        {
+                            throw new ProtocolViolationException(
+                                WireErrorCodes.ProtocolOrder,
+                                $"Unexpected record kind during data stream: {record.Kind}.");
+                        }
+                    }
+
+                    await fileStream.FlushAsync(
+                        cancellationToken);
+                    hash =
+                        sha256.GetHashAndReset();
+                }
+                catch
+                {
+                    request.StagingStore
+                        .PurgeQuarantine(
+                            sessionId,
+                            itemId);
+                    throw;
+                }
+
+                Envelope itemEnd =
+                    await sequence.ReadExpectedAsync(
+                        channel,
+                        MessageTypes.ItemEnd,
+                        sessionId,
+                        cancellationToken);
+                RequireExactString(
+                    itemEnd,
+                    "batchId",
+                    batchId);
+                RequireExactString(
+                    itemEnd,
+                    "itemId",
+                    item.ItemId);
+                RequireExactLong(
+                    itemEnd,
+                    "actualBytes",
+                    receivedBytes);
+
+                string declaredSha =
+                    itemEnd.Body["sha256"]!
+                        .ToString();
+                string actualSha =
+                    Convert.ToHexStringLower(
+                        hash);
+
+                if (!string.Equals(
+                        actualSha,
+                        declaredSha,
+                        StringComparison.Ordinal))
+                {
+                    request.StagingStore
+                        .PurgeQuarantine(
+                            sessionId,
+                            itemId);
+
+                    await channel.WriteEnvelopeAsync(
+                        sequence.Create(
+                            MessageTypes.ItemResult,
+                            sessionId,
+                            new JsonObject
+                            {
+                                ["batchId"] = batchId,
+                                ["itemId"] = item.ItemId,
+                                ["status"] = "failed",
+                                ["code"] =
+                                    WireErrorCodes
+                                        .IntegrityMismatch
+                            }),
+                        cancellationToken);
+
+                    failedCount++;
+                    interaction.OnItemStatus(
+                        DesktopTransferDirection.Receive,
+                        item.Name,
+                        "Failed");
+                    continue;
+                }
+
+                string finalPath =
+                    request.StagingStore
+                        .CommitQuarantineFile(
+                            sessionId,
+                            itemId,
+                            item.RelativePath);
+
+                verifiedCount++;
+                verifiedBytes +=
+                    item.SizeBytes;
+
+                await channel.WriteEnvelopeAsync(
+                    sequence.Create(
                         MessageTypes.ItemResult,
-                        hello.SessionId,
-                        NewMessageId(),
-                        5,
+                        sessionId,
                         new JsonObject
                         {
                             ["batchId"] = batchId,
                             ["itemId"] = item.ItemId,
-                            ["status"] = "failed",
-                            ["code"] = "INTEGRITY_MISMATCH"
+                            ["status"] = "verified",
+                            ["sizeBytes"] =
+                                item.SizeBytes.ToString(),
+                            ["sha256"] = actualSha
                         }),
                     cancellationToken);
 
                 interaction.OnItemStatus(
                     DesktopTransferDirection.Receive,
                     item.Name,
-                    "Failed");
-                continue;
+                    "Verified");
+                interaction.OnHistory(
+                    new DesktopHistoryEntry(
+                        DesktopTransferDirection.Receive,
+                        item.Name,
+                        item.SizeBytes,
+                        finalPath,
+                        peerName,
+                        DateTimeOffset.Now));
             }
 
-            string targetPath = Path.Combine(
-                request.StagingStore.DestinationRoot,
-                item.RelativePath.Replace(
-                    '/',
-                    Path.DirectorySeparatorChar));
-            string finalPath =
-                QuarantineStagingStore.ResolveCollision(targetPath);
+            Envelope batchEnd =
+                await sequence.ReadExpectedAsync(
+                    channel,
+                    MessageTypes.BatchEnd,
+                    sessionId,
+                    cancellationToken);
+            RequireExactString(
+                batchEnd,
+                "batchId",
+                batchId);
 
-            string? targetDirectory =
-                Path.GetDirectoryName(finalPath);
-            if (targetDirectory != null &&
-                !Directory.Exists(targetDirectory))
+            if (verifiedCount == 0 &&
+                failedCount > 0)
             {
-                Directory.CreateDirectory(targetDirectory);
+                await channel.WriteEnvelopeAsync(
+                    sequence.Create(
+                        MessageTypes.Error,
+                        sessionId,
+                        new JsonObject
+                        {
+                            ["code"] =
+                                WireErrorCodes
+                                    .IntegrityMismatch,
+                            ["batchId"] = batchId,
+                            ["detail"] =
+                                "No offered item passed integrity verification."
+                        }),
+                    cancellationToken);
+
+                string failedMessage =
+                    $"Transfer failed: all {failedCount} item(s) failed verification.";
+                interaction.OnStatus(
+                    DesktopTransferDirection.Receive,
+                    failedMessage);
+                return DesktopTransferResult.Failed(
+                    failedMessage);
             }
-
-            File.Move(quarantinePath, finalPath, overwrite: false);
-
-            verifiedCount++;
-            verifiedBytes += item.SizeBytes;
 
             await channel.WriteEnvelopeAsync(
-                new Envelope(
-                    1,
-                    MessageTypes.ItemResult,
-                    hello.SessionId,
-                    NewMessageId(),
-                    6,
+                sequence.Create(
+                    MessageTypes.BatchResult,
+                    sessionId,
                     new JsonObject
                     {
                         ["batchId"] = batchId,
-                        ["itemId"] = item.ItemId,
-                        ["status"] = "verified",
-                        ["sizeBytes"] = item.SizeBytes.ToString(),
-                        ["sha256"] = actualSha
+                        ["status"] = "completed",
+                        ["verifiedCount"] =
+                            verifiedCount,
+                        ["totalVerifiedBytes"] =
+                            verifiedBytes.ToString()
                     }),
                 cancellationToken);
 
-            interaction.OnItemStatus(
-                DesktopTransferDirection.Receive,
-                item.Name,
-                "Verified");
-            interaction.OnHistory(
-                new DesktopHistoryEntry(
+            if (failedCount > 0)
+            {
+                string partialMessage =
+                    $"Transfer ended with {failedCount} failed item(s); " +
+                    $"{verifiedCount}/{items.Count} item(s) were safely saved.";
+                interaction.OnStatus(
                     DesktopTransferDirection.Receive,
-                    item.Name,
-                    item.SizeBytes,
-                    finalPath,
-                    peerName,
-                    DateTimeOffset.Now));
+                    partialMessage);
+                return DesktopTransferResult.Failed(
+                    partialMessage);
+            }
+
+            string message =
+                $"Transfer complete: {verifiedCount} file(s) safely saved ({verifiedBytes} bytes).";
+            interaction.OnStatus(
+                DesktopTransferDirection.Receive,
+                message);
+            return DesktopTransferResult.Completed(
+                message,
+                verifiedCount,
+                verifiedBytes);
+        }
+        catch
+        {
+            request.StagingStore.PurgeSession(
+                sessionId);
+            throw;
+        }
+    }
+
+    private static List<JsonArray> BuildOfferPages(
+        IReadOnlyList<PreparedSendItem> items)
+    {
+        var pages = new List<JsonArray>();
+        var current = new JsonArray();
+        int estimatedBytes = 256;
+
+        foreach (PreparedSendItem item in items)
+        {
+            int itemEstimate =
+                EstimateOfferItemBytes(item);
+            if (current.Count > 0 &&
+                (current.Count >= MaxOfferPageItems ||
+                 estimatedBytes + itemEstimate >
+                 SafeOfferPagePayloadBytes))
+            {
+                pages.Add(current);
+                current = new JsonArray();
+                estimatedBytes = 256;
+            }
+
+            current.Add(
+                CreateOfferItem(item));
+            estimatedBytes += itemEstimate;
         }
 
-        await channel.ReadEnvelopeAsync(cancellationToken); // BATCH_END
+        if (current.Count > 0)
+        {
+            pages.Add(current);
+        }
 
-        await channel.WriteEnvelopeAsync(
-            new Envelope(
-                1,
-                MessageTypes.BatchResult,
-                hello.SessionId,
-                NewMessageId(),
-                7,
-                new JsonObject
-                {
-                    ["batchId"] = batchId,
-                    ["status"] = "completed",
-                    ["verifiedCount"] = verifiedCount,
-                    ["totalVerifiedBytes"] = verifiedBytes.ToString()
-                }),
-            cancellationToken);
+        if (pages.Count == 0 ||
+            pages.Count > 1_000)
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.LimitExceeded,
+                $"Offer page count {pages.Count} is outside the protocol limit.");
+        }
 
-        string message =
-            $"Transfer complete: {verifiedCount} file(s) safely saved ({verifiedBytes} bytes).";
-        interaction.OnStatus(DesktopTransferDirection.Receive, message);
-        return DesktopTransferResult.Completed(
-            message,
-            verifiedCount,
-            verifiedBytes);
+        return pages;
+    }
+
+    private static JsonObject CreateOfferItem(
+        PreparedSendItem item) =>
+        new()
+        {
+            ["itemId"] = item.ItemId.Value,
+            ["name"] = item.File.Name,
+            ["mime"] =
+                "application/octet-stream",
+            ["sizeBytes"] =
+                item.DeclaredSize.ToString(),
+            ["relativePath"] =
+                item.File.Name
+        };
+
+    private static int EstimateOfferItemBytes(
+        PreparedSendItem item)
+    {
+        const int JsonOverhead = 128;
+        return JsonOverhead +
+               Encoding.UTF8.GetByteCount(
+                   item.File.Name) * 2 +
+               item.DeclaredSize
+                   .ToString()
+                   .Length;
+    }
+
+    private static void RequireExactString(
+        Envelope envelope,
+        string key,
+        string expected)
+    {
+        string actual =
+            envelope.Body[key]?.ToString()
+            ?? throw new ProtocolViolationException(
+                WireErrorCodes.MalformedMessage,
+                $"{envelope.Type} is missing '{key}'.");
+
+        if (!string.Equals(
+                actual,
+                expected,
+                StringComparison.Ordinal))
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.ProtocolOrder,
+                $"{envelope.Type} '{key}' value '{actual}' does not match expected '{expected}'.");
+        }
+    }
+
+    private static void RequireExactLong(
+        Envelope envelope,
+        string key,
+        long expected)
+    {
+        string value =
+            envelope.Body[key]?.ToString()
+            ?? throw new ProtocolViolationException(
+                WireErrorCodes.MalformedMessage,
+                $"{envelope.Type} is missing '{key}'.");
+
+        if (!long.TryParse(
+                value,
+                out long actual) ||
+            actual != expected)
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.ProtocolOrder,
+                $"{envelope.Type} '{key}' value '{value}' does not match expected '{expected}'.");
+        }
     }
 
     private static SessionId NewSessionId() =>
-        new(Guid.NewGuid().ToString("D").ToLowerInvariant());
-
-    private static MessageId NewMessageId() =>
-        new(Guid.NewGuid().ToString("D").ToLowerInvariant());
+        new(
+            Guid.NewGuid()
+                .ToString("D")
+                .ToLowerInvariant());
 }
