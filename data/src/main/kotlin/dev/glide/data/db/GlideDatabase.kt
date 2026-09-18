@@ -19,7 +19,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         TrustedPeerEntity::class,
         ResumableSessionEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = true
 )
 abstract class GlideDatabase : RoomDatabase() {
@@ -116,5 +116,74 @@ abstract class GlideDatabase : RoomDatabase() {
                 )
             }
         }
+
+
+        /**
+         * HARD-022 intentionally does not migrate version-4 resumable progress.
+         *
+         * Version 4 lacks authenticated peer identity, source identity, immutable chunk manifest,
+         * contiguous byte offset and whole-file digest authority. Preserving those rows would turn
+         * unauthenticated offset state into resume authority, so they are discarded fail-closed.
+         */
+        val MIGRATION_4_5 =
+            object : Migration(4, 5) {
+                override fun migrate(
+                    db: SupportSQLiteDatabase
+                ) {
+                    db.execSQL(
+                        "DROP TABLE IF EXISTS `resumable_sessions`"
+                    )
+                    db.execSQL(
+                        """
+                        CREATE TABLE IF NOT EXISTS `resumable_sessions` (
+                            `original_session_id` TEXT NOT NULL,
+                            `item_id` TEXT NOT NULL,
+                            `item_name` TEXT NOT NULL,
+                            `peer_fingerprint` TEXT NOT NULL,
+                            `source_identity` TEXT NOT NULL,
+                            `total_bytes` INTEGER NOT NULL,
+                            `chunk_size` INTEGER NOT NULL,
+                            `verified_chunks` INTEGER NOT NULL,
+                            `contiguous_byte_offset` INTEGER NOT NULL,
+                            `chunk_root_hash_hex` TEXT NOT NULL,
+                            `chunk_hashes_hex` TEXT NOT NULL,
+                            `whole_file_sha256_hex` TEXT NOT NULL,
+                            `created_at_ms` INTEGER NOT NULL,
+                            `updated_at_ms` INTEGER NOT NULL,
+                            `expires_at_ms` INTEGER NOT NULL,
+                            `staging_path` TEXT NOT NULL,
+                            PRIMARY KEY(
+                                `original_session_id`,
+                                `item_id`
+                            )
+                        )
+                        """.trimIndent()
+                    )
+                    db.execSQL(
+                        """
+                        CREATE INDEX IF NOT EXISTS
+                        `index_resumable_sessions_peer_fingerprint`
+                        ON `resumable_sessions`
+                        (`peer_fingerprint`)
+                        """.trimIndent()
+                    )
+                    db.execSQL(
+                        """
+                        CREATE INDEX IF NOT EXISTS
+                        `index_resumable_sessions_expires_at_ms`
+                        ON `resumable_sessions`
+                        (`expires_at_ms`)
+                        """.trimIndent()
+                    )
+                    db.execSQL(
+                        """
+                        CREATE INDEX IF NOT EXISTS
+                        `index_resumable_sessions_updated_at_ms`
+                        ON `resumable_sessions`
+                        (`updated_at_ms`)
+                        """.trimIndent()
+                    )
+                }
+            }
     }
 }
