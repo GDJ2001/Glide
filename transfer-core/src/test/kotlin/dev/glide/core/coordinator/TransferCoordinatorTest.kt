@@ -1027,9 +1027,9 @@ class TransferCoordinatorTest {
             // Simulate disconnect / link failure while awaiting receipt
             rTransport.disconnect(sTransport.localPeerId)
 
-            while (!senderCoordinator.state.value.isTerminal) {
-                kotlinx.coroutines.delay(20)
-            }
+            // The coordinator's terminal cleanup barrier is the deterministic synchronization point.
+            // Polling StateFlow.isTerminal can race the final state publication on a busy CI runner.
+            senderCoordinator.awaitTerminalCleanup()
 
             // Sender transitions to DeliveryUnconfirmed
             assertEquals(SessionPhase.DeliveryUnconfirmed, senderCoordinator.state.value.phase)
