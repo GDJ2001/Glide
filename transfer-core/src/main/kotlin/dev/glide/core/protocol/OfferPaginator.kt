@@ -39,13 +39,30 @@ object OfferPaginator {
                 name = item.name,
                 mime = item.mimeType,
                 sizeBytes = DecimalByteCount.serialize(item.sizeBytes),
-                relativePath = item.relativePath
+                relativePath = item.relativePath,
+                rootHash =
+                    item.resumeChunkRootHashHex,
+                chunkSize =
+                    item.resumeChunkSize
             )
 
             val nameBytes = item.name.toByteArray(StandardCharsets.UTF_8).size
             val mimeBytes = item.mimeType.toByteArray(StandardCharsets.UTF_8).size
             val relPathBytes = item.relativePath?.toByteArray(StandardCharsets.UTF_8)?.size ?: 0
-            val itemEstimatedBytes = 36 + nameBytes + mimeBytes + itemDto.sizeBytes.length + (if (relPathBytes > 0) relPathBytes + 20 else 0) + 32
+            val resumeMetadataBytes =
+                if (itemDto.rootHash != null) {
+                    96
+                } else {
+                    0
+                }
+            val itemEstimatedBytes =
+                36 +
+                    nameBytes +
+                    mimeBytes +
+                    itemDto.sizeBytes.length +
+                    (if (relPathBytes > 0) relPathBytes + 20 else 0) +
+                    resumeMetadataBytes +
+                    32
 
             // If page is full by item count OR would exceed safe payload ceiling, start new page
             if (currentPageItems.size >= maxItemsPerPage ||
