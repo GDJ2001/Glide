@@ -1,19 +1,12 @@
 using System.Net;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
-using System.Text.Json.Nodes;
-using Glide.Core.Codec;
-using Glide.Core.Models;
 using Glide.Core.Pairing;
-using Glide.Core.Security;
 using Glide.Core.Storage;
-using Glide.Core.Transport.Lan;
 using Glide.Desktop;
 using Glide.Transport.Discovery;
-using Glide.Transport.Framing;
 using Glide.Transport.Sockets;
 using Glide.Transport.Web;
-using ProtocolViolationException = Glide.Core.Models.ProtocolViolationException;
 
 namespace Glide.App;
 
@@ -69,16 +62,17 @@ public static class Program
         Console.WriteLine("      Start listening for incoming files from Glide Android or Desktop.");
         Console.WriteLine("      Defaults to port 42424 (or dynamic ephemeral port if unavailable).");
         Console.WriteLine("      Outputs a pairing invitation link and UTF-8 QR code for instant pairing.\n");
-        Console.WriteLine("  glide daemon [--port <port>]");
-        Console.WriteLine("      Run a long-lived listener that rotates one-use authenticated pairing invitations.");
-        Console.WriteLine("      Headless auto-consent remains disabled until an explicit trusted-peer policy is configured.\n");
+        Console.WriteLine("  glide daemon --accept-paired-offers [--port <port>] [--max-offer-bytes <bytes>] [--destination <path>]");
+        Console.WriteLine("      Run a long-lived listener with one-use authenticated invitations.");
+        Console.WriteLine("      Headless receiving is disabled unless --accept-paired-offers is explicitly supplied.");
+        Console.WriteLine("      The optional byte ceiling and destination form the local authorization policy.\n");
         Console.WriteLine("  glide send --pair <pairing-invitation-uri> <file-paths...>");
         Console.WriteLine("      Connect to a Glide peer with pinned TLS 1.3 and one-use invitation authentication.\n");
         Console.WriteLine("  glide web [--port <port>] <file-paths...>");
         Console.WriteLine("      Start zero-install web gateway to share files with any browser (iOS, Mac, Linux).\n");
         Console.WriteLine("Examples:");
         Console.WriteLine("  glide receive");
-        Console.WriteLine("  glide daemon");
+        Console.WriteLine("  glide daemon --accept-paired-offers --max-offer-bytes 1073741824");
         Console.WriteLine("  glide send --pair glide://pair/v1#... \"C:\\Photos\\vacation.jpg\"");
         Console.WriteLine("  glide web \"C:\\Photos\\vacation.jpg\"\n");
     }
@@ -203,59 +197,142 @@ public static class Program
                 .Select(ip => ip.ToString())
                 .ToList();
 
-            var stagingStore = new QuarantineStagingStore();
-            var invitationAuthority = new LanInvitationAuthority();
-            LanInvitation invitation = CreateReceiverInvitation(
-                listener,
-                boundPort,
-                ips,
-                invitationAuthority);
-            string pairingUri = InvitationCodec.Encode(invitation);
+            var stagingStore =
+                new QuarantineStagingStore();
+            var invitationAuthority =
+                new LanInvitationAuthority();
 
-            Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine($"\n[READY] Listening for incoming transfers on port {boundPort}");
-            Console.WriteLine($"[INFO] Local IP addresses: {string.Join(", ", ips)}");
-            Console.WriteLine($"[INFO] Staging sandbox: {stagingStore.StagingRoot}");
-            Console.WriteLine($"[INFO] Destination: {stagingStore.DestinationRoot}");
+            Console.ForegroundColor =
+                ConsoleColor.Green;
+            Console.WriteLine(
+                $"\n[READY] Listening for incoming transfers on port {boundPort}");
+            Console.WriteLine(
+                $"[INFO] Local IP addresses: {string.Join(", ", ips)}");
+            Console.WriteLine(
+                $"[INFO] Staging sandbox: {stagingStore.StagingRoot}");
+            Console.WriteLine(
+                $"[INFO] Destination: {stagingStore.DestinationRoot}");
             Console.ResetColor();
 
-            Console.ForegroundColor = ConsoleColor.Cyan;
-            Console.WriteLine("\n[PAIRING INVITATION] Scan or paste into peer device:");
-            Console.WriteLine($"  {pairingUri}\n");
-            Console.ResetColor();
+            while (true)
+            {
+                LanInvitation invitation =
+                    CreateReceiverInvitation(
+                        listener,
+                        boundPort,
+                        ips,
+                        invitationAuthority);
+                string pairingUri =
+                    InvitationCodec.Encode(
+                        invitation);
 
-            var qr = QrCodeGenerator.EncodeText(pairingUri);
-            Console.Write(qr.ToTerminalString(border: 2));
-            Console.WriteLine("\nWaiting for peer connection (Ctrl+C to cancel)...");
+                Console.ForegroundColor =
+                    ConsoleColor.Cyan;
+                Console.WriteLine(
+                    "\n[PAIRING INVITATION] Scan or paste into peer device:");
+                Console.WriteLine(
+                    $"  {pairingUri}\n");
+                Console.ResetColor();
 
-            await using var connection = await listener.AcceptConnectionAsync();
-            var engine = new DesktopTransferEngine();
-            var interaction = new ConsoleDesktopTransferInteraction(isDaemon: false);
+                var qr =
+                    QrCodeGenerator.EncodeText(
+                        pairingUri);
+                Console.Write(
+                    qr.ToTerminalString(
+                        border: 2));
+                Console.WriteLine(
+                    "\nWaiting for peer connection (invitation rotates when it expires)...");
 
-            var result = await engine.ReceiveAsync(
-                connection,
-                new DesktopReceiveRequest(
-                    stagingStore,
-                    invitationAuthority,
-                    LocalDeviceName: Environment.MachineName),
-                interaction);
+                using var invitationCts =
+                    new CancellationTokenSource(
+                        TimeSpan.FromSeconds(115));
+                try
+                {
+                    await using var connection =
+                        await listener.AcceptConnectionAsync(
+                            invitationCts.Token);
+                    var engine =
+                        new DesktopTransferEngine();
+                    var interaction =
+                        new ConsoleDesktopTransferInteraction(
+                            isDaemon: false);
 
-            return result.Success ? 0 : 1;
-        }
+                    var result =
+                        await engine.ReceiveAsync(
+                            connection,
+                            new DesktopReceiveRequest(
+                                stagingStore,
+                                invitationAuthority,
+                                LocalDeviceName:
+                                    Environment.MachineName),
+                            interaction);
+
+                    return result.Success ? 0 : 1;
+                }
+                catch (OperationCanceledException)
+                    when (invitationCts.IsCancellationRequested)
+                {
+                    invitationAuthority.RevokeActive();
+                    Console.WriteLine(
+                        "[INFO] Pairing invitation expired; rotating to a fresh one.");
+                }
+            }        }
     }
 
     private static async Task<int> RunDaemonAsync(string[] args)
     {
-        int port = LanDiscoveryConstants.DefaultPort;
+        int port =
+            LanDiscoveryConstants.DefaultPort;
+        bool acceptPairedOffers = false;
+        long maxOfferBytes =
+            1L * 1024 * 1024 * 1024;
+        string? destination = null;
+
         for (int i = 0; i < args.Length; i++)
         {
             if (args[i] is "--port" or "-p" &&
                 i + 1 < args.Length &&
-                int.TryParse(args[i + 1], out int parsedPort))
+                int.TryParse(
+                    args[i + 1],
+                    out int parsedPort))
             {
                 port = parsedPort;
-                break;
+                i++;
             }
+            else if (args[i] ==
+                     "--accept-paired-offers")
+            {
+                acceptPairedOffers = true;
+            }
+            else if (args[i] ==
+                     "--max-offer-bytes" &&
+                     i + 1 < args.Length &&
+                     long.TryParse(
+                         args[i + 1],
+                         out long parsedMax) &&
+                     parsedMax > 0)
+            {
+                maxOfferBytes = parsedMax;
+                i++;
+            }
+            else if (args[i] ==
+                     "--destination" &&
+                     i + 1 < args.Length)
+            {
+                destination =
+                    Path.GetFullPath(
+                        args[++i]);
+            }
+        }
+
+        if (!acceptPairedOffers)
+        {
+            Console.ForegroundColor =
+                ConsoleColor.Red;
+            Console.WriteLine(
+                "[ERROR] Headless receiving is disabled by default. Re-run daemon with --accept-paired-offers and an appropriate --max-offer-bytes policy.");
+            Console.ResetColor();
+            return 1;
         }
 
         TlsSocketListener listener;
@@ -278,9 +355,18 @@ public static class Program
                 .Select(ip => ip.ToString())
                 .ToList();
 
-            var stagingStore = new QuarantineStagingStore();
-            var engine = new DesktopTransferEngine();
-            var interaction = new ConsoleDesktopTransferInteraction(isDaemon: true);
+            var stagingStore =
+                new QuarantineStagingStore(
+                    destinationRoot:
+                        destination);
+            var engine =
+                new DesktopTransferEngine();
+            var interaction =
+                new ConsoleDesktopTransferInteraction(
+                    isDaemon: true,
+                    allowHeadlessOffers: true,
+                    maxOfferBytes:
+                        maxOfferBytes);
             var invitationAuthority = new LanInvitationAuthority();
 
             Console.ForegroundColor = ConsoleColor.Green;
@@ -322,9 +408,18 @@ public static class Program
                         Console.WriteLine(pairingUri);
                         Console.ResetColor();
 
+                        using var invitationCts =
+                            CancellationTokenSource
+                                .CreateLinkedTokenSource(
+                                    cts.Token);
+                        invitationCts.CancelAfter(
+                            TimeSpan.FromSeconds(115));
+
                         await using var connection =
-                            await listener.AcceptConnectionAsync(cts.Token);
-                        Console.WriteLine($"[{DateTime.UtcNow:O}] [DAEMON] Connection established from {connection.TcpClient.Client.RemoteEndPoint}");
+                            await listener.AcceptConnectionAsync(
+                                invitationCts.Token);
+                        Console.WriteLine(
+                            $"[{DateTime.UtcNow:O}] [DAEMON] Connection established from {connection.TcpClient.Client.RemoteEndPoint}");
 
                         await engine.ReceiveAsync(
                             connection,
@@ -338,7 +433,16 @@ public static class Program
                         // A connection attempt consumes or invalidates the current authorization.
                         invitationAuthority.RevokeActive();
                     }
-                    catch (OperationCanceledException) when (cts.IsCancellationRequested)
+                    catch (OperationCanceledException)
+                        when (!cts.IsCancellationRequested)
+                    {
+                        invitationAuthority.RevokeActive();
+                        Console.WriteLine(
+                            $"[{DateTime.UtcNow:O}] [DAEMON AUTH] Pairing invitation expired; rotating.");
+                        continue;
+                    }
+                    catch (OperationCanceledException)
+                        when (cts.IsCancellationRequested)
                     {
                         break;
                     }
@@ -438,46 +542,54 @@ public static class Program
         return result.Success ? 0 : 1;
     }
 
-    private sealed class ConsoleDesktopTransferInteraction(bool isDaemon)
+    private sealed class ConsoleDesktopTransferInteraction(
+        bool isDaemon,
+        bool allowHeadlessOffers = false,
+        long maxOfferBytes =
+            1L * 1024 * 1024 * 1024)
         : DesktopTransferInteractionBase
     {
-        public override Task<bool> ConfirmSasAsync(
-            DesktopTransferDirection direction,
-            string peerName,
-            int sixDigitCode,
-            CancellationToken cancellationToken)
-        {
-            Console.ForegroundColor = ConsoleColor.Magenta;
-            if (isDaemon)
-            {
-                Console.WriteLine(
-                    $"[{DateTime.UtcNow:O}] [DAEMON SAS] 6-digit verification code: {sixDigitCode:D6}");
-            }
-            else
-            {
-                Console.WriteLine("-----------------------------------------------------------------");
-                Console.WriteLine(
-                    $"  *** 6-DIGIT VERIFICATION CODE: [ {sixDigitCode:D6} ] ***");
-                Console.WriteLine(
-                    "  Verify that this code matches on the other device screen.");
-                Console.WriteLine("-----------------------------------------------------------------");
-            }
-            Console.ResetColor();
-
-            // Preserve current CLI behavior: display the code and continue.
-            return Task.FromResult(true);
-        }
-
         public override Task<bool> ConfirmOfferAsync(
             DesktopOffer offer,
             CancellationToken cancellationToken)
         {
-            string prefix = isDaemon ? $"[{DateTime.UtcNow:O}] " : string.Empty;
+            cancellationToken
+                .ThrowIfCancellationRequested();
+
+            string prefix =
+                isDaemon
+                    ? $"[{DateTime.UtcNow:O}] "
+                    : string.Empty;
             Console.WriteLine(
                 $"{prefix}[OFFER] Inbound offer: {offer.Items.Count} items, {offer.TotalBytes} bytes from '{offer.PeerName}'");
 
-            // HARD-016 owns explicit headless authorization policy.
-            return Task.FromResult(true);
+            if (isDaemon)
+            {
+                bool authorized =
+                    allowHeadlessOffers &&
+                    offer.TotalBytes <=
+                    maxOfferBytes;
+                Console.WriteLine(
+                    authorized
+                        ? $"{prefix}[AUTH] Offer accepted by explicit headless policy (limit {maxOfferBytes} bytes)."
+                        : $"{prefix}[AUTH] Offer rejected by headless policy.");
+                return Task.FromResult(
+                    authorized);
+            }
+
+            Console.Write(
+                "Accept this authenticated transfer? [y/N]: ");
+            string? answer =
+                Console.ReadLine();
+            return Task.FromResult(
+                string.Equals(
+                    answer?.Trim(),
+                    "y",
+                    StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(
+                    answer?.Trim(),
+                    "yes",
+                    StringComparison.OrdinalIgnoreCase));
         }
 
         public override void OnInvitationConsumed(DesktopTransferDirection direction)
