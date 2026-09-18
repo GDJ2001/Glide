@@ -5,4 +5,5 @@
   <Project Path="Glide.Tests/Glide.Tests.csproj" />
   <Project Path="Glide.Transport/Glide.Transport.csproj" />
   <Project Path="Glide.Windows.UI/Glide.Windows.UI.csproj" />
+  <Project Path="Glide.Windows.UI.Tests/Glide.Windows.UI.Tests.csproj" />
 </Solution>
