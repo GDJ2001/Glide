@@ -193,7 +193,9 @@ object DatabaseModule {
         receiveStore: dev.glide.data.store.AndroidReceiveStore,
         receiveJournalDao: dev.glide.data.db.ReceiveJournalDao,
         receivedFileDao: ReceivedFileDao,
-        historyStore: RoomHistoryStore
+        historyStore: RoomHistoryStore,
+        resumableStagingStore:
+            dev.glide.data.store.ResumableStagingStore
     ): dev.glide.data.maintenance.OrphanMaintenanceCleaner {
         val stagingSourcesDirs = listOf(
             java.io.File(context.cacheDir, "staging_sources"),
@@ -205,7 +207,9 @@ object DatabaseModule {
             stagingSourcesDirs = stagingSourcesDirs,
             receiveJournalDao = receiveJournalDao,
             receivedFileDao = receivedFileDao,
-            historyStore = historyStore
+            historyStore = historyStore,
+            resumableStagingStore =
+                resumableStagingStore
         )
     }
 }
