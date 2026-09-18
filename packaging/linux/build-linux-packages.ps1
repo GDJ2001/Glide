@@ -44,6 +44,7 @@ foreach ($rid in $Runtimes) {
     # Copy FreeDesktop and systemd metadata
     Copy-Item (Join-Path $ScriptDir "glide.desktop") $publishDir
     Copy-Item (Join-Path $ScriptDir "glide.service") $publishDir
+    Copy-Item (Join-Path $ScriptDir "glide-daemon-policy.example.json") $publishDir
 
     # Create archive
     $tarPath = Join-Path $OutputDir "glide-linux-$rid.tar.gz"
