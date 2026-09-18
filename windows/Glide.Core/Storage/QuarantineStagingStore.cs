@@ -182,7 +182,6 @@ public sealed class QuarantineStagingStore
         {
             ReleaseReservation(
                 reservationKey,
-                expectedSizeBytes,
                 sessionId,
                 itemId,
                 purgeQuarantine: true);
@@ -243,19 +242,8 @@ public sealed class QuarantineStagingStore
         ItemId itemId)
     {
         string key = BuildReservationKey(sessionId, itemId);
-        long expected = 0;
-
-        lock (_reservationGate)
-        {
-            if (_reservations.TryGetValue(key, out long reserved))
-            {
-                expected = reserved;
-            }
-        }
-
         ReleaseReservation(
             key,
-            expected,
             sessionId,
             itemId,
             purgeQuarantine: true);
@@ -263,7 +251,7 @@ public sealed class QuarantineStagingStore
 
     public void PurgeSession(SessionId sessionId)
     {
-        List<(string Key, long Bytes, ItemId ItemId)> owned = [];
+        List<(string Key, ItemId ItemId)> owned = [];
 
         lock (_reservationGate)
         {
@@ -274,7 +262,7 @@ public sealed class QuarantineStagingStore
                 {
                     string itemText = key[prefix.Length..];
                     owned.Add(
-                        (key, bytes, new ItemId(itemText)));
+                        (key, new ItemId(itemText)));
                 }
             }
         }
@@ -283,7 +271,6 @@ public sealed class QuarantineStagingStore
         {
             ReleaseReservation(
                 entry.Key,
-                entry.Bytes,
                 sessionId,
                 entry.ItemId,
                 purgeQuarantine: true);
@@ -431,7 +418,6 @@ public sealed class QuarantineStagingStore
 
         ReleaseReservation(
             reservation.ReservationKey,
-            reservation.ExpectedSizeBytes,
             reservation.SessionId,
             reservation.ItemId,
             purgeQuarantine: false);
@@ -444,7 +430,6 @@ public sealed class QuarantineStagingStore
     {
         ReleaseReservation(
             reservation.ReservationKey,
-            reservation.ExpectedSizeBytes,
             reservation.SessionId,
             reservation.ItemId,
             purgeQuarantine: true);
@@ -579,6 +564,10 @@ public sealed class QuarantineStagingStore
             targetFull,
             failureCode);
 
+        EnsureNoReparseAncestors(
+            rootFull,
+            failureCode);
+
         if (createDirectories &&
             !Directory.Exists(rootFull))
         {
@@ -669,6 +658,27 @@ public sealed class QuarantineStagingStore
         }
     }
 
+    private static void EnsureNoReparseAncestors(
+        string path,
+        string failureCode)
+    {
+        DirectoryInfo? current =
+            new DirectoryInfo(
+                Path.GetFullPath(path));
+
+        while (current != null)
+        {
+            if (current.Exists)
+            {
+                EnsureNoReparsePoint(
+                    current.FullName,
+                    failureCode);
+            }
+
+            current = current.Parent;
+        }
+    }
+
     private static void EnsureNoReparsePoint(
         string path,
         string failureCode)
@@ -691,7 +701,6 @@ public sealed class QuarantineStagingStore
 
     private void ReleaseReservation(
         string reservationKey,
-        long expectedBytes,
         SessionId sessionId,
         ItemId itemId,
         bool purgeQuarantine)
