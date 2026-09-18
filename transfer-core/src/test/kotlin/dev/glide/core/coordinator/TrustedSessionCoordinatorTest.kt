@@ -410,13 +410,450 @@ class TrustedSessionCoordinatorTest {
             }
         }
 
+    @Test
+    fun identityResponseFromOldChallenge_isRejectedBeforeOffer() =
+        runBlocking {
+            withTimeout(10_000) {
+                val binding =
+                    "ef".repeat(32)
+                val senderIdentity =
+                    TestPersistentIdentityStore()
+                val receiverIdentity =
+                    TestPersistentIdentityStore()
+                val senderTrust =
+                    newTrustManager(
+                        identity =
+                            senderIdentity
+                    )
+                val receiverTrust =
+                    newTrustManager(
+                        identity =
+                            receiverIdentity
+                    )
+
+                val firstSession =
+                    SessionId(
+                        UUID.randomUUID()
+                            .toString()
+                    )
+                val firstSenderTransport =
+                    TrustedControlTransport(
+                        PeerId("first-sender"),
+                        firstSession,
+                        binding
+                    )
+                val firstReceiverTransport =
+                    TrustedControlTransport(
+                        PeerId("first-receiver"),
+                        firstSession,
+                        binding
+                    )
+                firstSenderTransport.remote =
+                    firstReceiverTransport
+                firstReceiverTransport.remote =
+                    firstSenderTransport
+
+                val firstItem =
+                    TransferItem(
+                        id =
+                            ItemId(
+                                UUID.randomUUID()
+                                    .toString()
+                            ),
+                        name = "first.txt",
+                        mimeType = "text/plain",
+                        sizeBytes = 1L
+                    )
+                val firstBatch =
+                    TransferBatch(
+                        id =
+                            BatchId(
+                                UUID.randomUUID()
+                                    .toString()
+                            ),
+                        items = listOf(firstItem)
+                    )
+                val firstSender =
+                    TransferCoordinator(
+                        sessionId = firstSession,
+                        role = DeviceRole.Sender,
+                        peerId =
+                            firstReceiverTransport
+                                .localPeerId,
+                        transport =
+                            firstSenderTransport,
+                        sourceAccess =
+                            FakeSourceAccess(),
+                        receiveStore =
+                            FakeReceiveStore(),
+                        historyStore =
+                            FakeHistoryStore(),
+                        scope = this,
+                        senderBatch = firstBatch,
+                        sourceMap =
+                            mapOf(
+                                firstItem.id to
+                                    SourceHandle(
+                                        "first-source"
+                                    )
+                            ),
+                        persistentTrustManager =
+                            senderTrust
+                    )
+                val firstReceiver =
+                    TransferCoordinator(
+                        sessionId = firstSession,
+                        role = DeviceRole.Receiver,
+                        peerId =
+                            firstSenderTransport
+                                .localPeerId,
+                        transport =
+                            firstReceiverTransport,
+                        sourceAccess =
+                            FakeSourceAccess(),
+                        receiveStore =
+                            FakeReceiveStore(),
+                        historyStore =
+                            FakeHistoryStore(),
+                        scope = this,
+                        persistentTrustManager =
+                            receiverTrust
+                    )
+
+                firstReceiver.start()
+                firstSender.start()
+
+                while (firstReceiver.state.value.phase !=
+                    SessionPhase.AwaitingConsent
+                ) {
+                    delay(10)
+                }
+
+                val staleResponse =
+                    firstReceiverTransport
+                        .sentControls
+                        .first {
+                            it.type ==
+                                MessageTypes
+                                    .IDENTITY_RESPONSE
+                        }
+
+                firstSender.stop()
+                firstReceiver.stop()
+
+                val secondSession =
+                    SessionId(
+                        UUID.randomUUID()
+                            .toString()
+                    )
+                val secondSenderTransport =
+                    TrustedControlTransport(
+                        PeerId("second-sender"),
+                        secondSession,
+                        binding
+                    )
+                val secondReceiverTransport =
+                    TrustedControlTransport(
+                        PeerId("second-receiver"),
+                        secondSession,
+                        binding
+                    )
+                secondSenderTransport.remote =
+                    secondReceiverTransport
+                secondReceiverTransport.remote =
+                    secondSenderTransport
+                secondReceiverTransport
+                    .rewriteOutgoing = {
+                        envelope ->
+                        if (envelope.type ==
+                            MessageTypes
+                                .IDENTITY_RESPONSE
+                        ) {
+                            envelope.copy(
+                                body =
+                                    staleResponse
+                                        .body
+                            )
+                        } else {
+                            envelope
+                        }
+                    }
+
+                val secondItem =
+                    TransferItem(
+                        id =
+                            ItemId(
+                                UUID.randomUUID()
+                                    .toString()
+                            ),
+                        name = "second.txt",
+                        mimeType = "text/plain",
+                        sizeBytes = 1L
+                    )
+                val secondBatch =
+                    TransferBatch(
+                        id =
+                            BatchId(
+                                UUID.randomUUID()
+                                    .toString()
+                            ),
+                        items = listOf(secondItem)
+                    )
+                val secondSender =
+                    TransferCoordinator(
+                        sessionId = secondSession,
+                        role = DeviceRole.Sender,
+                        peerId =
+                            secondReceiverTransport
+                                .localPeerId,
+                        transport =
+                            secondSenderTransport,
+                        sourceAccess =
+                            FakeSourceAccess(),
+                        receiveStore =
+                            FakeReceiveStore(),
+                        historyStore =
+                            FakeHistoryStore(),
+                        scope = this,
+                        senderBatch =
+                            secondBatch,
+                        sourceMap =
+                            mapOf(
+                                secondItem.id to
+                                    SourceHandle(
+                                        "second-source"
+                                    )
+                            ),
+                        persistentTrustManager =
+                            senderTrust
+                    )
+                val secondReceiver =
+                    TransferCoordinator(
+                        sessionId = secondSession,
+                        role = DeviceRole.Receiver,
+                        peerId =
+                            secondSenderTransport
+                                .localPeerId,
+                        transport =
+                            secondReceiverTransport,
+                        sourceAccess =
+                            FakeSourceAccess(),
+                        receiveStore =
+                            FakeReceiveStore(),
+                        historyStore =
+                            FakeHistoryStore(),
+                        scope = this,
+                        persistentTrustManager =
+                            receiverTrust
+                    )
+
+                secondReceiver.start()
+                secondSender.start()
+
+                while (!secondSender
+                        .state.value
+                        .isTerminal
+                ) {
+                    delay(10)
+                }
+
+                assertTrue(
+                    secondSender
+                        .state.value
+                        .failure is
+                        TransferFailure
+                            .AuthenticationMismatch
+                )
+                assertFalse(
+                    secondSenderTransport
+                        .sentControls
+                        .any {
+                            it.type ==
+                                MessageTypes
+                                    .OFFER_BEGIN
+                        }
+                )
+                assertEquals(
+                    null,
+                    secondSender
+                        .authenticatedPeerFingerprintHex
+                )
+
+                secondSender.stop()
+                secondReceiver.stop()
+            }
+        }
+
+    @Test
+    fun expectedTrustedPeer_revokedBeforeHandshake_isRejectedBeforeOffer() =
+        runBlocking {
+            withTimeout(10_000) {
+                val sessionId =
+                    SessionId(
+                        UUID.randomUUID()
+                            .toString()
+                    )
+                val binding =
+                    "12".repeat(32)
+                val senderPeer =
+                    PeerId("revoked-sender")
+                val receiverPeer =
+                    PeerId("revoked-receiver")
+                val receiverIdentity =
+                    TestPersistentIdentityStore()
+                val receiverFingerprint =
+                    receiverIdentity
+                        .getFingerprint()
+                val senderTrust =
+                    newTrustManager(
+                        initialPeers =
+                            listOf(
+                                TrustedPeerRecord(
+                                    peerFingerprintHex =
+                                        receiverFingerprint,
+                                    publicKeyDerHex =
+                                        with(
+                                            PeerIdentityVerifier
+                                        ) {
+                                            receiverIdentity
+                                                .getOrCreatePublicKeyDer()
+                                                .toHex()
+                                        },
+                                    displayName =
+                                        "Revoked receiver",
+                                    pairedAtMs = 1L,
+                                    lastSeenAtMs = 1L
+                                )
+                            )
+                    )
+                senderTrust.revokePeer(
+                    receiverFingerprint
+                )
+                val receiverTrust =
+                    newTrustManager(
+                        identity =
+                            receiverIdentity
+                    )
+
+                val senderTransport =
+                    TrustedControlTransport(
+                        senderPeer,
+                        sessionId,
+                        binding
+                    )
+                val receiverTransport =
+                    TrustedControlTransport(
+                        receiverPeer,
+                        sessionId,
+                        binding
+                    )
+                senderTransport.remote =
+                    receiverTransport
+                receiverTransport.remote =
+                    senderTransport
+
+                val item =
+                    TransferItem(
+                        id =
+                            ItemId(
+                                UUID.randomUUID()
+                                    .toString()
+                            ),
+                        name = "revoked.txt",
+                        mimeType = "text/plain",
+                        sizeBytes = 1L
+                    )
+                val batch =
+                    TransferBatch(
+                        id =
+                            BatchId(
+                                UUID.randomUUID()
+                                    .toString()
+                            ),
+                        items = listOf(item)
+                    )
+                val sender =
+                    TransferCoordinator(
+                        sessionId = sessionId,
+                        role = DeviceRole.Sender,
+                        peerId = receiverPeer,
+                        transport = senderTransport,
+                        sourceAccess =
+                            FakeSourceAccess(),
+                        receiveStore =
+                            FakeReceiveStore(),
+                        historyStore =
+                            FakeHistoryStore(),
+                        scope = this,
+                        senderBatch = batch,
+                        sourceMap =
+                            mapOf(
+                                item.id to
+                                    SourceHandle(
+                                        "revoked-source"
+                                    )
+                            ),
+                        persistentTrustManager =
+                            senderTrust,
+                        expectedPeerFingerprintHex =
+                            receiverFingerprint
+                    )
+                val receiver =
+                    TransferCoordinator(
+                        sessionId = sessionId,
+                        role = DeviceRole.Receiver,
+                        peerId = senderPeer,
+                        transport =
+                            receiverTransport,
+                        sourceAccess =
+                            FakeSourceAccess(),
+                        receiveStore =
+                            FakeReceiveStore(),
+                        historyStore =
+                            FakeHistoryStore(),
+                        scope = this,
+                        persistentTrustManager =
+                            receiverTrust
+                    )
+
+                receiver.start()
+                sender.start()
+
+                while (!sender.state.value.isTerminal) {
+                    delay(10)
+                }
+
+                assertTrue(
+                    sender.state.value.failure is
+                        TransferFailure.AuthenticationMismatch
+                )
+                assertFalse(
+                    senderTransport.sentControls
+                        .any {
+                            it.type ==
+                                MessageTypes.OFFER_BEGIN
+                        }
+                )
+                assertEquals(
+                    null,
+                    sender
+                        .authenticatedPeerFingerprintHex
+                )
+
+                sender.stop()
+                receiver.stop()
+            }
+        }
+
     private fun newTrustManager(
         initialPeers: List<TrustedPeerRecord> =
-            emptyList()
+            emptyList(),
+        identity: TestPersistentIdentityStore =
+            TestPersistentIdentityStore()
     ): PersistentTrustManager =
         PersistentTrustManager(
             identityStore =
-                TestPersistentIdentityStore(),
+                identity,
             trustedPeerStore =
                 TestTrustedPeerStore(
                     initialPeers
@@ -440,6 +877,8 @@ class TrustedSessionCoordinatorTest {
             )
         val sentControls =
             mutableListOf<Envelope>()
+        var rewriteOutgoing:
+            ((Envelope) -> Envelope)? = null
 
         override fun authenticatedChannelContext(
             peerId: PeerId
@@ -485,14 +924,23 @@ class TrustedSessionCoordinatorTest {
             peerId: PeerId,
             payload: ByteArray
         ) {
-            sentControls +=
+            val original =
                 ProtocolCodec.decode(
                     payload
                 )
+            sentControls += original
+
+            val delivered =
+                rewriteOutgoing
+                    ?.invoke(original)
+                    ?: original
+
             remote.controls.send(
                 ControlMessage(
                     localPeerId,
-                    payload
+                    ProtocolCodec.encode(
+                        delivered
+                    )
                 )
             )
         }
