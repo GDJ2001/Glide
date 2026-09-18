@@ -752,7 +752,7 @@ public sealed class DesktopTransferEngine
         }
 
         // Consent is requested only after every page/count/size/identifier invariant is valid.
-        bool offerAccepted =
+        bool userAccepted =
             await DesktopSessionProtocol.WithDeadlineAsync(
                 ct => interaction.ConfirmOfferAsync(
                     new DesktopOffer(
@@ -765,6 +765,53 @@ public sealed class DesktopTransferEngine
                 "offer consent",
                 cancellationToken);
 
+        var reservations =
+            new Dictionary<string, IncomingFileReservation>(
+                StringComparer.Ordinal);
+
+        bool offerAccepted = userAccepted;
+        string rejectionCode =
+            WireErrorCodes.UserRejected;
+
+        if (userAccepted)
+        {
+            try
+            {
+                // Reserve the complete accepted batch before authorizing the peer to send bytes.
+                // Each reservation remains bounded to its declared item size and is released on
+                // commit, cancellation, failure or session cleanup.
+                foreach (DesktopOfferItem item in items)
+                {
+                    var itemId =
+                        new ItemId(item.ItemId);
+                    IncomingFileReservation reservation =
+                        request.StagingStore.ReserveIncoming(
+                            sessionId,
+                            itemId,
+                            item.RelativePath,
+                            item.SizeBytes);
+                    reservations.Add(
+                        item.ItemId,
+                        reservation);
+                }
+            }
+            catch (ProtocolViolationException ex)
+            {
+                foreach (IncomingFileReservation reservation in
+                         reservations.Values)
+                {
+                    reservation.Dispose();
+                }
+                reservations.Clear();
+
+                offerAccepted = false;
+                rejectionCode =
+                    ex.FailureCode == WireErrorCodes.InsufficientStorage
+                        ? WireErrorCodes.InsufficientStorage
+                        : WireErrorCodes.DestinationUnavailable;
+            }
+        }
+
         var decisionBody = new JsonObject
         {
             ["batchId"] = batchId,
@@ -772,7 +819,7 @@ public sealed class DesktopTransferEngine
         };
         if (!offerAccepted)
         {
-            decisionBody["code"] = WireErrorCodes.UserRejected;
+            decisionBody["code"] = rejectionCode;
         }
 
         await channel.WriteEnvelopeAsync(
@@ -784,90 +831,86 @@ public sealed class DesktopTransferEngine
         if (!offerAccepted)
         {
             return DesktopTransferResult.RejectedByPeer(
-                "Transfer offer was rejected.");
+                userAccepted
+                    ? $"Transfer offer could not be reserved locally: {rejectionCode}."
+                    : "Transfer offer was rejected.");
         }
 
-        long cumulativeTransferred = 0;
-        int verifiedCount = 0;
-        long verifiedBytes = 0;
-        var bulkRefs = new HashSet<string>(StringComparer.Ordinal);
-
-        foreach (DesktopOfferItem item in items)
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            interaction.OnItemStatus(
-                DesktopTransferDirection.Receive,
-                item.Name,
-                "Receiving");
+            long cumulativeTransferred = 0;
+            int verifiedCount = 0;
+            long verifiedBytes = 0;
+            var bulkRefs =
+                new HashSet<string>(
+                    StringComparer.Ordinal);
 
-            Envelope itemStart = await protocol.ReadExpectedAsync(
-                channel,
-                MessageTypes.ItemStart,
-                _deadlines.ItemReady,
-                cancellationToken,
-                batchId,
-                item.ItemId);
-
-            long announcedSize =
-                long.Parse(itemStart.Body["sizeBytes"]?.ToString() ?? "-1");
-            if (announcedSize != item.SizeBytes)
+            foreach (DesktopOfferItem item in items)
             {
-                throw new ProtocolViolationException(
-                    WireErrorCodes.ProtocolOrder,
-                    $"ITEM_START size for '{item.Name}' does not match the accepted offer.");
-            }
+                cancellationToken.ThrowIfCancellationRequested();
+                interaction.OnItemStatus(
+                    DesktopTransferDirection.Receive,
+                    item.Name,
+                    "Receiving");
 
-            string bulkRef =
-                itemStart.Body["bulkRef"]?.ToString()
-                ?? throw new ProtocolViolationException(
-                    WireErrorCodes.MalformedMessage,
-                    "ITEM_START bulkRef missing.");
-            if (!bulkRefs.Add(bulkRef))
-            {
-                throw new ProtocolViolationException(
-                    WireErrorCodes.ProtocolOrder,
-                    $"bulkRef '{bulkRef}' was reused in the same session.");
-            }
+                Envelope itemStart =
+                    await protocol.ReadExpectedAsync(
+                        channel,
+                        MessageTypes.ItemStart,
+                        _deadlines.ItemReady,
+                        cancellationToken,
+                        batchId,
+                        item.ItemId);
 
-            await channel.WriteEnvelopeAsync(
-                protocol.Create(
-                    MessageTypes.ItemReady,
-                    new JsonObject
-                    {
-                        ["batchId"] = batchId,
-                        ["itemId"] = item.ItemId
-                    }),
-                cancellationToken);
+                long announcedSize =
+                    long.Parse(
+                        itemStart.Body["sizeBytes"]?.ToString()
+                        ?? "-1");
+                if (announcedSize != item.SizeBytes)
+                {
+                    throw new ProtocolViolationException(
+                        WireErrorCodes.ProtocolOrder,
+                        $"ITEM_START size for '{item.Name}' does not match the accepted offer.");
+                }
 
-            string quarantinePath = request.StagingStore.GetQuarantinePath(
-                sessionId,
-                new ItemId(item.ItemId));
-            string? quarantineDirectory =
-                Path.GetDirectoryName(quarantinePath);
-            if (quarantineDirectory != null &&
-                !Directory.Exists(quarantineDirectory))
-            {
-                Directory.CreateDirectory(quarantineDirectory);
-            }
+                string bulkRef =
+                    itemStart.Body["bulkRef"]?.ToString()
+                    ?? throw new ProtocolViolationException(
+                        WireErrorCodes.MalformedMessage,
+                        "ITEM_START bulkRef missing.");
+                if (!bulkRefs.Add(bulkRef))
+                {
+                    throw new ProtocolViolationException(
+                        WireErrorCodes.ProtocolOrder,
+                        $"bulkRef '{bulkRef}' was reused in the same session.");
+                }
 
-            byte[] hash;
-            long receivedBytes = 0;
-            using (var fileStream = new FileStream(
-                quarantinePath,
-                FileMode.Create,
-                FileAccess.Write,
-                FileShare.None,
-                65536,
-                useAsync: true))
-            using (var sha256 =
-                IncrementalHash.CreateHash(HashAlgorithmName.SHA256))
-            {
+                IncomingFileReservation reservation =
+                    reservations[item.ItemId];
+
+                await using QuarantineWriteSession writer =
+                    reservation.OpenWriter();
+
+                // ITEM_READY means the destination is actually opened and the full item budget
+                // is already reserved, matching the protocol's storage-readiness semantics.
+                await channel.WriteEnvelopeAsync(
+                    protocol.Create(
+                        MessageTypes.ItemReady,
+                        new JsonObject
+                        {
+                            ["batchId"] = batchId,
+                            ["itemId"] = item.ItemId
+                        }),
+                    cancellationToken);
+
                 bool firstBulkRecord = true;
                 while (true)
                 {
-                    TimeSpan progressDeadline = firstBulkRecord
-                        ? _deadlines.FirstBulkBytes
-                        : _deadlines.BulkProgress;
+                    TimeSpan progressDeadline =
+                        firstBulkRecord
+                            ? _deadlines.FirstBulkBytes
+                            : _deadlines.BulkProgress;
+
                     LanRecord? record =
                         await DesktopSessionProtocol.WithDeadlineAsync(
                             ct => channel.ReadRecordAsync(ct),
@@ -885,30 +928,25 @@ public sealed class DesktopTransferEngine
                     if (record is LanRecord.Data dataRecord)
                     {
                         firstBulkRecord = false;
+
                         if (!string.Equals(
-                            dataRecord.BulkRef.Value,
-                            bulkRef,
-                            StringComparison.Ordinal))
+                                dataRecord.BulkRef.Value,
+                                bulkRef,
+                                StringComparison.Ordinal))
                         {
                             throw new ProtocolViolationException(
                                 WireErrorCodes.MalformedMessage,
                                 "Unmatched bulkRef in DATA record.");
                         }
 
-                        receivedBytes = checked(
-                            receivedBytes + dataRecord.Chunk.Length);
-                        if (receivedBytes > item.SizeBytes)
-                        {
-                            throw new ProtocolViolationException(
-                                WireErrorCodes.IntegrityMismatch,
-                                $"Received more bytes than offered for '{item.Name}'.");
-                        }
-
-                        await fileStream.WriteAsync(
+                        await writer.WriteAsync(
                             dataRecord.Chunk.AsMemory(),
                             cancellationToken);
-                        sha256.AppendData(dataRecord.Chunk);
-                        cumulativeTransferred += dataRecord.Chunk.Length;
+
+                        cumulativeTransferred =
+                            checked(
+                                cumulativeTransferred +
+                                dataRecord.Chunk.Length);
 
                         interaction.OnProgress(
                             new DesktopTransferProgress(
@@ -921,22 +959,25 @@ public sealed class DesktopTransferEngine
                     else if (record is LanRecord.StreamEnd streamEnd)
                     {
                         if (!string.Equals(
-                            streamEnd.BulkRef.Value,
-                            bulkRef,
-                            StringComparison.Ordinal))
+                                streamEnd.BulkRef.Value,
+                                bulkRef,
+                                StringComparison.Ordinal))
                         {
                             throw new ProtocolViolationException(
                                 WireErrorCodes.MalformedMessage,
                                 "Unmatched bulkRef in STREAM_END record.");
                         }
 
-                        if (streamEnd.ActualBytes != receivedBytes ||
-                            receivedBytes != item.SizeBytes)
+                        if (streamEnd.ActualBytes !=
+                                writer.WrittenBytes ||
+                            writer.WrittenBytes !=
+                                item.SizeBytes)
                         {
                             throw new ProtocolViolationException(
                                 WireErrorCodes.IntegrityMismatch,
-                                $"STREAM_END actualBytes {streamEnd.ActualBytes} does not match expected {item.SizeBytes}.");
+                                $"STREAM_END actualBytes {streamEnd.ActualBytes} does not match received/expected {writer.WrittenBytes}/{item.SizeBytes}.");
                         }
+
                         break;
                     }
                     else
@@ -947,32 +988,90 @@ public sealed class DesktopTransferEngine
                     }
                 }
 
-                hash = sha256.GetHashAndReset();
-            }
+                Envelope itemEnd =
+                    await protocol.ReadExpectedAsync(
+                        channel,
+                        MessageTypes.ItemEnd,
+                        _deadlines.ItemReceipt,
+                        cancellationToken,
+                        batchId,
+                        item.ItemId);
 
-            Envelope itemEnd = await protocol.ReadExpectedAsync(
-                channel,
-                MessageTypes.ItemEnd,
-                _deadlines.ItemReceipt,
-                cancellationToken,
-                batchId,
-                item.ItemId);
+                long declaredBytes =
+                    long.Parse(
+                        itemEnd.Body["actualBytes"]?.ToString()
+                        ?? "-1");
+                string declaredSha =
+                    itemEnd.Body["sha256"]?.ToString()
+                    ?? string.Empty;
 
-            long declaredBytes =
-                long.Parse(itemEnd.Body["actualBytes"]?.ToString() ?? "-1");
-            string declaredSha =
-                itemEnd.Body["sha256"]?.ToString() ?? string.Empty;
-            string actualSha = Convert.ToHexStringLower(hash);
+                if (declaredBytes != item.SizeBytes)
+                {
+                    await channel.WriteEnvelopeAsync(
+                        protocol.Create(
+                            MessageTypes.ItemResult,
+                            new JsonObject
+                            {
+                                ["batchId"] = batchId,
+                                ["itemId"] = item.ItemId,
+                                ["status"] = "failed",
+                                ["code"] =
+                                    WireErrorCodes.IntegrityMismatch
+                            }),
+                        cancellationToken);
 
-            if (declaredBytes != item.SizeBytes ||
-                !string.Equals(
-                    actualSha,
-                    declaredSha,
-                    StringComparison.Ordinal))
-            {
-                request.StagingStore.PurgeQuarantine(
-                    sessionId,
-                    new ItemId(item.ItemId));
+                    interaction.OnItemStatus(
+                        DesktopTransferDirection.Receive,
+                        item.Name,
+                        "Failed");
+
+                    return DesktopTransferResult.Failed(
+                        $"Integrity verification failed for '{item.Name}'.");
+                }
+
+                string finalPath;
+                Sha256Digest actualDigest;
+                try
+                {
+                    (finalPath, actualDigest) =
+                        await writer.CompleteAndCommitAsync(
+                            new Sha256Digest(declaredSha),
+                            cancellationToken);
+                }
+                catch (ProtocolViolationException ex)
+                {
+                    string failureCode =
+                        WireErrorCodes.All.Contains(
+                            ex.FailureCode)
+                            ? ex.FailureCode
+                            : WireErrorCodes.WriteFailure;
+
+                    await channel.WriteEnvelopeAsync(
+                        protocol.Create(
+                            MessageTypes.ItemResult,
+                            new JsonObject
+                            {
+                                ["batchId"] = batchId,
+                                ["itemId"] = item.ItemId,
+                                ["status"] = "failed",
+                                ["code"] = failureCode
+                            }),
+                        cancellationToken);
+
+                    interaction.OnItemStatus(
+                        DesktopTransferDirection.Receive,
+                        item.Name,
+                        "Failed");
+
+                    return DesktopTransferResult.Failed(
+                        $"Storage verification/commit failed for '{item.Name}': {failureCode}.");
+                }
+
+                verifiedCount++;
+                verifiedBytes =
+                    checked(
+                        verifiedBytes +
+                        item.SizeBytes);
 
                 await channel.WriteEnvelopeAsync(
                     protocol.Create(
@@ -981,99 +1080,79 @@ public sealed class DesktopTransferEngine
                         {
                             ["batchId"] = batchId,
                             ["itemId"] = item.ItemId,
-                            ["status"] = "failed",
-                            ["code"] = WireErrorCodes.IntegrityMismatch
+                            ["status"] = "verified",
+                            ["sizeBytes"] =
+                                item.SizeBytes.ToString(),
+                            ["sha256"] =
+                                actualDigest.Value
                         }),
                     cancellationToken);
 
                 interaction.OnItemStatus(
                     DesktopTransferDirection.Receive,
                     item.Name,
-                    "Failed");
-                return DesktopTransferResult.Failed(
-                    $"Integrity verification failed for '{item.Name}'.");
+                    "Verified");
+                interaction.OnHistory(
+                    new DesktopHistoryEntry(
+                        DesktopTransferDirection.Receive,
+                        item.Name,
+                        item.SizeBytes,
+                        finalPath,
+                        peerName,
+                        DateTimeOffset.Now));
             }
 
-            string targetPath = Path.Combine(
-                request.StagingStore.DestinationRoot,
-                item.RelativePath.Replace(
-                    '/',
-                    Path.DirectorySeparatorChar));
-            string finalPath =
-                QuarantineStagingStore.ResolveCollision(targetPath);
-
-            string? targetDirectory = Path.GetDirectoryName(finalPath);
-            if (targetDirectory != null &&
-                !Directory.Exists(targetDirectory))
+            if (verifiedCount != items.Count ||
+                verifiedBytes != expectedTotalBytes)
             {
-                Directory.CreateDirectory(targetDirectory);
+                throw new ProtocolViolationException(
+                    WireErrorCodes.ProtocolOrder,
+                    "Receiver cannot complete a batch with unverified accepted items.");
             }
 
-            File.Move(quarantinePath, finalPath, overwrite: false);
-            verifiedCount++;
-            verifiedBytes += item.SizeBytes;
+            await protocol.ReadExpectedAsync(
+                channel,
+                MessageTypes.BatchEnd,
+                _deadlines.BatchResult,
+                cancellationToken,
+                expectedBatchId: batchId);
 
             await channel.WriteEnvelopeAsync(
                 protocol.Create(
-                    MessageTypes.ItemResult,
+                    MessageTypes.BatchResult,
                     new JsonObject
                     {
                         ["batchId"] = batchId,
-                        ["itemId"] = item.ItemId,
-                        ["status"] = "verified",
-                        ["sizeBytes"] = item.SizeBytes.ToString(),
-                        ["sha256"] = actualSha
+                        ["status"] = "completed",
+                        ["verifiedCount"] = verifiedCount,
+                        ["totalVerifiedBytes"] =
+                            verifiedBytes.ToString()
                     }),
                 cancellationToken);
 
-            interaction.OnItemStatus(
+            string message =
+                $"Transfer complete: {verifiedCount} file(s) safely saved ({verifiedBytes} bytes).";
+            interaction.OnStatus(
                 DesktopTransferDirection.Receive,
-                item.Name,
-                "Verified");
-            interaction.OnHistory(
-                new DesktopHistoryEntry(
-                    DesktopTransferDirection.Receive,
-                    item.Name,
-                    item.SizeBytes,
-                    finalPath,
-                    peerName,
-                    DateTimeOffset.Now));
-        }
+                message);
 
-        if (verifiedCount != items.Count ||
-            verifiedBytes != expectedTotalBytes)
+            return DesktopTransferResult.Completed(
+                message,
+                verifiedCount,
+                verifiedBytes);
+        }
+        finally
         {
-            throw new ProtocolViolationException(
-                WireErrorCodes.ProtocolOrder,
-                "Receiver cannot complete a batch with unverified accepted items.");
+            foreach (IncomingFileReservation reservation in
+                     reservations.Values)
+            {
+                reservation.Dispose();
+            }
+
+            // Removes only unverified staging state. Committed files live outside staging.
+            request.StagingStore.PurgeSession(
+                sessionId);
         }
-
-        await protocol.ReadExpectedAsync(
-            channel,
-            MessageTypes.BatchEnd,
-            _deadlines.BatchResult,
-            cancellationToken,
-            expectedBatchId: batchId);
-
-        await channel.WriteEnvelopeAsync(
-            protocol.Create(
-                MessageTypes.BatchResult,
-                new JsonObject
-                {
-                    ["batchId"] = batchId,
-                    ["status"] = "completed",
-                    ["verifiedCount"] = verifiedCount,
-                    ["totalVerifiedBytes"] = verifiedBytes.ToString()
-                }),
-            cancellationToken);
-
-        string message =
-            $"Transfer complete: {verifiedCount} file(s) safely saved ({verifiedBytes} bytes).";
-        interaction.OnStatus(DesktopTransferDirection.Receive, message);
-        return DesktopTransferResult.Completed(
-            message,
-            verifiedCount,
-            verifiedBytes);
     }
 
     private static void ValidateSenderHello(Envelope hello)
