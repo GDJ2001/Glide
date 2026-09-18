@@ -1470,18 +1470,101 @@ class TransferCoordinator(
                             }
                         }
                     )
-                    val hashResult = receiveStore.openStagingOutput(staging).use { out ->
-                        StreamHasher.copyAndHash(
-                            inputStream = incoming.stream,
-                            outputStream = out,
-                            expectedBytes = curItem.item.sizeBytes,
-                            onProgress = { bytesRead ->
-                                sampler.onBytesRead(bytesRead)
+                    val hashResult =
+                        receiveStore
+                            .openStagingOutput(
+                                staging
+                            )
+                            .use { out ->
+                                val resumeEnabled =
+                                    isTrueResumeNegotiated() &&
+                                        itemHasResumeMetadata(
+                                            curItem.item
+                                        )
+
+                                if (resumeEnabled) {
+                                    val recorder =
+                                        recordReceiverResumeChunk
+                                            ?: throw ResumeJournalException(
+                                                "Receiver resume chunk authority is unavailable"
+                                            )
+                                    val chunkSize =
+                                        curItem.item
+                                            .resumeChunkSize
+                                            ?: throw ResumeJournalException(
+                                                "Resume chunk size is missing"
+                                            )
+
+                                    StreamHasher
+                                        .copyAndHashWithChunks(
+                                            inputStream =
+                                                incoming.stream,
+                                            outputStream =
+                                                out,
+                                            expectedBytes =
+                                                curItem.item
+                                                    .sizeBytes,
+                                            chunkSize =
+                                                chunkSize,
+                                            onChunk = {
+                                                chunkIndex,
+                                                chunkData ->
+                                                val recorded =
+                                                    recorder(
+                                                        sessionId,
+                                                        curItem.item.id,
+                                                        chunkIndex,
+                                                        chunkData
+                                                    )
+                                                if (!recorded) {
+                                                    throw ResumeJournalException(
+                                                        "Durable resume journal rejected chunk " +
+                                                            chunkIndex
+                                                    )
+                                                }
+                                            },
+                                            onProgress = {
+                                                bytesRead ->
+                                                sampler
+                                                    .onBytesRead(
+                                                        bytesRead
+                                                    )
+                                            }
+                                        )
+                                } else {
+                                    StreamHasher
+                                        .copyAndHash(
+                                            inputStream =
+                                                incoming.stream,
+                                            outputStream =
+                                                out,
+                                            expectedBytes =
+                                                curItem.item
+                                                    .sizeBytes,
+                                            onProgress = {
+                                                bytesRead ->
+                                                sampler
+                                                    .onBytesRead(
+                                                        bytesRead
+                                                    )
+                                            }
+                                        )
+                                }
                             }
-                        )
-                    }
                     sampler.onComplete(hashResult.sizeBytes)
                     dispatch(ReducerEvent.StreamEof(curItem.item.id, hashResult.sizeBytes, hashResult.digest, clock()))
+                } catch (
+                    e: ResumeJournalException
+                ) {
+                    dispatch(
+                        ReducerEvent.TransportFailure(
+                            TransferFailure
+                                .WriteFailure(
+                                    "Receive resume journal failed: ${e.message}"
+                                ),
+                            clock()
+                        )
+                    )
                 } catch (e: IllegalStateException) {
                     dispatch(ReducerEvent.TransportFailure(TransferFailure.LimitExceeded("Receive stream limit exceeded: ${e.message}"), clock()))
                 } catch (e: Exception) {
