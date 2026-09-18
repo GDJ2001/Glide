@@ -276,7 +276,8 @@ public static class Program
                     Console.WriteLine(
                         "[INFO] Pairing invitation expired; rotating to a fresh one.");
                 }
-            }        }
+            }
+        }
     }
 
     private static async Task<int> RunDaemonAsync(string[] args)
