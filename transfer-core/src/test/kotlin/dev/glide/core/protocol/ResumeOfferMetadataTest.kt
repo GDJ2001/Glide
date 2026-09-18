@@ -58,7 +58,9 @@ class ResumeOfferMetadataTest {
 
         val paged =
             OfferPaginator.paginate(
-                batch
+                batch = batch,
+                allowResumeMetadata =
+                    true
             )
         val dto =
             paged.pages
@@ -106,7 +108,9 @@ class ResumeOfferMetadataTest {
 
         val assembler =
             OfferAssembler(
-                paged.begin
+                begin = paged.begin,
+                allowResumeMetadata =
+                    true
             )
         assembler.addPage(
             decodedPage
