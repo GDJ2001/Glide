@@ -31,6 +31,7 @@ import dev.glide.core.security.SequencerResult
 import dev.glide.core.stream.HashingInputStream
 import dev.glide.core.stream.StreamHasher
 import dev.glide.core.stream.StreamProgressSampler
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -156,6 +157,8 @@ class TransferCoordinator(
     }
 
     private val activeJobs = mutableListOf<Job>()
+    private val terminalCleanupLock = Any()
+    private var terminalCleanupBarrier: CompletableDeferred<Unit>? = null
 
     /**
      * Starts background observation of transport events (control, bulk, stream, connection)
@@ -242,6 +245,44 @@ class TransferCoordinator(
         }
     }
 
+    /**
+     * Requests user cancellation and suspends until all terminal storage/transport effects finish.
+     * Used by service lifecycle teardown so the foreground owner is not destroyed before cleanup.
+     */
+    suspend fun cancelAndAwaitCleanup(reason: String = "USER_CANCELLED") {
+        if (!_state.value.isTerminal) {
+            dispatch(
+                ReducerEvent.RequestCancel(
+                    code = reason,
+                    timestampMs = clock()
+                )
+            )
+        }
+        awaitTerminalCleanup()
+    }
+
+    /**
+     * Converts service/process-local ownership loss into an Interrupted terminal outcome and waits
+     * for best-effort partial-file and transport cleanup. Sudden process death may prevent this from
+     * finishing; startup reconciliation remains the durable recovery authority in that case.
+     */
+    suspend fun interruptAndAwaitCleanup(reason: String = "SERVICE_STOPPED") {
+        if (!_state.value.isTerminal) {
+            dispatch(
+                ReducerEvent.TransportFailure(
+                    TransferFailure.TransferInterrupted(reason),
+                    clock()
+                )
+            )
+        }
+        awaitTerminalCleanup()
+    }
+
+    suspend fun awaitTerminalCleanup() {
+        val barrier = synchronized(terminalCleanupLock) { terminalCleanupBarrier }
+        barrier?.await()
+    }
+
     private data class PreparedSource(
         val itemId: ItemId,
         val stream: HashingInputStream
@@ -293,16 +334,28 @@ class TransferCoordinator(
 
     suspend fun dispatch(event: ReducerEvent) {
         val effectsToRun: List<ReducerEffect>
+        var terminalBarrierForThisDispatch: CompletableDeferred<Unit>? = null
         mutex.withLock {
             val current = _state.value
             val result = TransferReducer.reduce(current, event)
+            if (!current.isTerminal && result.state.isTerminal) {
+                terminalBarrierForThisDispatch = CompletableDeferred()
+                synchronized(terminalCleanupLock) {
+                    terminalCleanupBarrier = terminalBarrierForThisDispatch
+                }
+            }
             _state.value = result.state
             effectsToRun = result.effects
         }
-        executeEffects(effectsToRun)
 
-        if (_state.value.isTerminal) {
-            closePreparedSources()
+        try {
+            executeEffects(effectsToRun)
+
+            if (_state.value.isTerminal) {
+                closePreparedSources()
+            }
+        } finally {
+            terminalBarrierForThisDispatch?.complete(Unit)
         }
 
         // Automatic offer submission when sender reaches Offering phase
@@ -344,7 +397,7 @@ class TransferCoordinator(
                 }
 
                 is ReducerEffect.DeletePartialDestination -> {
-                    scope.launch(ioDispatcher) {
+                    withContext(ioDispatcher) {
                         val staging = stagingHandles.remove(effect.itemId) ?: currentStagingHandle
                         staging?.let { handle ->
                             try { receiveStore.discardStaging(handle) } catch (_: Exception) {}
@@ -356,17 +409,14 @@ class TransferCoordinator(
                 }
 
                 is ReducerEffect.CancelBulkStream -> {
-                    scope.launch {
-                        try { transport.cancelPayload(effect.bulkRef) } catch (_: Exception) {}
-                    }
+                    try { transport.cancelPayload(effect.bulkRef) } catch (_: Exception) {}
                 }
 
                 is ReducerEffect.CloseTransportChannel -> {
-                    scope.launch {
-                        // Allow in-flight terminal control messages to flush across the transport
-                        kotlinx.coroutines.delay(100)
-                        try { transport.disconnect(peerId) } catch (_: Exception) {}
-                    }
+                    // Keep the foreground-service owner alive until the terminal control has had a
+                    // short flush opportunity and the transport is actually disconnected.
+                    kotlinx.coroutines.delay(100)
+                    try { transport.disconnect(peerId) } catch (_: Exception) {}
                 }
 
                 is ReducerEffect.UpdateTransferProgress -> {
