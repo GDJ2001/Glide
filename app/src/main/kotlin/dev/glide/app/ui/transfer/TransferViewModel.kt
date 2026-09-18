@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.glide.app.service.TransferRuntime
 import dev.glide.app.service.TransferRuntimeCommand
+import dev.glide.app.service.TrustRuntimeState
 import dev.glide.app.ui.pairing.PairingUiState
 import dev.glide.app.util.FileOpenResult
 import dev.glide.app.util.FileOpener
@@ -40,6 +41,7 @@ class TransferViewModel(
 
     val uiState: StateFlow<TransferUiState> = runtime.transferState
     val pairingState: StateFlow<PairingUiState> = runtime.pairingState
+    val trustState: StateFlow<TrustRuntimeState> = runtime.trustState
 
     private val _openFileFeedback = MutableStateFlow<String?>(null)
     val openFileFeedback: StateFlow<String?> = _openFileFeedback.asStateFlow()
@@ -400,6 +402,23 @@ class TransferViewModel(
         TransferRuntimeCommand.BindPairingTransport(transport, onPairingSuccess)
     )
 
+    fun approvePendingTrust(): Boolean {
+        val pending = trustState.value.pendingEnrollment ?: return false
+        return runtime.dispatch(
+            TransferRuntimeCommand.ApprovePeerEnrollment(
+                pending.fingerprintHex
+            )
+        )
+    }
+
+    fun rejectPendingTrust(): Boolean {
+        val pending = trustState.value.pendingEnrollment ?: return false
+        return runtime.dispatch(
+            TransferRuntimeCommand.RejectPeerEnrollment(
+                pending.fingerprintHex
+            )
+        )
+    }
     fun confirmPairing(peerId: PeerId): Boolean =
         runtime.dispatch(TransferRuntimeCommand.ConfirmPairing(peerId))
 
