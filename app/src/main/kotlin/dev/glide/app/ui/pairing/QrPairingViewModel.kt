@@ -151,6 +151,13 @@ class QrPairingViewModel(
         _receiverState.value = QrReceiverUiState.Error(message, canRetry)
     }
 
+    fun clearLiveReceiverPresentation() {
+        countdownJob?.cancel()
+        countdownJob = null
+        externalInvitationRevoker = null
+        _receiverState.value = QrReceiverUiState.Idle
+    }
+
     private fun startCountdown(initialSeconds: Int) {
         countdownJob?.cancel()
         countdownJob = viewModelScope.launch {
