@@ -600,13 +600,17 @@ private class ComplianceResumableSessionDao : dev.glide.data.db.ResumableSession
             dev.glide.data.db.ResumableSessionEntity
         >()
 
-    override suspend fun insertOrUpdate(
+    override suspend fun insertIfAbsent(
         session: dev.glide.data.db.ResumableSessionEntity
-    ) {
-        sessions[
+    ): Long {
+        val key =
             session.originalSessionId to
                 session.itemId
-        ] = session
+        if (sessions.containsKey(key)) {
+            return -1L
+        }
+        sessions[key] = session
+        return 1L
     }
 
     override suspend fun get(
