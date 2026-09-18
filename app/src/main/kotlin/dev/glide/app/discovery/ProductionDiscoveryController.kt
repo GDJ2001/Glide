@@ -74,6 +74,7 @@ class ProductionDiscoveryController private constructor(
     private val lock = Any()
     private var discoveryTransport: TransferTransport? = null
     private var sessionTransport: TransferTransport? = null
+    private var sessionTransportOwner: CoroutineScope? = null
     private var activeAdvertisingTransport: TransferTransport? = null
     private var discoveryJob: Job? = null
     private var discoveryTimerJob: Job? = null
@@ -274,6 +275,11 @@ class ProductionDiscoveryController private constructor(
         _receiveReadinessState.value = ReceiveReadinessUiState.Blocked(
             BlockedReason.TransportError("Nearby receive availability has not started")
         )
+        synchronized(lock) {
+            sessionTransport = null
+            sessionTransportOwner = null
+            activeAdvertisingTransport = null
+        }
     }
 
     /**
@@ -289,7 +295,11 @@ class ProductionDiscoveryController private constructor(
         }
 
         return synchronized(lock) {
-            sessionTransport ?: transportFactory(ownerScope).also { sessionTransport = it }
+            if (sessionTransport == null || sessionTransportOwner !== ownerScope) {
+                sessionTransport = transportFactory(ownerScope)
+                sessionTransportOwner = ownerScope
+            }
+            sessionTransport
         }
     }
 
