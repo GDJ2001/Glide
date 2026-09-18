@@ -483,6 +483,61 @@ class Hard007NearbyProductionFlowTest {
                 )
             )
             assertEquals(0, receiveStore.prepareCount)
+
+            assertTrue(
+                runtime.dispatch(
+                    TransferRuntimeCommand.RejectOffer(sessionId.value, "USER_REJECTED")
+                )
+            )
+            runCurrent()
+            assertEquals(0, transport.streamStarts)
+            assertEquals(0, receiveStore.prepareCount)
+        }
+
+    @Test
+    fun senderActiveSession_rejectsStaleCancel_andAcceptsExactSessionCancel() =
+        runTest(dispatcher) {
+            val transport = FlowTransport()
+            val runtime = newRuntime(transport, scope = backgroundScope)
+            val batchId = storeTwoFileBatch()
+            val peer = PeerDevice(PeerId("peer-cancel"), "Cancel Receiver")
+
+            assertTrue(
+                runtime.dispatch(
+                    TransferRuntimeCommand.StartNearbySenderPairing(
+                        selectionId = batchId,
+                        peerId = peer.id,
+                        peerDisplayName = peer.displayName
+                    )
+                )
+            )
+            runCurrent()
+            transport.connectionEvents.emit(ConnectionEvent.Initiated(peer, "445566"))
+            runCurrent()
+            assertTrue(runtime.dispatch(TransferRuntimeCommand.ConfirmPairing(peer.id)))
+            runCurrent()
+            transport.connectionEvents.emit(ConnectionEvent.Connected(peer))
+            runCurrent()
+
+            val activeSessionId = runtime.getActiveSessionId()
+            assertNotNull(activeSessionId)
+            assertFalse(
+                runtime.dispatch(
+                    TransferRuntimeCommand.Cancel("stale-session", "USER_CANCELLED")
+                )
+            )
+            assertTrue(
+                runtime.dispatch(
+                    TransferRuntimeCommand.Cancel(activeSessionId!!, "USER_CANCELLED")
+                )
+            )
+
+            withTimeout(2_000) {
+                while (runtime.activeCoordinatorForTesting()?.state?.value?.phase != SessionPhase.Cancelled) {
+                    delay(10)
+                }
+            }
+            assertEquals(0, transport.streamStarts)
         }
 
     @Test
