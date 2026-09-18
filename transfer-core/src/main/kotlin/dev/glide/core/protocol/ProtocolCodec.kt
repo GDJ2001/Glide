@@ -223,6 +223,9 @@ object ProtocolCodec {
             MessageTypes.RESUME_REQUEST -> validateResumeRequest(body)
             MessageTypes.RESUME_ACCEPT -> validateResumeAccept(body)
             MessageTypes.RESUME_REJECT -> validateResumeReject(body)
+            MessageTypes.RESUME_STREAM_START -> validateResumeStreamStart(body)
+            MessageTypes.RESUME_STREAM_READY -> validateResumeStreamReady(body)
+            MessageTypes.RESUME_RESULT -> validateResumeResult(body)
         }
     }
 
@@ -756,6 +759,283 @@ object ProtocolCodec {
             throw ProtocolViolationException(
                 TransferFailure.MalformedMessage("Unknown RESUME_REJECT code '$code'")
             )
+        }
+    }
+
+    private fun validateResumeStreamStart(
+        body: JsonObject
+    ) {
+        requireProfile(
+            body,
+            IdentityResumeTranscript
+                .RESUME_PROFILE
+        )
+        requireUuid(
+            body,
+            "requestMessageId"
+        )
+        requireUuid(
+            body,
+            "originalSessionId"
+        )
+        requireUuid(
+            body,
+            "itemId"
+        )
+
+        val bulkRef =
+            requireString(
+                body,
+                "bulkRef"
+            )
+        if (bulkRef.isBlank() ||
+            bulkRef.length > 64
+        ) {
+            throw ProtocolViolationException(
+                TransferFailure.MalformedMessage(
+                    "RESUME_STREAM_START 'bulkRef' must be 1..64 characters"
+                )
+            )
+        }
+
+        val startChunkIndex =
+            requireLong(
+                body,
+                "startChunkIndex",
+                min = 0
+            )
+        val startByteOffset =
+            requireByteCount(
+                body,
+                "startByteOffset",
+                MAX_ITEM_BYTES
+            )
+        val remainingBytes =
+            requireByteCount(
+                body,
+                "remainingBytes",
+                MAX_ITEM_BYTES
+            )
+
+        val chunkSizeElement =
+            body["chunkSize"]
+                as? JsonPrimitive
+                ?: throw ProtocolViolationException(
+                    TransferFailure.MalformedMessage(
+                        "RESUME_STREAM_START requires integer 'chunkSize'"
+                    )
+                )
+        if (chunkSizeElement.isString) {
+            throw ProtocolViolationException(
+                TransferFailure.MalformedMessage(
+                    "RESUME_STREAM_START 'chunkSize' must be an integer"
+                )
+            )
+        }
+        val chunkSize =
+            chunkSizeElement
+                .content
+                .toIntOrNull()
+                ?: throw ProtocolViolationException(
+                    TransferFailure.MalformedMessage(
+                        "RESUME_STREAM_START 'chunkSize' must be an integer"
+                    )
+                )
+        if (chunkSize !in
+            1..16_777_216
+        ) {
+            throw ProtocolViolationException(
+                TransferFailure.LimitExceeded(
+                    "RESUME_STREAM_START 'chunkSize' must be in 1..16777216"
+                )
+            )
+        }
+
+        val totalSizeBytes =
+            requireByteCount(
+                body,
+                "totalSizeBytes",
+                MAX_ITEM_BYTES
+            )
+        if (startByteOffset >
+            totalSizeBytes
+        ) {
+            throw ProtocolViolationException(
+                TransferFailure.MalformedMessage(
+                    "RESUME_STREAM_START offset exceeds totalSizeBytes"
+                )
+            )
+        }
+        if (remainingBytes !=
+            totalSizeBytes -
+                startByteOffset
+        ) {
+            throw ProtocolViolationException(
+                TransferFailure.MalformedMessage(
+                    "RESUME_STREAM_START remainingBytes does not equal totalSizeBytes-startByteOffset"
+                )
+            )
+        }
+        if (remainingBytes <= 0L) {
+            throw ProtocolViolationException(
+                TransferFailure.MalformedMessage(
+                    "RESUME_STREAM_START requires positive remainingBytes"
+                )
+            )
+        }
+        if (startByteOffset %
+                chunkSize !=
+                0L
+        ) {
+            throw ProtocolViolationException(
+                TransferFailure.MalformedMessage(
+                    "RESUME_STREAM_START offset must be chunk-aligned"
+                )
+            )
+        }
+        if (startChunkIndex !=
+            startByteOffset /
+                chunkSize
+        ) {
+            throw ProtocolViolationException(
+                TransferFailure.MalformedMessage(
+                    "RESUME_STREAM_START startChunkIndex does not match offset/chunkSize"
+                )
+            )
+        }
+
+        requireLowerHex64(
+            body,
+            "chunkRootHashHex"
+        )
+        requireLowerHex64(
+            body,
+            "wholeFileSha256Hex"
+        )
+    }
+
+    private fun validateResumeStreamReady(
+        body: JsonObject
+    ) {
+        requireProfile(
+            body,
+            IdentityResumeTranscript
+                .RESUME_PROFILE
+        )
+        requireUuid(
+            body,
+            "requestMessageId"
+        )
+        requireUuid(
+            body,
+            "originalSessionId"
+        )
+        requireUuid(
+            body,
+            "itemId"
+        )
+        val bulkRef =
+            requireString(
+                body,
+                "bulkRef"
+            )
+        if (bulkRef.isBlank() ||
+            bulkRef.length > 64
+        ) {
+            throw ProtocolViolationException(
+                TransferFailure.MalformedMessage(
+                    "RESUME_STREAM_READY 'bulkRef' must be 1..64 characters"
+                )
+            )
+        }
+    }
+
+    private fun validateResumeResult(
+        body: JsonObject
+    ) {
+        requireProfile(
+            body,
+            IdentityResumeTranscript
+                .RESUME_PROFILE
+        )
+        requireUuid(
+            body,
+            "requestMessageId"
+        )
+        requireUuid(
+            body,
+            "originalSessionId"
+        )
+        requireUuid(
+            body,
+            "itemId"
+        )
+
+        when (
+            val status =
+                requireString(
+                    body,
+                    "status"
+                )
+        ) {
+            "verified" -> {
+                requireByteCount(
+                    body,
+                    "sizeBytes",
+                    MAX_ITEM_BYTES
+                )
+                requireLowerHex64(
+                    body,
+                    "sha256"
+                )
+                if (body.containsKey(
+                        "code"
+                    )
+                ) {
+                    throw ProtocolViolationException(
+                        TransferFailure.MalformedMessage(
+                            "RESUME_RESULT verified must not contain 'code'"
+                        )
+                    )
+                }
+            }
+
+            "failed" -> {
+                val code =
+                    requireString(
+                        body,
+                        "code"
+                    )
+                if (code !in
+                    WireErrorCodes.ALL
+                ) {
+                    throw ProtocolViolationException(
+                        TransferFailure.MalformedMessage(
+                            "RESUME_RESULT failed has unknown code '$code'"
+                        )
+                    )
+                }
+                if (body.containsKey(
+                        "sizeBytes"
+                    ) ||
+                    body.containsKey(
+                        "sha256"
+                    )
+                ) {
+                    throw ProtocolViolationException(
+                        TransferFailure.MalformedMessage(
+                            "RESUME_RESULT failed must not contain sizeBytes or sha256"
+                        )
+                    )
+                }
+            }
+
+            else ->
+                throw ProtocolViolationException(
+                    TransferFailure.MalformedMessage(
+                        "RESUME_RESULT status must be 'verified' or 'failed', got: '$status'"
+                    )
+                )
         }
     }
 
