@@ -1,6 +1,8 @@
 package dev.glide.app.service
 
 import dev.glide.app.discovery.ProductionDiscoveryController
+import dev.glide.app.lan.LanReceiverRuntimeState
+import dev.glide.app.lan.ProductionLanController
 import dev.glide.app.ui.discovery.BlockedReason
 import dev.glide.app.ui.discovery.DeviceType
 import dev.glide.app.ui.discovery.DiscoveryUiState
@@ -19,6 +21,7 @@ import dev.glide.core.domain.PeerId
 import dev.glide.core.domain.SessionId
 import dev.glide.core.domain.SourceHandle
 import dev.glide.core.domain.TransferBatch
+import dev.glide.core.pairing.LanInvitation
 import dev.glide.core.ports.ConnectionEvent
 import dev.glide.core.ports.TransferTransport
 import kotlinx.coroutines.CoroutineScope
@@ -43,14 +46,16 @@ import javax.inject.Singleton
 class TransferRuntime private constructor(
     private val sessionFactory: TransferSessionFactory?,
     private val discoveryController: ProductionDiscoveryController?,
+    private val lanController: ProductionLanController?,
     @Suppress("unused") private val testInstance: Boolean
 ) {
 
     @Inject
     constructor(
         sessionFactory: TransferSessionFactory,
-        discoveryController: ProductionDiscoveryController
-    ) : this(sessionFactory, discoveryController, false)
+        discoveryController: ProductionDiscoveryController,
+        lanController: ProductionLanController
+    ) : this(sessionFactory, discoveryController, lanController, false)
 
     private val lock = Any()
 
@@ -86,6 +91,11 @@ class TransferRuntime private constructor(
     )
     val receiveReadinessState: StateFlow<ReceiveReadinessUiState> =
         discoveryController?.receiveReadinessState ?: _fallbackReceiveReadinessState.asStateFlow()
+
+    private val _fallbackLanReceiverState =
+        MutableStateFlow<LanReceiverRuntimeState>(LanReceiverRuntimeState.Idle)
+    val lanReceiverState: StateFlow<LanReceiverRuntimeState> =
+        lanController?.receiverState ?: _fallbackLanReceiverState.asStateFlow()
 
     private val _isSessionActive = MutableStateFlow(false)
     val isSessionActive: StateFlow<Boolean> = _isSessionActive.asStateFlow()
@@ -180,6 +190,7 @@ class TransferRuntime private constructor(
         }
         coordinatorToStop?.stop()
         discoveryController?.stopAdvertising()
+        lanController?.stopAll()
     }
 
     fun isServiceAttached(): Boolean = synchronized(lock) { serviceScope != null }
@@ -193,6 +204,12 @@ class TransferRuntime private constructor(
             is TransferRuntimeCommand.StartReceiver -> startReceiver(command)
             is TransferRuntimeCommand.StartNearbySenderPairing ->
                 startNearbySenderPairing(command)
+            is TransferRuntimeCommand.StartLanSenderPairing ->
+                startLanSenderPairing(command)
+            is TransferRuntimeCommand.StartLanReceiver ->
+                startLanReceiver(command)
+            TransferRuntimeCommand.StopLanReceiver ->
+                stopLanReceiver()
             is TransferRuntimeCommand.BindPairingTransport -> bindPairingTransport(
                 command.transport,
                 command.onPairingSuccess
@@ -213,9 +230,108 @@ class TransferRuntime private constructor(
         }
     }
 
+    private fun startLanSenderPairing(
+        command: TransferRuntimeCommand.StartLanSenderPairing
+    ): Boolean {
+        val controller = lanController ?: return failPairing(
+            "LAN unavailable",
+            "Production LAN transport is unavailable."
+        )
+        val scope = synchronized(lock) { serviceScope } ?: return failPairing(
+            "Transfer service unavailable",
+            "Foreground transfer service is not attached."
+        )
+        val prepared = SelectedTransferStore.get(command.selectionId) ?: return failPairing(
+            "Selection unavailable",
+            "The selected files are no longer available. Choose them again."
+        )
+        if (prepared.batch.items.isEmpty() || prepared.sourceMap.isEmpty()) {
+            return failPairing(
+                "Selection unavailable",
+                "No selected files are available for transfer."
+            )
+        }
+
+        discoveryController?.stopDiscovery()
+        discoveryController?.stopAdvertising()
+
+        val peerId = PeerId("lan-${command.invitation.invitationId}")
+        _pairingState.value = PairingUiState.Connecting(
+            peerId = peerId,
+            peerName = command.invitation.name,
+            deviceType = DeviceType.fromDeviceName(command.invitation.name)
+        )
+
+        return controller.startSender(
+            ownerScope = scope,
+            invitation = command.invitation,
+            localDeviceName = command.localDeviceName,
+            onConnected = { transport, peer ->
+                _pairingState.value = PairingUiState.Connected(peer)
+                val started = startSender(
+                    TransferRuntimeCommand.StartSender(
+                        selectionId = command.selectionId,
+                        transport = transport,
+                        peerId = peer.id,
+                        peerDisplayName = peer.displayName
+                    )
+                )
+                if (!started) {
+                    failPairing(
+                        "Transfer could not start",
+                        "The selected files or transfer runtime became unavailable after LAN pairing."
+                    )
+                    terminalCallback?.invoke()
+                }
+            },
+            onFailure = { reason ->
+                failPairing("LAN connection failed", reason)
+                terminalCallback?.invoke()
+            }
+        )
+    }
+
+    private fun startLanReceiver(
+        command: TransferRuntimeCommand.StartLanReceiver
+    ): Boolean {
+        val controller = lanController ?: return false
+        val scope = synchronized(lock) { serviceScope } ?: return false
+
+        discoveryController?.stopAdvertising()
+        _pairingState.value = PairingUiState.Idle
+
+        return controller.startReceiver(
+            ownerScope = scope,
+            deviceName = command.localDeviceName
+        ) { transport, peer ->
+            _pairingState.value = PairingUiState.Connected(peer)
+            val started = startReceiver(
+                TransferRuntimeCommand.StartReceiver(
+                    transport = transport,
+                    peerId = peer.id,
+                    peerDisplayName = peer.displayName
+                )
+            )
+            if (!started) {
+                failPairing(
+                    "Transfer could not start",
+                    "Receiver session could not start after authenticated LAN bootstrap."
+                )
+                terminalCallback?.invoke()
+            }
+        }
+    }
+
+    private fun stopLanReceiver(): Boolean {
+        val controller = lanController ?: return false
+        controller.revokeReceiverInvitation(closeListener = true)
+        return true
+    }
+
     private fun startNearbySenderPairing(
         command: TransferRuntimeCommand.StartNearbySenderPairing
     ): Boolean {
+        lanController?.stopAll()
         val controller = discoveryController ?: return failPairing(
             "Nearby unavailable",
             "Production Nearby transport is unavailable."
@@ -612,6 +728,7 @@ class TransferRuntime private constructor(
     }
 
     private fun startReceiveAvailability(localDeviceName: String): Boolean {
+        lanController?.stopAll()
         val controller = discoveryController ?: run {
             _fallbackReceiveReadinessState.value = ReceiveReadinessUiState.Blocked(
                 BlockedReason.TransportError("Production advertising dependency is unavailable")
@@ -737,6 +854,8 @@ class TransferRuntime private constructor(
         _transferState.value = TransferUiState.Idle
         _pairingState.value = PairingUiState.Idle
         discoveryController?.resetForTesting()
+        lanController?.stopAll()
+        _fallbackLanReceiverState.value = LanReceiverRuntimeState.Idle
         _fallbackDiscoveryState.value = DiscoveryUiState.Blocked(
             BlockedReason.TransportError("Production discovery is not attached")
         )
@@ -758,9 +877,10 @@ class TransferRuntime private constructor(
     companion object {
         internal fun forTesting(
             sessionFactory: TransferSessionFactory? = null,
-            discoveryController: ProductionDiscoveryController? = null
+            discoveryController: ProductionDiscoveryController? = null,
+            lanController: ProductionLanController? = null
         ): TransferRuntime {
-            return TransferRuntime(sessionFactory, discoveryController, true)
+            return TransferRuntime(sessionFactory, discoveryController, lanController, true)
         }
     }
 }
@@ -789,6 +909,18 @@ sealed interface TransferRuntimeCommand {
         val peerDisplayName: String,
         val localDeviceName: String = "Glide Device"
     ) : TransferRuntimeCommand
+
+    data class StartLanSenderPairing(
+        val selectionId: BatchId? = null,
+        val invitation: LanInvitation,
+        val localDeviceName: String = "Glide Device"
+    ) : TransferRuntimeCommand
+
+    data class StartLanReceiver(
+        val localDeviceName: String = "Glide Device"
+    ) : TransferRuntimeCommand
+
+    data object StopLanReceiver : TransferRuntimeCommand
 
     data class BindPairingTransport(
         val transport: TransferTransport,
