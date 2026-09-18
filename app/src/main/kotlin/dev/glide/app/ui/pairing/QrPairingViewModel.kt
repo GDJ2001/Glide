@@ -51,6 +51,7 @@ class QrPairingViewModel(
     val events: SharedFlow<QrPairingEvent> = _events.asSharedFlow()
 
     private var countdownJob: Job? = null
+    private var externalInvitationRevoker: (() -> Unit)? = null
     private var deviceHasFlashlight: Boolean = false
 
     // -------------------------------------------------------------------------
@@ -69,6 +70,7 @@ class QrPairingViewModel(
         ttlSeconds: Int = 120
     ) {
         countdownJob?.cancel()
+        externalInvitationRevoker = null
 
         if (endpoints.isEmpty() || spkiSha256.length != 64) {
             _receiverState.value = QrReceiverUiState.Error(
@@ -109,6 +111,46 @@ class QrPairingViewModel(
         startCountdown(ttlSeconds)
     }
 
+    /**
+     * Renders an invitation minted by the service-owned production LAN runtime.
+     * The ViewModel never owns the listener, lease key, token authority or socket.
+     */
+    fun showLiveReceiverInvitation(
+        invitation: LanInvitation,
+        onRevoke: () -> Unit
+    ) {
+        countdownJob?.cancel()
+        externalInvitationRevoker = onRevoke
+
+        val uriString = InvitationCodec.encode(invitation)
+        val bitmap = try {
+            qrBitmapGenerator?.invoke(uriString) ?: QrEncoder.encodeToBitmap(uriString, 512, 512)
+        } catch (_: Exception) {
+            null
+        }
+
+        _receiverState.value = QrReceiverUiState.Ready(
+            invitation = invitation,
+            qrBitmap = bitmap,
+            secondsRemaining = invitation.ttlSeconds,
+            localDeviceName = invitation.name,
+            endpointsSummary = invitation.endpoints.joinToString(", ") {
+                "${it.address}:${it.port}"
+            }
+        )
+        startCountdown(invitation.ttlSeconds)
+    }
+
+    fun showLiveReceiverStarting() {
+        countdownJob?.cancel()
+        _receiverState.value = QrReceiverUiState.Starting
+    }
+
+    fun showLiveReceiverError(message: String, canRetry: Boolean = true) {
+        countdownJob?.cancel()
+        _receiverState.value = QrReceiverUiState.Error(message, canRetry)
+    }
+
     private fun startCountdown(initialSeconds: Int) {
         countdownJob?.cancel()
         countdownJob = viewModelScope.launch {
@@ -117,7 +159,8 @@ class QrPairingViewModel(
                 val current = _receiverState.value
                 if (current is QrReceiverUiState.Ready) {
                     if (sec <= 0) {
-                        invitationAuthority.revokeActiveInvitation()
+                        externalInvitationRevoker?.invoke()
+                            ?: invitationAuthority.revokeActiveInvitation()
                         _receiverState.value = QrReceiverUiState.Expired
                         break
                     } else {
@@ -156,7 +199,9 @@ class QrPairingViewModel(
     fun stopReceiving() {
         countdownJob?.cancel()
         countdownJob = null
-        invitationAuthority.revokeActiveInvitation()
+        externalInvitationRevoker?.invoke()
+            ?: invitationAuthority.revokeActiveInvitation()
+        externalInvitationRevoker = null
         _receiverState.value = QrReceiverUiState.Idle
     }
 
@@ -167,7 +212,9 @@ class QrPairingViewModel(
     fun onNetworkChangedOrBackgrounded() {
         countdownJob?.cancel()
         countdownJob = null
-        invitationAuthority.revokeActiveInvitation()
+        externalInvitationRevoker?.invoke()
+            ?: invitationAuthority.revokeActiveInvitation()
+        externalInvitationRevoker = null
         val current = _receiverState.value
         if (current is QrReceiverUiState.Ready || current is QrReceiverUiState.Starting) {
             _receiverState.value = QrReceiverUiState.Expired
@@ -310,6 +357,8 @@ class QrPairingViewModel(
     override fun onCleared() {
         super.onCleared()
         countdownJob?.cancel()
-        invitationAuthority.revokeActiveInvitation()
+        externalInvitationRevoker?.invoke()
+            ?: invitationAuthority.revokeActiveInvitation()
+        externalInvitationRevoker = null
     }
 }
