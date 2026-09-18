@@ -298,6 +298,23 @@
                                                  Text="{Binding ListenerPortPreference, UpdateSourceTrigger=PropertyChanged}"
                                                  HorizontalContentAlignment="Right" />
                                     </Grid>
+
+                                    <Border Height="1" Background="{StaticResource CardBorderBrush}" Margin="0,12,0,10" />
+
+                                    <TextBlock Text="Persistent Device Identity" FontSize="11" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,5" />
+                                    <TextBlock Text="Compare this fingerprint on the other device before making this Windows PC a trusted device."
+                                               FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap"
+                                               Margin="0,0,0,6" />
+                                    <TextBox Style="{StaticResource ModernTextBoxStyle}"
+                                             Text="{Binding LocalIdentityFingerprint, Mode=OneWay}" IsReadOnly="True"
+                                             FontFamily="Consolas" FontSize="10" TextWrapping="Wrap"
+                                             HorizontalContentAlignment="Center" Margin="0,0,0,6" />
+                                    <TextBlock HorizontalAlignment="Center" FontSize="10"
+                                               Foreground="{StaticResource TextSecondaryBrush}">
+                                        <Run Text="Trusted devices: " />
+                                        <Run Text="{Binding TrustedDeviceCount}" FontWeight="SemiBold" />
+                                    </TextBlock>
                                 </StackPanel>
                             </Border>
 
@@ -430,6 +447,53 @@
                 </Grid>
             </Border>
         </Grid>
+
+        <!-- Persistent identity trust enrollment overlay -->
+        <Border Background="#CC070B16"
+                Visibility="{Binding IsTrustEnrollmentModalVisible, Converter={StaticResource BoolToVis}}"
+                HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+            <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource CardBorderBrush}"
+                    BorderThickness="1" CornerRadius="16" Padding="28" Width="520" HorizontalAlignment="Center"
+                    VerticalAlignment="Center">
+                <StackPanel HorizontalAlignment="Stretch">
+                    <TextBlock Text="🔐" FontSize="36" HorizontalAlignment="Center" Margin="0,0,0,8" />
+                    <TextBlock Text="Trust This Device?" FontSize="18" FontWeight="Bold"
+                               Foreground="{StaticResource TextPrimaryBrush}" HorizontalAlignment="Center" />
+                    <TextBlock Text="{Binding TrustEnrollmentPeerName}" FontSize="14" FontWeight="SemiBold"
+                               Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Center" Margin="0,6,0,10" />
+
+                    <TextBlock Text="Glide has cryptographically verified this persistent device identity for the current authenticated LAN session."
+                               FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextAlignment="Center"
+                               TextWrapping="Wrap" Margin="0,0,0,10" />
+                    <TextBlock Text="Before trusting it for future sessions, compare the full fingerprint below with the fingerprint shown on the other device."
+                               FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextAlignment="Center"
+                               TextWrapping="Wrap" Margin="0,0,0,12" />
+
+                    <Border Background="{StaticResource SurfaceHighBrush}" BorderBrush="{StaticResource CardBorderBrush}"
+                            BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,12">
+                        <TextBlock Text="{Binding TrustEnrollmentFingerprint}" FontFamily="Consolas" FontSize="12"
+                                   FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"
+                                   TextAlignment="Center" TextWrapping="Wrap" />
+                    </Border>
+
+                    <TextBlock Text="Choosing “Not Now” does not block this one-use paired transfer. It only prevents persistent trust from being saved."
+                               FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" TextAlignment="Center"
+                               TextWrapping="Wrap" Margin="0,0,0,20" />
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="16" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Button Grid.Column="0" Style="{StaticResource SecondaryButtonStyle}" Content="Not Now"
+                                Command="{Binding RejectTrustEnrollmentCommand}" Padding="0,10" />
+                        <Button Grid.Column="2" Style="{StaticResource PrimaryButtonStyle}" Content="Trust Device"
+                                Command="{Binding AcceptTrustEnrollmentCommand}" Padding="0,10" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </Border>
 
         <!-- Authenticated incoming-offer consent overlay -->
         <Border Background="#CC070B16" Visibility="{Binding IsOfferModalVisible, Converter={StaticResource BoolToVis}}"
