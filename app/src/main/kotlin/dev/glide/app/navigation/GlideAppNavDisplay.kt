@@ -1,10 +1,14 @@
 package dev.glide.app.navigation
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.ui.Modifier
+import androidx.core.content.ContextCompat
+import android.content.pm.PackageManager
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
@@ -14,6 +18,7 @@ import dev.glide.app.ui.TransferScreen
 import dev.glide.app.ui.selection.SelectionScreen
 import dev.glide.app.ui.transfer.VerifiedItemUiState
 import dev.glide.app.service.TransferRuntime
+import dev.glide.app.permission.PermissionPolicy
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.tween
@@ -178,16 +183,61 @@ fun GlideAppNavDisplay(
                 }
             }
             entry<GlideRoute.Discovery> { route ->
-                val viewModel = androidx.lifecycle.viewmodel.compose.viewModel<dev.glide.app.ui.discovery.DiscoveryViewModel>()
-                androidx.compose.runtime.LaunchedEffect(initialDiscoveryState) {
-                    if (initialDiscoveryState != null) {
-                        viewModel.setUiStateForTesting(initialDiscoveryState)
+                val viewModel = if (transferRuntime != null) {
+                    val runtimeFactory = androidx.compose.runtime.remember(transferRuntime) {
+                        object : androidx.lifecycle.ViewModelProvider.Factory {
+                            @Suppress("UNCHECKED_CAST")
+                            override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
+                                return dev.glide.app.ui.discovery.DiscoveryViewModel(transferRuntime) as T
+                            }
+                        }
+                    }
+                    androidx.lifecycle.viewmodel.compose.viewModel<dev.glide.app.ui.discovery.DiscoveryViewModel>(
+                        factory = runtimeFactory
+                    )
+                } else {
+                    androidx.lifecycle.viewmodel.compose.viewModel<dev.glide.app.ui.discovery.DiscoveryViewModel>()
+                }
+
+                val context = androidx.compose.ui.platform.LocalContext.current
+                val nearbyPermissions = androidx.compose.runtime.remember {
+                    PermissionPolicy.nearbyTransferPermissions()
+                }
+                val hasNearbyPermissions: () -> Boolean = {
+                    nearbyPermissions.all { permission ->
+                        ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
                     }
                 }
+                val permissionLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.RequestMultiplePermissions()
+                ) {
+                    if (hasNearbyPermissions()) {
+                        viewModel.startDiscovery()
+                    } else {
+                        viewModel.onPermissionDenied()
+                    }
+                }
+                val startDiscoveryAtPointOfUse: () -> Unit = {
+                    if (nearbyPermissions.isEmpty() || hasNearbyPermissions()) {
+                        viewModel.startDiscovery()
+                    } else {
+                        permissionLauncher.launch(nearbyPermissions.toTypedArray())
+                    }
+                }
+
+                androidx.compose.runtime.LaunchedEffect(initialDiscoveryState, transferRuntime) {
+                    if (initialDiscoveryState != null) {
+                        viewModel.setUiStateForTesting(initialDiscoveryState)
+                    } else if (transferRuntime != null) {
+                        startDiscoveryAtPointOfUse()
+                    }
+                }
+
                 val uiState by viewModel.uiState.collectAsStateWithLifecycle()
                 dev.glide.app.ui.discovery.DiscoveryScreen(
                     uiState = uiState,
                     onBack = {
+                        viewModel.stopDiscovery()
                         if (backStack.size > 1) {
                             backStack.removeAt(backStack.lastIndex)
                         }
@@ -197,22 +247,63 @@ fun GlideAppNavDisplay(
                             backStack.add(GlideRoute.Transfer(sessionId = "send-${selectedId.value}", batchId = route.batchId))
                         }
                     },
-                    onRetry = {
-                        viewModel.retryDiscovery()
-                    },
+                    onRetry = startDiscoveryAtPointOfUse,
                     onScanQrClicked = {
+                        viewModel.stopDiscovery()
                         backStack.add(GlideRoute.QrScanner)
                     }
                 )
             }
             entry<GlideRoute.ReceiveReadiness> {
-                val viewModel = androidx.lifecycle.viewmodel.compose.viewModel<dev.glide.app.ui.discovery.ReceiveReadinessViewModel>()
+                val viewModel = if (transferRuntime != null) {
+                    val runtimeFactory = androidx.compose.runtime.remember(transferRuntime) {
+                        object : androidx.lifecycle.ViewModelProvider.Factory {
+                            @Suppress("UNCHECKED_CAST")
+                            override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
+                                return dev.glide.app.ui.discovery.ReceiveReadinessViewModel(transferRuntime) as T
+                            }
+                        }
+                    }
+                    androidx.lifecycle.viewmodel.compose.viewModel<dev.glide.app.ui.discovery.ReceiveReadinessViewModel>(
+                        factory = runtimeFactory
+                    )
+                } else {
+                    androidx.lifecycle.viewmodel.compose.viewModel<dev.glide.app.ui.discovery.ReceiveReadinessViewModel>()
+                }
                 val qrViewModel = androidx.lifecycle.viewmodel.compose.viewModel<dev.glide.app.ui.pairing.QrPairingViewModel>()
                 var showQrSheet by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
 
-                androidx.compose.runtime.LaunchedEffect(initialReceiveState) {
+                val context = androidx.compose.ui.platform.LocalContext.current
+                val nearbyPermissions = androidx.compose.runtime.remember {
+                    PermissionPolicy.nearbyTransferPermissions()
+                }
+                val hasNearbyPermissions: () -> Boolean = {
+                    nearbyPermissions.all { permission ->
+                        ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+                    }
+                }
+                val permissionLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.RequestMultiplePermissions()
+                ) {
+                    if (hasNearbyPermissions()) {
+                        viewModel.startAdvertising("Glide Device")
+                    } else {
+                        viewModel.onPermissionDenied()
+                    }
+                }
+                val startAdvertisingAtPointOfUse: () -> Unit = {
+                    if (nearbyPermissions.isEmpty() || hasNearbyPermissions()) {
+                        viewModel.startAdvertising("Glide Device")
+                    } else {
+                        permissionLauncher.launch(nearbyPermissions.toTypedArray())
+                    }
+                }
+
+                androidx.compose.runtime.LaunchedEffect(initialReceiveState, transferRuntime) {
                     if (initialReceiveState != null) {
                         viewModel.setUiStateForTesting(initialReceiveState)
+                    } else if (transferRuntime != null) {
+                        startAdvertisingAtPointOfUse()
                     }
                 }
                 val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -228,9 +319,7 @@ fun GlideAppNavDisplay(
                             backStack.removeAt(backStack.lastIndex)
                         }
                     },
-                    onRestartReceiving = {
-                        viewModel.startAdvertising("Glide Device")
-                    },
+                    onRestartReceiving = startAdvertisingAtPointOfUse,
                     onShowQrCode = {
                         val deviceName = if (uiState is dev.glide.app.ui.discovery.ReceiveReadinessUiState.Advertising) {
                             (uiState as dev.glide.app.ui.discovery.ReceiveReadinessUiState.Advertising).localDeviceName
