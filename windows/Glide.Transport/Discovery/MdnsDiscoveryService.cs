@@ -26,9 +26,8 @@ public sealed class MdnsDiscoveryService : IDisposable
 
     private bool _isAdvertising;
     private string _advertisedDeviceName = Environment.MachineName;
-    private int _advertisedPort = LanDiscoveryConstants.DefaultPort;
-    private string _advertisedFp = "";
-    private byte _advertisedCap = LanDiscoveryConstants.DefaultCapabilities;
+    private int _advertisedPort;
+    private string _advertisedPresenceId = "";
 
     public event Action<DiscoveredPeer>? PeerDiscovered;
     public event Action<DiscoveredPeer>? PeerLost;
@@ -71,14 +70,21 @@ public sealed class MdnsDiscoveryService : IDisposable
         }
     }
 
-    public void StartAdvertising(string deviceName, int port, string certFingerprintPrefix = "", byte capabilities = LanDiscoveryConstants.DefaultCapabilities)
+    public void StartAdvertising(string deviceName, int port, string presenceId)
     {
+        if (port is < 1 or > 65535)
+        {
+            throw new ArgumentOutOfRangeException(nameof(port), "Advertised listener port must be dynamic and valid.");
+        }
+
+        // Encode once up front so invalid presence/name values fail before the service is advertised.
+        _ = LanDiscoveryTxtCodec.Encode(presenceId, deviceName);
+
         lock (_advertisementLock)
         {
-            _advertisedDeviceName = string.IsNullOrWhiteSpace(deviceName) ? Environment.MachineName : deviceName;
+            _advertisedDeviceName = string.IsNullOrWhiteSpace(deviceName) ? "Glide Desktop" : deviceName.Trim();
             _advertisedPort = port;
-            _advertisedFp = certFingerprintPrefix.Length > 8 ? certFingerprintPrefix[..8] : certFingerprintPrefix;
-            _advertisedCap = capabilities;
+            _advertisedPresenceId = presenceId;
             _isAdvertising = true;
         }
 
@@ -181,19 +187,17 @@ public sealed class MdnsDiscoveryService : IDisposable
         {
             string devName;
             int port;
-            string fp;
-            byte cap;
+            string presenceId;
 
             lock (_advertisementLock)
             {
                 if (!_isAdvertising) return;
                 devName = _advertisedDeviceName;
                 port = _advertisedPort;
-                fp = _advertisedFp;
-                cap = _advertisedCap;
+                presenceId = _advertisedPresenceId;
             }
 
-            byte[] responsePacket = BuildResponsePacket(devName, port, fp, cap, ttlSeconds: 120);
+            byte[] responsePacket = BuildResponsePacket(devName, port, presenceId, ttlSeconds: 120);
             _udpClient.Send(responsePacket, responsePacket.Length, new IPEndPoint(MulticastAddress, MulticastPort));
         }
         catch
@@ -208,7 +212,7 @@ public sealed class MdnsDiscoveryService : IDisposable
 
         try
         {
-            byte[] goodbyePacket = BuildResponsePacket(_advertisedDeviceName, _advertisedPort, _advertisedFp, _advertisedCap, ttlSeconds: 0);
+            byte[] goodbyePacket = BuildResponsePacket(_advertisedDeviceName, _advertisedPort, _advertisedPresenceId, ttlSeconds: 0);
             _udpClient.Send(goodbyePacket, goodbyePacket.Length, new IPEndPoint(MulticastAddress, MulticastPort));
         }
         catch
@@ -233,8 +237,8 @@ public sealed class MdnsDiscoveryService : IDisposable
             }
 
             string? instanceName = null;
-            int port = LanDiscoveryConstants.DefaultPort;
-            var txtAttrs = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            int port = 0;
+            var txtAttrs = new Dictionary<string, string>(StringComparer.Ordinal);
 
             // Read answers & additional records
             int totalRecords = anCount + ((buffer[10] << 8) | buffer[11]); // ANCOUNT + ARCOUNT
@@ -282,27 +286,37 @@ public sealed class MdnsDiscoveryService : IDisposable
                 offset = rdEnd;
             }
 
-            if (instanceName != null && instanceName.Contains("_glide", StringComparison.OrdinalIgnoreCase))
+            if (instanceName != null &&
+                instanceName.Contains("_glide", StringComparison.OrdinalIgnoreCase) &&
+                port is >= 1 and <= 65535 &&
+                LanDiscoveryTxtCodec.TryDecode(txtAttrs, out LanDiscoveryTxtRecord? txtRecord) &&
+                txtRecord != null)
             {
-                string devName = txtAttrs.GetValueOrDefault("dn", instanceName.Split('.')[0]);
-                string devType = txtAttrs.GetValueOrDefault("dt", LanDiscoveryConstants.DeviceTypeDesktop);
-                string fp = txtAttrs.GetValueOrDefault("fp", "");
-                byte cap = LanDiscoveryConstants.DefaultCapabilities;
-                if (txtAttrs.TryGetValue("cap", out var capStr) && capStr.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
-                {
-                    _ = byte.TryParse(capStr[2..], System.Globalization.NumberStyles.HexNumber, null, out cap);
-                }
-
+                string devName = txtRecord.DeviceName;
+                string devType = txtRecord.DeviceType;
                 string hostIp = remoteEndPoint.Address.ToString();
 
-                // Skip our own advertised self if device name and port match
-                if (_isAdvertising && devName == _advertisedDeviceName && port == _advertisedPort)
+                // Skip our own advertised self if device name, port and lease presence match.
+                if (_isAdvertising &&
+                    devName == _advertisedDeviceName &&
+                    port == _advertisedPort &&
+                    txtRecord.PresenceId == _advertisedPresenceId)
                 {
                     return;
                 }
 
-                var peer = new DiscoveredPeer(devName, hostIp, port, fp, cap, devType);
-                string key = $"{hostIp}:{port}";
+                // Authentication material never comes from DNS-SD. The fingerprint/capability
+                // compatibility fields remain empty until their versioned protocol extensions
+                // are implemented and negotiated inside the authenticated session.
+                var peer = new DiscoveredPeer(
+                    devName,
+                    hostIp,
+                    port,
+                    FingerprintPrefix: "",
+                    Capabilities: 0,
+                    devType,
+                    txtRecord.PresenceId);
+                string key = $"{hostIp}:{port}:{txtRecord.PresenceId}";
 
                 bool isNew = !_peers.ContainsKey(key);
                 _peers[key] = (peer, DateTime.UtcNow);
@@ -357,7 +371,7 @@ public sealed class MdnsDiscoveryService : IDisposable
         return ms.ToArray();
     }
 
-    private static byte[] BuildResponsePacket(string deviceName, int port, string fp, byte cap, uint ttlSeconds)
+    private static byte[] BuildResponsePacket(string deviceName, int port, string presenceId, uint ttlSeconds)
     {
         var ms = new MemoryStream();
         using var w = new BinaryWriter(ms);
@@ -393,24 +407,17 @@ public sealed class MdnsDiscoveryService : IDisposable
         WriteUInt16BigEndian(w, (ushort)port); // Port
         w.Write(srvHost);
 
-        // Answer 3: TXT Record (v=1, dn=..., dt=desktop, alpn=glide-v1, fp=..., cap=0x07)
+        // Answer 3: canonical invitation-discovery TXT record.
         WriteDnsName(w, serviceInstance);
         w.Write((byte)0x00); w.Write((byte)0x10); // TYPE = TXT (16)
         w.Write((byte)0x80); w.Write((byte)0x01); // CLASS = IN | Flush (0x8001)
         WriteUInt32BigEndian(w, ttlSeconds); // TTL
 
-        var txtParts = new List<string>
-        {
-            "v=1",
-            $"dn={deviceName}",
-            "dt=desktop",
-            "alpn=glide-v1",
-            $"cap=0x{cap:X2}"
-        };
-        if (!string.IsNullOrEmpty(fp))
-        {
-            txtParts.Add($"fp={fp}");
-        }
+        var txtParts = LanDiscoveryTxtCodec.Encode(
+            presenceId,
+            deviceName,
+            LanDiscoveryConstants.DeviceTypeDesktop)
+            .Select(pair => $"{pair.Key}={pair.Value}");
 
         var txtStream = new MemoryStream();
         foreach (string part in txtParts)
