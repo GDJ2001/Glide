@@ -91,7 +91,30 @@ object DatabaseModule {
         )
 
     @Provides
-    fun provideResumableSessionDao(db: GlideDatabase): dev.glide.data.db.ResumableSessionDao = db.resumableSessionDao()
+    fun provideResumableSessionDao(
+        db: GlideDatabase
+    ): dev.glide.data.db.ResumableSessionDao =
+        db.resumableSessionDao()
+
+    @Provides
+    @Singleton
+    fun provideResumableStagingStore(
+        @ApplicationContext context: Context,
+        resumableSessionDao:
+            dev.glide.data.db.ResumableSessionDao
+    ): dev.glide.data.store.ResumableStagingStore {
+        val root =
+            java.io.File(
+                context.cacheDir,
+                "staging/resumable-v1"
+            )
+        return dev.glide.data.store
+            .ResumableStagingStore(
+                stagingBaseDir = root,
+                resumableSessionDao =
+                    resumableSessionDao
+            )
+    }
 
     @Provides
     fun provideReceiveJournalDao(db: GlideDatabase): dev.glide.data.db.ReceiveJournalDao = db.receiveJournalDao()
