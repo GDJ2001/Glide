@@ -559,6 +559,43 @@ public sealed class DesktopPersistentTrustTests : IDisposable
             () => store.Load());
     }
 
+    [Fact]
+    public void TrustStore_MissingVersionedFields_FailsClosed()
+    {
+        string path =
+            Path.Combine(
+                _root,
+                "legacy-unversioned",
+                "trust-v1.json");
+        Directory.CreateDirectory(
+            Path.GetDirectoryName(path)!);
+
+        File.WriteAllText(
+            path,
+            """
+            {
+              "localIdentityFingerprintHex": null,
+              "peers": [],
+              "headlessPolicies": []
+            }
+            """);
+
+        if (OperatingSystem.IsLinux())
+        {
+            File.SetUnixFileMode(
+                path,
+                UnixFileMode.UserRead |
+                UnixFileMode.UserWrite);
+        }
+
+        var store =
+            new DesktopTrustStore(path);
+
+        Assert.Throws<InvalidDataException>(
+            () => store.Load());
+    }
+
+
     private VerifiedDesktopPeerIdentity
         CreateVerifiedPeer(
             string verifierFingerprintHex)
