@@ -223,7 +223,9 @@ data class OfferItemDto(
     val name: String,
     val mime: String,
     val sizeBytes: String,
-    val relativePath: String? = null
+    val relativePath: String? = null,
+    val rootHash: String? = null,
+    val chunkSize: Int? = null
 )
 
 @Serializable
