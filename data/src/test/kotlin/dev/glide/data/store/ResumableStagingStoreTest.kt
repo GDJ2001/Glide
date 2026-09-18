@@ -379,13 +379,13 @@ class ResumableStagingStoreTest {
             )
             assertFalse(
                 File(
-                    journal.stagingPath,
+                    journal.stagingPath!!,
                     "chunk_000000000001.part"
                 ).exists()
             )
             assertFalse(
                 File(
-                    journal.stagingPath,
+                    journal.stagingPath!!,
                     "chunk_000000000002.part"
                 ).exists()
             )
