@@ -27,8 +27,8 @@ object TransferSessionManager {
 
     private var activeCoordinator: TransferCoordinator? = null
     private var activeJob: Job? = null
-    private var activeScope: CoroutineScope? = null
     private var terminalCallbackSessionId: String? = null
+    private var activePeerDisplayName: String = "Nearby device"
 
     private var _uiState = MutableStateFlow<TransferUiState>(TransferUiState.Idle)
     val uiState: StateFlow<TransferUiState> get() = _uiState.asStateFlow()
@@ -75,7 +75,7 @@ object TransferSessionManager {
         // 3. Clean up any previous completed/cancelled jobs
         activeJob?.cancel()
         activeCoordinator = coordinator
-        activeScope = scope
+        activePeerDisplayName = peerDisplayName
         terminalCallbackSessionId = null
 
         // 4. Mark session active in global tracker
@@ -169,14 +169,9 @@ object TransferSessionManager {
         }
         val coordinator = activeCoordinator
         if (coordinator != null) {
-            val owner = activeScope
-            if (owner != null) {
-                owner.launch {
-                    coordinator.cancelAndAwaitCleanup(reason)
-                    finalizeTerminalSession(coordinator)
-                }
-            } else {
-                coordinator.cancel(reason)
+            coordinator.scope.launch {
+                coordinator.cancelAndAwaitCleanup(reason)
+                finalizeTerminalSession(coordinator)
             }
         } else {
             val current = _uiState.value
@@ -197,6 +192,15 @@ object TransferSessionManager {
             return
         }
 
+        val committedKeys = coordinator.committedItemFiles
+            .mapKeys { it.key.value }
+            .mapValues { it.value.value }
+        _uiState.value = coordinator.state.value.toUiState(
+            peerDisplayName = activePeerDisplayName,
+            committedFileKey = coordinator.lastCommittedFileHandle?.value,
+            committedItemKeys = committedKeys
+        )
+
         coordinator.stop()
         ActiveSessionTracker.setSessionActive(coordinator.sessionId.value, false)
 
@@ -214,8 +218,8 @@ object TransferSessionManager {
         rateTracker.reset()
         activeCoordinator?.stop()
         activeCoordinator = null
-        activeScope = null
         terminalCallbackSessionId = null
+        activePeerDisplayName = "Nearby device"
         activeJob?.cancel()
         activeJob = null
         ActiveSessionTracker.reset()
