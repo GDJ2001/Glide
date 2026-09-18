@@ -83,7 +83,9 @@ public interface IDesktopTransferInteraction
     void OnStatus(DesktopTransferDirection direction, string message);
     void OnProgress(DesktopTransferProgress progress);
     void OnItemStatus(DesktopTransferDirection direction, string itemName, string status);
-    void OnHistory(DesktopHistoryEntry entry);
+    Task OnHistoryAsync(
+        DesktopHistoryEntry entry,
+        CancellationToken cancellationToken = default);
 }
 
 public abstract class DesktopTransferInteractionBase : IDesktopTransferInteraction
@@ -103,7 +105,10 @@ public abstract class DesktopTransferInteractionBase : IDesktopTransferInteracti
     public virtual void OnStatus(DesktopTransferDirection direction, string message) { }
     public virtual void OnProgress(DesktopTransferProgress progress) { }
     public virtual void OnItemStatus(DesktopTransferDirection direction, string itemName, string status) { }
-    public virtual void OnHistory(DesktopHistoryEntry entry) { }
+    public virtual Task OnHistoryAsync(
+        DesktopHistoryEntry entry,
+        CancellationToken cancellationToken = default) =>
+        Task.CompletedTask;
 }
 
 
