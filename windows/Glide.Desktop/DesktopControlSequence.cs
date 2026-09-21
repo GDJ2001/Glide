@@ -1,5 +1,7 @@
 using System.Text.Json.Nodes;
 using Glide.Core.Models;
+using Glide.Core.Pairing;
+using Glide.Core.Transport.Lan;
 using Glide.Transport.Framing;
 
 namespace Glide.Desktop;
