@@ -83,8 +83,8 @@ public sealed class DesktopTransferEngineTests : IDisposable
         var receiverResult = await receiverTask.WaitAsync(
             TimeSpan.FromSeconds(15));
 
-        Assert.True(senderResult.Success, senderResult.Message);
-        Assert.True(receiverResult.Success, receiverResult.Message);
+        Assert.True(senderResult.Success, $"Sender: {senderResult.Message} | Receiver: {receiverResult.Message}");
+        Assert.True(receiverResult.Success, $"Receiver: {receiverResult.Message} | Sender: {senderResult.Message}");
         Assert.Equal(2, senderResult.VerifiedCount);
         Assert.Equal(2, receiverResult.VerifiedCount);
 
@@ -561,8 +561,8 @@ public sealed class DesktopTransferEngineTests : IDisposable
         var receiverResult = await receiverTask.WaitAsync(
             TimeSpan.FromSeconds(15));
 
-        Assert.True(senderResult.Rejected);
-        Assert.True(receiverResult.Rejected);
+        Assert.True(senderResult.Rejected, $"Sender: {senderResult.Message} | Receiver: {receiverResult.Message}");
+        Assert.True(receiverResult.Rejected, $"Receiver: {receiverResult.Message} | Sender: {senderResult.Message}");
         Assert.Empty(Directory.GetFiles(
             _destinationDir,
             "*",

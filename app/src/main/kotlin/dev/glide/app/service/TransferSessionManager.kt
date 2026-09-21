@@ -27,8 +27,8 @@ object TransferSessionManager {
 
     private var activeCoordinator: TransferCoordinator? = null
     private var activeJob: Job? = null
-    private var activePeerDisplayName: String = "Nearby device"
     private var terminalCallbackSessionId: String? = null
+    private var activePeerDisplayName: String = "Nearby device"
 
     private var _uiState = MutableStateFlow<TransferUiState>(TransferUiState.Idle)
     val uiState: StateFlow<TransferUiState> get() = _uiState.asStateFlow()
@@ -76,6 +76,10 @@ object TransferSessionManager {
         activeJob?.cancel()
         activeCoordinator = coordinator
         activePeerDisplayName = peerDisplayName
+<<<<<<< HEAD
+=======
+        terminalCallbackSessionId = null
+>>>>>>> origin/hardening/fix-current-head-tls-disposal
 
         // 4. Mark session active in global tracker
         ActiveSessionTracker.setSessionActive(coordinator.sessionId.value, true)
@@ -117,8 +121,11 @@ object TransferSessionManager {
                 ActiveSessionTracker.setSessionActive(coordinator.sessionId.value, isActive)
 
                 if (sessionState.phase.isTerminal) {
-                    coordinator.stop()
-                    onTerminalCallback?.invoke()
+                    // The reducer publishes its terminal state before terminal effects (history,
+                    // quarantine cleanup and transport disconnect) have necessarily finished.
+                    // Do not cancel coordinator jobs until that cleanup barrier is complete.
+                    coordinator.awaitTerminalCleanup()
+                    finalizeTerminalSession(coordinator)
                 }
             }
         }
@@ -165,7 +172,10 @@ object TransferSessionManager {
         }
         val coordinator = activeCoordinator
         if (coordinator != null) {
-            coordinator.cancel(reason)
+            coordinator.scope.launch {
+                coordinator.cancelAndAwaitCleanup(reason)
+                finalizeTerminalSession(coordinator)
+            }
         } else {
             val current = _uiState.value
             _uiState.value = TransferUiState.Cancelled(
@@ -211,6 +221,8 @@ object TransferSessionManager {
         rateTracker.reset()
         activeCoordinator?.stop()
         activeCoordinator = null
+        terminalCallbackSessionId = null
+        activePeerDisplayName = "Nearby device"
         activeJob?.cancel()
         activeJob = null
         terminalCallbackSessionId = null

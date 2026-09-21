@@ -1028,7 +1028,8 @@ class TransferCoordinatorTest {
             // Simulate disconnect / link failure while awaiting receipt
             rTransport.disconnect(sTransport.localPeerId)
 
-            // Capture the exact terminal state emission before cleanup can close the observation window.
+            // Capture the exact terminal state emission before cleanup can close the
+            // observation window and leave only the final snapshot.
             val terminalState = senderCoordinator.state.first {
                 it.phase == SessionPhase.DeliveryUnconfirmed
             }
@@ -1038,6 +1039,7 @@ class TransferCoordinatorTest {
             assertTrue(terminalState.failure is TransferFailure.DeliveryUnconfirmed)
 
             // Terminal state publication precedes asynchronous history persistence.
+            // The cleanup barrier is the deterministic point at which terminal bookkeeping is complete.
             senderCoordinator.awaitTerminalCleanup()
 
             // Both files on sender were verified

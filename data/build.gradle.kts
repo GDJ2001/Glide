@@ -10,7 +10,10 @@ ksp {
 }
 
 // Host filesystem performance measurements are intentionally opt-in.
+// Host filesystem performance measurements are intentionally opt-in.
 // Shared CI runners are not authoritative for disk throughput/latency budgets.
+// The functional LAN gate must not turn shared-runner disk contention into a protocol failure.
+// Run the benchmark explicitly with: ./gradlew :data:testDebugUnitTest -PrunStorageBenchmarks=true
 val runStorageBenchmarks = providers
     .gradleProperty("runStorageBenchmarks")
     .map(String::toBoolean)
