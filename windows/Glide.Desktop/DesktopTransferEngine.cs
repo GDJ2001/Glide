@@ -370,9 +370,9 @@ public sealed class DesktopTransferEngine
                 new JsonObject
                 {
                     ["batchId"] = batchId.Value,
-                    ["itemCount"] = preparedItems.Count,
+                    ["itemCount"] = (long)preparedItems.Count,
                     ["totalBytes"] = totalBytes.ToString(),
-                    ["pageCount"] = offerPages.Count
+                    ["pageCount"] = (long)offerPages.Count
                 }),
             cancellationToken);
 
@@ -665,8 +665,9 @@ public sealed class DesktopTransferEngine
             batchId.Value);
 
         int peerVerifiedCount =
-            terminal.Body["verifiedCount"]!
-                .GetValue<int>();
+            checked((int)long.Parse(
+                terminal.Body["verifiedCount"]!
+                    .ToString()));
         long peerVerifiedBytes = long.Parse(
             terminal.Body["totalVerifiedBytes"]!
                 .ToString());
@@ -898,14 +899,16 @@ public sealed class DesktopTransferEngine
                 offerBegin.Body["batchId"]!
                     .ToString();
             int itemCount =
-                offerBegin.Body["itemCount"]!
-                    .GetValue<int>();
+                checked((int)long.Parse(
+                    offerBegin.Body["itemCount"]!
+                        .ToString()));
             long totalBytes = long.Parse(
                 offerBegin.Body["totalBytes"]!
                     .ToString());
             int pageCount =
-                offerBegin.Body["pageCount"]!
-                    .GetValue<int>();
+                checked((int)long.Parse(
+                    offerBegin.Body["pageCount"]!
+                        .ToString()));
 
             var items =
                 new List<DesktopOfferItem>(
@@ -931,8 +934,9 @@ public sealed class DesktopTransferEngine
                     batchId);
 
                 int actualPageIndex =
-                    offerPage.Body["pageIndex"]!
-                        .GetValue<int>();
+                    checked((int)long.Parse(
+                        offerPage.Body["pageIndex"]!
+                            .ToString()));
                 if (actualPageIndex != pageIndex)
                 {
                     throw new ProtocolViolationException(
@@ -1495,7 +1499,7 @@ public sealed class DesktopTransferEngine
         bool identityOffered,
         bool requireIdentity)
     {
-        if (helloAck.Body["selectedMajor"]?.GetValue<int>() != 1)
+        if (long.Parse(helloAck.Body["selectedMajor"]?.ToString() ?? "-1") != 1)
         {
             throw new ProtocolViolationException(
                 WireErrorCodes.UnsupportedProtocol,
@@ -1648,62 +1652,3 @@ public sealed class DesktopTransferEngine
     private static int EstimateOfferItemBytes(
         PreparedSendItem item)
     {
-        const int JsonOverhead = 128;
-        return JsonOverhead +
-               Encoding.UTF8.GetByteCount(
-                   item.File.Name) * 2 +
-               item.DeclaredSize
-                   .ToString()
-                   .Length;
-    }
-
-    private static void RequireExactString(
-        Envelope envelope,
-        string key,
-        string expected)
-    {
-        string actual =
-            envelope.Body[key]?.ToString()
-            ?? throw new ProtocolViolationException(
-                WireErrorCodes.MalformedMessage,
-                $"{envelope.Type} is missing '{key}'.");
-
-        if (!string.Equals(
-                actual,
-                expected,
-                StringComparison.Ordinal))
-        {
-            throw new ProtocolViolationException(
-                WireErrorCodes.ProtocolOrder,
-                $"{envelope.Type} '{key}' value '{actual}' does not match expected '{expected}'.");
-        }
-    }
-
-    private static void RequireExactLong(
-        Envelope envelope,
-        string key,
-        long expected)
-    {
-        string value =
-            envelope.Body[key]?.ToString()
-            ?? throw new ProtocolViolationException(
-                WireErrorCodes.MalformedMessage,
-                $"{envelope.Type} is missing '{key}'.");
-
-        if (!long.TryParse(
-                value,
-                out long actual) ||
-            actual != expected)
-        {
-            throw new ProtocolViolationException(
-                WireErrorCodes.ProtocolOrder,
-                $"{envelope.Type} '{key}' value '{value}' does not match expected '{expected}'.");
-        }
-    }
-
-    private static SessionId NewSessionId() =>
-        new(
-            Guid.NewGuid()
-                .ToString("D")
-                .ToLowerInvariant());
-}
