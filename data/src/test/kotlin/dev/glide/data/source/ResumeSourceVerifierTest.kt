@@ -108,8 +108,7 @@ class ResumeSourceVerifierTest {
                 )
             assertTrue(
                 unchanged is
-                    ResumeSourceRevalidationResult
-                        .Unchanged
+                    ResumeSourceRevalidationResult.Unchanged
             )
 
             payload =
@@ -138,13 +137,11 @@ class ResumeSourceVerifierTest {
                 )
             assertTrue(
                 changed is
-                    ResumeSourceRevalidationResult
-                        .Changed
+                    ResumeSourceRevalidationResult.Changed
             )
             val changedSnapshot =
                 (changed as
-                    ResumeSourceRevalidationResult
-                        .Changed)
+                    ResumeSourceRevalidationResult.Changed)
                     .current
             assertNotEquals(
                 snapshot.chunkRootHashHex,
@@ -218,8 +215,7 @@ class ResumeSourceVerifierTest {
 
             assertTrue(
                 result is
-                    ResumeSourceRevalidationResult
-                        .Unavailable
+                    ResumeSourceRevalidationResult.Unavailable
             )
         }
 

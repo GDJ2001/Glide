@@ -515,17 +515,13 @@ class ResumableStagingStore(
                     originalSessionId,
                     itemId
                 )
-                    ?: return@withContext
-                        ResumeReceiverRevalidationResult
-                            .NotFound
+                    ?: return@withContext ResumeReceiverRevalidationResult.NotFound
 
             if (journal.journalRole !=
                 ResumableSessionEntity
                     .ROLE_RECEIVER
             ) {
-                return@withContext
-                    ResumeReceiverRevalidationResult
-                        .JournalMismatch
+                return@withContext ResumeReceiverRevalidationResult.JournalMismatch
             }
 
             if (nowMs >=
@@ -534,18 +530,14 @@ class ResumableStagingStore(
                 purgeInternal(
                     journal
                 )
-                return@withContext
-                    ResumeReceiverRevalidationResult
-                        .Expired
+                return@withContext ResumeReceiverRevalidationResult.Expired
             }
 
             if (!peerStillTrusted ||
                 authenticatedPeerFingerprintHex !=
                     journal.peerFingerprintHex
             ) {
-                return@withContext
-                    ResumeReceiverRevalidationResult
-                        .Unauthorized
+                return@withContext ResumeReceiverRevalidationResult.Unauthorized
             }
 
             val itemDir =
@@ -555,9 +547,7 @@ class ResumableStagingStore(
                         purgeInternal(
                             journal
                         )
-                        return@withContext
-                            ResumeReceiverRevalidationResult
-                                .JournalMismatch
+                        return@withContext ResumeReceiverRevalidationResult.JournalMismatch
                     }
             if (!isInsideStagingRoot(
                     itemDir
@@ -566,9 +556,7 @@ class ResumableStagingStore(
                 purgeInternal(
                     journal
                 )
-                return@withContext
-                    ResumeReceiverRevalidationResult
-                        .JournalMismatch
+                return@withContext ResumeReceiverRevalidationResult.JournalMismatch
             }
 
             val prefix =
@@ -583,9 +571,7 @@ class ResumableStagingStore(
                     purgeInternal(
                         journal
                     )
-                    return@withContext
-                        ResumeReceiverRevalidationResult
-                            .JournalMismatch
+                    return@withContext ResumeReceiverRevalidationResult.JournalMismatch
                 }
 
             if (prefix.size.toLong() !=
@@ -594,9 +580,7 @@ class ResumableStagingStore(
                 purgeInternal(
                     journal
                 )
-                return@withContext
-                    ResumeReceiverRevalidationResult
-                        .JournalMismatch
+                return@withContext ResumeReceiverRevalidationResult.JournalMismatch
             }
 
             var validChunks = 0L
@@ -665,8 +649,7 @@ class ResumableStagingStore(
                     )
             }
 
-            ResumeReceiverRevalidationResult
-                .Ready(
+            ResumeReceiverRevalidationResult.Ready(
                     verifiedChunks =
                         validChunks,
                     contiguousByteOffset =
@@ -700,17 +683,13 @@ class ResumableStagingStore(
                     originalSessionId,
                     itemId
                 )
-                    ?: return@withContext
-                        ResumeSenderRevalidationResult
-                            .NotFound
+                    ?: return@withContext ResumeSenderRevalidationResult.NotFound
 
             if (journal.journalRole !=
                 ResumableSessionEntity
                     .ROLE_SENDER
             ) {
-                return@withContext
-                    ResumeSenderRevalidationResult
-                        .JournalMismatch
+                return@withContext ResumeSenderRevalidationResult.JournalMismatch
             }
 
             if (nowMs >=
@@ -719,24 +698,18 @@ class ResumableStagingStore(
                 purgeInternal(
                     journal
                 )
-                return@withContext
-                    ResumeSenderRevalidationResult
-                        .Expired
+                return@withContext ResumeSenderRevalidationResult.Expired
             }
 
             if (!peerStillTrusted ||
                 authenticatedPeerFingerprintHex !=
                     journal.peerFingerprintHex
             ) {
-                return@withContext
-                    ResumeSenderRevalidationResult
-                        .Unauthorized
+                return@withContext ResumeSenderRevalidationResult.Unauthorized
             }
 
             if (!sourceStillAvailable) {
-                return@withContext
-                    ResumeSenderRevalidationResult
-                        .SourceUnavailable
+                return@withContext ResumeSenderRevalidationResult.SourceUnavailable
             }
 
             if (journal.sourceIdentity == null ||
@@ -751,13 +724,10 @@ class ResumableStagingStore(
                 currentWholeFileSha256Hex !=
                     journal.wholeFileSha256Hex
             ) {
-                return@withContext
-                    ResumeSenderRevalidationResult
-                        .SourceChanged
+                return@withContext ResumeSenderRevalidationResult.SourceChanged
             }
 
-            ResumeSenderRevalidationResult
-                .Ready(
+            ResumeSenderRevalidationResult.Ready(
                     sourceHandle =
                         journal.sourceHandle,
                     totalBytes =
@@ -1814,7 +1784,7 @@ class ResumableStagingStore(
                 destinationTemp,
                 destination
             )
-            true
+            return true
         } finally {
             if (destinationTemp.exists()) {
                 destinationTemp.delete()

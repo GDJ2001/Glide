@@ -13,13 +13,11 @@ class RoomTrustedPeerStore(
 
     override fun observeAll(): Flow<List<TrustedPeerRecord>> =
         dao.observeAllPeers().map { peers ->
-            peers.map(TrustedPeerEntity::toDomain)
+            peers.map { it.toDomain() }
         }
 
     override suspend fun getAll(): List<TrustedPeerRecord> =
-        dao.getAllPeers().map(
-            TrustedPeerEntity::toDomain
-        )
+        dao.getAllPeers().map { it.toDomain() }
 
     override suspend fun getByFingerprint(
         fingerprintHex: String

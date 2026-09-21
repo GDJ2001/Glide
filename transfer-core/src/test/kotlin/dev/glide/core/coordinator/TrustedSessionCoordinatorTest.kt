@@ -421,8 +421,7 @@ class TrustedSessionCoordinatorTest {
                                 receiverFingerprint,
                                 peerFingerprint
                             )
-                            ResumeAuthorityLookup
-                                .Ready(
+                            ResumeAuthorityLookup.Ready(
                                     ResumeSenderReadySource(
                                         authority =
                                             ResumeRequestAuthority
@@ -498,8 +497,7 @@ class TrustedSessionCoordinatorTest {
                                 senderFingerprint,
                                 peerFingerprint
                             )
-                            ResumeAuthorityLookup
-                                .Ready(
+                            ResumeAuthorityLookup.Ready(
                                     ResumeRequestAuthority
                                         .ReceiverJournal(
                                             originalSessionId =

@@ -317,230 +317,14 @@ class TransferSessionFactory(
                 requestedOriginalSessionId,
                 requestedItemId,
                 authenticatedPeerFingerprintHex ->
-                val journal =
-                    store.getJournal(
-                        requestedOriginalSessionId
-                            .value,
-                        requestedItemId.value
-                    )
-                if (journal == null ||
-                    journal.journalRole !=
-                        ResumableSessionEntity
-                            .ROLE_SENDER
-                ) {
-                    ResumeAuthorityLookup
-                        .Rejected(
-                            dev.glide.core.protocol
-                                .ResumeRejectCodes
-                                .JOURNAL_MISMATCH
-                        )
-                } else if (
-                    System.currentTimeMillis() >=
-                        journal.expiresAtMs
-                ) {
-                    store.purgeSession(
-                        requestedOriginalSessionId
-                            .value,
-                        requestedItemId.value
-                    )
-                    ResumeAuthorityLookup
-                        .Rejected(
-                            dev.glide.core.protocol
-                                .ResumeRejectCodes
-                                .EXPIRED
-                        )
-                } else if (
-                    journal.peerFingerprintHex !=
-                        authenticatedPeerFingerprintHex ||
-                    persistentTrustManager
-                        .trustedPeerByFingerprint(
-                            authenticatedPeerFingerprintHex
-                        ) == null
-                ) {
-                    ResumeAuthorityLookup
-                        .Rejected(
-                            dev.glide.core.protocol
-                                .ResumeRejectCodes
-                                .UNAUTHORIZED
-                        )
-                } else {
-                    val handleText =
-                        journal.sourceHandle
-                    val sourceIdentity =
-                        journal.sourceIdentity
-                    val wholeFileSha256Hex =
-                        journal
-                            .wholeFileSha256Hex
-                    if (handleText == null ||
-                        sourceIdentity == null ||
-                        wholeFileSha256Hex ==
-                            null
-                    ) {
-                        ResumeAuthorityLookup
-                            .Rejected(
-                                dev.glide.core.protocol
-                                    .ResumeRejectCodes
-                                    .JOURNAL_MISMATCH
-                            )
-                    } else {
-                        val handle =
-                            try {
-                                SourceHandle(
-                                    handleText
-                                )
-                            } catch (
-                                _: IllegalArgumentException
-                            ) {
-                                null
-                            }
-
-                        if (handle == null) {
-                            ResumeAuthorityLookup
-                                .Rejected(
-                                    dev.glide.core.protocol
-                                        .ResumeRejectCodes
-                                        .JOURNAL_MISMATCH
-                                )
-                        } else {
-                            when (
-                                val source =
-                                    verifier.revalidate(
-                                        handle =
-                                            handle,
-                                        expectedSourceIdentity =
-                                            sourceIdentity,
-                                        expectedTotalBytes =
-                                            journal
-                                                .totalBytes,
-                                        expectedChunkSize =
-                                            journal
-                                                .chunkSize,
-                                        expectedChunkRootHashHex =
-                                            journal
-                                                .chunkRootHashHex,
-                                        expectedWholeFileSha256Hex =
-                                            wholeFileSha256Hex
-                                    )
-                            ) {
-                                is ResumeSourceRevalidationResult.Unavailable ->
-                                    ResumeAuthorityLookup
-                                        .Rejected(
-                                            dev.glide.core.protocol
-                                                .ResumeRejectCodes
-                                                .FILE_CHANGED
-                                        )
-
-                                is ResumeSourceRevalidationResult.Changed ->
-                                    ResumeAuthorityLookup
-                                        .Rejected(
-                                            dev.glide.core.protocol
-                                                .ResumeRejectCodes
-                                                .FILE_CHANGED
-                                        )
-
-                                is ResumeSourceRevalidationResult.Unchanged -> {
-                                    val snapshot =
-                                        source.snapshot
-                                    when (
-                                        val reconciled =
-                                            store
-                                                .reconcileSenderForResume(
-                                                    originalSessionId =
-                                                        requestedOriginalSessionId
-                                                            .value,
-                                                    itemId =
-                                                        requestedItemId
-                                                            .value,
-                                                    authenticatedPeerFingerprintHex =
-                                                        authenticatedPeerFingerprintHex,
-                                                    peerStillTrusted =
-                                                        true,
-                                                    sourceStillAvailable =
-                                                        true,
-                                                    currentSourceIdentity =
-                                                        snapshot
-                                                            .sourceIdentity,
-                                                    currentTotalBytes =
-                                                        snapshot
-                                                            .totalBytes,
-                                                    currentChunkRootHashHex =
-                                                        snapshot
-                                                            .chunkRootHashHex,
-                                                    currentWholeFileSha256Hex =
-                                                        snapshot
-                                                            .wholeFileSha256Hex
-                                                )
-                                    ) {
-                                        is ResumeSenderRevalidationResult.Ready ->
-                                            ResumeAuthorityLookup
-                                                .Ready(
-                                                    ResumeSenderReadySource(
-                                                        authority =
-                                                            ResumeRequestAuthority
-                                                                .SenderSourceAuthority(
-                                                                    originalSessionId =
-                                                                        requestedOriginalSessionId,
-                                                                    itemId =
-                                                                        requestedItemId,
-                                                                    chunkSize =
-                                                                        reconciled
-                                                                            .chunkSize,
-                                                                    totalSizeBytes =
-                                                                        reconciled
-                                                                            .totalBytes,
-                                                                    chunkRootHashHex =
-                                                                        reconciled
-                                                                            .chunkRootHashHex
-                                                                ),
-                                                        sourceHandle =
-                                                            SourceHandle(
-                                                                reconciled
-                                                                    .sourceHandle
-                                                            ),
-                                                        wholeFileSha256Hex =
-                                                            reconciled
-                                                                .wholeFileSha256Hex
-                                                    )
-                                                )
-
-                                        ResumeSenderRevalidationResult.Expired ->
-                                            ResumeAuthorityLookup
-                                                .Rejected(
-                                                    dev.glide.core.protocol
-                                                        .ResumeRejectCodes
-                                                        .EXPIRED
-                                                )
-
-                                        ResumeSenderRevalidationResult.Unauthorized ->
-                                            ResumeAuthorityLookup
-                                                .Rejected(
-                                                    dev.glide.core.protocol
-                                                        .ResumeRejectCodes
-                                                        .UNAUTHORIZED
-                                                )
-
-                                        ResumeSenderRevalidationResult.JournalMismatch ->
-                                            ResumeAuthorityLookup
-                                                .Rejected(
-                                                    dev.glide.core.protocol
-                                                        .ResumeRejectCodes
-                                                        .JOURNAL_MISMATCH
-                                                )
-
-                                        ResumeSenderRevalidationResult.SourceUnavailable,
-                                        ResumeSenderRevalidationResult.SourceChanged ->
-                                            ResumeAuthorityLookup
-                                                .Rejected(
-                                                    dev.glide.core.protocol
-                                                        .ResumeRejectCodes
-                                                        .FILE_CHANGED
-                                                )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                loadSenderResumeAuthorityImpl(
+                    store = store,
+                    verifier = verifier,
+                    trustManager = persistentTrustManager,
+                    requestedOriginalSessionId = requestedOriginalSessionId,
+                    requestedItemId = requestedItemId,
+                    authenticatedPeerFingerprintHex = authenticatedPeerFingerprintHex
+                )
             },
             enableTrueResumeCapability =
                 true
@@ -618,8 +402,7 @@ class TransferSessionFactory(
                         )
                 ) {
                     is ResumeReceiverRevalidationResult.Ready ->
-                        ResumeAuthorityLookup
-                            .Ready(
+                        ResumeAuthorityLookup.Ready(
                                 ResumeRequestAuthority
                                     .ReceiverJournal(
                                         originalSessionId =
@@ -646,24 +429,21 @@ class TransferSessionFactory(
 
                     ResumeReceiverRevalidationResult.NotFound,
                     ResumeReceiverRevalidationResult.JournalMismatch ->
-                        ResumeAuthorityLookup
-                            .Rejected(
+                        ResumeAuthorityLookup.Rejected(
                                 dev.glide.core.protocol
                                     .ResumeRejectCodes
                                     .JOURNAL_MISMATCH
                             )
 
                     ResumeReceiverRevalidationResult.Expired ->
-                        ResumeAuthorityLookup
-                            .Rejected(
+                        ResumeAuthorityLookup.Rejected(
                                 dev.glide.core.protocol
                                     .ResumeRejectCodes
                                     .EXPIRED
                             )
 
                     ResumeReceiverRevalidationResult.Unauthorized ->
-                        ResumeAuthorityLookup
-                            .Rejected(
+                        ResumeAuthorityLookup.Rejected(
                                 dev.glide.core.protocol
                                     .ResumeRejectCodes
                                     .UNAUTHORIZED
@@ -673,5 +453,129 @@ class TransferSessionFactory(
             enableTrueResumeCapability =
                 true
         )
+    }
+    private suspend fun loadSenderResumeAuthorityImpl(
+        store: ResumableStagingStore,
+        verifier: ResumeSourceVerifier,
+        trustManager: PersistentTrustManager,
+        requestedOriginalSessionId: SessionId,
+        requestedItemId: ItemId,
+        authenticatedPeerFingerprintHex: String
+    ): ResumeAuthorityLookup<ResumeSenderReadySource> {
+        val journal = store.getJournal(
+            requestedOriginalSessionId.value,
+            requestedItemId.value
+        )
+        if (journal == null ||
+            journal.journalRole != ResumableSessionEntity.ROLE_SENDER
+        ) {
+            return ResumeAuthorityLookup.Rejected(
+                dev.glide.core.protocol.ResumeRejectCodes.JOURNAL_MISMATCH
+            )
+        }
+        if (System.currentTimeMillis() >= journal.expiresAtMs) {
+            store.purgeSession(
+                requestedOriginalSessionId.value,
+                requestedItemId.value
+            )
+            return ResumeAuthorityLookup.Rejected(
+                dev.glide.core.protocol.ResumeRejectCodes.EXPIRED
+            )
+        }
+        if (journal.peerFingerprintHex != authenticatedPeerFingerprintHex ||
+            trustManager.trustedPeerByFingerprint(
+                authenticatedPeerFingerprintHex
+            ) == null
+        ) {
+            return ResumeAuthorityLookup.Rejected(
+                dev.glide.core.protocol.ResumeRejectCodes.UNAUTHORIZED
+            )
+        }
+        val handleText = journal.sourceHandle
+        val sourceIdentity = journal.sourceIdentity
+        val wholeFileSha256Hex = journal.wholeFileSha256Hex
+        if (handleText == null || sourceIdentity == null || wholeFileSha256Hex == null) {
+            return ResumeAuthorityLookup.Rejected(
+                dev.glide.core.protocol.ResumeRejectCodes.JOURNAL_MISMATCH
+            )
+        }
+        val handle = try {
+            SourceHandle(handleText)
+        } catch (_: IllegalArgumentException) {
+            null
+        }
+        if (handle == null) {
+            return ResumeAuthorityLookup.Rejected(
+                dev.glide.core.protocol.ResumeRejectCodes.JOURNAL_MISMATCH
+            )
+        }
+        return when (
+            val source = verifier.revalidate(
+                handle = handle,
+                expectedSourceIdentity = sourceIdentity,
+                expectedTotalBytes = journal.totalBytes,
+                expectedChunkSize = journal.chunkSize,
+                expectedChunkRootHashHex = journal.chunkRootHashHex,
+                expectedWholeFileSha256Hex = wholeFileSha256Hex
+            )
+        ) {
+            is ResumeSourceRevalidationResult.Unavailable ->
+                ResumeAuthorityLookup.Rejected(
+                    dev.glide.core.protocol.ResumeRejectCodes.FILE_CHANGED
+                )
+            is ResumeSourceRevalidationResult.Changed ->
+                ResumeAuthorityLookup.Rejected(
+                    dev.glide.core.protocol.ResumeRejectCodes.FILE_CHANGED
+                )
+            is ResumeSourceRevalidationResult.Unchanged -> {
+                val snapshot = source.snapshot
+                when (
+                    val reconciled = store.reconcileSenderForResume(
+                        originalSessionId = requestedOriginalSessionId.value,
+                        itemId = requestedItemId.value,
+                        authenticatedPeerFingerprintHex = authenticatedPeerFingerprintHex,
+                        peerStillTrusted = true,
+                        sourceStillAvailable = true,
+                        currentSourceIdentity = snapshot.sourceIdentity,
+                        currentTotalBytes = snapshot.totalBytes,
+                        currentChunkRootHashHex = snapshot.chunkRootHashHex,
+                        currentWholeFileSha256Hex = snapshot.wholeFileSha256Hex
+                    )
+                ) {
+                    is ResumeSenderRevalidationResult.Ready ->
+                        ResumeAuthorityLookup.Ready(
+                            ResumeSenderReadySource(
+                                authority = ResumeRequestAuthority.SenderSourceAuthority(
+                                    originalSessionId = requestedOriginalSessionId,
+                                    itemId = requestedItemId,
+                                    chunkSize = reconciled.chunkSize,
+                                    totalSizeBytes = reconciled.totalBytes,
+                                    chunkRootHashHex = reconciled.chunkRootHashHex
+                                ),
+                                sourceHandle = SourceHandle(reconciled.sourceHandle),
+                                wholeFileSha256Hex = reconciled.wholeFileSha256Hex
+                            )
+                        )
+                    ResumeSenderRevalidationResult.Expired ->
+                        ResumeAuthorityLookup.Rejected(
+                            dev.glide.core.protocol.ResumeRejectCodes.EXPIRED
+                        )
+                    ResumeSenderRevalidationResult.Unauthorized ->
+                        ResumeAuthorityLookup.Rejected(
+                            dev.glide.core.protocol.ResumeRejectCodes.UNAUTHORIZED
+                        )
+                    ResumeSenderRevalidationResult.NotFound,
+                    ResumeSenderRevalidationResult.JournalMismatch ->
+                        ResumeAuthorityLookup.Rejected(
+                            dev.glide.core.protocol.ResumeRejectCodes.JOURNAL_MISMATCH
+                        )
+                    ResumeSenderRevalidationResult.SourceUnavailable,
+                    ResumeSenderRevalidationResult.SourceChanged ->
+                        ResumeAuthorityLookup.Rejected(
+                            dev.glide.core.protocol.ResumeRejectCodes.FILE_CHANGED
+                        )
+                }
+            }
+        }
     }
 }

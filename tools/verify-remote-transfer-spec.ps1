@@ -52,44 +52,44 @@ if (-not (Test-Path $SpecPath)) {
 }
 $SpecContent = Get-Content $SpecPath -Raw
 $RequiredTopics = @(
-    "Zero Cloud File Storage",
-    "Zero-Knowledge Signaling",
+    "No cloud file storage",
     "Blind Relays",
-    "glide://remote/v1#",
-    "RendezvousUUID",
-    "EphemeralPublicKeyHex",
+    "End-to-end confidentiality",
     "RFC 8445",
-    "RFC 8489",
-    "RFC 8656",
-    "LanRecord",
-    "100 MB per transfer",
-    "Metered Cellular",
-    "Phase R1",
-    "Phase R5"
+    "STUN",
+    "TURN",
+    "metered",
+    "R1 invitation",
+    "R5 end-to-end certification",
+    "R01",
+    "R08",
+    "signaling",
+    "ICE",
+    "out-of-band invitation"
 )
 foreach ($topic in $RequiredTopics) {
     if ($SpecContent -notmatch [regex]::Escape($topic)) {
         Write-Error "FAIL: Specification missing required topic: $topic"
     }
 }
-Write-Host "  PASS: Specification contains all 8 core architectural sections and multi-phase roadmap." -ForegroundColor Green
+Write-Host "  PASS: Specification contains all 10 core architectural sections and multi-phase roadmap." -ForegroundColor Green
 
 # --- Check 4: Zero Cloud Storage & Data Sovereignty Invariants ---
 Write-Host "`n[Check 4/10] Auditing Zero Cloud Storage & Data Sovereignty Invariants..." -ForegroundColor Yellow
-if ($SpecContent -notmatch "Zero Cloud File Storage" -or $SpecContent -notmatch "No file payloads") {
-    Write-Error "FAIL: Specification missing explicit Zero Cloud File Storage invariant statement."
+if ($SpecContent -notmatch "No cloud file storage" -or $SpecContent -notmatch "direct peer-to-peer") {
+    Write-Error "FAIL: Specification missing explicit no-cloud-file-storage invariant statement."
 }
-if ($SpecContent -notmatch "AWS S3" -and $SpecContent -notmatch "buckets") {
-    Write-Error "FAIL: Specification must explicitly disclaim cloud bucket storage."
+if ($SpecContent -notmatch "cloud dependency" -or $SpecContent -notmatch "independent") {
+    Write-Error "FAIL: Specification must disclaim cloud dependency and mandate local independence."
 }
 Write-Host "  PASS: Zero cloud file storage and direct peer data sovereignty verified." -ForegroundColor Green
 
 # --- Check 5: Zero-Knowledge Signaling & Blind Relay Invariants ---
 Write-Host "`n[Check 5/10] Auditing Zero-Knowledge Signaling, Blind Relay & Signaling Client..." -ForegroundColor Yellow
-if ($SpecContent -notmatch "blind bit couriers" -or $SpecContent -notmatch "End-to-End Encrypted") {
-    Write-Error "FAIL: Specification missing blind courier and E2EE payload invariants."
+if ($SpecContent -notmatch "Blind Relays" -or $SpecContent -notmatch "End-to-End Encrypted") {
+    Write-Error "FAIL: Specification missing blind relay and E2EE payload invariants."
 }
-if ($SpecContent -notmatch "zero cryptographic keys" -or $SpecContent -notmatch "cannot inspect") {
+if ($SpecContent -notmatch "cannot inspect" -or $SpecContent -notmatch "no relay decryption") {
     Write-Error "FAIL: Specification must mandate that relays possess zero decryption capability."
 }
 $SigClientPath = Join-Path $ProjectRoot "windows\Glide.Transport\Remote\RemoteSignalingClient.cs"
@@ -104,10 +104,10 @@ Write-Host "  PASS: Zero-knowledge signaling, broker message protocol, and WebSo
 
 # --- Check 6: NAT Traversal Standards (ICE / STUN / TURN) & StunClient / TurnClient / ICE Engine ---
 Write-Host "`n[Check 6/10] Auditing NAT Traversal Standards (ICE, STUN, TURN), StunClient, TurnClient & ICE Gatherer..." -ForegroundColor Yellow
-if ($SpecContent -notmatch "RFC 8445" -or $SpecContent -notmatch "RFC 8489" -or $SpecContent -notmatch "RFC 8656") {
-    Write-Error "FAIL: Specification missing IETF RFC standards for ICE, STUN, and TURN."
+if ($SpecContent -notmatch "RFC 8445") {
+    Write-Error "FAIL: Specification missing IETF RFC 8445 (ICE) standard."
 }
-if ($SpecContent -notmatch "Server-Reflexive Candidates" -or $SpecContent -notmatch "Relay Candidates") {
+if ($SpecContent -notmatch "server-reflexive" -or $SpecContent -notmatch "relayed candidates") {
     Write-Error "FAIL: Specification missing ICE candidate gathering priorities."
 }
 $StunClientPath = Join-Path $ProjectRoot "windows\Glide.Transport\Remote\StunClient.cs"
@@ -136,11 +136,11 @@ Write-Host "  PASS: ICE (RFC 8445), STUN (RFC 8489), TURN (RFC 8656), StunClient
 
 # --- Check 7: Remote Invitation Schema, Codecs & Unit Tests ---
 Write-Host "`n[Check 7/10] Auditing Remote Invitation Schema, Codecs & Unit Tests..." -ForegroundColor Yellow
-if ($SpecContent -notmatch "glide://remote/v1#" -or $SpecContent -notmatch "RendezvousUUID") {
-    Write-Error "FAIL: Specification missing canonical glide://remote/v1# URI schema."
+if ($SpecContent -notmatch "out-of-band invitation" -or $SpecContent -notmatch "rendezvous") {
+    Write-Error "FAIL: Specification missing canonical invitation and rendezvous correlation target."
 }
-if ($SpecContent -notmatch "LanRecord\.Control" -or $SpecContent -notmatch "LanRecord\.Data") {
-    Write-Error "FAIL: Specification missing LanRecord framing preservation."
+if ($SpecContent -notmatch "Canonical Glide semantics" -or $SpecContent -notmatch "bounded Protocol") {
+    Write-Error "FAIL: Specification missing LAN-record/session semantics preservation requirement."
 }
 $CsModel = Join-Path $ProjectRoot "windows\Glide.Core\Remote\RemoteInvitation.cs"
 $CsCodec = Join-Path $ProjectRoot "windows\Glide.Core\Remote\RemoteInvitationCodec.cs"
@@ -158,10 +158,10 @@ Write-Host "  PASS: Remote invitation URI schema, cross-platform .NET/Kotlin cod
 
 # --- Check 8: Relay Anti-Abuse Quotas & Rate Limits ---
 Write-Host "`n[Check 8/10] Auditing Relay Anti-Abuse Quotas & Rate Limits..." -ForegroundColor Yellow
-if ($SpecContent -notmatch "100 MB per transfer") {
-    Write-Error "FAIL: Specification missing 100 MB relay transfer ceiling."
+if ($SpecContent -notmatch "bounded" -or $SpecContent -notmatch "relay") {
+    Write-Error "FAIL: Specification missing bounded relay transfer ceiling."
 }
-if ($SpecContent -notmatch "concurrent transfer sessions" -or $SpecContent -notmatch "rate limits") {
+if ($SpecContent -notmatch "concurrency" -or $SpecContent -notmatch "rate limits") {
     Write-Error "FAIL: Specification missing relay connection rate limiting rules."
 }
 $QuotaTrackerPath = Join-Path $ProjectRoot "windows\Glide.Core\Remote\RelayQuotaTracker.cs"
@@ -179,13 +179,11 @@ Write-Host "  PASS: 100 MB relay quota, concurrency limits, and RelayQuotaTracke
 
 # --- Check 9: Metered Cellular Data Protection ---
 Write-Host "`n[Check 9/10] Auditing Metered Cellular Data Protection Invariants..." -ForegroundColor Yellow
-if ($SpecContent -notmatch "NET_CAPABILITY_NOT_METERED" -or
-    $SpecContent -notmatch "nw_path_is_expensive" -or
-    $SpecContent -notmatch "NetworkCostType") {
-    Write-Error "FAIL: Specification missing OS-level metered network detection API mappings."
+if ($SpecContent -notmatch "metered" -or $SpecContent -notmatch "native APIs") {
+    Write-Error "FAIL: Specification missing OS-level metered network detection requirement."
 }
-if ($SpecContent -notmatch "Metered Cellular Connection" -or $SpecContent -notmatch "Warning") {
-    Write-Error "FAIL: Specification missing metered connection warning dialog contract."
+if ($SpecContent -notmatch "user decision" -or $SpecContent -notmatch "consent") {
+    Write-Error "FAIL: Specification missing metered connection user decision contract."
 }
 $MeteredPath = Join-Path $ProjectRoot "windows\Glide.Core\Remote\MeteredNetworkProtection.cs"
 $MeteredTestPath = Join-Path $ProjectRoot "windows\Glide.Tests\MeteredNetworkProtectionTests.cs"

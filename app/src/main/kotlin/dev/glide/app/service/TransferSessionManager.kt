@@ -27,6 +27,8 @@ object TransferSessionManager {
 
     private var activeCoordinator: TransferCoordinator? = null
     private var activeJob: Job? = null
+    private var activePeerDisplayName: String = "Nearby device"
+    private var terminalCallbackSessionId: String? = null
 
     private var _uiState = MutableStateFlow<TransferUiState>(TransferUiState.Idle)
     val uiState: StateFlow<TransferUiState> get() = _uiState.asStateFlow()
@@ -73,6 +75,7 @@ object TransferSessionManager {
         // 3. Clean up any previous completed/cancelled jobs
         activeJob?.cancel()
         activeCoordinator = coordinator
+        activePeerDisplayName = peerDisplayName
 
         // 4. Mark session active in global tracker
         ActiveSessionTracker.setSessionActive(coordinator.sessionId.value, true)

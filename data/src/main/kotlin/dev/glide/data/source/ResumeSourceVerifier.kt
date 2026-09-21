@@ -192,8 +192,7 @@ class ResumeSourceVerifier(
                 ) {
                     throw error
                 }
-                return ResumeSourceRevalidationResult
-                    .Unavailable(
+                return ResumeSourceRevalidationResult.Unavailable(
                         error.message
                             ?: "Source is unavailable"
                     )
@@ -209,11 +208,9 @@ class ResumeSourceVerifier(
             snapshot.wholeFileSha256Hex ==
                 expectedWholeFileSha256Hex
         ) {
-            ResumeSourceRevalidationResult
-                .Unchanged(snapshot)
+            ResumeSourceRevalidationResult.Unchanged(snapshot)
         } else {
-            ResumeSourceRevalidationResult
-                .Changed(snapshot)
+            ResumeSourceRevalidationResult.Changed(snapshot)
         }
     }
 

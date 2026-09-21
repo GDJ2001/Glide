@@ -349,13 +349,11 @@ class ResumableStagingStoreTest {
 
             assertTrue(
                 result is
-                    ResumeReceiverRevalidationResult
-                        .Ready
+                    ResumeReceiverRevalidationResult.Ready
             )
             val ready =
                 result as
-                    ResumeReceiverRevalidationResult
-                        .Ready
+                    ResumeReceiverRevalidationResult.Ready
             assertEquals(
                 1L,
                 ready.verifiedChunks
@@ -420,8 +418,7 @@ class ResumableStagingStoreTest {
                 )
             assertTrue(
                 revoked is
-                    ResumeReceiverRevalidationResult
-                        .Unauthorized
+                    ResumeReceiverRevalidationResult.Unauthorized
             )
 
             val substituted =
@@ -434,8 +431,7 @@ class ResumableStagingStoreTest {
                 )
             assertTrue(
                 substituted is
-                    ResumeReceiverRevalidationResult
-                        .Unauthorized
+                    ResumeReceiverRevalidationResult.Unauthorized
             )
         }
 
@@ -487,8 +483,7 @@ class ResumableStagingStoreTest {
                 )
             assertTrue(
                 unavailable is
-                    ResumeSenderRevalidationResult
-                        .SourceUnavailable
+                    ResumeSenderRevalidationResult.SourceUnavailable
             )
 
             val changed =
@@ -511,8 +506,7 @@ class ResumableStagingStoreTest {
                 )
             assertTrue(
                 changed is
-                    ResumeSenderRevalidationResult
-                        .SourceChanged
+                    ResumeSenderRevalidationResult.SourceChanged
             )
 
             val ready =
@@ -535,14 +529,12 @@ class ResumableStagingStoreTest {
                 )
             assertTrue(
                 ready is
-                    ResumeSenderRevalidationResult
-                        .Ready
+                    ResumeSenderRevalidationResult.Ready
             )
             assertEquals(
                 "content://source/7",
                 (ready as
-                    ResumeSenderRevalidationResult
-                        .Ready)
+                    ResumeSenderRevalidationResult.Ready)
                     .sourceHandle
             )
         }
@@ -575,8 +567,7 @@ class ResumableStagingStoreTest {
 
             assertTrue(
                 result is
-                    ResumeReceiverRevalidationResult
-                        .Expired
+                    ResumeReceiverRevalidationResult.Expired
             )
             assertNull(
                 fakeDao.get(
