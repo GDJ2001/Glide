@@ -1,7 +1,13 @@
 package dev.glide.core.transport.lan
 
+import java.nio.charset.StandardCharsets
+
 /**
- * Encapsulates an mDNS service discovery announcement for Glide LAN transport.
+ * Transport-independent model for the canonical Glide LAN DNS-SD availability record.
+ *
+ * Discovery is not an authentication channel. It advertises only ephemeral availability
+ * metadata; invitation tokens, certificate fingerprints, trust identities, and resume
+ * authority are intentionally absent.
  */
 data class LanMdnsRecord(
     val serviceName: String,
@@ -16,42 +22,73 @@ data class LanMdnsRecord(
     }
 
     val protocolVersion: Int
-        get() = attributes["v"]?.toIntOrNull() ?: 1
+        get() = attributes["v"]?.toIntOrNull() ?: 0
+
+    val transportProfileVersion: Int
+        get() = attributes["tv"]?.toIntOrNull() ?: 0
+
+    val pairingRequired: Boolean
+        get() = attributes["q"] == "1"
+
+    val presenceId: String?
+        get() = attributes["p"]
 
     val deviceName: String
         get() = attributes["dn"] ?: serviceName
 
     val deviceType: String
-        get() = attributes["dt"] ?: "unknown"
-
-    val certFingerprintPrefix: String?
-        get() = attributes["fp"]
-
-    val capabilityMask: Int
-        get() = attributes["cap"]?.removePrefix("0x")?.toIntOrNull(16) ?: 0
+        get() = attributes["dt"] ?: DEVICE_TYPE_UNKNOWN
 
     companion object {
         const val DEFAULT_SERVICE_TYPE = "_glide._tcp.local."
-        const val ALPN_TOKEN = "glide-v1"
+        const val DEVICE_TYPE_PHONE = "phone"
+        const val DEVICE_TYPE_TABLET = "tablet"
+        const val DEVICE_TYPE_DESKTOP = "desktop"
+        const val DEVICE_TYPE_UNKNOWN = "unknown"
+        const val MAX_DN_CODE_POINTS = 64
+        const val MAX_DN_UTF8_BYTES = 128
+
+        private val presenceRegex = Regex("^[0-9a-f]{32}$")
+        private val validDeviceTypes = setOf(
+            DEVICE_TYPE_PHONE,
+            DEVICE_TYPE_TABLET,
+            DEVICE_TYPE_DESKTOP,
+            DEVICE_TYPE_UNKNOWN
+        )
 
         fun createTxtAttributes(
             version: Int = 1,
+            transportVersion: Int = 1,
+            pairingRequired: Int = 1,
+            presenceId: String,
             deviceName: String,
-            deviceType: String = "desktop",
-            certFingerprintPrefix: String? = null,
-            capabilityMask: Int = 0x07
+            deviceType: String = DEVICE_TYPE_DESKTOP
         ): Map<String, String> {
-            val map = mutableMapOf(
-                "v" to version.toString(),
-                "dn" to deviceName.take(32),
-                "dt" to deviceType,
-                "alpn" to ALPN_TOKEN,
-                "cap" to "0x%02X".format(capabilityMask)
-            )
-            if (certFingerprintPrefix != null) {
-                map["fp"] = certFingerprintPrefix.take(8)
+            require(version == 1) { "Only Glide protocol v1 may be advertised" }
+            require(transportVersion == 1) { "Only LAN transport profile v1 may be advertised" }
+            require(pairingRequired == 1) { "LAN discovery must require invitation pairing" }
+            require(presenceRegex.matches(presenceId)) {
+                "presenceId must be 32 lowercase hexadecimal characters"
             }
-            return map
+            require(deviceName.isNotBlank()) { "deviceName must not be blank" }
+            require(deviceName.codePointCount(0, deviceName.length) <= MAX_DN_CODE_POINTS) {
+                "deviceName exceeds $MAX_DN_CODE_POINTS code points"
+            }
+            require(deviceName.toByteArray(StandardCharsets.UTF_8).size <= MAX_DN_UTF8_BYTES) {
+                "deviceName exceeds $MAX_DN_UTF8_BYTES UTF-8 bytes"
+            }
+            require(deviceType in validDeviceTypes) {
+                "Unsupported deviceType '$deviceType'"
+            }
+
+            return linkedMapOf(
+                "v" to version.toString(),
+                "tv" to transportVersion.toString(),
+                "q" to pairingRequired.toString(),
+                "p" to presenceId,
+                "dn" to deviceName,
+                "dt" to deviceType
+            )
         }
     }
 }

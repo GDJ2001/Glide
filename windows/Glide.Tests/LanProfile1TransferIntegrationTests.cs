@@ -92,7 +92,7 @@ public sealed class LanProfile1TransferIntegrationTests : IDisposable
         var body = new JsonObject
         {
             ["selectedMajor"] = 1,
-            ["capabilities"] = new JsonArray("lan-v1"),
+            ["capabilities"] = new JsonArray(ProtocolCapabilities.StreamV1, ProtocolCapabilities.Sha256),
             ["ephemeralPeerId"] = Guid.NewGuid().ToString("D").ToLowerInvariant(),
             ["displayName"] = displayName,
             ["limits"] = limits

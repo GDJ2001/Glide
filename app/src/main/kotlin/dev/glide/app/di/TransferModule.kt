@@ -14,8 +14,10 @@ import dev.glide.data.source.AndroidContentResolverWrapper
 import dev.glide.data.source.AndroidSourceAccess
 import dev.glide.data.source.BoundedSourceStager
 import dev.glide.data.source.ContentResolverWrapper
+import dev.glide.data.source.ResumeSourceVerifier
 import dev.glide.data.store.AndroidReceiveStore
 import dev.glide.data.store.RoomHistoryStore
+import dev.glide.data.store.ResumableStagingStore
 import java.io.File
 import javax.inject.Singleton
 
@@ -60,6 +62,15 @@ object TransferModule {
 
     @Provides
     @Singleton
+    fun provideResumeSourceVerifier(
+        sourceAccess: SourceAccess
+    ): ResumeSourceVerifier =
+        ResumeSourceVerifier(
+            sourceAccess
+        )
+
+    @Provides
+    @Singleton
     fun provideHistoryStorePort(roomHistoryStore: RoomHistoryStore): HistoryStore {
         return roomHistoryStore
     }
@@ -75,12 +86,20 @@ object TransferModule {
     fun provideTransferSessionFactory(
         sourceAccess: SourceAccess,
         receiveStore: ReceiveStore,
-        historyStore: HistoryStore
+        historyStore: HistoryStore,
+        resumeSourceVerifier:
+            ResumeSourceVerifier,
+        resumableStagingStore:
+            ResumableStagingStore
     ): TransferSessionFactory {
         return TransferSessionFactory(
             sourceAccess = sourceAccess,
             receiveStore = receiveStore,
-            historyStore = historyStore
+            historyStore = historyStore,
+            resumeSourceVerifier =
+                resumeSourceVerifier,
+            resumableStagingStore =
+                resumableStagingStore
         )
     }
 

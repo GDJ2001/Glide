@@ -39,6 +39,9 @@ object MessageTypes {
     const val RESUME_REQUEST = "RESUME_REQUEST"
     const val RESUME_ACCEPT = "RESUME_ACCEPT"
     const val RESUME_REJECT = "RESUME_REJECT"
+    const val RESUME_STREAM_START = "RESUME_STREAM_START"
+    const val RESUME_STREAM_READY = "RESUME_STREAM_READY"
+    const val RESUME_RESULT = "RESUME_RESULT"
 
     val ALL: Set<String> = setOf(
         HELLO, HELLO_ACK,
@@ -48,7 +51,8 @@ object MessageTypes {
         CANCEL, CANCEL_ACK,
         ERROR, PING, PONG,
         IDENTITY_CHALLENGE, IDENTITY_RESPONSE,
-        RESUME_REQUEST, RESUME_ACCEPT, RESUME_REJECT
+        RESUME_REQUEST, RESUME_ACCEPT, RESUME_REJECT,
+        RESUME_STREAM_START, RESUME_STREAM_READY, RESUME_RESULT
     )
 }
 
@@ -115,11 +119,87 @@ object ProtocolCatalog {
         MessageTypes.ERROR to setOf("code", "batchId", "itemId", "detail"),
         MessageTypes.PING to setOf("nonce"),
         MessageTypes.PONG to setOf("nonce"),
-        MessageTypes.IDENTITY_CHALLENGE to setOf("nonceHex"),
-        MessageTypes.IDENTITY_RESPONSE to setOf("signatureHex", "publicKeyDerHex"),
-        MessageTypes.RESUME_REQUEST to setOf("sessionId", "itemId", "verifiedChunkCount", "contiguousByteOffset", "chunkRootHashHex", "sessionNonceHex", "signatureHex"),
-        MessageTypes.RESUME_ACCEPT to setOf("sessionId", "itemId", "startChunkIndex", "startByteOffset"),
-        MessageTypes.RESUME_REJECT to setOf("sessionId", "itemId", "reason"),
+        MessageTypes.IDENTITY_CHALLENGE to setOf(
+            "profile",
+            "challengeNonceHex",
+            "verifierFingerprintHex",
+            "verifierRole",
+            "signerRole",
+            "channelBindingHex",
+            "capabilityHashHex"
+        ),
+        MessageTypes.IDENTITY_RESPONSE to setOf(
+            "profile",
+            "challengeMessageId",
+            "challengeNonceHex",
+            "signerFingerprintHex",
+            "publicKeyDerHex",
+            "signatureHex"
+        ),
+        MessageTypes.RESUME_REQUEST to setOf(
+            "profile",
+            "originalSessionId",
+            "itemId",
+            "requesterFingerprintHex",
+            "responderFingerprintHex",
+            "requesterRole",
+            "responderRole",
+            "verifiedChunkCount",
+            "contiguousByteOffset",
+            "chunkSize",
+            "totalSizeBytes",
+            "chunkRootHashHex",
+            "sessionNonceHex",
+            "channelBindingHex",
+            "capabilityHashHex",
+            "signatureHex"
+        ),
+        MessageTypes.RESUME_ACCEPT to setOf(
+            "profile",
+            "requestMessageId",
+            "originalSessionId",
+            "itemId",
+            "startChunkIndex",
+            "startByteOffset"
+        ),
+        MessageTypes.RESUME_REJECT to setOf(
+            "profile",
+            "requestMessageId",
+            "originalSessionId",
+            "itemId",
+            "code"
+        ),
+        MessageTypes.RESUME_STREAM_START to setOf(
+            "profile",
+            "requestMessageId",
+            "originalSessionId",
+            "itemId",
+            "bulkRef",
+            "startChunkIndex",
+            "startByteOffset",
+            "remainingBytes",
+            "chunkSize",
+            "totalSizeBytes",
+            "chunkRootHashHex",
+            "wholeFileSha256Hex"
+        ),
+        MessageTypes.RESUME_STREAM_READY to setOf(
+            "profile",
+            "requestMessageId",
+            "originalSessionId",
+            "itemId",
+            "bulkRef"
+        ),
+        MessageTypes.RESUME_RESULT to setOf(
+            "profile",
+            "requestMessageId",
+            "originalSessionId",
+            "itemId",
+            "status",
+            "sizeBytes",
+            "sha256",
+            "code"
+        ),
     )
 
     val ALLOWED_LIMITS_KEYS = setOf("maxItems", "maxItemBytes", "maxBatchBytes", "maxControlBytes")
@@ -178,7 +258,9 @@ data class OfferItemDto(
     val name: String,
     val mime: String,
     val sizeBytes: String,
-    val relativePath: String? = null
+    val relativePath: String? = null,
+    val rootHash: String? = null,
+    val chunkSize: Int? = null
 )
 
 @Serializable
@@ -274,71 +356,119 @@ data class PongBody(
     val nonce: String
 )
 
+object ResumeRejectCodes {
+    const val FILE_CHANGED = "FILE_CHANGED"
+    const val JOURNAL_MISMATCH = "JOURNAL_MISMATCH"
+    const val EXPIRED = "EXPIRED"
+    const val UNAUTHORIZED = "UNAUTHORIZED"
+    const val INVALID_OFFSET = "INVALID_OFFSET"
+    const val CAPABILITY_MISMATCH = "CAPABILITY_MISMATCH"
+
+    val ALL = setOf(
+        FILE_CHANGED,
+        JOURNAL_MISMATCH,
+        EXPIRED,
+        UNAUTHORIZED,
+        INVALID_OFFSET,
+        CAPABILITY_MISMATCH
+    )
+}
+
 @Serializable
 data class IdentityChallengeDto(
-    val nonceHex: String
-) {
-    init {
-        require(nonceHex.length == 64) { "Nonce must be 64 hex characters (32 bytes)" }
-    }
-}
+    val profile: String,
+    val challengeNonceHex: String,
+    val verifierFingerprintHex: String,
+    val verifierRole: String,
+    val signerRole: String,
+    val channelBindingHex: String,
+    val capabilityHashHex: String
+)
 
 @Serializable
 data class IdentityResponseDto(
-    val signatureHex: String,
-    val publicKeyDerHex: String
-) {
-    init {
-        require(signatureHex.isNotBlank()) { "Signature cannot be blank" }
-        require(publicKeyDerHex.isNotBlank()) { "Public key DER cannot be blank" }
-    }
-}
+    val profile: String,
+    val challengeMessageId: String,
+    val challengeNonceHex: String,
+    val signerFingerprintHex: String,
+    val publicKeyDerHex: String,
+    val signatureHex: String
+)
 
 @Serializable
 data class ResumeRequestDto(
-    val sessionId: String,
+    val profile: String,
+    val originalSessionId: String,
     val itemId: String,
+    val requesterFingerprintHex: String,
+    val responderFingerprintHex: String,
+    val requesterRole: String,
+    val responderRole: String,
     val verifiedChunkCount: Long,
-    val contiguousByteOffset: Long,
+    val contiguousByteOffset: String,
+    val chunkSize: Int,
+    val totalSizeBytes: String,
     val chunkRootHashHex: String,
     val sessionNonceHex: String,
+    val channelBindingHex: String,
+    val capabilityHashHex: String,
     val signatureHex: String
-) {
-    init {
-        require(sessionId.isNotBlank()) { "Session ID cannot be blank" }
-        require(itemId.isNotBlank()) { "Item ID cannot be blank" }
-        require(verifiedChunkCount >= 0) { "Verified chunk count cannot be negative" }
-        require(contiguousByteOffset >= 0) { "Contiguous byte offset cannot be negative" }
-        require(chunkRootHashHex.length == 64) { "Root hash must be 64 hex characters" }
-        require(sessionNonceHex.length == 64) { "Session nonce must be 64 hex characters" }
-        require(signatureHex.isNotBlank()) { "Signature cannot be blank" }
-    }
-}
+)
 
 @Serializable
 data class ResumeAcceptDto(
-    val sessionId: String,
+    val profile: String,
+    val requestMessageId: String,
+    val originalSessionId: String,
     val itemId: String,
     val startChunkIndex: Long,
-    val startByteOffset: Long
-) {
-    init {
-        require(sessionId.isNotBlank()) { "Session ID cannot be blank" }
-        require(itemId.isNotBlank()) { "Item ID cannot be blank" }
-        require(startChunkIndex >= 0) { "Start chunk index cannot be negative" }
-        require(startByteOffset >= 0) { "Start byte offset cannot be negative" }
-    }
-}
+    val startByteOffset: String
+)
 
 @Serializable
 data class ResumeRejectDto(
-    val sessionId: String,
+    val profile: String,
+    val requestMessageId: String,
+    val originalSessionId: String,
     val itemId: String,
-    val reason: String
-) {
-    init {
-        require(sessionId.isNotBlank()) { "Session ID cannot be blank" }
-        require(itemId.isNotBlank()) { "Item ID cannot be blank" }
-        require(reason.isNotBlank() && reason.length <= 256) { "Reason must be 1..256 characters" }
-    }
-}
+    val code: String
+)
+
+
+@Serializable
+data class ResumeStreamStartDto(
+    val profile: String,
+    val requestMessageId: String,
+    val originalSessionId: String,
+    val itemId: String,
+    val bulkRef: String,
+    val startChunkIndex: Long,
+    val startByteOffset: String,
+    val remainingBytes: String,
+    val chunkSize: Int,
+    val totalSizeBytes: String,
+    val chunkRootHashHex: String,
+    val wholeFileSha256Hex: String
+)
+
+@Serializable
+data class ResumeStreamReadyDto(
+    val profile: String,
+    val requestMessageId: String,
+    val originalSessionId: String,
+    val itemId: String,
+    val bulkRef: String
+)
+
+@Serializable
+data class ResumeResultDto(
+    val profile: String,
+    val requestMessageId: String,
+    val originalSessionId: String,
+    val itemId: String,
+    val status: String,
+    val sizeBytes: String? = null,
+    val sha256: String? = null,
+    val code: String? = null
+)
+

@@ -5,7 +5,9 @@ import dev.glide.core.domain.ItemId
 import dev.glide.core.domain.TransferBatch
 import dev.glide.core.domain.TransferItem
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 
 class OfferPaginatorTest {
@@ -70,6 +72,123 @@ class OfferPaginatorTest {
         assertTrue(paged.pages.size >= 2)
         assertEquals(30, paged.begin.itemCount)
         assertEquals(paged.pages.size, paged.begin.pageCount)
+    }
+
+    @Test
+    fun ordinaryOffer_doesNotEmitResumeMetadata() {
+        val batch =
+            TransferBatch(
+                validBatchId,
+                listOf(createItem(1))
+            )
+
+        val item =
+            OfferPaginator
+                .paginate(batch)
+                .pages
+                .single()
+                .items
+                .single()
+
+        assertNull(item.rootHash)
+        assertNull(item.chunkSize)
+    }
+
+    @Test
+    fun resumeMetadata_withoutNegotiatedCapability_isRejected() {
+        val item =
+            createItem(1)
+                .copy(
+                    resumeChunkSize =
+                        1024 * 1024,
+                    resumeChunkRootHashHex =
+                        "a".repeat(64)
+                )
+        val batch =
+            TransferBatch(
+                validBatchId,
+                listOf(item)
+            )
+
+        try {
+            OfferPaginator.paginate(
+                batch
+            )
+            fail(
+                "Expected unnegotiated resume metadata to fail closed"
+            )
+        } catch (
+            error: ProtocolViolationException
+        ) {
+            assertEquals(
+                "UNSUPPORTED_PROTOCOL",
+                error.failure.code
+            )
+        }
+    }
+
+    @Test
+    fun negotiatedResumeMetadata_isEmittedAndRoundTrips() {
+        val item =
+            createItem(
+                1,
+                size = 2L * 1024 * 1024
+            ).copy(
+                resumeChunkSize =
+                    1024 * 1024,
+                resumeChunkRootHashHex =
+                    "b".repeat(64)
+            )
+        val batch =
+            TransferBatch(
+                validBatchId,
+                listOf(item)
+            )
+
+        val paged =
+            OfferPaginator.paginate(
+                batch = batch,
+                allowResumeMetadata =
+                    true
+            )
+        val wireItem =
+            paged.pages
+                .single()
+                .items
+                .single()
+
+        assertEquals(
+            1024 * 1024,
+            wireItem.chunkSize
+        )
+        assertEquals(
+            "b".repeat(64),
+            wireItem.rootHash
+        )
+
+        val assembler =
+            OfferAssembler(
+                begin = paged.begin,
+                allowResumeMetadata =
+                    true
+            )
+        assembler.addPage(
+            paged.pages.single()
+        )
+        val roundTrip =
+            assembler.finish(
+                paged.end
+            ).batch.items.single()
+
+        assertEquals(
+            item.resumeChunkSize,
+            roundTrip.resumeChunkSize
+        )
+        assertEquals(
+            item.resumeChunkRootHashHex,
+            roundTrip
+                .resumeChunkRootHashHex
+        )
     }
 
     @Test

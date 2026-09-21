@@ -82,6 +82,52 @@ class OfferAssemblerTest {
     }
 
     @Test
+    fun resumeMetadata_withoutNegotiatedCapability_failsUnsupportedProtocol() {
+        val begin =
+            OfferBeginBody(
+                batchId = validBatchId,
+                itemCount = 1,
+                totalBytes = "1048576",
+                pageCount = 1
+            )
+        val assembler =
+            OfferAssembler(begin)
+        val page =
+            OfferPageBody(
+                batchId = validBatchId,
+                pageIndex = 0,
+                items =
+                    listOf(
+                        OfferItemDto(
+                            itemId = item1,
+                            name = "resume.bin",
+                            mime =
+                                "application/octet-stream",
+                            sizeBytes = "1048576",
+                            rootHash =
+                                "c".repeat(64),
+                            chunkSize =
+                                1024 * 1024
+                        )
+                    )
+            )
+
+        try {
+            assembler.addPage(page)
+            fail(
+                "Expected unnegotiated resume metadata rejection"
+            )
+        } catch (
+            error: ProtocolViolationException
+        ) {
+            assertEquals(
+                "UNSUPPORTED_PROTOCOL",
+                error.failure.code
+            )
+        }
+    }
+
+    @Test
     fun outOfOrderPage_failsProtocolOrder() {
         val begin = OfferBeginBody(
             batchId = validBatchId,

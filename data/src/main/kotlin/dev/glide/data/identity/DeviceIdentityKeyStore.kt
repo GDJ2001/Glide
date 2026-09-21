@@ -3,6 +3,7 @@ package dev.glide.data.identity
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import dev.glide.core.identity.PeerIdentityVerifier
+import dev.glide.core.identity.PersistentIdentityStore
 import java.security.KeyPair
 import java.security.KeyPairGenerator
 import java.security.KeyStore
@@ -10,94 +11,168 @@ import java.security.PrivateKey
 import java.security.spec.ECGenParameterSpec
 
 /**
- * Interface for hardware-backed persistent identity key management (ADR-0015, GLIDE-070).
- */
-interface DeviceIdentityKeyStore {
-    fun getOrCreateKeyPair(): KeyPair
-    fun getPublicKeyDer(): ByteArray
-    fun getFingerprint(): String
-    fun signNonce(nonce: ByteArray): ByteArray
-}
-
-/**
- * Android Keystore implementation generating hardware-isolated EC P-256 keys (secp256r1)
- * with SHA-256 signing and verification capabilities.
+ * Android Keystore implementation of the platform-neutral persistent identity port.
+ *
+ * The private key never leaves Android Keystore. Callers supply the complete canonical HARD-018
+ * transcript to sign; this adapter cannot accidentally downgrade authentication to a bare nonce.
  */
 class AndroidDeviceIdentityKeyStore(
     private val keyAlias: String = DEFAULT_KEY_ALIAS
-) : DeviceIdentityKeyStore {
+) : PersistentIdentityStore {
 
-    private val keyStore: KeyStore = KeyStore.getInstance(ANDROID_KEY_STORE).apply {
-        load(null)
-    }
+    private val keyStore: KeyStore =
+        KeyStore.getInstance(ANDROID_KEY_STORE).apply {
+            load(null)
+        }
 
-    override fun getOrCreateKeyPair(): KeyPair {
+    @Synchronized
+    override fun hasIdentity(): Boolean =
+        keyStore.containsAlias(keyAlias)
+
+    @Synchronized
+    fun getOrCreateKeyPair(): KeyPair {
         if (keyStore.containsAlias(keyAlias)) {
-            val privateKey = keyStore.getKey(keyAlias, null) as PrivateKey
-            val certificate = keyStore.getCertificate(keyAlias)
-            val publicKey = certificate.publicKey
-            return KeyPair(publicKey, privateKey)
+            val privateKey =
+                keyStore.getKey(
+                    keyAlias,
+                    null
+                ) as PrivateKey
+            val certificate =
+                keyStore.getCertificate(keyAlias)
+            return KeyPair(
+                certificate.publicKey,
+                privateKey
+            )
         }
 
-        val keyPairGenerator = KeyPairGenerator.getInstance(
-            KeyProperties.KEY_ALGORITHM_EC,
-            ANDROID_KEY_STORE
-        )
+        val keyPairGenerator =
+            KeyPairGenerator.getInstance(
+                KeyProperties.KEY_ALGORITHM_EC,
+                ANDROID_KEY_STORE
+            )
 
-        val specBuilder = KeyGenParameterSpec.Builder(
-            keyAlias,
-            KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY
-        ).apply {
-            setDigests(KeyProperties.DIGEST_SHA256)
-            setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
-            setUserAuthenticationRequired(false)
-        }
+        val spec =
+            KeyGenParameterSpec.Builder(
+                keyAlias,
+                KeyProperties.PURPOSE_SIGN or
+                    KeyProperties.PURPOSE_VERIFY
+            ).apply {
+                setDigests(
+                    KeyProperties.DIGEST_SHA256
+                )
+                setAlgorithmParameterSpec(
+                    ECGenParameterSpec(
+                        "secp256r1"
+                    )
+                )
+                setUserAuthenticationRequired(false)
+            }.build()
 
-        keyPairGenerator.initialize(specBuilder.build())
+        keyPairGenerator.initialize(spec)
         return keyPairGenerator.generateKeyPair()
     }
 
-    override fun getPublicKeyDer(): ByteArray {
-        return getOrCreateKeyPair().public.encoded
+    override fun getOrCreatePublicKeyDer(): ByteArray =
+        getOrCreateKeyPair()
+            .public
+            .encoded
+
+    override fun getFingerprint(): String =
+        PeerIdentityVerifier.deriveFingerprint(
+            getOrCreatePublicKeyDer()
+        )
+
+    override fun signTranscript(
+        transcript: ByteArray
+    ): ByteArray {
+        val privateKey =
+            getOrCreateKeyPair().private
+        return PeerIdentityVerifier
+            .signTranscript(
+                privateKey,
+                transcript
+            )
     }
 
-    override fun getFingerprint(): String {
-        return PeerIdentityVerifier.deriveFingerprint(getPublicKeyDer())
-    }
-
-    override fun signNonce(nonce: ByteArray): ByteArray {
-        val privateKey = getOrCreateKeyPair().private
-        return PeerIdentityVerifier.signNonce(privateKey, nonce)
+    @Synchronized
+    override fun deleteIdentity() {
+        if (keyStore.containsAlias(keyAlias)) {
+            keyStore.deleteEntry(keyAlias)
+        }
     }
 
     companion object {
-        const val ANDROID_KEY_STORE = "AndroidKeyStore"
-        const val DEFAULT_KEY_ALIAS = "glide_device_identity"
+        const val ANDROID_KEY_STORE =
+            "AndroidKeyStore"
+        const val DEFAULT_KEY_ALIAS =
+            "glide_device_identity"
     }
 }
 
 /**
- * Pure JVM in-memory identity key store for tests and decoupled execution.
+ * Pure JVM in-memory identity store for unit tests.
  */
-class JvmDeviceIdentityKeyStore : DeviceIdentityKeyStore {
-    private var keyPair: KeyPair = generate()
+class JvmDeviceIdentityKeyStore :
+    PersistentIdentityStore {
 
+    private var keyPair: KeyPair? = null
+
+    @Synchronized
     private fun generate(): KeyPair {
-        val kpg = KeyPairGenerator.getInstance("EC")
-        kpg.initialize(ECGenParameterSpec("secp256r1"))
+        val kpg =
+            KeyPairGenerator.getInstance("EC")
+        kpg.initialize(
+            ECGenParameterSpec(
+                "secp256r1"
+            )
+        )
         return kpg.generateKeyPair()
     }
 
-    override fun getOrCreateKeyPair(): KeyPair = keyPair
+    @Synchronized
+    fun getOrCreateKeyPair(): KeyPair {
+        val existing = keyPair
+        if (existing != null) {
+            return existing
+        }
 
-    override fun getPublicKeyDer(): ByteArray = keyPair.public.encoded
+        return generate().also {
+            keyPair = it
+        }
+    }
 
-    override fun getFingerprint(): String = PeerIdentityVerifier.deriveFingerprint(getPublicKeyDer())
+    @Synchronized
+    override fun hasIdentity(): Boolean =
+        keyPair != null
 
-    override fun signNonce(nonce: ByteArray): ByteArray =
-        PeerIdentityVerifier.signNonce(keyPair.private, nonce)
+    override fun getOrCreatePublicKeyDer(): ByteArray =
+        getOrCreateKeyPair()
+            .public
+            .encoded
 
+    override fun getFingerprint(): String =
+        PeerIdentityVerifier.deriveFingerprint(
+            getOrCreatePublicKeyDer()
+        )
+
+    override fun signTranscript(
+        transcript: ByteArray
+    ): ByteArray =
+        PeerIdentityVerifier.signTranscript(
+            getOrCreateKeyPair().private,
+            transcript
+        )
+
+    @Synchronized
+    override fun deleteIdentity() {
+        keyPair = null
+    }
+
+    /**
+     * Explicit test helper matching user-initiated identity rotation semantics.
+     */
     fun reset() {
-        keyPair = generate()
+        deleteIdentity()
+        getOrCreateKeyPair()
     }
 }

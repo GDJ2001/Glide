@@ -332,6 +332,70 @@ class SettingsViewModelTest {
         assertEquals("Device trust revoked", vm.uiState.value.feedbackMessage)
         assertEquals(0, peerDao.getPeerCount())
     }
+    @Test
+    fun `production settings trust uses runtime authority instead of dao`() =
+        runTest(testDispatcher) {
+            val peer = dev.glide.data.db.TrustedPeerEntity(
+                peerFingerprint =
+                    "abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+                publicKeyDer = "3059",
+                displayName = "Trusted Laptop",
+                pairedAtMs = 1_000L,
+                lastSeenAtMs = 2_000L
+            )
+            val peerDao =
+                FakeTestTrustedPeerDao(
+                    listOf(peer)
+                )
+            val identity =
+                dev.glide.data.identity.JvmDeviceIdentityKeyStore()
+            identity.getFingerprint()
+            val trustManager =
+                dev.glide.core.identity.PersistentTrustManager(
+                    identityStore = identity,
+                    trustedPeerStore =
+                        dev.glide.data.identity.RoomTrustedPeerStore(
+                            peerDao
+                        ),
+                    nowMs = { 5_000L }
+                )
+            val runtime =
+                dev.glide.app.service.TransferRuntime.forTesting(
+                    persistentTrustManager =
+                        trustManager
+                )
+            val vm = SettingsViewModel(
+                settingsStore = settingsStore,
+                fileManager = fileManager,
+                trustedPeerDao = null,
+                transferRuntime = runtime
+            )
+
+            advanceUntilIdle()
+            assertEquals(
+                1,
+                vm.uiState.value.trustedPeers.size
+            )
+            assertEquals(
+                "Trusted Laptop",
+                vm.uiState.value.trustedPeers.single().displayName
+            )
+
+            vm.revokeTrustedPeer(peer.peerFingerprint)
+            advanceUntilIdle()
+
+            assertEquals(
+                0,
+                peerDao.getPeerCount()
+            )
+            assertTrue(
+                vm.uiState.value.trustedPeers.isEmpty()
+            )
+            assertEquals(
+                "Device trust revoked",
+                vm.uiState.value.feedbackMessage
+            )
+        }
 }
 
 class FakeTestTrustedPeerDao(
@@ -368,6 +432,10 @@ class FakeTestTrustedPeerDao(
 
     override suspend fun deleteByFingerprint(fingerprint: String) {
         peersFlow.value = peersFlow.value.filter { it.peerFingerprint != fingerprint }
+    }
+
+    override suspend fun deleteAll() {
+        peersFlow.value = emptyList()
     }
 
     override suspend fun getPeerCount(): Int = peersFlow.value.size

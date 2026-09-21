@@ -13,6 +13,11 @@ import dev.glide.data.db.ItemDao
 import dev.glide.data.db.ReceivedFileDao
 import dev.glide.data.db.SessionDao
 import dev.glide.data.store.RoomHistoryStore
+import dev.glide.core.identity.PersistentIdentityStore
+import dev.glide.core.identity.PersistentTrustManager
+import dev.glide.core.identity.TrustedPeerStore
+import dev.glide.data.identity.AndroidDeviceIdentityKeyStore
+import dev.glide.data.identity.RoomTrustedPeerStore
 import javax.inject.Singleton
 
 /**
@@ -33,7 +38,8 @@ object DatabaseModule {
             .addMigrations(
                 GlideDatabase.MIGRATION_1_2,
                 GlideDatabase.MIGRATION_2_3,
-                GlideDatabase.MIGRATION_3_4
+                GlideDatabase.MIGRATION_3_4,
+                GlideDatabase.MIGRATION_4_5
             )
             .build()
     }
@@ -48,10 +54,67 @@ object DatabaseModule {
     fun provideReceivedFileDao(db: GlideDatabase): ReceivedFileDao = db.receivedFileDao()
 
     @Provides
-    fun provideTrustedPeerDao(db: GlideDatabase): dev.glide.data.db.TrustedPeerDao = db.trustedPeerDao()
+    fun provideTrustedPeerDao(
+        db: GlideDatabase
+    ): dev.glide.data.db.TrustedPeerDao =
+        db.trustedPeerDao()
 
     @Provides
-    fun provideResumableSessionDao(db: GlideDatabase): dev.glide.data.db.ResumableSessionDao = db.resumableSessionDao()
+    @Singleton
+    fun providePersistentIdentityStore():
+        PersistentIdentityStore =
+        AndroidDeviceIdentityKeyStore()
+
+    @Provides
+    @Singleton
+    fun provideTrustedPeerStore(
+        trustedPeerDao:
+            dev.glide.data.db.TrustedPeerDao
+    ): TrustedPeerStore =
+        RoomTrustedPeerStore(
+            trustedPeerDao
+        )
+
+    @Provides
+    @Singleton
+    fun providePersistentTrustManager(
+        identityStore:
+            PersistentIdentityStore,
+        trustedPeerStore:
+            TrustedPeerStore
+    ): PersistentTrustManager =
+        PersistentTrustManager(
+            identityStore =
+                identityStore,
+            trustedPeerStore =
+                trustedPeerStore
+        )
+
+    @Provides
+    fun provideResumableSessionDao(
+        db: GlideDatabase
+    ): dev.glide.data.db.ResumableSessionDao =
+        db.resumableSessionDao()
+
+    @Provides
+    @Singleton
+    fun provideResumableStagingStore(
+        @ApplicationContext context: Context,
+        resumableSessionDao:
+            dev.glide.data.db.ResumableSessionDao
+    ): dev.glide.data.store.ResumableStagingStore {
+        val root =
+            java.io.File(
+                context.cacheDir,
+                "staging/resumable-v1"
+            )
+        return dev.glide.data.store
+            .ResumableStagingStore(
+                stagingBaseDir = root,
+                resumableSessionDao =
+                    resumableSessionDao
+            )
+    }
 
     @Provides
     fun provideReceiveJournalDao(db: GlideDatabase): dev.glide.data.db.ReceiveJournalDao = db.receiveJournalDao()
@@ -130,7 +193,9 @@ object DatabaseModule {
         receiveStore: dev.glide.data.store.AndroidReceiveStore,
         receiveJournalDao: dev.glide.data.db.ReceiveJournalDao,
         receivedFileDao: ReceivedFileDao,
-        historyStore: RoomHistoryStore
+        historyStore: RoomHistoryStore,
+        resumableStagingStore:
+            dev.glide.data.store.ResumableStagingStore
     ): dev.glide.data.maintenance.OrphanMaintenanceCleaner {
         val stagingSourcesDirs = listOf(
             java.io.File(context.cacheDir, "staging_sources"),
@@ -142,7 +207,9 @@ object DatabaseModule {
             stagingSourcesDirs = stagingSourcesDirs,
             receiveJournalDao = receiveJournalDao,
             receivedFileDao = receivedFileDao,
-            historyStore = historyStore
+            historyStore = historyStore,
+            resumableStagingStore =
+                resumableStagingStore
         )
     }
 }

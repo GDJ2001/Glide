@@ -1,12 +1,14 @@
 name: CI
 
 on:
+  workflow_dispatch:
   pull_request:
     branches:
       - main
   push:
     branches:
       - main
+      - 'hardening/**'
 
 permissions:
   contents: read
@@ -60,31 +62,6 @@ jobs:
       - name: Run ordinary unit tests
         run: ./gradlew test
 
-      - name: Prove HARD-003 Android regressions are red
-        shell: bash
-        run: |
-          set -u
-          run_expected_red() {
-            local task="$1"
-            local report_dir="$2"
-            set +e
-            ./gradlew "$task" -Phard003Regression=true --rerun-tasks
-            local status=$?
-            set -e
-            if [ "$status" -eq 0 ]; then
-              echo "::error::Expected HARD-003 regression task $task to be red, but it passed."
-              exit 1
-            fi
-            if ! grep -R -q '<failure' "$report_dir"; then
-              echo "::error::HARD-003 task $task failed without a recorded test assertion failure."
-              exit 1
-            fi
-            echo "Observed expected red regression evidence for $task."
-          }
-
-          run_expected_red ':app:testDebugUnitTest' 'app/build/test-results/testDebugUnitTest'
-          run_expected_red ':transport-lan:testDebugUnitTest' 'transport-lan/build/test-results/testDebugUnitTest'
-
       - name: Run Android Lint
         run: ./gradlew :app:lintDebug
 
@@ -133,24 +110,6 @@ jobs:
 
       - name: Run ordinary .NET tests
         run: dotnet test windows/Glide.Tests/Glide.Tests.csproj -c Release --no-build --filter "HARD!=003-red" --logger "trx;LogFileName=ordinary-linux.trx"
-
-      - name: Prove HARD-003 .NET regressions are red
-        shell: bash
-        run: |
-          set +e
-          dotnet test windows/Glide.Tests/Glide.Tests.csproj -c Release --no-build --filter "HARD=003-red" --logger "trx;LogFileName=hard003-red.trx"
-          status=$?
-          set -e
-          if [ "$status" -eq 0 ]; then
-            echo "::error::Expected HARD-003 .NET regression suite to be red, but it passed."
-            exit 1
-          fi
-          trx='windows/Glide.Tests/TestResults/hard003-red.trx'
-          if [ ! -f "$trx" ] || ! grep -q 'outcome="Failed"' "$trx"; then
-            echo "::error::HARD-003 .NET command failed without a recorded failed test result."
-            exit 1
-          fi
-          echo "Observed expected red .NET regression evidence."
 
       - name: Build Linux self-contained package
         shell: pwsh

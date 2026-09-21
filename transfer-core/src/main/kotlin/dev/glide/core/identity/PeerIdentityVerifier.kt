@@ -22,9 +22,12 @@ class IdentityMismatchException(message: String) : SecurityException(message)
  * Requirements (ADR-0015, PERSISTENT_IDENTITY_AND_RESUME_SPECIFICATION):
  * 1. Derives 32-byte SHA-256 fingerprint from encoded public key.
  * 2. Issues random 32-byte challenge nonces.
- * 3. Signs nonces with EC P-256 (SHA256withECDSA).
+ * 3. Signs caller-supplied canonical protocol transcripts with EC P-256 (SHA256withECDSA).
  * 4. Verifies signatures against pinned public keys.
  * 5. Strictly detects public key tampering / MITM attacks.
+ *
+ * This class deliberately does not expose a nonce-only signing primitive. HARD-018 defines the
+ * complete signed transcript; callers must build that transcript before asking a key to sign it.
  */
 object PeerIdentityVerifier {
 
@@ -47,19 +50,34 @@ object PeerIdentityVerifier {
         return keyFactory.generatePublic(X509EncodedKeySpec(encodedDer))
     }
 
-    fun signNonce(privateKey: PrivateKey, nonce: ByteArray): ByteArray {
+    fun signTranscript(
+        privateKey: PrivateKey,
+        transcript: ByteArray
+    ): ByteArray {
+        require(transcript.isNotEmpty()) {
+            "Canonical signature transcript cannot be empty"
+        }
+
         val signature = Signature.getInstance("SHA256withECDSA")
         signature.initSign(privateKey)
-        signature.update(nonce)
+        signature.update(transcript)
         return signature.sign()
     }
 
-    fun verifyNonceSignature(publicKeyDer: ByteArray, nonce: ByteArray, signatureBytes: ByteArray): Boolean {
+    fun verifyTranscriptSignature(
+        publicKeyDer: ByteArray,
+        transcript: ByteArray,
+        signatureBytes: ByteArray
+    ): Boolean {
+        if (transcript.isEmpty() || signatureBytes.isEmpty()) {
+            return false
+        }
+
         return try {
             val pubKey = decodePublicKey(publicKeyDer)
             val signature = Signature.getInstance("SHA256withECDSA")
             signature.initVerify(pubKey)
-            signature.update(nonce)
+            signature.update(transcript)
             signature.verify(signatureBytes)
         } catch (_: Exception) {
             false
@@ -80,20 +98,30 @@ object PeerIdentityVerifier {
             return TrustStatus.FirstUsePairing
         }
 
-        val presentedFingerprint = deriveFingerprint(presentedKeyDer)
-        val presentedKeyDerHex = presentedKeyDer.toHex()
+        val presentedFingerprint =
+            deriveFingerprint(presentedKeyDer)
+        val presentedKeyDerHex =
+            presentedKeyDer.toHex()
 
-        if (knownPeer.peerFingerprintHex.equals(presentedFingerprint, ignoreCase = true)) {
-            if (knownPeer.publicKeyDerHex.equals(presentedKeyDerHex, ignoreCase = true)) {
-                return TrustStatus.TrustedPersistent
-            } else {
-                throw IdentityMismatchException(
-                    "Security Warning: Public key mismatch for known peer '$displayName' (fingerprint: $presentedFingerprint). Possible impersonation attack."
-                )
-            }
+        val fingerprintMatches =
+            knownPeer.peerFingerprintHex.equals(
+                presentedFingerprint,
+                ignoreCase = false
+            )
+        val keyMatches =
+            knownPeer.publicKeyDerHex.equals(
+                presentedKeyDerHex,
+                ignoreCase = false
+            )
+
+        if (!fingerprintMatches || !keyMatches) {
+            throw IdentityMismatchException(
+                "Security Warning: Persistent identity mismatch for known peer '$displayName'. " +
+                    "Expected fingerprint ${knownPeer.peerFingerprintHex}, received $presentedFingerprint."
+            )
         }
 
-        return TrustStatus.FirstUsePairing
+        return TrustStatus.TrustedPersistent
     }
 
     fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }

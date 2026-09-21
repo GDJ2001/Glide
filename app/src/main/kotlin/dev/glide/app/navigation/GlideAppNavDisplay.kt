@@ -503,6 +503,7 @@ fun GlideAppNavDisplay(
                 }
                 val uiState by viewModel.uiState.collectAsStateWithLifecycle()
                 val pairingState by viewModel.pairingState.collectAsStateWithLifecycle()
+                val trustState by viewModel.trustState.collectAsStateWithLifecycle()
                 val openFileFeedback by viewModel.openFileFeedback.collectAsStateWithLifecycle()
                 val exportStatus by viewModel.exportStatus.collectAsStateWithLifecycle()
                 val context = androidx.compose.ui.platform.LocalContext.current
@@ -510,6 +511,7 @@ fun GlideAppNavDisplay(
                     route = route,
                     uiState = uiState,
                     pairingState = pairingState,
+                    trustState = trustState,
                     openFileFeedback = openFileFeedback,
                     exportStatus = exportStatus,
                     onAcceptConsent = { viewModel.acceptConsent() },
@@ -517,6 +519,8 @@ fun GlideAppNavDisplay(
                     onCancelTransfer = { viewModel.cancelTransfer() },
                     onConfirmMatch = { peerId -> viewModel.confirmPairing(peerId) },
                     onRejectMatch = { peerId -> viewModel.rejectPairing(peerId) },
+                    onApproveTrust = { viewModel.approvePendingTrust() },
+                    onRejectTrust = { viewModel.rejectPendingTrust() },
                     onOpenFile = { viewModel.openReceivedFile(context) },
                     onExportFile = { viewModel.exportReceivedFile(context) },
                     onShareFile = { viewModel.shareAllVerifiedItems(context) },
@@ -590,14 +594,30 @@ fun GlideAppNavDisplay(
                         )
                     }
                 }
-                val trustedPeerDao = androidx.compose.runtime.remember(customTrustedPeerDao, context) {
-                    customTrustedPeerDao ?: run {
+                val trustedPeerDao = androidx.compose.runtime.remember(
+                    customTrustedPeerDao,
+                    context,
+                    transferRuntime
+                ) {
+                    customTrustedPeerDao ?: if (transferRuntime == null) {
                         val db = dev.glide.app.di.DatabaseModule.provideGlideDatabase(context)
                         db.trustedPeerDao()
+                    } else {
+                        null
                     }
                 }
-                val factory = androidx.compose.runtime.remember(settingsStore, fileManager, trustedPeerDao) {
-                    dev.glide.app.ui.settings.SettingsViewModel.provideFactory(settingsStore, fileManager, trustedPeerDao)
+                val factory = androidx.compose.runtime.remember(
+                    settingsStore,
+                    fileManager,
+                    trustedPeerDao,
+                    transferRuntime
+                ) {
+                    dev.glide.app.ui.settings.SettingsViewModel.provideFactory(
+                        settingsStore = settingsStore,
+                        fileManager = fileManager,
+                        trustedPeerDao = trustedPeerDao,
+                        transferRuntime = transferRuntime
+                    )
                 }
                 val viewModel: dev.glide.app.ui.settings.SettingsViewModel = androidx.lifecycle.viewmodel.compose.viewModel(factory = factory)
                 androidx.compose.runtime.LaunchedEffect(initialSettingsState) {

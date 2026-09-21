@@ -47,6 +47,205 @@ object StreamHasher {
     }
 
     /**
+     * Streams one item with the ordinary whole-file SHA-256 while also yielding exact fixed-size
+     * chunks to a suspend callback. The callback must durably verify/store a chunk before returning.
+     *
+     * Memory is bounded to [bufferSize] plus one [chunkSize] accumulator (maximum 16 MiB).
+     * The final chunk may be shorter only when it ends exactly at [expectedBytes].
+     */
+    suspend fun copyAndHashWithChunks(
+        inputStream: InputStream,
+        outputStream: OutputStream?,
+        expectedBytes: Long,
+        chunkSize: Int,
+        startChunkIndex: Long = 0L,
+        bufferSize: Int =
+            DEFAULT_BUFFER_SIZE,
+        onChunk:
+            suspend (
+                chunkIndex: Long,
+                chunkData: ByteArray
+            ) -> Unit,
+        onProgress:
+            ((bytesRead: Long) -> Unit)? =
+            null
+    ): HashingResult {
+        require(
+            bufferSize > 0 &&
+                bufferSize <=
+                    1_048_576
+        ) {
+            "Buffer size must be between 1 byte and 1 MiB, got: $bufferSize"
+        }
+        require(
+            expectedBytes in
+                1..ProtocolLimits
+                    .MAX_ITEM_BYTES
+        ) {
+            "Resumable expectedBytes must be in 1..${ProtocolLimits.MAX_ITEM_BYTES}, got: $expectedBytes"
+        }
+        require(
+            chunkSize in
+                1..16 * 1024 * 1024
+        ) {
+            "Resume chunk size must be in 1..16 MiB, got: $chunkSize"
+        }
+
+        require(
+            startChunkIndex >= 0L
+        ) {
+            "startChunkIndex cannot be negative"
+        }
+
+        val digest =
+            MessageDigest.getInstance(
+                "SHA-256"
+            )
+        val readBuffer =
+            ByteArray(bufferSize)
+        var chunkBuffer =
+            ByteArray(chunkSize)
+        var chunkUsed = 0
+        var chunkIndex =
+            startChunkIndex
+        var totalBytes = 0L
+
+        suspend fun commitChunk() {
+            if (chunkUsed == 0) {
+                return
+            }
+            val exactChunk =
+                if (chunkUsed ==
+                    chunkBuffer.size
+                ) {
+                    chunkBuffer
+                } else {
+                    chunkBuffer.copyOf(
+                        chunkUsed
+                    )
+                }
+
+            onChunk(
+                chunkIndex,
+                exactChunk
+            )
+            chunkIndex++
+            chunkBuffer =
+                ByteArray(chunkSize)
+            chunkUsed = 0
+        }
+
+        try {
+            while (totalBytes <
+                expectedBytes
+            ) {
+                currentCoroutineContext()
+                    .ensureActive()
+
+                val remaining =
+                    expectedBytes -
+                        totalBytes
+                val read =
+                    inputStream.read(
+                        readBuffer,
+                        0,
+                        minOf(
+                            readBuffer.size
+                                .toLong(),
+                            remaining
+                        ).toInt()
+                    )
+                if (read < 0) {
+                    throw EOFException(
+                        "Early EOF: expected $expectedBytes bytes, but stream ended after $totalBytes bytes"
+                    )
+                }
+                if (read == 0) {
+                    continue
+                }
+
+                digest.update(
+                    readBuffer,
+                    0,
+                    read
+                )
+                outputStream?.write(
+                    readBuffer,
+                    0,
+                    read
+                )
+
+                var sourceOffset = 0
+                while (sourceOffset <
+                    read
+                ) {
+                    val copyCount =
+                        minOf(
+                            read -
+                                sourceOffset,
+                            chunkSize -
+                                chunkUsed
+                        )
+                    readBuffer.copyInto(
+                        destination =
+                            chunkBuffer,
+                        destinationOffset =
+                            chunkUsed,
+                        startIndex =
+                            sourceOffset,
+                        endIndex =
+                            sourceOffset +
+                                copyCount
+                    )
+                    sourceOffset +=
+                        copyCount
+                    chunkUsed +=
+                        copyCount
+
+                    if (chunkUsed ==
+                        chunkSize
+                    ) {
+                        commitChunk()
+                    }
+                }
+
+                totalBytes +=
+                    read.toLong()
+                onProgress?.invoke(
+                    totalBytes
+                )
+            }
+
+            val extra =
+                inputStream.read()
+            if (extra != -1) {
+                throw IllegalStateException(
+                    "Stream exceeded expected size of $expectedBytes bytes (extra byte detected: $extra)"
+                )
+            }
+
+            commitChunk()
+            outputStream?.flush()
+
+            return HashingResult(
+                sizeBytes =
+                    totalBytes,
+                digest =
+                    Sha256Digest
+                        .fromByteArray(
+                            digest.digest()
+                        )
+            )
+        } finally {
+            try {
+                inputStream.close()
+            } catch (_: Throwable) {
+                // Suppress secondary exceptions on close.
+            }
+        }
+    }
+
+    /**
      * Reads [inputStream] and writes all bytes to [outputStream] (if non-null) while computing SHA-256.
      * Always closes [inputStream] upon completion, cancellation, or error.
      */

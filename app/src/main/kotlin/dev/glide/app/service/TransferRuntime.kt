@@ -21,9 +21,14 @@ import dev.glide.core.domain.PeerId
 import dev.glide.core.domain.SessionId
 import dev.glide.core.domain.SourceHandle
 import dev.glide.core.domain.TransferBatch
+import dev.glide.core.identity.LocalIdentityInitialization
+import dev.glide.core.identity.PersistentTrustManager
+import dev.glide.core.identity.VerifiedPeerIdentity
 import dev.glide.core.pairing.LanInvitation
+import dev.glide.core.ports.AuthenticatedChannelContextProvider
 import dev.glide.core.ports.ConnectionEvent
 import dev.glide.core.ports.TransferTransport
+import dev.glide.data.store.ResumableStagingStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -47,6 +52,8 @@ class TransferRuntime private constructor(
     private val sessionFactory: TransferSessionFactory?,
     private val discoveryController: ProductionDiscoveryController?,
     private val lanController: ProductionLanController?,
+    private val persistentTrustManager: PersistentTrustManager?,
+    private val resumableStagingStore: ResumableStagingStore?,
     @Suppress("unused") private val testInstance: Boolean
 ) {
 
@@ -54,8 +61,17 @@ class TransferRuntime private constructor(
     constructor(
         sessionFactory: TransferSessionFactory,
         discoveryController: ProductionDiscoveryController,
-        lanController: ProductionLanController
-    ) : this(sessionFactory, discoveryController, lanController, false)
+        lanController: ProductionLanController,
+        persistentTrustManager: PersistentTrustManager,
+        resumableStagingStore: ResumableStagingStore
+    ) : this(
+        sessionFactory,
+        discoveryController,
+        lanController,
+        persistentTrustManager,
+        resumableStagingStore,
+        false
+    )
 
     private val lock = Any()
 
@@ -69,6 +85,11 @@ class TransferRuntime private constructor(
     private var pairingTransport: TransferTransport? = null
     private var pairingJob: Job? = null
     private var pairingSuccessCallback: ((PeerId) -> Unit)? = null
+
+    private var trustObservationJob: Job? = null
+    private var pendingVerifiedPeer: VerifiedPeerIdentity? = null
+    private val _trustState = MutableStateFlow(TrustRuntimeState())
+    val trustState: StateFlow<TrustRuntimeState> = _trustState.asStateFlow()
 
     private val _transferState = MutableStateFlow<TransferUiState>(TransferUiState.Idle)
     val transferState: StateFlow<TransferUiState> = _transferState.asStateFlow()
@@ -136,6 +157,8 @@ class TransferRuntime private constructor(
             serviceScope = scope
             terminalCallback = onTerminal
         }
+
+        startTrustObservation(scope)
     }
 
     /**
@@ -155,6 +178,10 @@ class TransferRuntime private constructor(
             pairingJob = null
             pairingTransport = null
             pairingSuccessCallback = null
+            trustObservationJob?.cancel()
+            trustObservationJob = null
+            pendingVerifiedPeer = null
+            _trustState.value = _trustState.value.copy(pendingEnrollment = null)
 
             if (coordinatorToStop != null) {
                 captureTerminalSnapshot(coordinatorToStop)
@@ -240,6 +267,14 @@ class TransferRuntime private constructor(
             is TransferRuntimeCommand.RejectOffer -> rejectOffer(command.sessionId, command.reason)
             is TransferRuntimeCommand.Cancel -> cancel(command.sessionId, command.reason)
             is TransferRuntimeCommand.Resume -> resume(command.sessionId)
+            is TransferRuntimeCommand.ApprovePeerEnrollment ->
+                approvePeerEnrollment(command.fingerprintHex)
+            is TransferRuntimeCommand.RejectPeerEnrollment ->
+                rejectPeerEnrollment(command.fingerprintHex)
+            is TransferRuntimeCommand.RevokeTrustedPeer ->
+                revokeTrustedPeer(command.fingerprintHex)
+            TransferRuntimeCommand.RotateLocalIdentity ->
+                rotateLocalIdentity()
             TransferRuntimeCommand.StartDiscovery -> startDiscovery()
             TransferRuntimeCommand.StopDiscovery -> stopDiscovery()
             is TransferRuntimeCommand.NearbyPermissionDenied ->
@@ -443,14 +478,41 @@ class TransferRuntime private constructor(
         val factory = sessionFactory ?: return false
         val scope = synchronized(lock) { serviceScope } ?: return false
         val prepared = SelectedTransferStore.get(command.selectionId) ?: return false
+        val authenticatedSessionId =
+            (command.transport as? AuthenticatedChannelContextProvider)
+                ?.authenticatedChannelContext(command.peerId)
+                ?.sessionId
+        val sessionTrustManager =
+            persistentTrustManager
+                ?.takeIf {
+                    _trustState.value
+                        .isInitialized
+                }
+        if (command.expectedPeerFingerprintHex != null &&
+            sessionTrustManager == null
+        ) {
+            return false
+        }
+
         val coordinator = factory.createSenderSession(
-            sessionId = SessionId(UUID.randomUUID().toString()),
+            sessionId =
+                authenticatedSessionId
+                    ?: SessionId(UUID.randomUUID().toString()),
             peerId = command.peerId,
             peerDisplayName = command.peerDisplayName,
             senderBatch = prepared.batch,
             sourceMap = prepared.sourceMap,
             transport = command.transport,
-            scope = scope
+            scope = scope,
+            persistentTrustManager =
+                sessionTrustManager,
+            expectedPeerFingerprintHex =
+                command.expectedPeerFingerprintHex,
+            onVerifiedPeerIdentity = { peer ->
+                stageVerifiedPeerForEnrollment(
+                    peer
+                )
+            }
         )
         return startCoordinator(coordinator, command.peerDisplayName)
     }
@@ -458,12 +520,39 @@ class TransferRuntime private constructor(
     private fun startReceiver(command: TransferRuntimeCommand.StartReceiver): Boolean {
         val factory = sessionFactory ?: return false
         val scope = synchronized(lock) { serviceScope } ?: return false
+        val authenticatedSessionId =
+            (command.transport as? AuthenticatedChannelContextProvider)
+                ?.authenticatedChannelContext(command.peerId)
+                ?.sessionId
+        val sessionTrustManager =
+            persistentTrustManager
+                ?.takeIf {
+                    _trustState.value
+                        .isInitialized
+                }
+        if (command.expectedPeerFingerprintHex != null &&
+            sessionTrustManager == null
+        ) {
+            return false
+        }
+
         val coordinator = factory.createReceiverSession(
             peerId = command.peerId,
             peerDisplayName = command.peerDisplayName,
-            sessionId = command.sessionId,
+            sessionId =
+                command.sessionId
+                    ?: authenticatedSessionId,
             transport = command.transport,
-            scope = scope
+            scope = scope,
+            persistentTrustManager =
+                sessionTrustManager,
+            expectedPeerFingerprintHex =
+                command.expectedPeerFingerprintHex,
+            onVerifiedPeerIdentity = { peer ->
+                stageVerifiedPeerForEnrollment(
+                    peer
+                )
+            }
         )
         return startCoordinator(coordinator, command.peerDisplayName)
     }
@@ -695,9 +784,11 @@ class TransferRuntime private constructor(
 
     private fun cancel(sessionId: String, reason: String): Boolean {
         val coordinator: TransferCoordinator?
+        val ownerScope: CoroutineScope?
         synchronized(lock) {
             if (_activeSessionId.value != sessionId) return false
             coordinator = activeCoordinator
+            ownerScope = serviceScope
             if (coordinator == null) {
                 val current = _transferState.value
                 _transferState.value = TransferUiState.Cancelled(
@@ -708,9 +799,22 @@ class TransferRuntime private constructor(
                 _isSessionActive.value = false
                 _activeSessionId.value = null
                 terminalCallback?.invoke()
-                return true
             }
         }
+
+        // Explicit user cancellation invalidates retained resume authority for this transfer.
+        // Service/process interruption deliberately does not call this path.
+        if (ownerScope != null &&
+            resumableStagingStore != null
+        ) {
+            ownerScope.launch {
+                resumableStagingStore
+                    .purgeOriginalSession(
+                        sessionId
+                    )
+            }
+        }
+
         coordinator?.cancel(reason)
         return true
     }
@@ -730,6 +834,227 @@ class TransferRuntime private constructor(
         return true
     }
 
+    /**
+     * Initializes/refreshes persistent trust without requiring a transfer service scope.
+     * Settings uses this in its own lifecycle; no network or coordinator work is started.
+     */
+    suspend fun refreshPersistentTrustState(): Boolean {
+        val manager = persistentTrustManager ?: run {
+            _trustState.value = TrustRuntimeState(
+                errorMessage = "Persistent trust service is unavailable"
+            )
+            return false
+        }
+
+        return try {
+            val initialization = manager.initialize()
+            val notice = when (initialization) {
+                is LocalIdentityInitialization.Ready -> null
+                is LocalIdentityInitialization.ResetAfterKeyLoss ->
+                    "Local identity key was unavailable. " +
+                        "${initialization.revokedPeerCount} trusted peer record(s) were revoked and re-enrollment is required."
+            }
+            val peers = manager.trustedPeerSnapshot()
+            _trustState.value = _trustState.value.copy(
+                isInitialized = true,
+                localFingerprintHex = initialization.localFingerprintHex,
+                trustedPeers = peers,
+                securityNotice = notice,
+                errorMessage = null
+            )
+            true
+        } catch (t: Throwable) {
+            _trustState.value = _trustState.value.copy(
+                errorMessage =
+                    "Persistent identity initialization failed: " +
+                        (t.message ?: t::class.java.simpleName)
+            )
+            false
+        }
+    }
+
+    suspend fun revokeTrustedPeerNow(
+        fingerprintHex: String
+    ): Boolean {
+        val manager = persistentTrustManager ?: return false
+        return try {
+            manager.revokePeer(fingerprintHex)
+            resumableStagingStore
+                ?.purgeForPeer(
+                    fingerprintHex
+                )
+            _trustState.value = _trustState.value.copy(
+                trustedPeers = manager.trustedPeerSnapshot(),
+                securityNotice = "Device trust revoked.",
+                errorMessage = null
+            )
+            true
+        } catch (t: Throwable) {
+            _trustState.value = _trustState.value.copy(
+                errorMessage =
+                    "Could not revoke trusted device: " +
+                        (t.message ?: t::class.java.simpleName)
+            )
+            false
+        }
+    }
+
+    suspend fun rotateLocalIdentityNow(): Boolean {
+        val manager = persistentTrustManager ?: return false
+        synchronized(lock) {
+            pendingVerifiedPeer = null
+            _trustState.value = _trustState.value.copy(
+                pendingEnrollment = null
+            )
+        }
+
+        return try {
+            val result = manager.rotateLocalIdentity()
+            resumableStagingStore
+                ?.purgeAll()
+            _trustState.value = _trustState.value.copy(
+                isInitialized = true,
+                localFingerprintHex = result.localFingerprintHex,
+                trustedPeers = emptyList(),
+                securityNotice =
+                    "Local identity rotated. " +
+                        "${result.revokedPeerCount} trusted peer record(s) were revoked.",
+                errorMessage = null
+            )
+            true
+        } catch (t: Throwable) {
+            _trustState.value = _trustState.value.copy(
+                errorMessage =
+                    "Could not rotate local identity: " +
+                        (t.message ?: t::class.java.simpleName)
+            )
+            false
+        }
+    }
+
+    private fun startTrustObservation(scope: CoroutineScope) {
+        val manager = persistentTrustManager ?: run {
+            _trustState.value = TrustRuntimeState(
+                errorMessage = "Persistent trust service is unavailable"
+            )
+            return
+        }
+
+        synchronized(lock) {
+            trustObservationJob?.cancel()
+            trustObservationJob = scope.launch {
+                if (!refreshPersistentTrustState()) return@launch
+                try {
+                    manager.trustedPeers.collect { peers ->
+                        _trustState.value = _trustState.value.copy(
+                            isInitialized = true,
+                            trustedPeers = peers,
+                            errorMessage = null
+                        )
+                    }
+                } catch (t: Throwable) {
+                    _trustState.value = _trustState.value.copy(
+                        errorMessage =
+                            "Persistent trust observation failed: " +
+                                (t.message ?: t::class.java.simpleName)
+                    )
+                }
+            }
+        }
+    }
+    /**
+     * HARD-021 calls this only after IdentityProofVerifier has validated the live channel-bound
+     * proof. UI code may approve or reject the pending identity but cannot create it.
+     */
+    internal fun stageVerifiedPeerForEnrollment(
+        peer: VerifiedPeerIdentity
+    ): Boolean {
+        if (persistentTrustManager == null) return false
+
+        synchronized(lock) {
+            pendingVerifiedPeer = peer
+            _trustState.value = _trustState.value.copy(
+                pendingEnrollment = PendingTrustEnrollment(
+                    fingerprintHex = peer.fingerprintHex,
+                    displayName = peer.displayName
+                ),
+                securityNotice = null,
+                errorMessage = null
+            )
+        }
+        return true
+    }
+
+    private fun approvePeerEnrollment(
+        fingerprintHex: String
+    ): Boolean {
+        val manager = persistentTrustManager ?: return false
+        val scope = synchronized(lock) { serviceScope } ?: return false
+        val peer = synchronized(lock) {
+            val pending = pendingVerifiedPeer ?: return false
+            if (pending.fingerprintHex != fingerprintHex) return false
+
+            pendingVerifiedPeer = null
+            _trustState.value = _trustState.value.copy(
+                pendingEnrollment = null
+            )
+            pending
+        }
+
+        scope.launch {
+            try {
+                manager.enrollVerifiedPeer(
+                    verifiedPeer = peer,
+                    userApproved = true
+                )
+                _trustState.value = _trustState.value.copy(
+                    securityNotice = "Trusted device enrolled: ${peer.displayName}",
+                    errorMessage = null
+                )
+            } catch (t: Throwable) {
+                _trustState.value = _trustState.value.copy(
+                    errorMessage =
+                        "Could not enroll trusted device: " +
+                            (t.message ?: t::class.java.simpleName)
+                )
+            }
+        }
+        return true
+    }
+
+    private fun rejectPeerEnrollment(
+        fingerprintHex: String
+    ): Boolean = synchronized(lock) {
+        val pending = pendingVerifiedPeer ?: return false
+        if (pending.fingerprintHex != fingerprintHex) return false
+
+        pendingVerifiedPeer = null
+        _trustState.value = _trustState.value.copy(
+            pendingEnrollment = null,
+            securityNotice = "Device trust enrollment declined."
+        )
+        true
+    }
+
+    private fun revokeTrustedPeer(
+        fingerprintHex: String
+    ): Boolean {
+        if (persistentTrustManager == null) return false
+        val scope = synchronized(lock) { serviceScope } ?: return false
+        scope.launch {
+            revokeTrustedPeerNow(fingerprintHex)
+        }
+        return true
+    }
+
+    private fun rotateLocalIdentity(): Boolean {
+        if (persistentTrustManager == null) return false
+        val scope = synchronized(lock) { serviceScope } ?: return false
+        scope.launch {
+            rotateLocalIdentityNow()
+        }
+        return true
+    }
     private fun startDiscovery(): Boolean {
         val controller = discoveryController ?: run {
             _fallbackDiscoveryState.value = DiscoveryUiState.Blocked(
@@ -886,6 +1211,10 @@ class TransferRuntime private constructor(
         pairingTransport = null
         pairingJob = null
         pairingSuccessCallback = null
+        trustObservationJob?.cancel()
+        trustObservationJob = null
+        pendingVerifiedPeer = null
+        _trustState.value = TrustRuntimeState()
         terminalCallback = null
         serviceScope = null
         activePeerDisplayName = "Nearby device"
@@ -919,9 +1248,18 @@ class TransferRuntime private constructor(
         internal fun forTesting(
             sessionFactory: TransferSessionFactory? = null,
             discoveryController: ProductionDiscoveryController? = null,
-            lanController: ProductionLanController? = null
+            lanController: ProductionLanController? = null,
+            persistentTrustManager: PersistentTrustManager? = null,
+            resumableStagingStore: ResumableStagingStore? = null
         ): TransferRuntime {
-            return TransferRuntime(sessionFactory, discoveryController, lanController, true)
+            return TransferRuntime(
+                sessionFactory,
+                discoveryController,
+                lanController,
+                persistentTrustManager,
+                resumableStagingStore,
+                true
+            )
         }
     }
 }
@@ -934,14 +1272,16 @@ sealed interface TransferRuntimeCommand {
         val selectionId: BatchId? = null,
         val transport: TransferTransport,
         val peerId: PeerId,
-        val peerDisplayName: String
+        val peerDisplayName: String,
+        val expectedPeerFingerprintHex: String? = null
     ) : TransferRuntimeCommand
 
     data class StartReceiver(
         val transport: TransferTransport,
         val peerId: PeerId,
         val peerDisplayName: String,
-        val sessionId: SessionId? = null
+        val sessionId: SessionId? = null,
+        val expectedPeerFingerprintHex: String? = null
     ) : TransferRuntimeCommand
 
     data class StartNearbySenderPairing(
@@ -980,6 +1320,21 @@ sealed interface TransferRuntimeCommand {
         val reason: String = "USER_CANCELLED"
     ) : TransferRuntimeCommand
     data class Resume(val sessionId: String) : TransferRuntimeCommand
+
+    data class ApprovePeerEnrollment(
+        val fingerprintHex: String
+    ) : TransferRuntimeCommand
+
+    data class RejectPeerEnrollment(
+        val fingerprintHex: String
+    ) : TransferRuntimeCommand
+
+    data class RevokeTrustedPeer(
+        val fingerprintHex: String
+    ) : TransferRuntimeCommand
+
+    data object RotateLocalIdentity : TransferRuntimeCommand
+
     data object StartDiscovery : TransferRuntimeCommand
     data object StopDiscovery : TransferRuntimeCommand
     data class NearbyPermissionDenied(val receiveMode: Boolean) : TransferRuntimeCommand

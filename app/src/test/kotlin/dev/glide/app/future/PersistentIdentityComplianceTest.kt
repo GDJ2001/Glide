@@ -14,13 +14,14 @@ import kotlinx.serialization.json.put
 /**
  * GLIDE-070: Persistent Identity and True Resume Compliance Verification Suite.
  *
- * Programmatically asserts:
- * 1. ADR-0015 exists, documents Keystore identity & Merkle digest verification, and is indexed in docs/adr/README.md.
- * 2. PERSISTENT_IDENTITY_AND_RESUME_SPECIFICATION.md specifies Android Keystore keys and TOFU pairing.
- * 3. Specification strictly rejects offset-only fake resume and mandates Merkle chunk digests.
- * 4. Retained-partial lifecycle enforces 24-hour expiration TTL and User Data Sanctity.
- * 5. Threat model matrix covers T01 through T08.
- * 6. Pure JVM ResumeToken and ContentDigestTree enforce security and validation boundaries.
+ * Programmatically asserts the HARD-018 revision:
+ * 1. ADR-0015 is indexed and no longer claims nonce-only authentication.
+ * 2. The specification requires protected P-256 identity keys, explicit first-use enrollment,
+ *    canonical transcript signatures and channel binding.
+ * 3. identity-v1/resume-v1 are versioned and offset-only resume is prohibited.
+ * 4. Retained partials remain private, bounded and subject to a 24-hour maximum TTL.
+ * 5. The revised threat invariants cover replay, role/capability/channel binding and source integrity.
+ * 6. Existing resume digest primitives retain their validation boundaries.
  */
 class PersistentIdentityComplianceTest {
 
@@ -52,50 +53,138 @@ class PersistentIdentityComplianceTest {
     }
 
     @Test
-    fun test2_specification_mandatesKeystoreAndTofuPairing() {
+    fun test2_specification_requiresBoundPersistentIdentityProofs() {
         val root = resolveProjectRoot()
-        val specFile = File(root, "docs/future/PERSISTENT_IDENTITY_AND_RESUME_SPECIFICATION.md")
-        assertTrue("PERSISTENT_IDENTITY_AND_RESUME_SPECIFICATION.md must exist", specFile.exists())
+        val specFile =
+            File(
+                root,
+                "docs/future/PERSISTENT_IDENTITY_AND_RESUME_SPECIFICATION.md"
+            )
+        assertTrue(
+            "PERSISTENT_IDENTITY_AND_RESUME_SPECIFICATION.md must exist",
+            specFile.exists()
+        )
 
         val specText = specFile.readText()
-        assertTrue("Must require Android Keystore", specText.contains("Android Keystore"))
-        assertTrue("Must specify PURPOSE_SIGN", specText.contains("PURPOSE_SIGN"))
-        assertTrue("Must specify PURPOSE_VERIFY", specText.contains("PURPOSE_VERIFY"))
-        assertTrue("Must document TOFU pairing flow", specText.contains("TOFU") || specText.contains("Trust-On-First-Use"))
+        assertTrue(
+            "Must require Android Keystore",
+            specText.contains("Android Keystore")
+        )
+        assertTrue(
+            "Must specify P-256 ECDSA",
+            specText.contains("P-256") &&
+                specText.contains("ECDSA")
+        )
+        assertTrue(
+            "Must bind persistent proof to the active channel",
+            specText.contains("channel binding", ignoreCase = true) &&
+                specText.contains("EXPORTER-GLIDE-IDENTITY-V1")
+        )
+        assertTrue(
+            "Must require explicit first-use trust enrollment",
+            specText.contains("Trust/Enroll") &&
+                specText.contains("explicit", ignoreCase = true)
+        )
+        assertTrue(
+            "Must prohibit nonce-only authentication",
+            specText.contains("nonce", ignoreCase = true) &&
+                specText.contains("never sufficient authority")
+        )
     }
 
     @Test
-    fun test3_specification_rejectsOffsetOnlyAndMandatesMerkleDigest() {
+    fun test3_specification_versionsIdentityAndTrueResume() {
         val root = resolveProjectRoot()
-        val specFile = File(root, "docs/future/PERSISTENT_IDENTITY_AND_RESUME_SPECIFICATION.md")
-        val specText = specFile.readText()
+        val specText =
+            File(
+                root,
+                "docs/future/PERSISTENT_IDENTITY_AND_RESUME_SPECIFICATION.md"
+            ).readText()
 
-        assertTrue("Must reject offset-only fake resume", specText.contains("offset-only"))
-        assertTrue("Must mandate Merkle digest tree", specText.contains("Merkle"))
-        assertTrue("Must specify CAP_PERSISTENT_IDENTITY", specText.contains("CAP_PERSISTENT_IDENTITY"))
-        assertTrue("Must specify CAP_TRUE_RESUME", specText.contains("CAP_TRUE_RESUME"))
+        assertTrue(
+            "Must reject offset-only fake resume",
+            specText.contains("Offset-only resume is prohibited")
+        )
+        assertTrue(
+            "Must define identity-v1",
+            specText.contains("identity-v1")
+        )
+        assertTrue(
+            "Must define resume-v1",
+            specText.contains("resume-v1")
+        )
+        assertTrue(
+            "resume-v1 must require identity-v1",
+            specText.contains(
+                "resume-v1 requires identity-v1"
+            )
+        )
+        assertTrue(
+            "Must define canonical shared vectors",
+            specText.contains(
+                "protocol/fixtures/identity_resume_v1_vectors.json"
+            )
+        )
     }
 
     @Test
     fun test4_retainedPartialLifecycle_enforces24HourTtlAndSanctity() {
         val root = resolveProjectRoot()
-        val specFile = File(root, "docs/future/PERSISTENT_IDENTITY_AND_RESUME_SPECIFICATION.md")
-        val specText = specFile.readText()
+        val specText =
+            File(
+                root,
+                "docs/future/PERSISTENT_IDENTITY_AND_RESUME_SPECIFICATION.md"
+            ).readText()
 
-        assertTrue("Must enforce 24-hour TTL", specText.contains("24") && (specText.contains("hour") || specText.contains("hours")))
-        assertTrue("Must specify staging isolation in cacheDir", specText.contains("cacheDir/staging/resumable"))
-        assertTrue("Must affirm User Data Sanctity", specText.contains("User Data Sanctity"))
+        assertTrue(
+            "Must enforce 24-hour maximum TTL",
+            specText.contains("Maximum 24 hours")
+        )
+        assertTrue(
+            "Retained bytes must remain in private staging",
+            specText.contains(
+                "Private application staging only"
+            )
+        )
+        assertTrue(
+            "Final public commit must require verification",
+            specText.contains(
+                "Only after complete-file verification"
+            )
+        )
+        assertTrue(
+            "Process death must not reconstruct a live connection",
+            specText.contains(
+                "No retained journal may reconstruct an active network connection"
+            )
+        )
     }
 
     @Test
-    fun test5_threatMatrix_coversAllCriticalThreats() {
+    fun test5_threatMatrix_coversBoundAuthenticationThreats() {
         val root = resolveProjectRoot()
-        val specFile = File(root, "docs/future/PERSISTENT_IDENTITY_AND_RESUME_SPECIFICATION.md")
-        val specText = specFile.readText()
+        val specText =
+            File(
+                root,
+                "docs/future/PERSISTENT_IDENTITY_AND_RESUME_SPECIFICATION.md"
+            ).readText()
 
-        val threats = listOf("T01", "T02", "T03", "T04", "T05", "T06", "T07", "T08")
-        for (threat in threats) {
-            assertTrue("Spec must analyze threat: $threat", specText.contains("**$threat**"))
+        val requiredThreats =
+            listOf(
+                "Replay",
+                "Role swap",
+                "Capability downgrade",
+                "Cross-connection signature reuse",
+                "Resume offset tampering",
+                "Source substitution",
+                "Unauthorized headless receive",
+                "Partial-file exposure"
+            )
+        requiredThreats.forEach { threat ->
+            assertTrue(
+                "Spec must analyze threat: $threat",
+                specText.contains(threat)
+            )
         }
     }
 
@@ -142,17 +231,55 @@ class PersistentIdentityComplianceTest {
         val bobFingerprint = dev.glide.core.identity.PeerIdentityVerifier.deriveFingerprint(bobKeyPair.public.encoded)
         assertFalse(aliceFingerprint == bobFingerprint)
 
-        // Mutual challenge response
-        val challengeNonce = dev.glide.core.identity.PeerIdentityVerifier.generateNonce()
-        val bobSignature = dev.glide.core.identity.PeerIdentityVerifier.signNonce(bobKeyPair.private, challengeNonce)
+        // Authentication signs the complete HARD-018 transcript, never a bare nonce.
+        val challengeNonce =
+            dev.glide.core.identity.PeerIdentityVerifier.generateNonce()
+                .joinToString("") { "%02x".format(it) }
+        val capabilityHash =
+            dev.glide.core.protocol.IdentityResumeTranscript
+                .capabilityHashHex(
+                    listOf(
+                        "folder-v1",
+                        "identity-v1",
+                        "sha256",
+                        "stream-v1"
+                    )
+                )
+        val transcript =
+            dev.glide.core.protocol.IdentityResumeTranscript
+                .identityProofBytes(
+                    activeSessionId =
+                        "11111111-1111-4111-8111-111111111111",
+                    challengeMessageId =
+                        "22222222-2222-4222-8222-222222222222",
+                    signerRole = "sender",
+                    verifierRole = "receiver",
+                    signerFingerprintHex = bobFingerprint,
+                    verifierFingerprintHex = aliceFingerprint,
+                    challengeNonceHex = challengeNonce,
+                    channelBindingHex =
+                        "ffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221100",
+                    capabilityHashHex = capabilityHash
+                )
+        val bobSignature =
+            dev.glide.core.identity.PeerIdentityVerifier
+                .signTranscript(
+                    bobKeyPair.private,
+                    transcript
+                )
 
-        // Valid verification by Alice
-        val verified = dev.glide.core.identity.PeerIdentityVerifier.verifyNonceSignature(
-            publicKeyDer = bobKeyPair.public.encoded,
-            nonce = challengeNonce,
-            signatureBytes = bobSignature
+        val verified =
+            dev.glide.core.identity.PeerIdentityVerifier
+                .verifyTranscriptSignature(
+                    publicKeyDer =
+                        bobKeyPair.public.encoded,
+                    transcript = transcript,
+                    signatureBytes = bobSignature
+                )
+        assertTrue(
+            "Legitimate bound transcript signature must verify successfully",
+            verified
         )
-        assertTrue("Legitimate signature must verify successfully", verified)
 
         val record = dev.glide.core.domain.TrustedPeerRecord(
             peerFingerprintHex = bobFingerprint,
@@ -180,130 +307,499 @@ class PersistentIdentityComplianceTest {
 
     @Test
     fun test8_protocolEnvelopes_serializationAndCapabilityNegotiation() {
-        // Assert capability strings
-        assertTrue(
-            "Negotiation constants must offer identity-v1",
-            dev.glide.core.protocol.NegotiationConstants.OPTIONAL_CAPABILITIES.contains(
-                dev.glide.core.protocol.NegotiationConstants.CAPABILITY_PERSISTENT_IDENTITY_V1
-            )
+        // identity-v1/resume-v1 are known extension capabilities but MUST NOT be
+        // advertised by default before HARD-019..021 wire trusted-session enforcement.
+        assertFalse(
+            "Production optional capabilities must not advertise identity-v1 yet",
+            dev.glide.core.protocol.NegotiationConstants
+                .OPTIONAL_CAPABILITIES
+                .contains(
+                    dev.glide.core.protocol.NegotiationConstants
+                        .CAPABILITY_PERSISTENT_IDENTITY_V1
+                )
+        )
+        assertFalse(
+            "Production optional capabilities must not advertise resume-v1 yet",
+            dev.glide.core.protocol.NegotiationConstants
+                .OPTIONAL_CAPABILITIES
+                .contains(
+                    dev.glide.core.protocol.NegotiationConstants
+                        .CAPABILITY_TRUE_RESUME_V1
+                )
         )
         assertTrue(
-            "Negotiation constants must offer resume-v1",
-            dev.glide.core.protocol.NegotiationConstants.OPTIONAL_CAPABILITIES.contains(
-                dev.glide.core.protocol.NegotiationConstants.CAPABILITY_TRUE_RESUME_V1
-            )
+            dev.glide.core.protocol.NegotiationConstants
+                .TRUST_EXTENSION_CAPABILITIES
+                .contains(
+                    dev.glide.core.protocol.NegotiationConstants
+                        .CAPABILITY_PERSISTENT_IDENTITY_V1
+                )
+        )
+        assertTrue(
+            dev.glide.core.protocol.NegotiationConstants
+                .TRUST_EXTENSION_CAPABILITIES
+                .contains(
+                    dev.glide.core.protocol.NegotiationConstants
+                        .CAPABILITY_TRUE_RESUME_V1
+                )
         )
 
-        // IDENTITY_CHALLENGE roundtrip
+        val capabilityHash =
+            dev.glide.core.protocol.IdentityResumeTranscript
+                .capabilityHashHex(
+                    listOf(
+                        "folder-v1",
+                        "identity-v1",
+                        "sha256",
+                        "stream-v1"
+                    )
+                )
+
         val body = buildJsonObject {
-            put("nonceHex", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+            put(
+                "profile",
+                dev.glide.core.protocol.IdentityResumeTranscript
+                    .IDENTITY_PROFILE
+            )
+            put(
+                "challengeNonceHex",
+                "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+            )
+            put(
+                "verifierFingerprintHex",
+                "abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd"
+            )
+            put("verifierRole", "receiver")
+            put("signerRole", "sender")
+            put(
+                "channelBindingHex",
+                "ffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221100"
+            )
+            put("capabilityHashHex", capabilityHash)
         }
-        val envelope = dev.glide.core.protocol.Envelope(
-            v = 1,
-            type = dev.glide.core.protocol.MessageTypes.IDENTITY_CHALLENGE,
-            sessionId = dev.glide.core.domain.SessionId("11111111-1111-4111-8111-111111111111"),
-            messageId = dev.glide.core.domain.MessageId("22222222-2222-4222-8222-222222222222"),
-            seq = 1L,
-            body = body
+        val envelope =
+            dev.glide.core.protocol.Envelope(
+                v = 1,
+                type =
+                    dev.glide.core.protocol.MessageTypes
+                        .IDENTITY_CHALLENGE,
+                sessionId =
+                    dev.glide.core.domain.SessionId(
+                        "11111111-1111-4111-8111-111111111111"
+                    ),
+                messageId =
+                    dev.glide.core.domain.MessageId(
+                        "22222222-2222-4222-8222-222222222222"
+                    ),
+                seq = 1L,
+                body = body
+            )
+        val encoded =
+            dev.glide.core.protocol.ProtocolCodec
+                .encode(envelope)
+        val decoded =
+            dev.glide.core.protocol.ProtocolCodec
+                .decode(encoded)
+        assertEquals(
+            dev.glide.core.protocol.MessageTypes.IDENTITY_CHALLENGE,
+            decoded.type
         )
-        val encoded = dev.glide.core.protocol.ProtocolCodec.encode(envelope)
-        val decoded = dev.glide.core.protocol.ProtocolCodec.decode(encoded)
-        assertEquals(dev.glide.core.protocol.MessageTypes.IDENTITY_CHALLENGE, decoded.type)
-        val challengeDto: dev.glide.core.protocol.IdentityChallengeDto = dev.glide.core.protocol.ProtocolCodec.decodeBody(decoded)
-        assertEquals("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", challengeDto.nonceHex)
+        val challengeDto:
+            dev.glide.core.protocol.IdentityChallengeDto =
+            dev.glide.core.protocol.ProtocolCodec
+                .decodeBody(decoded)
+        assertEquals(
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            challengeDto.challengeNonceHex
+        )
     }
 
     @Test
     fun test9_resumableStagingStore_lifecycleAndIntegrity() = kotlinx.coroutines.runBlocking {
-        val tempDir = java.nio.file.Files.createTempDirectory("glide-staging-compliance").toFile()
+        val tempDir =
+            java.nio.file.Files
+                .createTempDirectory(
+                    "glide-staging-compliance"
+                )
+                .toFile()
         try {
-            val dao = ComplianceResumableSessionDao()
-            val store = dev.glide.data.store.ResumableStagingStore(tempDir, dao)
-            val sessionId = "session-test-compliance"
+            val dao =
+                ComplianceResumableSessionDao()
+            val store =
+                dev.glide.data.store
+                    .ResumableStagingStore(
+                        tempDir,
+                        dao
+                    )
+            val sessionId =
+                "session-test-compliance"
             val fileId = "file-99"
 
-            val chunk0 = "Chunk zero content".toByteArray(Charsets.UTF_8)
-            val chunk1 = "Chunk one content".toByteArray(Charsets.UTF_8)
-            val hash0 = dev.glide.core.resume.ContentDigestTree.sha256(chunk0)
-            val hash1 = dev.glide.core.resume.ContentDigestTree.sha256(chunk1)
-            val digestTree = dev.glide.core.resume.ContentDigestTree(listOf(hash0, hash1))
+            val chunk0 =
+                "Chunk-zero-content"
+                    .toByteArray(
+                        Charsets.UTF_8
+                    )
+            val chunk1 =
+                "Chunk-one--content"
+                    .toByteArray(
+                        Charsets.UTF_8
+                    )
+            assertEquals(
+                chunk0.size,
+                chunk1.size
+            )
 
-            store.initSession(sessionId, fileId, "test.bin", (chunk0.size + chunk1.size).toLong(), chunk0.size, "dummyRoot")
-            assertTrue("Chunk 0 must write", store.writeAndVerifyChunk(sessionId, 0, chunk0, digestTree))
-            assertTrue("Chunk 1 must write", store.writeAndVerifyChunk(sessionId, 1, chunk1, digestTree))
+            val digestTree =
+                dev.glide.core.resume
+                    .ContentDigestTree(
+                        listOf(
+                            dev.glide.core.resume
+                                .ContentDigestTree
+                                .sha256(chunk0),
+                            dev.glide.core.resume
+                                .ContentDigestTree
+                                .sha256(chunk1)
+                        )
+                    )
+            val wholeDigest =
+                java.security.MessageDigest
+                    .getInstance(
+                        "SHA-256"
+                    )
+                    .apply {
+                        update(chunk0)
+                        update(chunk1)
+                    }
+                    .digest()
+                    .joinToString("") {
+                        "%02x".format(it)
+                    }
 
-            val corruptedChunk = "Tampered".toByteArray(Charsets.UTF_8)
-            assertFalse("Corrupted chunk must be rejected", store.writeAndVerifyChunk(sessionId, 0, corruptedChunk, digestTree))
+            store.initReceiverSession(
+                originalSessionId =
+                    sessionId,
+                itemId = fileId,
+                itemName = "test.bin",
+                peerFingerprintHex =
+                    "a".repeat(64),
+                totalBytes =
+                    (
+                        chunk0.size +
+                            chunk1.size
+                        ).toLong(),
+                chunkSize =
+                    chunk0.size,
+                chunkRootHashHex =
+                    digestTree.rootHashHex
+            )
 
-            val destinationFile = File(tempDir, "assembled.bin")
-            val assembled = store.assembleVerifiedFile(sessionId, destinationFile)
-            assertTrue("Assembled file must succeed", assembled)
-            assertEquals((chunk0.size + chunk1.size).toLong(), destinationFile.length())
+            assertFalse(
+                "Out-of-order chunk must not skip the contiguous prefix",
+                store.recordReceiverChunk(
+                    sessionId,
+                    fileId,
+                    1L,
+                    chunk1
+                )
+            )
+            assertTrue(
+                "Chunk 0 must write",
+                store.recordReceiverChunk(
+                    sessionId,
+                    fileId,
+                    0L,
+                    chunk0
+                )
+            )
+            assertTrue(
+                "Chunk 1 must write",
+                store.recordReceiverChunk(
+                    sessionId,
+                    fileId,
+                    1L,
+                    chunk1
+                )
+            )
 
-            store.purgeSession(sessionId)
-            assertFalse(File(tempDir, sessionId).exists())
+            val duplicateChunk =
+                "Tampered-duplicate"
+                    .toByteArray(
+                        Charsets.UTF_8
+                    )
+            assertFalse(
+                "Already-verified duplicate chunk must be rejected",
+                store.recordReceiverChunk(
+                    sessionId,
+                    fileId,
+                    1L,
+                    duplicateChunk
+                )
+            )
+
+            val destinationFile =
+                File(
+                    tempDir,
+                    "assembled.bin"
+                )
+            val assembled =
+                store
+                    .assembleVerifiedReceiverFile(
+                        sessionId,
+                        fileId,
+                        wholeDigest,
+                        destinationFile
+                    )
+            assertTrue(
+                "Assembled file must succeed",
+                assembled
+            )
+            assertEquals(
+                (
+                    chunk0.size +
+                        chunk1.size
+                    ).toLong(),
+                destinationFile.length()
+            )
+            assertEquals(
+                0,
+                dao.getSessionCount()
+            )
         } finally {
             tempDir.deleteRecursively()
         }
     }
 
     @Test
-    fun test10_settingsUi_trustedDevicesSectionAndDialogEnforcement() {
+    fun test10_androidTrustUi_requiresExplicitEnrollmentAndRuntimeRevocation() {
         val root = resolveProjectRoot()
-        val settingsScreenFile = File(root, "app/src/main/kotlin/dev/glide/app/ui/settings/SettingsScreen.kt")
-        assertTrue("SettingsScreen.kt must exist", settingsScreenFile.exists())
+        val settingsScreenFile =
+            File(
+                root,
+                "app/src/main/kotlin/dev/glide/app/ui/settings/SettingsScreen.kt"
+            )
+        val transferScreenFile =
+            File(
+                root,
+                "app/src/main/kotlin/dev/glide/app/ui/TransferScreen.kt"
+            )
+        val runtimeFile =
+            File(
+                root,
+                "app/src/main/kotlin/dev/glide/app/service/TransferRuntime.kt"
+            )
 
-        val screenContent = settingsScreenFile.readText()
-        assertTrue("SettingsScreen must render TrustedDevicesSection", screenContent.contains("TrustedDevicesSection"))
-        assertTrue("SettingsScreen must render TrustedDevicesDialog", screenContent.contains("TrustedDevicesDialog"))
-        assertTrue("SettingsScreen must allow revoking peer trust", screenContent.contains("onRevokePeer"))
+        assertTrue(settingsScreenFile.exists())
+        assertTrue(transferScreenFile.exists())
+        assertTrue(runtimeFile.exists())
+
+        val settingsContent = settingsScreenFile.readText()
+        assertTrue(
+            "Settings must render trusted devices management",
+            settingsContent.contains("TrustedDevicesDialog") &&
+                settingsContent.contains("onRevokePeer")
+        )
+        assertFalse(
+            "Hardened trust UI must not claim legacy PIN enrollment",
+            settingsContent.contains("mutual PIN", ignoreCase = true)
+        )
+
+        val transferContent = transferScreenFile.readText()
+        assertTrue(
+            "Transfer UI must ask for explicit trust approval",
+            transferContent.contains("Trust this device?") &&
+                transferContent.contains("Trust device")
+        )
+        assertTrue(
+            "Enrollment UI must state that trust does not auto-accept files",
+            transferContent.contains("does not automatically accept future file offers")
+        )
+
+        val runtimeContent = runtimeFile.readText()
+        assertTrue(
+            "Runtime must expose explicit approve/reject trust commands",
+            runtimeContent.contains("ApprovePeerEnrollment") &&
+                runtimeContent.contains("RejectPeerEnrollment")
+        )
+        assertTrue(
+            "Runtime must expose revocation through the trust manager",
+            runtimeContent.contains("revokeTrustedPeerNow")
+        )
 
         val uiState = dev.glide.app.ui.settings.SettingsUiState()
-        assertFalse("Trusted devices dialog must be closed by default", uiState.isTrustedDevicesDialogOpen)
-        assertTrue("Trusted peers list must default to empty", uiState.trustedPeers.isEmpty())
+        assertFalse(
+            "Trusted devices dialog must be closed by default",
+            uiState.isTrustedDevicesDialogOpen
+        )
+        assertTrue(
+            "Trusted peers list must default to empty",
+            uiState.trustedPeers.isEmpty()
+        )
 
-        // Ensure TrustedPeerDao is exposed on GlideDatabase
         val dbClass = dev.glide.data.db.GlideDatabase::class.java
         val method = dbClass.methods.find { it.name == "trustedPeerDao" }
-        assertNotNull("GlideDatabase must provide trustedPeerDao()", method)
+        assertNotNull(
+            "GlideDatabase must provide trustedPeerDao()",
+            method
+        )
     }
 }
 
-private class ComplianceResumableSessionDao : dev.glide.data.db.ResumableSessionDao {
-    private val sessions = mutableMapOf<String, dev.glide.data.db.ResumableSessionEntity>()
+private class ComplianceResumableSessionDao :
+    dev.glide.data.db.ResumableSessionDao {
 
-    override suspend fun insertOrUpdate(session: dev.glide.data.db.ResumableSessionEntity) {
-        sessions[session.sessionId] = session
-    }
+    private val sessions =
+        mutableMapOf<
+            Pair<String, String>,
+            dev.glide.data.db
+                .ResumableSessionEntity
+        >()
 
-    override suspend fun getBySessionId(sessionId: String): dev.glide.data.db.ResumableSessionEntity? {
-        return sessions[sessionId]
-    }
-
-    override suspend fun getAllResumableSessions(): List<dev.glide.data.db.ResumableSessionEntity> {
-        return sessions.values.toList()
-    }
-
-    override suspend fun updateVerifiedChunks(sessionId: String, verifiedChunks: Long) {
-        sessions[sessionId]?.let {
-            sessions[sessionId] = it.copy(verifiedChunks = verifiedChunks)
+    override suspend fun insertIfAbsent(
+        session:
+            dev.glide.data.db
+                .ResumableSessionEntity
+    ): Long {
+        val key =
+            session.originalSessionId to
+                session.itemId
+        if (sessions.containsKey(key)) {
+            return -1L
         }
+        sessions[key] = session
+        return 1L
     }
 
-    override suspend fun deleteBySessionId(sessionId: String) {
-        sessions.remove(sessionId)
+    override suspend fun get(
+        originalSessionId: String,
+        itemId: String
+    ): dev.glide.data.db
+        .ResumableSessionEntity? =
+        sessions[
+            originalSessionId to
+                itemId
+        ]
+
+    override suspend fun getAllResumableSessions():
+        List<
+            dev.glide.data.db
+                .ResumableSessionEntity
+        > =
+        sessions.values.toList()
+
+    override suspend fun compareAndAdvance(
+        originalSessionId: String,
+        itemId: String,
+        expectedVerifiedChunks: Long,
+        expectedContiguousByteOffset: Long,
+        newVerifiedChunks: Long,
+        newContiguousByteOffset: Long,
+        newVerifiedChunkHashesHex: String,
+        updatedAtMs: Long
+    ): Int {
+        val key =
+            originalSessionId to
+                itemId
+        val current =
+            sessions[key]
+                ?: return 0
+        if (current.verifiedChunks !=
+                expectedVerifiedChunks ||
+            current.contiguousByteOffset !=
+                expectedContiguousByteOffset
+        ) {
+            return 0
+        }
+
+        sessions[key] =
+            current.copy(
+                verifiedChunks =
+                    newVerifiedChunks,
+                contiguousByteOffset =
+                    newContiguousByteOffset,
+                verifiedChunkHashesHex =
+                    newVerifiedChunkHashesHex,
+                updatedAtMs =
+                    updatedAtMs
+            )
+        return 1
     }
 
-    override suspend fun deleteExpired(currentMs: Long): Int {
-        val expired = sessions.values.filter { it.expiresAtMs <= currentMs }
-        expired.forEach { sessions.remove(it.sessionId) }
-        return expired.size
+    override suspend fun rewindProgress(
+        originalSessionId: String,
+        itemId: String,
+        verifiedChunks: Long,
+        contiguousByteOffset: Long,
+        verifiedChunkHashesHex: String,
+        updatedAtMs: Long
+    ): Int {
+        val key =
+            originalSessionId to
+                itemId
+        val current =
+            sessions[key]
+                ?: return 0
+        if (current.verifiedChunks <
+                verifiedChunks ||
+            current.contiguousByteOffset <
+                contiguousByteOffset
+        ) {
+            return 0
+        }
+
+        sessions[key] =
+            current.copy(
+                verifiedChunks =
+                    verifiedChunks,
+                contiguousByteOffset =
+                    contiguousByteOffset,
+                verifiedChunkHashesHex =
+                    verifiedChunkHashesHex,
+                updatedAtMs =
+                    updatedAtMs
+            )
+        return 1
     }
 
-    override suspend fun getExpiredSessions(currentMs: Long): List<dev.glide.data.db.ResumableSessionEntity> {
-        return sessions.values.filter { it.expiresAtMs <= currentMs }
+    override suspend fun delete(
+        originalSessionId: String,
+        itemId: String
+    ) {
+        sessions.remove(
+            originalSessionId to
+                itemId
+        )
     }
 
-    override suspend fun getSessionCount(): Int = sessions.size
+    override suspend fun getExpiredSessions(
+        currentMs: Long
+    ): List<
+        dev.glide.data.db
+            .ResumableSessionEntity
+        > =
+        sessions.values.filter {
+            it.expiresAtMs <=
+                currentMs
+        }
+
+    override suspend fun deleteExpired(
+        currentMs: Long
+    ): Int {
+        val expiredKeys =
+            sessions
+                .filterValues {
+                    it.expiresAtMs <=
+                        currentMs
+                }
+                .keys
+                .toList()
+        expiredKeys.forEach {
+            sessions.remove(it)
+        }
+        return expiredKeys.size
+    }
+
+    override suspend fun getSessionCount():
+        Int =
+        sessions.size
 }
-

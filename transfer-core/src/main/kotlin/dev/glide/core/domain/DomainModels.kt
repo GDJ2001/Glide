@@ -76,13 +76,44 @@ data class TrustedPeerRecord(
     val lastSeenAtMs: Long
 ) {
     init {
-        require(peerFingerprintHex.length == 64) { "Fingerprint must be 64 hex characters (32 bytes)" }
-        require(publicKeyDerHex.isNotBlank()) { "Public key DER hex cannot be blank" }
-        require(displayName.isNotBlank() && displayName.length <= 64) {
-            "Display name must be between 1 and 64 characters"
+        require(
+            peerFingerprintHex.length == 64 &&
+                peerFingerprintHex.all {
+                    it in '0'..'9' ||
+                        it in 'a'..'f'
+                }
+        ) {
+            "Fingerprint must be exactly 64 lowercase hexadecimal characters"
         }
-        require(pairedAtMs > 0) { "pairedAtMs must be positive" }
-        require(lastSeenAtMs >= pairedAtMs) { "lastSeenAtMs must be >= pairedAtMs" }
+        require(
+            publicKeyDerHex.isNotEmpty() &&
+                publicKeyDerHex.length % 2 == 0 &&
+                publicKeyDerHex.length <= 4096 &&
+                publicKeyDerHex.all {
+                    it in '0'..'9' ||
+                        it in 'a'..'f'
+                }
+        ) {
+            "Public key DER must be non-empty canonical lowercase hexadecimal"
+        }
+        require(
+            displayName.isNotBlank() &&
+                displayName.codePointCount(
+                    0,
+                    displayName.length
+                ) in 1..64 &&
+                displayName
+                    .toByteArray(Charsets.UTF_8)
+                    .size <= 256
+        ) {
+            "Display name must be 1..64 code points and <= 256 UTF-8 bytes"
+        }
+        require(pairedAtMs > 0) {
+            "pairedAtMs must be positive"
+        }
+        require(lastSeenAtMs >= pairedAtMs) {
+            "lastSeenAtMs must be >= pairedAtMs"
+        }
     }
 }
 
@@ -105,7 +136,9 @@ data class TransferItem(
     val mimeType: String,
     val sizeBytes: Long,
     val digest: Sha256Digest? = null,
-    val relativePath: String? = null
+    val relativePath: String? = null,
+    val resumeChunkSize: Int? = null,
+    val resumeChunkRootHashHex: String? = null
 ) {
     init {
         require(name.isNotBlank() && name.codePointCount(0, name.length) <= ProtocolLimits.MAX_FILENAME_CODE_POINTS) {
@@ -123,6 +156,34 @@ data class TransferItem(
         if (relativePath != null) {
             require(relativePath.length <= ProtocolLimits.MAX_RELATIVE_PATH_LENGTH) {
                 "relativePath length (${relativePath.length}) exceeds maximum limit ${ProtocolLimits.MAX_RELATIVE_PATH_LENGTH}"
+            }
+        }
+        require(
+            (resumeChunkSize == null) ==
+                (resumeChunkRootHashHex == null)
+        ) {
+            "Resume offer metadata requires both chunk size and root hash"
+        }
+        if (resumeChunkSize != null &&
+            resumeChunkRootHashHex != null
+        ) {
+            require(sizeBytes > 0) {
+                "Zero-byte items cannot carry resume metadata"
+            }
+            require(
+                resumeChunkSize in
+                    1..16 * 1024 * 1024
+            ) {
+                "Resume chunk size must be in 1..16 MiB"
+            }
+            require(
+                resumeChunkRootHashHex.length == 64 &&
+                    resumeChunkRootHashHex.all {
+                        it in '0'..'9' ||
+                            it in 'a'..'f'
+                    }
+            ) {
+                "Resume chunk root must be canonical lowercase SHA-256"
             }
         }
     }

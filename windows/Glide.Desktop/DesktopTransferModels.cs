@@ -1,5 +1,6 @@
 using Glide.Core.Pairing;
 using Glide.Core.Storage;
+using Glide.Core.Security;
 
 namespace Glide.Desktop;
 
@@ -25,7 +26,8 @@ public sealed record DesktopOffer(
     string BatchId,
     string PeerName,
     IReadOnlyList<DesktopOfferItem> Items,
-    long TotalBytes);
+    long TotalBytes,
+    string? AuthenticatedPeerFingerprintHex = null);
 
 public sealed record DesktopTransferProgress(
     DesktopTransferDirection Direction,
@@ -68,14 +70,12 @@ public sealed record DesktopTransferResult(
 
 public interface IDesktopTransferInteraction
 {
-    Task<bool> ConfirmSasAsync(
-        DesktopTransferDirection direction,
-        string peerName,
-        int sixDigitCode,
-        CancellationToken cancellationToken);
-
     Task<bool> ConfirmOfferAsync(
         DesktopOffer offer,
+        CancellationToken cancellationToken);
+
+    Task<bool> ConfirmPeerEnrollmentAsync(
+        VerifiedDesktopPeerIdentity peer,
         CancellationToken cancellationToken);
 
     void OnInvitationConsumed(DesktopTransferDirection direction);
@@ -88,15 +88,13 @@ public interface IDesktopTransferInteraction
 
 public abstract class DesktopTransferInteractionBase : IDesktopTransferInteraction
 {
-    public virtual Task<bool> ConfirmSasAsync(
-        DesktopTransferDirection direction,
-        string peerName,
-        int sixDigitCode,
-        CancellationToken cancellationToken) => Task.FromResult(true);
-
     public virtual Task<bool> ConfirmOfferAsync(
         DesktopOffer offer,
         CancellationToken cancellationToken) => Task.FromResult(true);
+
+    public virtual Task<bool> ConfirmPeerEnrollmentAsync(
+        VerifiedDesktopPeerIdentity peer,
+        CancellationToken cancellationToken) => Task.FromResult(false);
 
     public virtual void OnInvitationConsumed(DesktopTransferDirection direction) { }
     public virtual void OnPeerIdentified(DesktopTransferDirection direction, string peerName) { }
@@ -112,10 +110,13 @@ public sealed record DesktopSendRequest(
     int Port,
     IReadOnlyList<DesktopTransferFile> Files,
     LanInvitation? Invitation = null,
-    string LocalDeviceName = "");
+    string LocalDeviceName = "",
+    DesktopPersistentTrustManager? TrustManager = null,
+    string? ExpectedPeerFingerprintHex = null);
 
 public sealed record DesktopReceiveRequest(
     QuarantineStagingStore StagingStore,
-    LanInvitation? Invitation = null,
-    bool AllowBootstrapWithoutInvitation = false,
-    string LocalDeviceName = "");
+    LanInvitationAuthority InvitationAuthority,
+    string LocalDeviceName = "",
+    DesktopPersistentTrustManager? TrustManager = null,
+    string? ExpectedPeerFingerprintHex = null);

@@ -19,8 +19,15 @@ class DatabaseSchemaVersionTest {
     companion object {
         private val schemaDir: File by lazy {
             val candidates = listOf(
-                File("schemas/dev.glide.data.db.GlideDatabase"),
-                File("../data/schemas/dev.glide.data.db.GlideDatabase")
+                File(
+                    "data/schemas/dev.glide.data.db.GlideDatabase"
+                ),
+                File(
+                    "schemas/dev.glide.data.db.GlideDatabase"
+                ),
+                File(
+                    "../data/schemas/dev.glide.data.db.GlideDatabase"
+                )
             )
             candidates.firstOrNull { it.exists() }
                 ?: error("Could not locate schema dir. Tried: " + candidates.map { it.canonicalPath })
@@ -124,8 +131,13 @@ class DatabaseSchemaVersionTest {
             ?: error("Schema directory is empty")
         val versionCount = jsonFiles.count { it.nameWithoutExtension.toIntOrNull() != null }
 
-        // GlideDatabase currently defines MIGRATION_1_2, MIGRATION_2_3, and MIGRATION_3_4
-        val declaredMigrations = listOf(GlideDatabase.MIGRATION_1_2, GlideDatabase.MIGRATION_2_3, GlideDatabase.MIGRATION_3_4)
+        val declaredMigrations =
+            listOf(
+                GlideDatabase.MIGRATION_1_2,
+                GlideDatabase.MIGRATION_2_3,
+                GlideDatabase.MIGRATION_3_4,
+                GlideDatabase.MIGRATION_4_5
+            )
         assertEquals(
             "Number of declared migrations (${declaredMigrations.size}) must equal (schema version count - 1 = ${versionCount - 1})",
             versionCount - 1, declaredMigrations.size
@@ -180,4 +192,60 @@ class DatabaseSchemaVersionTest {
         assertTrue("trusted_peers table missing from v4 schema", text.contains("\"tableName\": \"trusted_peers\""))
         assertTrue("resumable_sessions table missing from v4 schema", text.contains("\"tableName\": \"resumable_sessions\""))
     }
+    @Test
+    fun schema_version5_json_existsAndDeclaresVersion5() {
+        val text = readSchemaText(5)
+        assertTrue(
+            "Schema 5.json must have formatVersion 1",
+            text.contains("\"formatVersion\": 1")
+        )
+        assertTrue(
+            "Schema 5.json must declare version 5",
+            text.contains("\"version\": 5")
+        )
+    }
+
+    @Test
+    fun schema_version5_containsRoleAwareResumeAuthority() {
+        val text = readSchemaText(5)
+        val requiredColumns =
+            listOf(
+                "original_session_id",
+                "item_id",
+                "journal_role",
+                "peer_fingerprint",
+                "source_handle",
+                "source_identity",
+                "verified_chunks",
+                "contiguous_byte_offset",
+                "chunk_root_hash_hex",
+                "verified_chunk_hashes_hex",
+                "whole_file_sha256_hex",
+                "staging_path"
+            )
+        for (column in requiredColumns) {
+            assertTrue(
+                "v5 resumable journal must contain column $column",
+                text.contains(
+                    "\"columnName\": \"$column\""
+                )
+            )
+        }
+        assertTrue(
+            text.contains(
+                "\"name\": \"index_resumable_sessions_peer_fingerprint\""
+            )
+        )
+        assertTrue(
+            text.contains(
+                "\"name\": \"index_resumable_sessions_expires_at_ms\""
+            )
+        )
+        assertTrue(
+            text.contains(
+                "\"name\": \"index_resumable_sessions_updated_at_ms\""
+            )
+        )
+    }
+
 }

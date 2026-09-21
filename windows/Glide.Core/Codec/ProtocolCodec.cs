@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Glide.Core.Models;
+using Glide.Core.Security;
 
 namespace Glide.Core.Codec;
 
@@ -258,6 +259,9 @@ public static class ProtocolCodec
             case MessageTypes.ResumeRequest: ValidateResumeRequest(body); break;
             case MessageTypes.ResumeAccept: ValidateResumeAccept(body); break;
             case MessageTypes.ResumeReject: ValidateResumeReject(body); break;
+            case MessageTypes.ResumeStreamStart: ValidateResumeStreamStart(body); break;
+            case MessageTypes.ResumeStreamReady: ValidateResumeStreamReady(body); break;
+            case MessageTypes.ResumeResult: ValidateResumeResult(body); break;
         }
     }
 
@@ -435,7 +439,70 @@ public static class ProtocolCodec
                 throw new ProtocolViolationException(WireErrorCodes.MalformedMessage, $"Item mime is invalid: '{mime}'");
             }
 
-            RequireByteCount(itemObj, "sizeBytes", MaxItemBytes);
+            long itemSize =
+                RequireByteCount(
+                    itemObj,
+                    "sizeBytes",
+                    MaxItemBytes);
+
+            bool hasRoot =
+                itemObj.TryGetPropertyValue(
+                    "rootHash",
+                    out JsonNode? rootNode) &&
+                rootNode != null;
+            bool hasChunkSize =
+                itemObj.TryGetPropertyValue(
+                    "chunkSize",
+                    out JsonNode? chunkNode) &&
+                chunkNode != null;
+
+            if (hasRoot != hasChunkSize)
+            {
+                throw new ProtocolViolationException(
+                    WireErrorCodes.MalformedMessage,
+                    "OFFER_PAGE resume metadata requires both rootHash and chunkSize");
+            }
+
+            if (hasRoot)
+            {
+                if (rootNode is not JsonValue rootValue ||
+                    rootValue.GetValue<object>() is not string rootHash ||
+                    rootHash.Length != 64 ||
+                    rootHash.Any(
+                        ch =>
+                            !(ch is >= '0' and <= '9') &&
+                            !(ch is >= 'a' and <= 'f')))
+                {
+                    throw new ProtocolViolationException(
+                        WireErrorCodes.MalformedMessage,
+                        "OFFER_PAGE rootHash must be canonical lowercase SHA-256");
+                }
+
+                if (chunkNode is not JsonValue chunkValue ||
+                    chunkValue.GetValue<object>() is string ||
+                    !int.TryParse(
+                        chunkValue.ToString(),
+                        out int chunkSize))
+                {
+                    throw new ProtocolViolationException(
+                        WireErrorCodes.MalformedMessage,
+                        "OFFER_PAGE chunkSize must be an integer");
+                }
+
+                if (chunkSize is < 1 or > 16 * 1024 * 1024)
+                {
+                    throw new ProtocolViolationException(
+                        WireErrorCodes.LimitExceeded,
+                        "OFFER_PAGE chunkSize must be in 1..16 MiB");
+                }
+
+                if (itemSize == 0)
+                {
+                    throw new ProtocolViolationException(
+                        WireErrorCodes.MalformedMessage,
+                        "Zero-byte item cannot carry resume metadata");
+                }
+            }
 
             if (itemObj.TryGetPropertyValue("relativePath", out var relElem) && relElem != null)
             {
@@ -598,52 +665,324 @@ public static class ProtocolCodec
 
     private static void ValidateIdentityChallenge(JsonObject body)
     {
-        string nonce = RequireString(body, "nonceHex");
-        if (nonce.Length != 64 || !nonce.All(Uri.IsHexDigit))
+        RequireProfile(body, IdentityResumeTranscript.IdentityProfile);
+        RequireLowerHex64(body, "challengeNonceHex");
+        RequireLowerHex64(body, "verifierFingerprintHex");
+
+        string verifierRole = RequireRole(body, "verifierRole");
+        string signerRole = RequireRole(body, "signerRole");
+        if (string.Equals(verifierRole, signerRole, StringComparison.Ordinal))
         {
-            throw new ProtocolViolationException(WireErrorCodes.MalformedMessage, "nonceHex must be 64-char hex string");
+            throw new ProtocolViolationException(
+                WireErrorCodes.MalformedMessage,
+                "IDENTITY_CHALLENGE roles must be opposite");
         }
+
+        RequireLowerHex64(body, "channelBindingHex");
+        RequireLowerHex64(body, "capabilityHashHex");
     }
 
     private static void ValidateIdentityResponse(JsonObject body)
     {
-        string sig = RequireString(body, "signatureHex");
-        if (string.IsNullOrWhiteSpace(sig)) throw new ProtocolViolationException(WireErrorCodes.MalformedMessage, "signatureHex cannot be blank");
-        string key = RequireString(body, "publicKeyDerHex");
-        if (string.IsNullOrWhiteSpace(key)) throw new ProtocolViolationException(WireErrorCodes.MalformedMessage, "publicKeyDerHex cannot be blank");
+        RequireProfile(body, IdentityResumeTranscript.IdentityProfile);
+        RequireUuid(body, "challengeMessageId");
+        RequireLowerHex64(body, "challengeNonceHex");
+        RequireLowerHex64(body, "signerFingerprintHex");
+        RequireEvenLowerHex(body, "publicKeyDerHex", 4096);
+        RequireEvenLowerHex(body, "signatureHex", 1024);
     }
 
     private static void ValidateResumeRequest(JsonObject body)
     {
-        RequireString(body, "sessionId");
-        RequireString(body, "itemId");
-        RequireLong(body, "verifiedChunkCount", min: 0);
-        RequireLong(body, "contiguousByteOffset", min: 0);
-        string root = RequireString(body, "chunkRootHashHex");
-        if (root.Length != 64) throw new ProtocolViolationException(WireErrorCodes.MalformedMessage, "chunkRootHashHex must be 64-char hex string");
-        string nonce = RequireString(body, "sessionNonceHex");
-        if (nonce.Length != 64) throw new ProtocolViolationException(WireErrorCodes.MalformedMessage, "sessionNonceHex must be 64-char hex string");
-        string sig = RequireString(body, "signatureHex");
-        if (string.IsNullOrWhiteSpace(sig)) throw new ProtocolViolationException(WireErrorCodes.MalformedMessage, "signatureHex cannot be blank");
+        RequireProfile(body, IdentityResumeTranscript.ResumeProfile);
+        RequireUuid(body, "originalSessionId");
+        RequireUuid(body, "itemId");
+        RequireLowerHex64(body, "requesterFingerprintHex");
+        RequireLowerHex64(body, "responderFingerprintHex");
+
+        string requesterRole = RequireRole(body, "requesterRole");
+        string responderRole = RequireRole(body, "responderRole");
+        if (requesterRole != "receiver" || responderRole != "sender")
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.MalformedMessage,
+                "RESUME_REQUEST must be receiver -> sender");
+        }
+
+        long verifiedChunkCount =
+            RequireLong(body, "verifiedChunkCount", min: 0);
+        long contiguousByteOffset =
+            RequireByteCount(body, "contiguousByteOffset", MaxItemBytes);
+
+        if (!body.TryGetPropertyValue("chunkSize", out JsonNode? chunkSizeElement) ||
+            chunkSizeElement is not JsonValue chunkSizeValue ||
+            chunkSizeValue.GetValue<object>() is string ||
+            !int.TryParse(chunkSizeValue.ToString(), out int chunkSize))
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.MalformedMessage,
+                "RESUME_REQUEST 'chunkSize' must be an integer");
+        }
+
+        if (chunkSize is < 1 or > 16_777_216)
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.LimitExceeded,
+                "RESUME_REQUEST 'chunkSize' must be in 1..16777216");
+        }
+
+        long totalSizeBytes =
+            RequireByteCount(body, "totalSizeBytes", MaxItemBytes);
+        if (contiguousByteOffset > totalSizeBytes)
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.MalformedMessage,
+                "RESUME_REQUEST offset exceeds totalSizeBytes");
+        }
+
+        if (contiguousByteOffset % chunkSize != 0 &&
+            contiguousByteOffset != totalSizeBytes)
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.MalformedMessage,
+                "RESUME_REQUEST offset is not chunk-aligned");
+        }
+
+        long expectedChunkCount =
+            contiguousByteOffset == totalSizeBytes &&
+            totalSizeBytes % chunkSize != 0
+                ? checked((totalSizeBytes + chunkSize - 1L) / chunkSize)
+                : contiguousByteOffset / chunkSize;
+
+        if (verifiedChunkCount != expectedChunkCount)
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.MalformedMessage,
+                "RESUME_REQUEST verifiedChunkCount does not match offset/chunkSize");
+        }
+
+        RequireLowerHex64(body, "chunkRootHashHex");
+        RequireLowerHex64(body, "sessionNonceHex");
+        RequireLowerHex64(body, "channelBindingHex");
+        RequireLowerHex64(body, "capabilityHashHex");
+        RequireEvenLowerHex(body, "signatureHex", 1024);
     }
 
     private static void ValidateResumeAccept(JsonObject body)
     {
-        RequireString(body, "sessionId");
-        RequireString(body, "itemId");
+        RequireProfile(body, IdentityResumeTranscript.ResumeProfile);
+        RequireUuid(body, "requestMessageId");
+        RequireUuid(body, "originalSessionId");
+        RequireUuid(body, "itemId");
         RequireLong(body, "startChunkIndex", min: 0);
-        RequireLong(body, "startByteOffset", min: 0);
+        RequireByteCount(body, "startByteOffset", MaxItemBytes);
     }
 
     private static void ValidateResumeReject(JsonObject body)
     {
-        RequireString(body, "sessionId");
-        RequireString(body, "itemId");
-        string reason = RequireString(body, "reason");
-        if (string.IsNullOrWhiteSpace(reason) || reason.Length > 256)
+        RequireProfile(body, IdentityResumeTranscript.ResumeProfile);
+        RequireUuid(body, "requestMessageId");
+        RequireUuid(body, "originalSessionId");
+        RequireUuid(body, "itemId");
+
+        string code = RequireString(body, "code");
+        if (!ResumeRejectCodes.All.Contains(code))
         {
-            throw new ProtocolViolationException(WireErrorCodes.MalformedMessage, "reason must be 1..256 characters");
+            throw new ProtocolViolationException(
+                WireErrorCodes.MalformedMessage,
+                $"Unknown RESUME_REJECT code '{code}'");
         }
+    }
+
+    private static void ValidateResumeStreamStart(JsonObject body)
+    {
+        RequireProfile(body, IdentityResumeTranscript.ResumeProfile);
+        RequireUuid(body, "requestMessageId");
+        RequireUuid(body, "originalSessionId");
+        RequireUuid(body, "itemId");
+
+        string bulkRef = RequireString(body, "bulkRef");
+        if (string.IsNullOrWhiteSpace(bulkRef) || bulkRef.Length > 64)
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.MalformedMessage,
+                "RESUME_STREAM_START 'bulkRef' must be 1..64 characters");
+        }
+
+        long startChunkIndex =
+            RequireLong(body, "startChunkIndex", min: 0);
+        long startByteOffset =
+            RequireByteCount(body, "startByteOffset", MaxItemBytes);
+        long remainingBytes =
+            RequireByteCount(body, "remainingBytes", MaxItemBytes);
+
+        if (!body.TryGetPropertyValue("chunkSize", out JsonNode? chunkSizeElement) ||
+            chunkSizeElement is not JsonValue chunkSizeValue ||
+            chunkSizeValue.GetValue<object>() is string ||
+            !int.TryParse(chunkSizeValue.ToString(), out int chunkSize))
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.MalformedMessage,
+                "RESUME_STREAM_START 'chunkSize' must be an integer");
+        }
+        if (chunkSize is < 1 or > 16_777_216)
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.LimitExceeded,
+                "RESUME_STREAM_START 'chunkSize' must be in 1..16777216");
+        }
+
+        long totalSizeBytes =
+            RequireByteCount(body, "totalSizeBytes", MaxItemBytes);
+        if (startByteOffset > totalSizeBytes)
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.MalformedMessage,
+                "RESUME_STREAM_START offset exceeds totalSizeBytes");
+        }
+        if (remainingBytes != totalSizeBytes - startByteOffset)
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.MalformedMessage,
+                "RESUME_STREAM_START remainingBytes does not equal totalSizeBytes-startByteOffset");
+        }
+        if (remainingBytes <= 0)
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.MalformedMessage,
+                "RESUME_STREAM_START requires positive remainingBytes");
+        }
+        if (startByteOffset % chunkSize != 0)
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.MalformedMessage,
+                "RESUME_STREAM_START offset must be chunk-aligned");
+        }
+        if (startChunkIndex != startByteOffset / chunkSize)
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.MalformedMessage,
+                "RESUME_STREAM_START startChunkIndex does not match offset/chunkSize");
+        }
+
+        RequireLowerHex64(body, "chunkRootHashHex");
+        RequireLowerHex64(body, "wholeFileSha256Hex");
+    }
+
+    private static void ValidateResumeStreamReady(JsonObject body)
+    {
+        RequireProfile(body, IdentityResumeTranscript.ResumeProfile);
+        RequireUuid(body, "requestMessageId");
+        RequireUuid(body, "originalSessionId");
+        RequireUuid(body, "itemId");
+        string bulkRef = RequireString(body, "bulkRef");
+        if (string.IsNullOrWhiteSpace(bulkRef) || bulkRef.Length > 64)
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.MalformedMessage,
+                "RESUME_STREAM_READY 'bulkRef' must be 1..64 characters");
+        }
+    }
+
+    private static void ValidateResumeResult(JsonObject body)
+    {
+        RequireProfile(body, IdentityResumeTranscript.ResumeProfile);
+        RequireUuid(body, "requestMessageId");
+        RequireUuid(body, "originalSessionId");
+        RequireUuid(body, "itemId");
+
+        string status = RequireString(body, "status");
+        if (status == "verified")
+        {
+            RequireByteCount(body, "sizeBytes", MaxItemBytes);
+            RequireLowerHex64(body, "sha256");
+            if (body.ContainsKey("code"))
+            {
+                throw new ProtocolViolationException(
+                    WireErrorCodes.MalformedMessage,
+                    "RESUME_RESULT verified must not contain 'code'");
+            }
+        }
+        else if (status == "failed")
+        {
+            string code = RequireString(body, "code");
+            if (!WireErrorCodes.All.Contains(code))
+            {
+                throw new ProtocolViolationException(
+                    WireErrorCodes.MalformedMessage,
+                    $"RESUME_RESULT failed has unknown code '{code}'");
+            }
+            if (body.ContainsKey("sizeBytes") || body.ContainsKey("sha256"))
+            {
+                throw new ProtocolViolationException(
+                    WireErrorCodes.MalformedMessage,
+                    "RESUME_RESULT failed must not contain sizeBytes or sha256");
+            }
+        }
+        else
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.MalformedMessage,
+                $"RESUME_RESULT status must be 'verified' or 'failed', got: '{status}'");
+        }
+    }
+
+    private static void RequireProfile(JsonObject body, string expected)
+    {
+        string profile = RequireString(body, "profile");
+        if (!string.Equals(profile, expected, StringComparison.Ordinal))
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.UnsupportedProtocol,
+                $"Unsupported extension profile '{profile}', expected '{expected}'");
+        }
+    }
+
+    private static string RequireRole(JsonObject body, string key)
+    {
+        string role = RequireString(body, key);
+        if (role is not ("sender" or "receiver"))
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.MalformedMessage,
+                $"{key} must be 'sender' or 'receiver'");
+        }
+        return role;
+    }
+
+    private static string RequireLowerHex64(JsonObject body, string key)
+    {
+        string value = RequireString(body, key);
+        if (value.Length != 64 ||
+            value.Any(static ch =>
+                ch is not (>= '0' and <= '9') &&
+                ch is not (>= 'a' and <= 'f')))
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.MalformedMessage,
+                $"{key} must be exactly 64 lowercase hexadecimal characters");
+        }
+        return value;
+    }
+
+    private static string RequireEvenLowerHex(
+        JsonObject body,
+        string key,
+        int maxChars)
+    {
+        string value = RequireString(body, key);
+        if (value.Length == 0 ||
+            value.Length > maxChars ||
+            value.Length % 2 != 0 ||
+            value.Any(static ch =>
+                ch is not (>= '0' and <= '9') &&
+                ch is not (>= 'a' and <= 'f')))
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.MalformedMessage,
+                $"{key} must be non-empty even-length lowercase hexadecimal (max {maxChars} chars)");
+        }
+        return value;
     }
 
     private static long RequireLong(JsonObject obj, string key, long min = 0)

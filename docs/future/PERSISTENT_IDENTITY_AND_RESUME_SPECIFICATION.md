@@ -1,156 +1,487 @@
 # Persistent Identity & True Resume Extension Specification
 
-**Document Status:** Implemented / Milestone M13 Extension (GLIDE-070)  
-**Authority:** [ADR-0015](../adr/ADR-0015-persistent-identity-and-true-resume.md) | [Threat Model](../security/GLIDE_THREAT_MODEL.md) | [Cross-Platform Path](CROSS_PLATFORM_PATH.md)  
-**Milestone:** M13 — Future work (outside V1)  
-**Task:** GLIDE-070  
-**Version:** `1.0.0-implemented`  
+**Document status:** HARD-018 protocol specification — implementation prepared, executable/cross-platform review still required.  
+**Profiles:** `identity-v1`, `resume-v1`  
+**Authority:** [ADR-0015](../adr/ADR-0015-persistent-identity-and-true-resume.md) | [HARD task ledger](../TODO_MASTER.md) | [Threat model](../security/GLIDE_THREAT_MODEL.md)  
+**Hardening task:** HARD-018  
+**Important:** This document specifies the extension. It does **not** certify HARD-019–024 runtime integration or physical interoperability.
 
 ---
 
-## 1. Executive Summary & Objectives
+## 1. Security objective
 
-This specification defines the cryptographic persistent peer identity and chunk-verified true resume extension for **Glide**. In Glide V1, every transfer session establishes an ephemeral cryptographic key exchange requiring users to visually compare and accept a 6-digit Short Authentication String (SAS). While this design guarantees zero inter-session tracking, it introduces operational friction for repeated transfers between a user's own devices (e.g. phone to tablet) or trusted collaborators. Furthermore, an abrupt radio link loss during multi-gigabyte transfers requires restarting the transfer from byte zero.
+Persistent trust must prove that the same enrolled cryptographic peer is participating in the **current authenticated connection**, in the expected role, with the expected negotiated features. True resume must additionally prove exactly which verified source/item prefix may be retained.
 
-This extension introduces:
-1. **Hardware-Backed Persistent Identity:** Secure device key pairs generated inside Android Keystore (`PURPOSE_SIGN | PURPOSE_VERIFY`), eliminating manual SAS prompts for paired peers.
-2. **True Cryptographic Resume:** Rejection of naive "offset-only" resume in favor of chunk-level SHA-256 Merkle digest verification, preventing silent data corruption, byte splicing, and file substitution attacks.
-3. **Replay & Impersonation Defense:** Mutual ephemeral nonce challenge-response signatures binding resume tokens to active transport sessions.
-4. **Governed Retained-Partial Lifecycle:** Sandboxed staging with strict 24-hour expiration (TTL), storage pressure auto-evacuation, and zero unverified byte exposure to public storage.
+The following are never sufficient authority by themselves:
 
----
+- display/device name;
+- DNS-SD discovery metadata;
+- a stored fingerprint without proof of possession;
+- a signature over only a random nonce;
+- a byte offset without a verified contiguous chunk journal;
+- an old session signature replayed onto a new channel.
 
-## 2. Cryptographic Persistent Identity Architecture
-
-```
-                       TRUST-ON-FIRST-USE (TOFU) LIFECYCLE
-┌────────────────────────┐                               ┌────────────────────────┐
-│     Sender Device      │                               │    Receiver Device     │
-│  (Keystore Key Pair)   │                               │  (Keystore Key Pair)   │
-└───────────┬────────────┘                               └───────────┬────────────┘
-            │                                                        │
-            │ 1. Advertise Identity Fingerprint & Ephemeral PubKey   │
-            ├───────────────────────────────────────────────────────►│
-            │                                                        │
-            │ 2. Manual Mutual 6-Digit SAS Confirmation (First Time) │
-            │◄──────────────────────────────────────────────────────►│
-            │                                                        │
-            │ 3. Pin Peer Identity in Local Encrypted Store          │
-            │    (Store Peer Fingerprint, PubKey, Name, Timestamp)   │
-            │                                                        │
-            │─── SUBSEQUENT SESSIONS: CHALLENGE-RESPONSE AUTH ───────│
-            │                                                        │
-            │ 4. Issue Random Challenge Nonce (32 bytes)             │
-            ├───────────────────────────────────────────────────────►│
-            │ 5. Return Keystore Signature of Nonce                  │
-            │◄───────────────────────────────────────────────────────┤
-            │ 6. Verify Signature against Pinned Public Key          │
-            │    ==> Seamless Authenticated Transfer Granted         │
-            ▼                                                        ▼
-```
-
-### A. Android Keystore Hardware Isolation
-- **Key Generation:** Keys are generated via Android Keystore:
-  ```kotlin
-  val keyGenParameterSpec = KeyGenParameterSpec.Builder(
-      "glide_device_identity",
-      KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY
-  ).apply {
-      setDigests(KeyProperties.DIGEST_SHA256)
-      setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
-      setUserAuthenticationRequired(false) // Background transport availability
-      setIsStrongBoxBacked(true) // StrongBox hardware HSM where available
-  }.build()
-  ```
-- **Private Key Sanctity:** Private keys never leave the secure hardware enclave (TEE/StrongBox) and cannot be dumped from user memory.
-- **Identity Fingerprint:** Each device derives a permanent 32-byte hexadecimal fingerprint from the SHA-256 hash of its encoded public key (`SHA-256(PublicKey.encoded)`).
-
-### B. Trust-On-First-Use (TOFU) Pairing Flow
-1. **Initial Pairing (Session 1):**
-   - Sender and receiver exchange their permanent public keys during initial connection.
-   - Users are presented with the mandatory 6-digit mutual SAS confirmation dialog.
-   - Upon explicit acceptance, both devices persist the peer's `(fingerprint, publicKey, displayName, pairedAt)` in a local Room `trusted_peers` table.
-2. **Subsequent Connections (Session 2+):**
-   - The devices exchange ephemeral 32-byte nonces ($N_s$ and $N_r$).
-   - Each peer signs the partner's nonce using its Keystore private key.
-   - If the cryptographic signatures match the pinned public keys, the connection is marked **Authenticated** without interrupting the user with manual SAS prompts.
-3. **Key Mismatch / MITM Alert:**
-   - If an advertised identity fingerprint matches a known peer but presents a modified public key, the connection is instantly aborted with an emergency `IdentityMismatchException`.
-   - The UI alerts the user: *"Security Warning: Trusted device identity has changed. Possible impersonation attempt."*
+The native first-use pairing authority remains the current QR/pinned secure-channel + one-use invitation flow. Persistent enrollment is an explicit additional user decision inside that authenticated session.
 
 ---
 
-## 3. True Resume Protocol Architecture
+## 2. Cryptographic profile
 
-### A. The "Offset-Only" Vulnerability
-A naive resume protocol accepts a request to `resume_from_offset = X`. If an attacker truncates, substitutes, or modifies the sender's file, or if the sender edited the file between sessions, the receiver will append new bytes onto an incompatible base, resulting in corrupted files, invalid checksums, or malicious code injection.
+### 2.1 Identity key
 
-### B. Merkle Chunk-Digest Tree Verification
-To guarantee file integrity, Glide mandates **True Resume**:
-1. **Chunk Digest Manifest:**
-   - The file is divided into uniform chunks (default $1\text{ MB}$ for multi-GB transfers, or $64\text{ KB}$ for standard transfers).
-   - The sender generates a chunk digest list: $H_0, H_1, \dots, H_{n-1}$, where $H_i = \text{SHA-256}(\text{Chunk}_i)$.
-   - A Merkle root hash $H_{\text{root}} = \text{MerkleTree}(H_0, \dots, H_{n-1})$ is included in the initial offer manifest.
-2. **Receiver Chunk Journal:**
-   - As chunks arrive in internal staging (`cacheDir/staging/resumable/<session_id>/`), the receiver verifies each chunk against $H_i$ before writing it to disk.
-   - The receiver commits verified chunk indexes into an atomic disk journal (`resume_journal`).
-3. **Resume Request Negotiation:**
-   Upon reconnecting, the receiver issues a signed `ResumeRequest`:
-   - `sessionId`: Original transfer UUID.
-   - `fileId`: Target file UUID.
-   - `verifiedChunkCount`: Number of verified contiguous chunks ($K$).
-   - `contiguousByteOffset`: Verified byte offset ($K \times \text{ChunkSize}$).
-   - `chunkRootHash`: Expected root hash ($H_{\text{root}}$).
-   - `sessionNonce`: Fresh 32-byte nonce binding the request to the active socket.
-   - `signature`: Keystore signature over the serialized resume parameters.
-4. **Sender Verification & Resumption:**
-   - The sender verifies the signature using the receiver's pinned public key.
-   - The sender verifies that its current file still yields the identical $H_{\text{root}}$.
-   - The sender verifies that `contiguousByteOffset` aligns with chunk boundary $K$.
-   - The sender skips chunks $0$ through $K-1$ and begins transmitting from chunk $K$.
+Each persistent device identity is a P-256 ECDSA key pair.
 
----
+- Signature algorithm: **SHA-256 with ECDSA**.
+- Public-key representation: X.509 SubjectPublicKeyInfo DER.
+- Fingerprint: `SHA-256(publicKeyDer)`, exactly 64 lowercase hexadecimal characters.
+- Signature representation on the wire: DER ECDSA signature bytes encoded as lowercase hexadecimal.
+- Private keys must be protected by platform-appropriate secure storage and must not be exported by Glide.
 
-## 4. Retained-Partial File Lifecycle & Garbage Collection
+Android uses Android Keystore. Windows/Linux storage selection and lifecycle are HARD-020.
 
-To prevent unverified partial files from accumulating and exhausting device storage, strict retention governance is enforced:
+### 2.2 Channel binding
 
-| Lifecycle Phase | Rule / Threshold | Description |
-|:---|:---:|:---|
-| **Staging Isolation** | Sandboxed internal cache | Chunks written to `cacheDir/staging/resumable/<session_id>/`. Never written to public storage until 100% verified. |
-| **Expiration (TTL)** | $\mathbf{24\text{ hours}}$ | Disrupted partial transfers expire after 24 hours. The cleanup worker automatically purges expired folders. |
-| **Storage Pressure Clean** | Space $< 10\%$ or $< 1\text{ GB}$ | If device storage runs critically low, resumable staging is evicted on a FIFO (First-In, First-Out) basis. |
-| **Explicit User Purge** | Immediate | If user cancels transfer or declines resumption, all associated staging chunks and journals are immediately deleted. |
-| **Public Commit** | Atomic two-stage | Only after the final chunk verifies and the whole-file SHA-256 matches is the file promoted to public storage. |
+Every `identity-v1` or `resume-v1` signature contains a **32-byte binding to the active secure channel**, represented as 64 lowercase hexadecimal characters.
 
-In strict accordance with Glide's **User Data Sanctity** invariant, unverified or in-flight partial bytes remain fully isolated within `cacheDir/staging/resumable/` and are never exposed to public user directories.
+For native TLS LAN sessions, HARD-021 defines the binding as:
 
+- scheme: `tls-server-spki-sha256-v1`;
+- value: the 32-byte SHA-256 fingerprint of the TLS server certificate SubjectPublicKeyInfo actually used by the active pinned TLS connection;
+- no synthetic fallback.
+
+The signature transcript also binds the fresh active session/challenge and negotiated capabilities. A proof therefore cannot be transplanted to another pinned TLS server identity or another session.
+
+If the active transport cannot expose a trustworthy authenticated server-SPKI binding, `identity-v1` and `resume-v1` are unavailable on that transport.
+
+### 2.3 Freshness
+
+Each identity challenge contains a fresh random 32-byte challenge nonce. Resume requests contain a fresh 32-byte reconnect-session nonce. Replay on a different session/channel changes the signed transcript and fails verification.
 
 ---
 
-## 5. Threat Model Analysis & Invariants
+## 3. Capability negotiation and downgrade rules
 
-| Threat ID | Threat Category | Attack Vector / Mechanism | Mitigation Strategy |
-|:---|:---|:---|:---|
-| **T01** | Identity Spoofing | Rogue device broadcasts a trusted peer's device name. | Name is never used for trust; only cryptographic signatures from Android Keystore keys are accepted. |
-| **T02** | Replay Attack | Attacker captures a valid `ResumeRequest` and replays it later. | Mutual ephemeral 32-byte nonces ($N_s, N_r$) ensure each resume token is valid only for the active live socket. |
-| **T03** | Offset Tampering | Attacker tampers with `contiguousByteOffset` to skip data. | Offset must strictly align with chunk index and chunk hash journal; out-of-bounds offsets are rejected. |
-| **T04** | File Substitution | Sender replaces file between disconnect and resume. | Merkle root hash $H_{\text{root}}$ must match exactly; any file modification causes resumption rejection. |
-| **T05** | Private Key Theft | Malware on device attempts to steal persistent identity key. | Android Keystore with hardware TEE/StrongBox isolation; private keys are non-exportable. |
-| **T06** | Disk Exhaustion | Attacker initiates transfers, disconnects, and leaves partial files. | Strict 24-hour TTL; storage pressure auto-purge; max concurrent resumable sessions capped at 5. |
-| **T07** | Partial File Exposure | User browses Downloads folder and finds corrupt partial files. | Partial files remain isolated in internal `cacheDir/staging/resumable/`; zero bytes touch public storage. |
-| **T08** | Downgrade Attack | Malicious peer requests legacy non-resumable mode to bypass checks. | Pinned trusted peers enforce negotiated capabilities; unexpected downgrades alert the user. |
+Known capabilities:
+
+- `stream-v1`
+- `sha256`
+- `folder-v1`
+- `identity-v1`
+- `resume-v1`
+
+Rules:
+
+1. `resume-v1` requires `identity-v1`.
+2. A HELLO_ACK may select only capabilities offered by HELLO.
+3. `identity-v1` is advertised dynamically only when the active native LAN session has persistent identity authority plus the authenticated server-SPKI/BOOTSTRAP channel context required by HARD-021. `resume-v1` remains disabled until durable resume storage is implemented.
+4. A trusted policy that requires identity/resume must fail closed if a peer attempts to downgrade the required capability set.
+5. Capability comparison is performed over a deterministic hash described below.
+
+### 3.1 Capability hash
+
+Canonical capability bytes are:
+
+1. ASCII `GLIDE-CAPS-V1`;
+2. one NUL byte;
+3. unsigned 32-bit big-endian count;
+4. sorted, distinct capability strings, each encoded as:
+   - unsigned 32-bit big-endian UTF-8 byte length;
+   - exact UTF-8 bytes.
+
+Only lowercase ASCII capability tokens matching `[a-z0-9][a-z0-9-]{0,63}` are accepted.
+
+`capabilityHashHex = lowercase_hex(SHA-256(canonicalCapabilityBytes))`.
 
 ---
 
-## 6. Capability Flags & Protocol Envelopes
+## 4. Canonical signature transcript
 
-- **`CAP_PERSISTENT_IDENTITY`**: `0x00000002` (Bit 1)
-- **`CAP_TRUE_RESUME`**: `0x00000004` (Bit 2)
+Protocol JSON is validated strictly but **JSON serialization is never signed**. Kotlin and .NET sign identical binary transcript bytes.
 
-### New Control Envelopes for V2 Phase
-- `0x09` `IDENTITY_CHALLENGE`: Contains 32-byte challenge nonce.
-- `0x0A` `IDENTITY_RESPONSE`: Contains Keystore digital signature.
-- `0x0B` `RESUME_REQUEST`: Contains verified chunk offset, root hash, session nonce, and signature.
-- `0x0C` `RESUME_ACCEPT`: Sender acknowledges resumption start from chunk index $K$.
-- `0x0D` `RESUME_REJECT`: Sender rejects resumption (file changed, invalid offset, or expired).
+All strings below use unsigned 32-bit big-endian UTF-8 length + exact UTF-8 bytes.
+
+Common prefix:
+
+1. ASCII `GLIDE-SIGN-V1`;
+2. NUL;
+3. one-byte purpose:
+   - `0x01` = identity proof;
+   - `0x02` = resume request.
+
+### 4.1 Identity proof transcript
+
+After the common prefix:
+
+1. `"identity-v1"`
+2. `"tls-server-spki-sha256-v1"`
+3. active session UUID
+4. challenge message UUID
+5. signer role
+6. verifier role
+7. signer identity fingerprint
+8. verifier identity fingerprint
+9. fresh challenge nonce
+10. active channel binding
+11. negotiated capability hash
+
+Roles are exactly `sender` or `receiver` and must be opposite.
+
+### 4.2 Resume request transcript
+
+After the common prefix:
+
+1. `"resume-v1"`
+2. `"tls-server-spki-sha256-v1"`
+3. active reconnect session UUID
+4. original transfer session UUID
+5. item UUID
+6. requester role (`receiver`)
+7. responder role (`sender`)
+8. requester fingerprint
+9. responder fingerprint
+10. fresh reconnect-session nonce
+11. active channel binding
+12. negotiated capability hash
+13. chunk size as unsigned 32-bit big-endian
+14. total size as unsigned 64-bit big-endian
+15. verified contiguous chunk count as unsigned 64-bit big-endian
+16. contiguous verified byte offset as unsigned 64-bit big-endian
+17. chunk-root hash
+
+The verified chunk count must be exactly derivable from the offset/chunk size, allowing the final partial chunk only when the offset equals the complete source size.
+
+Shared vectors: `protocol/fixtures/identity_resume_v1_vectors.json`.
+
+---
+
+## 5. Identity control messages
+
+All controls remain normal Glide protocol-v1 envelopes. Their envelope `sessionId` is the **active** session.
+
+### 5.1 `IDENTITY_CHALLENGE`
+
+Body:
+
+- `profile`: exactly `identity-v1`
+- `challengeNonceHex`: 32-byte fresh nonce
+- `verifierFingerprintHex`
+- `verifierRole`
+- `signerRole`
+- `channelBindingHex`
+- `capabilityHashHex`
+
+The signer must verify that the challenge values match the active session context before signing.
+
+### 5.2 `IDENTITY_RESPONSE`
+
+Body:
+
+- `profile`: exactly `identity-v1`
+- `challengeMessageId`: exact message ID of the challenge
+- `challengeNonceHex`: exact nonce from the challenge
+- `signerFingerprintHex`
+- `publicKeyDerHex`
+- `signatureHex`
+
+The verifier:
+
+1. checks `challengeMessageId` and nonce correlation;
+2. recomputes the fingerprint from `publicKeyDerHex`;
+3. compares the key/fingerprint to the enrolled record when one exists;
+4. reconstructs the identity transcript from local active-session state;
+5. verifies the ECDSA signature;
+6. rejects any session/role/capability/channel/key mismatch.
+
+For first-use enrollment, the proof of possession succeeds before the user is asked whether to persist trust. Trust is never created solely by receiving this response.
+
+---
+
+## 6. Enrollment lifecycle
+
+### 6.1 First use
+
+1. Establish the current one-use invitation-authenticated native channel.
+2. Exchange persistent public keys/fingerprints inside that channel.
+3. Execute channel-bound identity proofs in both required directions.
+4. Present the peer identity to the user.
+5. Persist the peer key only after explicit **Trust/Enroll** authorization.
+
+The temporary invitation token is not persisted as a trust credential.
+
+### 6.2 Trusted reconnect
+
+1. Negotiate `identity-v1`.
+2. Require a fresh challenge and active channel binding.
+3. Verify the proof against the pinned enrolled key.
+4. If the key changed, proof fails, or the capability policy downgraded, abort the trusted session.
+5. A trusted device still does **not** automatically authorize arbitrary file offers unless a separate headless policy explicitly permits that peer/destination/size combination.
+
+Revocation immediately removes future trusted-session authority.
+
+---
+
+## 7. True resume data model
+
+Offset-only resume is prohibited.
+
+### 7.0 Initial offer metadata
+
+When and only when `resume-v1` is negotiated for the active authenticated session, a resumable
+`OFFER_PAGE.items[]` entry carries these two optional fields as an inseparable pair:
+
+- `rootHash`: canonical 64-character lowercase SHA-256 chunk-root hash;
+- `chunkSize`: integer in `1..16 MiB`.
+
+Both fields must be present or both absent. A zero-byte item cannot carry resume metadata. A peer
+must reject resume metadata if `resume-v1` was not negotiated.
+
+The sender derives these values from a bounded source preflight pass before the offer and persists
+the source handle/identity plus the same root in its durable sender journal. The receiver persists
+the root/chunk size together with only the chunk digests it actually retains from the authenticated
+stream. It does not need the sender's complete per-chunk digest list before interruption.
+
+On reconnect, the receiver signs the retained contiguous offset and the original root in
+`RESUME_REQUEST`. The sender freshly re-reads the persisted source, recomputes the complete root
+and whole-file digest, and accepts only if the source still matches the sender journal and signed
+request. The receiver independently re-hashes every retained chunk before reusing the prefix.
+
+A resumable item has:
+
+- original transfer session UUID;
+- item UUID;
+- expected total size;
+- fixed chunk size;
+- per-chunk SHA-256 digests or equivalent authenticated digest manifest;
+- deterministic chunk-root hash;
+- durable journal of the **contiguous verified prefix**;
+- creation/update timestamps and expiry;
+- enrolled peer identity.
+
+Only a verified contiguous prefix may advance `verifiedChunkCount` and `contiguousByteOffset`.
+
+### 7.1 `RESUME_REQUEST`
+
+Body:
+
+- `profile`: `resume-v1`
+- `originalSessionId`
+- `itemId`
+- `requesterFingerprintHex`
+- `responderFingerprintHex`
+- `requesterRole`: `receiver`
+- `responderRole`: `sender`
+- `verifiedChunkCount`
+- `contiguousByteOffset`: decimal byte-count string
+- `chunkSize`: integer, maximum 16 MiB
+- `totalSizeBytes`: decimal byte-count string
+- `chunkRootHashHex`
+- `sessionNonceHex`
+- `channelBindingHex`
+- `capabilityHashHex`
+- `signatureHex`
+
+The envelope session is the new active reconnect session. The body `originalSessionId` identifies the interrupted transfer.
+
+The sender must verify:
+
+- authenticated enrolled requester;
+- profile/capabilities and no downgrade;
+- exact active channel binding and fresh nonce;
+- signature over the canonical resume transcript;
+- source still maps to the same item/size/root;
+- journal offset/count alignment and bounds.
+
+### 7.2 `RESUME_ACCEPT`
+
+Body:
+
+- `profile`: `resume-v1`
+- `requestMessageId`
+- `originalSessionId`
+- `itemId`
+- `startChunkIndex`
+- `startByteOffset`: decimal string
+
+The values must exactly match the accepted verified prefix.
+
+### 7.3 `RESUME_REJECT`
+
+Body:
+
+- `profile`: `resume-v1`
+- `requestMessageId`
+- `originalSessionId`
+- `itemId`
+- `code`
+
+Stable codes:
+
+- `FILE_CHANGED`
+- `JOURNAL_MISMATCH`
+- `EXPIRED`
+- `UNAUTHORIZED`
+- `INVALID_OFFSET`
+- `CAPABILITY_MISMATCH`
+
+Free-form remote rejection reasons are not protocol authority.
+
+### 7.4 Remaining-byte stream after `RESUME_ACCEPT`
+
+Resume does **not** synthesize an `OFFER_BEGIN`/batch or reuse ordinary `ITEM_START` reducer
+state. After an exact `RESUME_ACCEPT`, the existing authenticated bulk-stream transport is reused
+with resume-specific control messages in the same active-session sequence space.
+
+#### `RESUME_STREAM_START`
+
+Sender -> receiver:
+
+- `profile`: `resume-v1`
+- `requestMessageId`: exact accepted `RESUME_REQUEST` message ID
+- `originalSessionId`
+- `itemId`
+- `bulkRef`
+- `startChunkIndex`
+- `startByteOffset`: decimal string
+- `remainingBytes`: decimal string; exactly `totalSizeBytes - startByteOffset`
+- `chunkSize`
+- `totalSizeBytes`: decimal string
+- `chunkRootHashHex`
+- `wholeFileSha256Hex`: sender's freshly revalidated complete-source digest
+
+The receiver requires every authority field to match the accepted request and its revalidated
+journal. A stream start is invalid when no bytes remain; a completely retained item is finalized
+locally without opening a new bulk stream.
+
+#### `RESUME_STREAM_READY`
+
+Receiver -> sender after it has registered the exact expected bulk reference and remaining byte
+count:
+
+- `profile`
+- `requestMessageId`
+- `originalSessionId`
+- `itemId`
+- `bulkRef`
+
+The sender MUST NOT deliver payload bytes before this control is received and correlated.
+
+The bulk stream then carries **only** bytes in `[startByteOffset, totalSizeBytes)`. The normal
+transport's authenticated DATA/STREAM_END framing, byte-count limits, cancellation, and backpressure
+remain authoritative.
+
+#### `RESUME_RESULT`
+
+Receiver -> sender after retained-prefix revalidation, resumed-chunk verification, complete chunk-root
+recomputation, and whole-file SHA-256 verification.
+
+Verified result:
+
+- `profile`
+- `requestMessageId`
+- `originalSessionId`
+- `itemId`
+- `status`: `verified`
+- `sizeBytes`: complete file size
+- `sha256`: complete verified digest
+
+Failed result:
+
+- same correlation fields;
+- `status`: `failed`;
+- `code`: a stable protocol wire-error code;
+- no `sizeBytes` or `sha256`.
+
+A verified result permits the original sender journal to be purged. Disconnect or failure before a
+verified result leaves only the still-valid bounded journal, subject to TTL/trust/storage-pressure
+rules.
+
+---
+
+## 8. Chunk integrity and final verification
+
+True resume requires content continuity, not merely an authenticated offset.
+
+1. Source is divided into fixed negotiated chunks.
+2. Each chunk has a SHA-256 digest.
+3. The digest manifest produces the agreed chunk-root hash.
+4. Receiver hashes each retained chunk from the authenticated stream and atomically appends that digest to the contiguous journal before treating the prefix as resumable.
+5. Journal advancement is atomic and contiguous; a gap cannot be skipped.
+6. On resume, the receiver re-hashes retained chunk files against its journal before reuse.
+7. The sender re-hashes the persisted source and requires its complete chunk root to equal the original offered/signed root.
+8. A changed source/root, revoked source permission, corrupt retained chunk, or journal mismatch rejects or rewinds resume.
+9. After the final chunk, the receiver recomputes the complete chunk root and whole-file SHA-256 before public commit.
+
+A resume optimization may not weaken final integrity.
+
+---
+
+## 9. Retained-partial lifecycle
+
+| Phase | Requirement |
+| --- | --- |
+| Staging | Private application staging only; never public destination |
+| TTL | Maximum 24 hours |
+| Explicit cancel | Immediate purge of retained item/session |
+| Revoked peer | Retained authority is unusable; policy determines purge |
+| Storage pressure | Evict resumable state safely without public promotion |
+| Final commit | Only after complete-file verification |
+| Concurrency | Must remain bounded by platform storage/runtime policy |
+
+No retained journal may reconstruct an active network connection after process death.
+
+---
+
+## 10. Threat invariants
+
+| Threat | Required defense |
+| --- | --- |
+| Identity-name spoofing | Names are never trust authority |
+| Public-key substitution | Fingerprint/key comparison + proof of possession |
+| Replay | Fresh challenge/nonce + active session + channel binding |
+| Role swap | Roles are part of signed transcript |
+| Capability downgrade | Negotiated capability hash is signed; policy fails closed |
+| Cross-connection signature reuse | Active channel binding is signed |
+| Resume offset tampering | Count/offset/chunk alignment + signed transcript |
+| Stale/corrupt partial | Durable contiguous verified journal + digest revalidation |
+| Source substitution | Size/root/source revalidation |
+| Unauthorized headless receive | Separate enrolled-peer destination/size policy |
+| Private-key extraction | Platform protected key storage |
+| Partial-file exposure | Private quarantine until final verification |
+
+---
+
+## 11. Implementation ownership
+
+HARD-018 owns:
+
+- versioned message schema;
+- canonical signature/capability transcripts;
+- dependency/downgrade rules;
+- shared Kotlin/.NET golden vectors;
+- documentation/ADR agreement.
+
+HARD-019 owns Android persistent identity storage, enrollment, revocation, and presentation.
+
+HARD-020 owns equivalent Windows/Linux identity persistence and peer-specific headless policy.
+
+HARD-021 owns live mutually authenticated trusted sessions, channel-binding extraction, downgrade/replay enforcement.
+
+HARD-022/023 own durable Android/desktop true-resume journals.
+
+HARD-024 owns real folder/resume interoperability and failure validation.
+
+Until HARD-019–021 complete, production must not advertise `identity-v1` or `resume-v1`.
+
+---
+
+## 12. Verification contract
+
+HARD-018 is not complete merely because source files exist. At minimum:
+
+- Kotlin and .NET generate exactly the shared canonical transcript bytes.
+- Codec tests reject wrong profile, malformed/uppercase canonical fields, role swaps, unknown rejection codes, invalid count/offset alignment, and unsupported capability downgrade.
+- Transcript signatures fail when session, role, peer fingerprint, capability hash, nonce, or channel binding changes.
+- Current ordinary Android and .NET tests remain green.
+- Later HARD-021 runtime tests prove an actual active transport channel binding, not a fixture or zero value.
+
+Physical trust/resume interoperability belongs to HARD-024.

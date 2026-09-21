@@ -7,7 +7,7 @@ Plan: [`planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md`](planning/CODE_R
 Latest reconciliation: [`planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md`](planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md)  
 Review baseline: `ea2e811a7f2d8aaddc552e894fe04782cd08a499`  
 HARD-002 captured source boundary: `12681eabba26387fe7d1bbaf309971f345642e41`  
-**Next recommended task: HARD-011 (REVIEW_REQUIRED). Restore current-head CI and verify the shared desktop engine before activating HARD-012. M1 still has HARD-008/HARD-009 CI review blockers and HARD-010 physical-device evidence blocked.**
+**Next recommended verification action: restore current-head CI for the continuation branch, then review HARD-008/HARD-009/HARD-011–016 and HARD-018–022. HARD-010 and HARD-017 remain blocked on real-device/platform evidence. HARD-022 now has role-aware Android durable sender/receiver resume journals, bounded source/chunk validation and 24-hour lifecycle handling, but no current-head executable evidence. Proceed with HARD-023 desktop durable resume storage; `resume-v1` remains production-disabled until native parity and HARD-024 interoperability validation.**
 
 Source/configuration commits after the HARD-002 captured boundary are not silently certified by HARD-002; the task that consumes them must inspect/reconcile them before relying on their claims.
 
@@ -30,7 +30,7 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 | M0 Honest baseline | HARD-001–004 | 4 / 4 | COMPLETE |
 | M1 Android production flow | HARD-005–010 | 3 / 6 | IN PROGRESS |
 | M2 Desktop/native interoperability | HARD-011–017 | 0 / 7 | IN PROGRESS |
-| M3 Trust, folders and true resume | HARD-018–024 | 0 / 7 | NOT STARTED |
+| M3 Trust, folders and true resume | HARD-018–024 | 0 / 7 | IN PROGRESS |
 | M4 Secure browser sharing | HARD-025–030 | 0 / 6 | NOT STARTED |
 | M5 Structure/developer experience | HARD-031–035 | 0 / 5 | NOT STARTED |
 | M6 Product quality/hardening | HARD-036–040 | 0 / 5 | NOT STARTED |
@@ -70,17 +70,17 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 | HARD-009 | M1 | REVIEW_REQUIRED | Complete service/session/background lifecycle |
 | HARD-010 | M1 | BLOCKED | Prove two-device Android production journey |
 | HARD-011 | M2 | REVIEW_REQUIRED | Extract shared desktop transfer engine |
-| HARD-012 | M2 | NOT_STARTED | Align native LAN discovery/TLS/bootstrap profile |
-| HARD-013 | M2 | NOT_STARTED | Implement strict desktop session/protocol state machine |
-| HARD-014 | M2 | NOT_STARTED | Make desktop hashing/storage bounded and shared |
-| HARD-015 | M2 | NOT_STARTED | Complete desktop consent/history/settings/state |
-| HARD-016 | M2 | NOT_STARTED | Harden Linux CLI/daemon receiving lifecycle |
-| HARD-017 | M2 | NOT_STARTED | Prove native cross-platform interoperability |
-| HARD-018 | M3 | NOT_STARTED | Finalize identity/resume protocol extension |
-| HARD-019 | M3 | NOT_STARTED | Integrate Android persistent identity/trust |
-| HARD-020 | M3 | NOT_STARTED | Integrate Windows/Linux persistent identity/trust |
-| HARD-021 | M3 | NOT_STARTED | Integrate mutually authenticated trusted sessions |
-| HARD-022 | M3 | NOT_STARTED | Implement Android durable true-resume journals |
+| HARD-012 | M2 | REVIEW_REQUIRED | Align native LAN discovery/TLS/bootstrap profile |
+| HARD-013 | M2 | REVIEW_REQUIRED | Implement strict desktop session/protocol state machine |
+| HARD-014 | M2 | REVIEW_REQUIRED | Make desktop hashing/storage bounded and shared |
+| HARD-015 | M2 | REVIEW_REQUIRED | Complete desktop consent/history/settings/state |
+| HARD-016 | M2 | REVIEW_REQUIRED | Harden Linux CLI/daemon receiving lifecycle |
+| HARD-017 | M2 | BLOCKED | Prove native cross-platform interoperability |
+| HARD-018 | M3 | REVIEW_REQUIRED | Finalize identity/resume protocol extension |
+| HARD-019 | M3 | REVIEW_REQUIRED | Integrate Android persistent identity/trust |
+| HARD-020 | M3 | REVIEW_REQUIRED | Integrate Windows/Linux persistent identity/trust |
+| HARD-021 | M3 | REVIEW_REQUIRED | Integrate mutually authenticated trusted sessions |
+| HARD-022 | M3 | REVIEW_REQUIRED | Implement Android durable true-resume journals |
 | HARD-023 | M3 | NOT_STARTED | Implement desktop durable true-resume storage |
 | HARD-024 | M3 | NOT_STARTED | Validate folders and resume across native platforms |
 | HARD-025 | M4 | NOT_STARTED | Specify secure browser transport and static client |
@@ -211,47 +211,57 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 <a id="hard-012"></a>
 ## HARD-012 — Align native LAN discovery/TLS/bootstrap profile
 
-- **Milestone / status:** M2 / NOT_STARTED.
-- **Dependencies:** HARD-011.
-- **Acceptance:** One DNS-SD TXT contract, ALPN, certificate/client-auth expectation, invitation format, 5-byte LAN framing and authenticated bootstrap works Android↔desktop; unpaired SAS is removed or repaired around one exchanged/bound nonce and explicit confirmation.
-- **Tests/evidence:** Cross-language bootstrap/golden vectors, wrong pin/cert/ALPN/replay cases and actual interoperability traces.
+- **Milestone / status:** M2 / REVIEW_REQUIRED.
+- **Dependencies:** HARD-011 (still REVIEW_REQUIRED because current-head CI is unavailable).
+- **Implementation state:** Continuation branch `hardening/continue-2026-09-18` now aligns desktop DNS-SD with Android's `v/tv/q/p/dn/dt` availability profile, removes discovery authentication material, requires TLS 1.3 + ALPN `glide-lan/1`, uses server-authenticated pinned TLS for invitation pairing, atomically consumes canonical one-use invitations, and removes the unauthenticated direct/SAS production path.
+- **Tests prepared:** canonical/legacy DNS-SD profile checks, no-client-certificate pinned TLS loopback, unpaired-send rejection, invitation replay rejection and authenticated shared-engine journeys.
+- **Verification blocker:** no GitHub Actions run/check is being scheduled for the continuation branch; actual Android↔desktop interoperability is HARD-017.
+- **Evidence:** [HARD-012 implementation record](development/sessions/2026-09-18-hard-012.md).
 
 <a id="hard-013"></a>
 ## HARD-013 — Implement strict desktop session/protocol state machine
 
-- **Milestone / status:** M2 / NOT_STARTED.
-- **Dependencies:** HARD-011, HARD-012.
-- **Acceptance:** Monotonic sequence, paged offers, exact IDs/correlation, deadlines, consent ordering and truthful item/batch terminal outcomes match protocol semantics.
-- **Tests/evidence:** Multi-page offers, duplicate/gapped sequence, mismatched IDs, failed middle item and lost terminal receipt; state-machine tests and golden parity.
+- **Milestone / status:** M2 / REVIEW_REQUIRED.
+- **Dependencies:** HARD-011, HARD-012; both await current-head executable verification.
+- **Implementation state:** Shared desktop control state now uses independent strictly increasing per-direction sequence numbers, 32-item paged offers, exact session/batch/item/bulk-reference correlation, bounded control/data read deadlines, bootstrap-before-HELLO ordering and truthful terminal aggregation. A failed item cannot be surfaced as a fully successful batch.
+- **Tests prepared:** 33-item pagination, exact multi-item sequence continuity, offer rejection, authenticated two-file transfer, replay rejection and correlation checks in production-engine paths.
+- **Verification blocker:** current branch has no build/test run; lost-terminal and adversarial cross-language runtime traces still belong to review/HARD-017.
+- **Evidence:** [HARD-013 implementation record](development/sessions/2026-09-18-hard-013.md).
 
 <a id="hard-014"></a>
 ## HARD-014 — Make desktop hashing/storage bounded and shared
 
-- **Milestone / status:** M2 / NOT_STARTED.
+- **Milestone / status:** M2 / REVIEW_REQUIRED.
 - **Dependencies:** HARD-011.
-- **Acceptance:** Production sender hashing/transfer is streaming and bounded; no whole-file production digest read; safe paths, reservations, quarantine cleanup and commit are centralized.
-- **Tests/evidence:** Empty/10 MB/1 GB/5+ GB, cancel, disk full, duplicate names, traversal/reparse; memory must not scale with file size.
+- **Implementation state:** Sender SHA-256 is computed incrementally in the same bounded streaming pass that transmits data; receiver hashing is incremental, declared sizes and STREAM_END counts are enforced, failures purge quarantine state, safe relative paths flow through the shared sanitizer and successful items commit through `QuarantineStagingStore`.
+- **Tests prepared:** bounded allocation regression with a 32 MiB source plus ordinary shared-engine empty/multi-file/cancel/reject coverage.
+- **Verification/manual gaps:** no current-head build/test evidence; required 1 GB/5+ GB, disk-full, duplicate-name and reparse-point scenarios remain part of the later verification matrix.
+- **Evidence:** [HARD-014 implementation record](development/sessions/2026-09-18-hard-014.md).
 
 <a id="hard-015"></a>
 ## HARD-015 — Complete desktop consent/history/settings/state
 
-- **Milestone / status:** M2 / NOT_STARTED.
+- **Milestone / status:** M2 / REVIEW_REQUIRED.
 - **Dependencies:** HARD-013, HARD-014.
-- **Acceptance:** Incoming offers require authorization; history/settings persist; UI updates are thread-safe; CLI/WPF report identical outcomes.
-- **Tests/evidence:** Accept/reject, restart persistence, UI-thread marshaling and partial-batch journeys.
+- **Implementation state:** WPF now presents an explicit authenticated incoming-offer accept/reject modal, persists non-secret receive settings and verified history through `DesktopStateStore`, rotates receive invitations, uses the configured receive directory and marshals interaction callbacks onto the UI dispatcher. Interactive CLI receive also requires explicit offer consent.
+- **Tests prepared:** state restart persistence/no-secret persistence, offer rejection before commit and shared-engine history callbacks.
+- **Verification/manual gaps:** WPF compile/UI journey, restart UI rendering, keyboard/accessibility and partial-batch behavior need executable/manual evidence.
+- **Evidence:** [HARD-015 implementation record](development/sessions/2026-09-18-hard-015.md).
 
 <a id="hard-016"></a>
 ## HARD-016 — Harden Linux CLI/daemon receiving lifecycle
 
-- **Milestone / status:** M2 / NOT_STARTED.
-- **Dependencies:** HARD-013, HARD-014.
-- **Acceptance:** Missing/invalid enrollment is rejected; daemon cannot auto-authorize arbitrary offers; headless receive requires explicit peer/destination/size policy; shutdown/cancel cleans resources.
-- **Tests/evidence:** No invitation, wrong peer, unauthorized offer, SIGTERM/shutdown and disk-limit runtime/systemd traces.
+- **Milestone / status:** M2 / REVIEW_REQUIRED.
+- **Dependencies:** HARD-013, HARD-014; persistent peer identity storage/policy is prepared by HARD-020 and live session binding is implemented by HARD-021.
+- **Implemented now:** CLI send requires an authenticated pairing invitation; interactive receive asks before accepting an offer; daemon startup fails closed unless `--accept-paired-offers` plus an enrolled `--trusted-peer` are supplied; HARD-020 binds stored headless policy to that peer, an exact destination and a byte ceiling; HARD-021 supplies the live authenticated peer fingerprint before daemon policy evaluation; invitations rotate before expiry; Ctrl+C/SIGTERM cancellation is bounded through linked cancellation tokens.
+- **Verification gap:** source requirements are implemented, but no current-head Linux build/test run, SIGTERM lifecycle execution, or real Android/Windows↔Linux daemon interoperability evidence is available. No completion claim is made.
+- **Tests prepared:** daemon-without-explicit-policy fails closed; invitation/no-authority rejection; authenticated receive behavior; strict trusted-peer authentication/downgrade/revocation coverage through HARD-021.
+- **Evidence:** [HARD-016 implementation record](development/sessions/2026-09-18-hard-016.md).
 
 <a id="hard-017"></a>
 ## HARD-017 — Prove native cross-platform interoperability
 
-- **Milestone / status:** M2 / NOT_STARTED.
+- **Milestone / status:** M2 / BLOCKED.
 - **Dependencies:** HARD-012, HARD-013, HARD-014, HARD-015, HARD-016.
 - **Acceptance:** Android↔Windows, Android↔Linux and Windows↔Linux pass both directions with multi-page/multi-file batches; failed items cannot yield successful batch status.
 - **Tests/evidence:** Empty/large/mixed files, reject/cancel, wrong authentication and reconnect boundaries with real platform/build identities, hashes and logs.
@@ -259,42 +269,60 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 <a id="hard-018"></a>
 ## HARD-018 — Finalize identity/resume protocol extension
 
-- **Milestone / status:** M3 / NOT_STARTED.
-- **Dependencies:** HARD-017.
-- **Acceptance:** Versioned identity/resume messages, canonical signature inputs, peer/role/session/channel binding, capabilities and shared vectors are cross-language compatible.
-- **Tests/evidence:** Replay, downgrade, role swap, changed key and malformed signatures; reviewed spec/ADR and golden vectors.
+- **Milestone / status:** M3 / REVIEW_REQUIRED (pre-gate implementation).
+- **Dependencies:** HARD-017 remains BLOCKED; this source work does not open the M3 release gate.
+- **Implementation state:** `identity-v1`/`resume-v1` now have explicit versioned control schemas; canonical binary signature transcripts bind active/original session, peer fingerprints, roles, fresh nonces, negotiated capability hash and an active secure-channel binding. Kotlin and .NET implementations share `protocol/fixtures/identity_resume_v1_vectors.json`. Raw nonce-only signing was removed. `resume-v1` requires `identity-v1`, and neither trust extension is advertised by default before HARD-019–021.
+- **Additional repair:** desktop HELLO/HELLO_ACK capability negotiation was corrected to `stream-v1` + `sha256` with `folder-v1` optional instead of the incompatible empty/`lan-v1` shape.
+- **Tests prepared:** shared Kotlin/.NET golden bytes; version/profile validation; role swap; capability downgrade/dependency; changed known key; malformed canonical hashes/signatures; invalid resume offset/chunk-count math.
+- **Verification blocker:** GitHub Actions still schedules no current-head run/check, and HARD-017 physical/native interoperability is unproven. No compile/test or runtime channel-binding claim is made.
+- **Evidence:** [HARD-018 protocol preparation](development/sessions/2026-09-18-hard-018.md).
 
 <a id="hard-019"></a>
 ## HARD-019 — Integrate Android persistent identity/trust
 
-- **Milestone / status:** M3 / NOT_STARTED.
-- **Dependencies:** HARD-018.
-- **Acceptance:** Explicit enrollment, protected Android key, peer key/fingerprint persistence, revocation and trusted-peer presentation are wired to production runtime.
-- **Tests/evidence:** Key loss/rotation, revoke, duplicate enrollment and restored DB without key; Keystore/trust lifecycle evidence.
+- **Milestone / status:** M3 / REVIEW_REQUIRED (pre-gate implementation).
+- **Dependencies:** HARD-018 is REVIEW_REQUIRED; HARD-017 remains blocked, so this does not open trusted-session production capability negotiation.
+- **Implementation state:** Android Keystore implements the platform-neutral persistent-identity port; Room implements the trusted-peer store; `PersistentTrustManager` owns initialization, verified enrollment, duplicate refresh, revocation, key rotation and restored-DB-without-key invalidation. `TransferRuntime` exposes trust state plus explicit approve/reject/revoke operations. Settings uses the runtime trust authority in production, and Transfer UI contains an explicit verified-device enrollment prompt.
+- **Safety state:** UI/discovery code cannot manufacture `VerifiedPeerIdentity`; enrollment requires successful HARD-018 transcript verification. Trust never auto-accepts file offers. `identity-v1`/`resume-v1` remain disabled by default until HARD-021.
+- **Tests prepared:** key loss/database restore, rotation, duplicate enrollment, decline, revoke, wrong approval fingerprint, channel-binding replay failure, runtime service-independent trust management and Settings runtime authority.
+- **Verification blocker:** current branch head has no GitHub Actions/check suite; real Android Keystore/device evidence is still required.
+- **Evidence:** [HARD-019 Android trust preparation](development/sessions/2026-09-18-hard-019.md).
 
 <a id="hard-020"></a>
 ## HARD-020 — Integrate Windows/Linux persistent identity/trust
 
-- **Milestone / status:** M3 / NOT_STARTED.
-- **Dependencies:** HARD-018.
-- **Acceptance:** Protected persistent keys, explicit enrollment/revocation and peer-specific headless policy work on supported desktop OSes.
-- **Tests/evidence:** Permission failure, revoke, migration and wrong peer with platform storage/permission evidence.
+- **Milestone / status:** M3 / REVIEW_REQUIRED (pre-gate implementation).
+- **Dependencies:** HARD-018 is REVIEW_REQUIRED; HARD-017 remains blocked, so this source work does not open trusted-session production negotiation.
+- **Implementation state:** Windows uses a non-exportable current-user CNG P-256 identity; Linux uses an owner-only P-256 PKCS#8 identity file with permission/symlink checks. A versioned trust store persists verified peer public identities and peer-specific headless policies. Restore without the protected key or a changed local identity revokes all peer trust/policies. CLI identity/trust inspection, rotation and revocation are wired. Manual fingerprint enrollment is prohibited; enrollment authority accepts only HARD-018 channel-bound verified identity proofs.
+- **Headless safety:** daemon configuration requires an already-enrolled `--trusted-peer`, exact destination and byte ceiling. HARD-021 now supplies `AuthenticatedPeerFingerprintHex` only after live mutual identity proof; stored trust alone is never enough to authorize an offer.
+- **Migration rule:** no prior supported desktop trust schema exists; unknown or missing versioned fields fail closed instead of silently importing legacy/manual trust state.
+- **Tests prepared:** protected identity signing/persistence, Windows non-exportability, Linux owner-only permissions, permission failure, restored DB without key, verified enrollment, revoke/rotation, wrong peer/destination/size, channel-binding mismatch, unknown schema and missing-version legacy rejection.
+- **Verification blocker:** continuation-branch/current-head GitHub Actions runs and commit statuses remain absent; no current-head .NET compile/test or real Windows/Linux platform pass is claimed.
+- **Evidence:** [HARD-020 desktop trust preparation](development/sessions/2026-09-18-hard-020.md).
 
 <a id="hard-021"></a>
 ## HARD-021 — Integrate mutually authenticated trusted sessions
 
-- **Milestone / status:** M3 / NOT_STARTED.
-- **Dependencies:** HARD-019, HARD-020.
-- **Acceptance:** Both peers prove enrolled identity bound to fresh challenge and secure channel/session; replay/downgrade/revoked trust fails closed; trust never auto-accepts arbitrary files.
-- **Tests/evidence:** MITM/pin mismatch, replay, revoked peer, challenge reuse and capability downgrade across platforms.
+- **Milestone / status:** M3 / REVIEW_REQUIRED (source implementation complete; executable/platform gates outstanding).
+- **Dependencies:** HARD-019 and HARD-020 are REVIEW_REQUIRED; HARD-017 remains blocked on the real native matrix.
+- **Desktop/CLI/daemon:** Native identity transcripts use `tls-server-spki-sha256-v1`: the exact SHA-256 SPKI of the TLS server certificate used by the active pinned connection, plus the authenticated BOOTSTRAP session, fresh challenge, roles, both identity fingerprints and capability hash. Reciprocal proof completes before `OFFER_BEGIN`; strict `--trusted-peer` rejects missing/revoked enrollment and downgrade; daemon mode never enrolls and evaluates peer-specific auto-accept policy only after live proof.
+- **Android:** LAN exposes the authenticated BOOTSTRAP session + server-SPKI binding and the service-owned coordinator reuses that exact session. `identity-v1` is advertised dynamically only after persistent trust initialization and only on transports exposing that authenticated LAN context. The coordinator enforces sender challenge → receiver response → reciprocal challenge → reciprocal response before offers, sharing the same monotonic control sequence space and a 30-second authentication deadline. Unknown verified peers are handed only to explicit enrollment UI; strict expected-peer sessions reject missing/revoked trust, fingerprint substitution and capability downgrade.
+- **WPF:** Windows initializes protected persistent trust before transfer use, passes the trust manager to both send and receive, displays its local persistent fingerprint, and prompts with the full cryptographically verified peer fingerprint before first-use enrollment. Declining persistent trust still permits only the current one-use paired transfer and does not save the peer.
+- **Replay/revocation coverage prepared:** Android production-core tests reject stale signed responses reused against a fresh challenge and peers revoked before an expected-peer handshake. .NET tests reject stale challenge responses, wrong channel binding, capability downgrade and revoked expected desktop peers. WPF source regression locks the explicit fingerprint-consent boundary.
+- **Safety state:** Nearby/transports without authenticated LAN context do not advertise `identity-v1`. `resume-v1` remains disabled.
+- **Verification blocker:** current continuation-head GitHub Actions runs and commit statuses remain absent. No current-head Gradle/.NET/WPF compile/test or physical Android↔Windows/Linux trusted-session pass is claimed.
+- **Evidence:** [HARD-021 trusted-session progress](development/sessions/2026-09-18-hard-021.md).
 
 <a id="hard-022"></a>
 ## HARD-022 — Implement Android durable true-resume journals
 
-- **Milestone / status:** M3 / NOT_STARTED.
+- **Milestone / status:** M3 / REVIEW_REQUIRED.
 - **Dependencies:** HARD-018, HARD-021.
-- **Acceptance:** Journal is keyed by transfer+item, stores negotiated chunk identity and only contiguous verified progress; source/permission/peer changes are revalidated; partials expire after 24h.
-- **Tests/evidence:** Missing/corrupt chunk, process death, modified source, expiry, revoked peer and disk pressure; migration/recovery and byte-identical result.
+- **Implemented source:** Room v5 role-aware sender/receiver journals are keyed by original transfer+item and bound to the authenticated peer. Receiver progress advances only as an exact contiguous verified prefix with locally hashed retained chunks; restart reconciliation re-hashes retained files and rewinds at the first gap/corruption. Sender journals persist source handle/identity, size, chunk parameters, complete root and whole-file SHA authority for fresh source revalidation. Explicit cancel/trust revocation/identity rotation and 24-hour/storage-pressure cleanup invalidate retained authority. Final receiver promotion recomputes the complete chunk root and whole-file SHA before public commit.
+- **Protocol handoff:** Resume-capable offer metadata is the paired `rootHash` + `chunkSize` extension, validated by Kotlin/.NET codecs and rejected when not negotiated. Android sender/receiver journal hooks are wired into the coordinator, but production `resume-v1` advertisement remains disabled pending HARD-023 parity and HARD-024 native interoperability.
+- **Prepared tests/evidence:** Gap/out-of-order chunk, missing/corrupt retained chunk after process death, modified/unavailable source and permission loss, expiry/maintenance purge, revoked/substituted peer, disk pressure, Room 4→5 fail-closed migration, byte-identical assembly/root mismatch, and bounded chunk-aware receive streaming.
+- **Verification blocker:** PR head `3dfc08e16eae192fb2aaa23880d87a3feb3566f9` had no associated workflow runs when checked. No current-head Gradle/KSP/Room/.NET/emulator/device pass is claimed; Room v5 exported-schema identity is left to the real KSP build rather than fabricated.
+- **Evidence:** [HARD-022 durable-resume progress](development/sessions/2026-09-18-hard-022.md).
 
 <a id="hard-023"></a>
 ## HARD-023 — Implement desktop durable true-resume storage

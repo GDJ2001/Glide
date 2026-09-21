@@ -63,7 +63,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.glide.core.ports.GlideSettings
 import dev.glide.core.ports.ReducedMotionPreference
 import dev.glide.core.ports.ThemePreference
-import dev.glide.data.db.TrustedPeerEntity
+import dev.glide.core.domain.TrustedPeerRecord
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1194,8 +1194,8 @@ private fun TrustedDevicesSection(
                             fontWeight = FontWeight.Medium
                         )
                         Text(
-                            text = if (trustedPeerCount == 1) "1 device paired for instant verification & resume"
-                            else "$trustedPeerCount devices paired for instant verification & resume",
+                            text = if (trustedPeerCount == 1) "1 device identity enrolled"
+                            else "$trustedPeerCount device identities enrolled",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -1203,7 +1203,7 @@ private fun TrustedDevicesSection(
                 }
 
                 Text(
-                    text = "Hardware-backed device identity keys (EC P-256) verify paired peers, prevent MITM attacks, and enable seamless transfer resumption without re-entering PINs.",
+                    text = "Remembered devices are enrolled only after cryptographic identity proof and explicit approval. Revoking a device removes its future trusted-session authority.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1232,7 +1232,7 @@ private fun TrustedDevicesSection(
 
 @Composable
 private fun TrustedDevicesDialog(
-    trustedPeers: List<TrustedPeerEntity>,
+    trustedPeers: List<TrustedPeerRecord>,
     onRevokePeer: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -1267,7 +1267,7 @@ private fun TrustedDevicesDialog(
                         fontWeight = FontWeight.Medium
                     )
                     Text(
-                        text = "Devices paired via mutual PIN verification will appear here. Trusted devices can securely resume interrupted transfers.",
+                        text = "Devices explicitly enrolled after cryptographic identity verification will appear here.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1281,10 +1281,10 @@ private fun TrustedDevicesDialog(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     trustedPeers.forEach { peer ->
-                        val truncatedFingerprint = if (peer.peerFingerprint.length > 16) {
-                            "${peer.peerFingerprint.take(8)}...${peer.peerFingerprint.takeLast(8)}"
+                        val truncatedFingerprint = if (peer.peerFingerprintHex.length > 16) {
+                            "${peer.peerFingerprintHex.take(8)}...${peer.peerFingerprintHex.takeLast(8)}"
                         } else {
-                            peer.peerFingerprint
+                            peer.peerFingerprintHex
                         }
                         val pairedDate = remember(peer.pairedAtMs) {
                             dateFormat.format(java.util.Date(peer.pairedAtMs))
@@ -1322,7 +1322,7 @@ private fun TrustedDevicesDialog(
                                     )
                                 }
                                 IconButton(
-                                    onClick = { onRevokePeer(peer.peerFingerprint) },
+                                    onClick = { onRevokePeer(peer.peerFingerprintHex) },
                                     modifier = Modifier.semantics {
                                         contentDescription = "Revoke trust for ${peer.displayName}"
                                     }

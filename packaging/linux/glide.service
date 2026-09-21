@@ -2,15 +2,19 @@
 Description=Glide Local File Sharing Daemon
 After=network.target network-online.target
 Wants=network-online.target
+ConditionPathExists=%h/.config/glide/daemon.env
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/glide daemon
+# HARD-020: daemon authorization is peer-specific. This file is intentionally mandatory;
+# an unconfigured service must fail to start rather than fall back to generic auto-accept.
+EnvironmentFile=%h/.config/glide/daemon.env
+Environment=XDG_DATA_HOME=%h/.local/share
+Environment=XDG_CONFIG_HOME=%h/.config
+ExecStart=/usr/local/bin/glide daemon --accept-paired-offers --trusted-peer ${GLIDE_TRUSTED_PEER} --max-offer-bytes ${GLIDE_MAX_OFFER_BYTES} --destination ${GLIDE_DESTINATION}
 Restart=on-failure
 RestartSec=5s
 KillMode=process
-Environment=XDG_DATA_HOME=%h/.local/share
-Environment=XDG_CONFIG_HOME=%h/.config
 
 [Install]
 WantedBy=default.target

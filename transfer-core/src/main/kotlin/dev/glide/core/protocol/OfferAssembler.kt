@@ -11,7 +11,8 @@ import java.nio.charset.StandardCharsets
 
 class OfferAssembler(
     val begin: OfferBeginBody,
-    val effectiveLimits: EffectiveLimits = EffectiveLimits()
+    val effectiveLimits: EffectiveLimits = EffectiveLimits(),
+    private val allowResumeMetadata: Boolean = false
 ) {
     private var expectedPageIndex: Int = 0
     private val items = mutableListOf<TransferItem>()
@@ -68,6 +69,19 @@ class OfferAssembler(
         }
 
         for (itemDto in page.items) {
+            val carriesResumeMetadata =
+                itemDto.rootHash != null ||
+                    itemDto.chunkSize != null
+            if (carriesResumeMetadata &&
+                !allowResumeMetadata
+            ) {
+                throw ProtocolViolationException(
+                    TransferFailure.UnsupportedProtocol(
+                        "OFFER_PAGE carried resume metadata without negotiated resume-v1"
+                    )
+                )
+            }
+
             if (!seenItemIds.add(itemDto.itemId)) {
                 throw ProtocolViolationException(
                     TransferFailure.MalformedMessage("Duplicate itemId '${itemDto.itemId}' detected in batch")
@@ -102,7 +116,19 @@ class OfferAssembler(
 
             val nameBytes = itemDto.name.toByteArray(StandardCharsets.UTF_8).size
             val mimeBytes = itemDto.mime.toByteArray(StandardCharsets.UTF_8).size
-            val itemMetadataEstimate = 36 + nameBytes + mimeBytes + itemDto.sizeBytes.length + 32
+            val resumeMetadataBytes =
+                if (itemDto.rootHash != null) {
+                    96
+                } else {
+                    0
+                }
+            val itemMetadataEstimate =
+                36 +
+                    nameBytes +
+                    mimeBytes +
+                    itemDto.sizeBytes.length +
+                    resumeMetadataBytes +
+                    32
             accumulatedMetadataBytes += itemMetadataEstimate
             if (accumulatedMetadataBytes > ProtocolLimits.MAX_OFFER_METADATA_BYTES) {
                 throw ProtocolViolationException(
@@ -117,7 +143,11 @@ class OfferAssembler(
                 name = itemDto.name,
                 mimeType = itemDto.mime,
                 sizeBytes = sizeBytes,
-                relativePath = itemDto.relativePath
+                relativePath = itemDto.relativePath,
+                resumeChunkSize =
+                    itemDto.chunkSize,
+                resumeChunkRootHashHex =
+                    itemDto.rootHash
             )
             items.add(domainItem)
         }

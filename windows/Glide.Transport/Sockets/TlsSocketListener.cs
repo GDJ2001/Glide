@@ -68,13 +68,16 @@ public sealed class TlsSocketListener : IDisposable
         var options = new SslServerAuthenticationOptions
         {
             ServerCertificate = _serverCertificate,
-            ClientCertificateRequired = true,
+            // Initial LAN pairing is server-authenticated by the invitation SPKI pin.
+            // Persistent mutually-authenticated identities are negotiated only by the
+            // versioned trust extension (HARD-018..021), not by an unconditional TLS
+            // client-certificate requirement.
+            ClientCertificateRequired = false,
             EnabledSslProtocols = SslProtocols.Tls13,
-            ApplicationProtocols = new List<SslApplicationProtocol>
-            {
-                new SslApplicationProtocol("glide-lan/1"),
-                new SslApplicationProtocol("glide-v1")
-            },
+            ApplicationProtocols =
+            [
+                new SslApplicationProtocol("glide-lan/1")
+            ],
             CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
             RemoteCertificateValidationCallback = (sender, certificate, chain, sslPolicyErrors) =>
             {
@@ -92,24 +95,42 @@ public sealed class TlsSocketListener : IDisposable
                     }
                     return true;
                 }
-                return false;
+                // A client certificate is optional for invitation-authenticated pairing.
+                return true;
             }
         };
 
-        await sslStream.AuthenticateAsServerAsync(options, cancellationToken);
-
-        if (remotePublicKey == null)
+        try
         {
-            throw new AuthenticationException("Peer client certificate did not provide a valid public key.");
-        }
+            await sslStream.AuthenticateAsServerAsync(options, cancellationToken);
 
-        return new TlsSocketConnection(
-            tcpClient,
-            sslStream,
-            _serverCertificate.GetPublicKey(),
-            remotePublicKey,
-            LocalSpkiSha256,
-            remoteSpkiSha256);
+            if (sslStream.SslProtocol != SslProtocols.Tls13)
+            {
+                throw new AuthenticationException(
+                    $"Glide LAN requires TLS 1.3, negotiated {sslStream.SslProtocol}.");
+            }
+
+            var expectedAlpn = new SslApplicationProtocol("glide-lan/1");
+            if (sslStream.NegotiatedApplicationProtocol != expectedAlpn)
+            {
+                throw new AuthenticationException(
+                    "Glide LAN requires ALPN 'glide-lan/1'.");
+            }
+
+            return new TlsSocketConnection(
+                tcpClient,
+                sslStream,
+                _serverCertificate.GetPublicKey(),
+                remotePublicKey ?? Array.Empty<byte>(),
+                LocalSpkiSha256,
+                remoteSpkiSha256);
+        }
+        catch
+        {
+            await sslStream.DisposeAsync();
+            tcpClient.Dispose();
+            throw;
+        }
     }
 
     public void Dispose()

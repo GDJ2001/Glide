@@ -124,6 +124,37 @@ data class StreamExpectation(
     }
 }
 
+/**
+ * Security context established by an authenticated transport bootstrap.
+ *
+ * The channel binding is the SHA-256 SPKI fingerprint of the TLS server certificate actually
+ * used by this connection. The session id is the exact authenticated BOOTSTRAP session id.
+ */
+data class AuthenticatedChannelContext(
+    val sessionId: SessionId,
+    val channelBindingHex: String
+) {
+    init {
+        require(
+            channelBindingHex.length == 64 &&
+                channelBindingHex.all { it in '0'..'9' || it in 'a'..'f' } &&
+                channelBindingHex.any { it != '0' }
+        ) {
+            "channelBindingHex must be a non-zero 64-character lowercase SHA-256 value"
+        }
+    }
+}
+
+/**
+ * Optional transport capability used by identity-v1.
+ *
+ * Nearby and other transports that cannot prove this exact binding must not implement it and
+ * therefore cannot advertise persistent identity authentication through the LAN profile.
+ */
+interface AuthenticatedChannelContextProvider {
+    fun authenticatedChannelContext(peerId: PeerId): AuthenticatedChannelContext?
+}
+
 interface TransferTransport {
     suspend fun startDiscovery(serviceId: String): Flow<DiscoveryEvent>
     suspend fun stopDiscovery()

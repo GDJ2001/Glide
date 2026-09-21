@@ -266,6 +266,58 @@
                                 </StackPanel>
                             </Border>
 
+                            <Border Background="{StaticResource SurfaceHighBrush}" CornerRadius="8" Padding="14,12" Margin="0,0,0,16">
+                                <StackPanel>
+                                    <TextBlock Text="Receive Settings" FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{StaticResource AccentBrush}" Margin="0,0,0,8" />
+                                    <Grid Margin="0,0,0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="Folder:" Margin="0,0,8,0" VerticalAlignment="Center"
+                                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                        <TextBox Grid.Column="1" Style="{StaticResource ModernTextBoxStyle}"
+                                                 Text="{Binding ReceiveDirectory, Mode=OneWay}" IsReadOnly="True"
+                                                 Margin="0,0,8,0" FontSize="11" />
+                                        <Button Grid.Column="2" Style="{StaticResource SecondaryButtonStyle}" Content="Browse…"
+                                                Command="{Binding BrowseReceiveFolderCommand}" Padding="10,4" />
+                                    </Grid>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="90" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="Preferred listener port"
+                                                   Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1" Text="Port:" Margin="8,0" VerticalAlignment="Center"
+                                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                        <TextBox Grid.Column="2" Style="{StaticResource ModernTextBoxStyle}"
+                                                 Text="{Binding ListenerPortPreference, UpdateSourceTrigger=PropertyChanged}"
+                                                 HorizontalContentAlignment="Right" />
+                                    </Grid>
+
+                                    <Border Height="1" Background="{StaticResource CardBorderBrush}" Margin="0,12,0,10" />
+
+                                    <TextBlock Text="Persistent Device Identity" FontSize="11" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,5" />
+                                    <TextBlock Text="Compare this fingerprint on the other device before making this Windows PC a trusted device."
+                                               FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap"
+                                               Margin="0,0,0,6" />
+                                    <TextBox Style="{StaticResource ModernTextBoxStyle}"
+                                             Text="{Binding LocalIdentityFingerprint, Mode=OneWay}" IsReadOnly="True"
+                                             FontFamily="Consolas" FontSize="10" TextWrapping="Wrap"
+                                             HorizontalContentAlignment="Center" Margin="0,0,0,6" />
+                                    <TextBlock HorizontalAlignment="Center" FontSize="10"
+                                               Foreground="{StaticResource TextSecondaryBrush}">
+                                        <Run Text="Trusted devices: " />
+                                        <Run Text="{Binding TrustedDeviceCount}" FontWeight="SemiBold" />
+                                    </TextBlock>
+                                </StackPanel>
+                            </Border>
+
                             <!-- Active Pairing Invitation Link Card -->
                             <Border Background="{StaticResource SurfaceHighBrush}" CornerRadius="8" Padding="14,12" Margin="0,0,0,20"
                                     Visibility="{Binding IsListening, Converter={StaticResource BoolToVis}}">
@@ -396,37 +448,80 @@
             </Border>
         </Grid>
 
-        <!-- SAS Mutual Verification Modal Overlay -->
-        <Border Background="#CC070B16" Visibility="{Binding IsSasModalVisible, Converter={StaticResource BoolToVis}}"
+        <!-- Persistent identity trust enrollment overlay -->
+        <Border Background="#CC070B16"
+                Visibility="{Binding IsTrustEnrollmentModalVisible, Converter={StaticResource BoolToVis}}"
                 HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
             <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource CardBorderBrush}"
-                    BorderThickness="1" CornerRadius="16" Padding="28" Width="440" HorizontalAlignment="Center"
+                    BorderThickness="1" CornerRadius="16" Padding="28" Width="520" HorizontalAlignment="Center"
                     VerticalAlignment="Center">
-                <StackPanel HorizontalAlignment="Center">
-                    <TextBlock Text="🛡️" FontSize="36" HorizontalAlignment="Center" Margin="0,0,0,8" />
-                    <TextBlock Text="Confirm Mutual Verification Code" FontSize="17" FontWeight="Bold"
-                               Foreground="{StaticResource TextPrimaryBrush}" HorizontalAlignment="Center" Margin="0,0,0,8" />
-                    <TextBlock Text="Verify that the 6-digit code below matches the code displayed on the peer screen:"
-                               FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" TextAlignment="Center" TextWrapping="Wrap" Margin="0,0,0,20" />
+                <StackPanel HorizontalAlignment="Stretch">
+                    <TextBlock Text="🔐" FontSize="36" HorizontalAlignment="Center" Margin="0,0,0,8" />
+                    <TextBlock Text="Trust This Device?" FontSize="18" FontWeight="Bold"
+                               Foreground="{StaticResource TextPrimaryBrush}" HorizontalAlignment="Center" />
+                    <TextBlock Text="{Binding TrustEnrollmentPeerName}" FontSize="14" FontWeight="SemiBold"
+                               Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Center" Margin="0,6,0,10" />
 
-                    <!-- 6-digit SAS code -->
-                    <Border Background="{StaticResource SurfaceHighBrush}" BorderBrush="{StaticResource AccentBrush}"
-                            BorderThickness="1" CornerRadius="10" Padding="24,12" HorizontalAlignment="Center" Margin="0,0,0,24">
-                        <TextBlock Text="{Binding SasCode}" FontSize="32" FontWeight="Bold"
-                                   Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Center" />
+                    <TextBlock Text="Glide has cryptographically verified this persistent device identity for the current authenticated LAN session."
+                               FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextAlignment="Center"
+                               TextWrapping="Wrap" Margin="0,0,0,10" />
+                    <TextBlock Text="Before trusting it for future sessions, compare the full fingerprint below with the fingerprint shown on the other device."
+                               FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextAlignment="Center"
+                               TextWrapping="Wrap" Margin="0,0,0,12" />
+
+                    <Border Background="{StaticResource SurfaceHighBrush}" BorderBrush="{StaticResource CardBorderBrush}"
+                            BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,12">
+                        <TextBlock Text="{Binding TrustEnrollmentFingerprint}" FontFamily="Consolas" FontSize="12"
+                                   FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"
+                                   TextAlignment="Center" TextWrapping="Wrap" />
                     </Border>
 
-                    <!-- Actions -->
+                    <TextBlock Text="Choosing “Not Now” does not block this one-use paired transfer. It only prevents persistent trust from being saved."
+                               FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" TextAlignment="Center"
+                               TextWrapping="Wrap" Margin="0,0,0,20" />
+
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="16" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
-                        <Button Grid.Column="0" Style="{StaticResource SecondaryButtonStyle}" Content="Cancel"
-                                Command="{Binding RejectSasCommand}" Padding="0,10" />
-                        <Button Grid.Column="2" Style="{StaticResource PrimaryButtonStyle}" Content="Confirm Code"
-                                Command="{Binding ConfirmSasCommand}" Padding="0,10" />
+                        <Button Grid.Column="0" Style="{StaticResource SecondaryButtonStyle}" Content="Not Now"
+                                Command="{Binding RejectTrustEnrollmentCommand}" Padding="0,10" />
+                        <Button Grid.Column="2" Style="{StaticResource PrimaryButtonStyle}" Content="Trust Device"
+                                Command="{Binding AcceptTrustEnrollmentCommand}" Padding="0,10" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </Border>
+
+        <!-- Authenticated incoming-offer consent overlay -->
+        <Border Background="#CC070B16" Visibility="{Binding IsOfferModalVisible, Converter={StaticResource BoolToVis}}"
+                HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+            <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource CardBorderBrush}"
+                    BorderThickness="1" CornerRadius="16" Padding="28" Width="460" HorizontalAlignment="Center"
+                    VerticalAlignment="Center">
+                <StackPanel HorizontalAlignment="Stretch">
+                    <TextBlock Text="📥" FontSize="36" HorizontalAlignment="Center" Margin="0,0,0,8" />
+                    <TextBlock Text="Incoming Transfer" FontSize="18" FontWeight="Bold"
+                               Foreground="{StaticResource TextPrimaryBrush}" HorizontalAlignment="Center" />
+                    <TextBlock Text="{Binding IncomingOfferPeer}" FontSize="14" FontWeight="SemiBold"
+                               Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Center" Margin="0,6,0,4" />
+                    <TextBlock Text="{Binding IncomingOfferSummary}" FontSize="13"
+                               Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center" Margin="0,0,0,8" />
+                    <TextBlock Text="Accepting will allow this authenticated one-use peer to write the offered files into your configured receive folder."
+                               FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextAlignment="Center"
+                               TextWrapping="Wrap" Margin="0,0,0,22" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="16" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Button Grid.Column="0" Style="{StaticResource SecondaryButtonStyle}" Content="Reject"
+                                Command="{Binding RejectOfferCommand}" Padding="0,10" />
+                        <Button Grid.Column="2" Style="{StaticResource PrimaryButtonStyle}" Content="Accept Transfer"
+                                Command="{Binding AcceptOfferCommand}" Padding="0,10" />
                     </Grid>
                 </StackPanel>
             </Border>

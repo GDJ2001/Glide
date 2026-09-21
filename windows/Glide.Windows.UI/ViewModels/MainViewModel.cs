@@ -3,24 +3,18 @@ using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Security.Cryptography;
-using System.Text.Json.Nodes;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
-using Glide.Core.Codec;
-using Glide.Core.Models;
 using Glide.Core.Pairing;
 using Glide.Core.Security;
 using Glide.Core.Storage;
-using Glide.Core.Transport.Lan;
 using Glide.Desktop;
 using Glide.Transport.Discovery;
-using Glide.Transport.Framing;
 using Glide.Transport.Sockets;
 using Glide.Transport.Web;
 using Glide.Windows.UI.Common;
 using Microsoft.Win32;
-using ProtocolViolationException = Glide.Core.Models.ProtocolViolationException;
 
 namespace Glide.Windows.UI.ViewModels;
 
@@ -34,10 +28,18 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     private string _statusMessage = "Ready";
     private string _localIpText = "";
 
-    private bool _isSasModalVisible;
-    private string _sasCode = "";
-    private string _sasPeerName = "";
-    private TaskCompletionSource<bool>? _sasConfirmationTcs;
+    private bool _isOfferModalVisible;
+    private string _incomingOfferPeer = "";
+    private string _incomingOfferSummary = "";
+    private TaskCompletionSource<bool>? _offerConfirmationTcs;
+
+    private bool _isTrustEnrollmentModalVisible;
+    private string _trustEnrollmentPeerName = "";
+    private string _trustEnrollmentFingerprint = "";
+    private TaskCompletionSource<bool>? _trustEnrollmentTcs;
+    private DesktopPersistentTrustManager? _trustManager;
+    private string _localIdentityFingerprint = "Unavailable";
+    private int _trustedDeviceCount;
 
     private bool _isTransferActive;
     private string _transferTitle = "";
@@ -47,9 +49,13 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     private string _currentFileName = "";
     private CancellationTokenSource? _activeTransferCts;
     private readonly DesktopTransferEngine _desktopTransferEngine = new();
+    private readonly DesktopStateStore _stateStore = new();
     private readonly Stopwatch _transferStopwatch = new();
+    private string _receiveDirectory = "";
+    private int _listenerPortPreference = LanDiscoveryConstants.DefaultPort;
 
     private TlsSocketListener? _listener;
+    private CancellationTokenSource? _invitationRotationCts;
 
     private readonly MdnsDiscoveryService _mdnsService = new();
     public ObservableCollection<DiscoveredPeerViewModel> DiscoveredPeers { get; } = [];
@@ -59,6 +65,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     private string _activeInvitationUri = "";
     private LanInvitation? _activeInvitation;
     private LanInvitation? _pairedInvitation;
+    private readonly LanInvitationAuthority _invitationAuthority = new();
 
     private GlideWebGateway? _webGateway;
     private bool _isWebShareModalVisible;
@@ -106,8 +113,11 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     public RelayCommand ClearFilesCommand { get; }
     public RelayCommand SendFilesCommand { get; }
     public RelayCommand ToggleListenerCommand { get; }
-    public RelayCommand ConfirmSasCommand { get; }
-    public RelayCommand RejectSasCommand { get; }
+    public RelayCommand AcceptOfferCommand { get; }
+    public RelayCommand RejectOfferCommand { get; }
+    public RelayCommand AcceptTrustEnrollmentCommand { get; }
+    public RelayCommand RejectTrustEnrollmentCommand { get; }
+    public RelayCommand BrowseReceiveFolderCommand { get; }
     public RelayCommand CancelTransferCommand { get; }
     public RelayCommand OpenDownloadsCommand { get; }
     public RelayCommand ShowPairModalCommand { get; }
@@ -122,6 +132,16 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
 
     public MainViewModel()
     {
+        DesktopPersistentState persisted = _stateStore.Load();
+        _receiveDirectory = persisted.Settings.ReceiveDirectory;
+        _listenerPortPreference = persisted.Settings.ListenerPort;
+        foreach (DesktopHistoryEntry entry in persisted.History)
+        {
+            HistoryItems.Add(ToHistoryViewModel(entry));
+        }
+
+        InitializePersistentTrust();
+
         SwitchTabCommand = new RelayCommand(param => CurrentTab = param?.ToString() ?? "Send");
         AddFilesCommand = new RelayCommand(ExecuteAddFiles);
         RemoveFileCommand = new RelayCommand(param =>
@@ -129,10 +149,15 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             if (param is TransferItemViewModel item) SelectedFiles.Remove(item);
         });
         ClearFilesCommand = new RelayCommand(() => SelectedFiles.Clear());
-        SendFilesCommand = new RelayCommand(async () => await ExecuteSendFilesAsync(), () => !IsTransferActive && SelectedFiles.Count > 0);
+        SendFilesCommand = new RelayCommand(
+            async () => await ExecuteSendFilesAsync(),
+            () => !IsTransferActive && SelectedFiles.Count > 0 && _pairedInvitation != null);
         ToggleListenerCommand = new RelayCommand(async () => await ToggleListenerAsync());
-        ConfirmSasCommand = new RelayCommand(() => _sasConfirmationTcs?.TrySetResult(true));
-        RejectSasCommand = new RelayCommand(() => _sasConfirmationTcs?.TrySetResult(false));
+        AcceptOfferCommand = new RelayCommand(() => _offerConfirmationTcs?.TrySetResult(true));
+        RejectOfferCommand = new RelayCommand(() => _offerConfirmationTcs?.TrySetResult(false));
+        AcceptTrustEnrollmentCommand = new RelayCommand(() => _trustEnrollmentTcs?.TrySetResult(true));
+        RejectTrustEnrollmentCommand = new RelayCommand(() => _trustEnrollmentTcs?.TrySetResult(false));
+        BrowseReceiveFolderCommand = new RelayCommand(ExecuteBrowseReceiveFolder);
         CancelTransferCommand = new RelayCommand(() => _activeTransferCts?.Cancel());
         OpenDownloadsCommand = new RelayCommand(ExecuteOpenDownloads);
         ShowPairModalCommand = new RelayCommand(() => IsPairModalVisible = true);
@@ -144,7 +169,9 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             {
                 PeerHost = peer.Host;
                 PeerPort = peer.Port;
-                StatusMessage = $"Selected peer: {peer.DeviceName} ({peer.Host}:{peer.Port})";
+                StatusMessage =
+                    $"Found {peer.DeviceName} ({peer.Host}:{peer.Port}). " +
+                    "Scan or paste that device's pairing invitation before sending.";
             }
         });
         RefreshPeersCommand = new RelayCommand(() =>
@@ -243,10 +270,81 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         set => SetProperty(ref _localIpText, value);
     }
 
-    public bool IsSasModalVisible
+    public bool IsOfferModalVisible
     {
-        get => _isSasModalVisible;
-        set => SetProperty(ref _isSasModalVisible, value);
+        get => _isOfferModalVisible;
+        set => SetProperty(ref _isOfferModalVisible, value);
+    }
+
+    public string IncomingOfferPeer
+    {
+        get => _incomingOfferPeer;
+        set => SetProperty(ref _incomingOfferPeer, value);
+    }
+
+    public string IncomingOfferSummary
+    {
+        get => _incomingOfferSummary;
+        set => SetProperty(ref _incomingOfferSummary, value);
+    }
+
+    public bool IsTrustEnrollmentModalVisible
+    {
+        get => _isTrustEnrollmentModalVisible;
+        set => SetProperty(ref _isTrustEnrollmentModalVisible, value);
+    }
+
+    public string TrustEnrollmentPeerName
+    {
+        get => _trustEnrollmentPeerName;
+        set => SetProperty(ref _trustEnrollmentPeerName, value);
+    }
+
+    public string TrustEnrollmentFingerprint
+    {
+        get => _trustEnrollmentFingerprint;
+        set => SetProperty(ref _trustEnrollmentFingerprint, value);
+    }
+
+    public string LocalIdentityFingerprint
+    {
+        get => _localIdentityFingerprint;
+        set => SetProperty(ref _localIdentityFingerprint, value);
+    }
+
+    public int TrustedDeviceCount
+    {
+        get => _trustedDeviceCount;
+        set => SetProperty(ref _trustedDeviceCount, value);
+    }
+
+    public string ReceiveDirectory
+    {
+        get => _receiveDirectory;
+        set
+        {
+            if (SetProperty(ref _receiveDirectory, value))
+            {
+                PersistDesktopSettings();
+            }
+        }
+    }
+
+    public int ListenerPortPreference
+    {
+        get => _listenerPortPreference;
+        set
+        {
+            if (value is < 1 or > 65535)
+            {
+                return;
+            }
+
+            if (SetProperty(ref _listenerPortPreference, value))
+            {
+                PersistDesktopSettings();
+            }
+        }
     }
 
     public bool IsPairModalVisible
@@ -271,18 +369,6 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                 PairingQrImage = QrImageHelper.GenerateQrImageSource(value);
             }
         }
-    }
-
-    public string SasCode
-    {
-        get => _sasCode;
-        set => SetProperty(ref _sasCode, value);
-    }
-
-    public string SasPeerName
-    {
-        get => _sasPeerName;
-        set => SetProperty(ref _sasPeerName, value);
     }
 
     public bool IsTransferActive
@@ -388,6 +474,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                 StatusMessage = $"Paired with {invitation.Name} ({targetEndpoint.Address}:{targetEndpoint.Port}) via invitation";
                 IsPairModalVisible = false;
                 PairInputUri = "";
+                CommandManager.InvalidateRequerySuggested();
             }
         }
         catch (Exception ex)
@@ -400,7 +487,11 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     {
         if (IsListening)
         {
+            _invitationRotationCts?.Cancel();
+            _invitationRotationCts?.Dispose();
+            _invitationRotationCts = null;
             _mdnsService.StopAdvertising();
+            _invitationAuthority.RevokeActive();
             ActiveInvitationUri = "";
             _activeInvitation = null;
             _listener?.Dispose();
@@ -412,7 +503,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
 
         try
         {
-            _listener = new TlsSocketListener(LanDiscoveryConstants.DefaultPort);
+            _listener = new TlsSocketListener(ListenerPortPreference);
         }
         catch
         {
@@ -422,53 +513,48 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         ListeningPort = _listener.BoundPort;
         IsListening = true;
 
-        try
-        {
-            string presence = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
-            byte[] tokenBytes = RandomNumberGenerator.GetBytes(32);
-            string token = Convert.ToBase64String(tokenBytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
-            byte[] spkiHashBytes = SHA256.HashData(_listener.ServerCertificate.PublicKey.ExportSubjectPublicKeyInfo());
-            string spkiSha256 = Convert.ToHexString(spkiHashBytes).ToLowerInvariant();
-            long expiresAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 120;
-
-            var localIps = Dns.GetHostAddresses(Dns.GetHostName())
-                .Where(ip => ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
-                .Select(ip => ip.ToString())
-                .ToList();
-
-            var endpoints = localIps.Select(ip => new LanEndpoint(ip, ListeningPort)).Take(4).ToList();
-            if (endpoints.Count == 0)
-            {
-                endpoints.Add(new LanEndpoint("127.0.0.1", ListeningPort));
-            }
-
-            var invitation = new LanInvitation(
-                invitationId: Guid.NewGuid().ToString().ToLowerInvariant(),
-                presence: presence,
-                name: Environment.MachineName,
-                platform: "windows",
-                endpoints: endpoints,
-                spkiSha256: spkiSha256,
-                token: token,
-                expiresAt: expiresAt.ToString(),
-                ttlSeconds: 120);
-
-            _activeInvitation = invitation;
-            ActiveInvitationUri = InvitationCodec.Encode(invitation);
-
-            _mdnsService.StartAdvertising(
-                deviceName: Environment.MachineName,
-                port: ListeningPort,
-                certFingerprintPrefix: spkiSha256[..8],
-                capabilities: LanDiscoveryConstants.DefaultCapabilities);
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"Failed to generate pairing invitation: {ex.Message}");
-        }
+        RefreshReceiverInvitation();
+        _invitationRotationCts?.Dispose();
+        _invitationRotationCts =
+            new CancellationTokenSource();
 
         StatusMessage = $"Listening on port {ListeningPort}";
+        _ = Task.Run(
+            async () =>
+                await RunInvitationRotationLoopAsync(
+                    _invitationRotationCts.Token));
         _ = Task.Run(async () => await RunListenerLoopAsync());
+    }
+
+    private async Task RunInvitationRotationLoopAsync(
+        CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(
+                    TimeSpan.FromSeconds(100),
+                    cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+
+            RunOnUi(() =>
+            {
+                if (IsListening &&
+                    _listener != null &&
+                    !IsTransferActive)
+                {
+                    _invitationAuthority.RevokeActive();
+                    RefreshReceiverInvitation();
+                    StatusMessage =
+                        "Pairing invitation rotated.";
+                }
+            });
+        }
     }
 
     private async Task RunListenerLoopAsync()
@@ -478,7 +564,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             try
             {
                 var conn = await _listener.AcceptConnectionAsync();
-                _ = Task.Run(async () => await HandleInboundTransferAsync(conn));
+                await HandleInboundTransferAsync(conn);
             }
             catch
             {
@@ -508,10 +594,11 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                 var result = await _desktopTransferEngine.ReceiveAsync(
                     conn,
                     new DesktopReceiveRequest(
-                        new QuarantineStagingStore(),
-                        _activeInvitation,
-                        AllowBootstrapWithoutInvitation: false,
-                        LocalDeviceName: Environment.MachineName),
+                        new QuarantineStagingStore(
+                            destinationRoot: ReceiveDirectory),
+                        _invitationAuthority,
+                        LocalDeviceName: Environment.MachineName,
+                        TrustManager: _trustManager),
                     this,
                     cancellationToken);
 
@@ -523,15 +610,26 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                 {
                     _transferStopwatch.Stop();
                     IsTransferActive = false;
-                    IsSasModalVisible = false;
+                    IsOfferModalVisible = false;
+                    if (IsListening && _listener != null)
+                    {
+                        RefreshReceiverInvitation();
+                    }
                 });
             }
         }
     }
 
-private async Task ExecuteSendFilesAsync()
+    private async Task ExecuteSendFilesAsync()
     {
         if (SelectedFiles.Count == 0) return;
+        if (_pairedInvitation == null)
+        {
+            StatusMessage =
+                "Authenticated pairing is required. Scan or paste the receiver's current pairing invitation.";
+            IsPairModalVisible = true;
+            return;
+        }
 
         _activeTransferCts?.Dispose();
         _activeTransferCts = new CancellationTokenSource();
@@ -554,7 +652,8 @@ private async Task ExecuteSendFilesAsync()
                     PeerPort,
                     files,
                     _pairedInvitation,
-                    Environment.MachineName),
+                    Environment.MachineName,
+                    TrustManager: _trustManager),
                 this,
                 cancellationToken);
 
@@ -564,58 +663,104 @@ private async Task ExecuteSendFilesAsync()
         {
             _transferStopwatch.Stop();
             IsTransferActive = false;
-            IsSasModalVisible = false;
+            IsOfferModalVisible = false;
         }
     }
 
-    public async Task<bool> ConfirmSasAsync(
-        DesktopTransferDirection direction,
-        string peerName,
-        int sixDigitCode,
+    public async Task<bool> ConfirmOfferAsync(
+        DesktopOffer offer,
         CancellationToken cancellationToken)
     {
-        var confirmation = new TaskCompletionSource<bool>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
+        var confirmation =
+            new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
 
         RunOnUi(() =>
         {
-            _sasConfirmationTcs = confirmation;
-            SasCode = sixDigitCode.ToString("D6");
-            SasPeerName = peerName;
-            IsSasModalVisible = true;
+            _offerConfirmationTcs = confirmation;
+            IncomingOfferPeer = offer.PeerName;
+            IncomingOfferSummary =
+                $"{offer.Items.Count} item(s) • " +
+                $"{TransferItemViewModel.FormatSize(offer.TotalBytes)}";
+            TransferTitle =
+                $"Incoming transfer from {offer.PeerName}";
+            IsOfferModalVisible = true;
         });
 
         try
         {
-            return await confirmation.Task.WaitAsync(cancellationToken);
+            return await confirmation.Task.WaitAsync(
+                cancellationToken);
         }
         finally
         {
             RunOnUi(() =>
             {
-                if (ReferenceEquals(_sasConfirmationTcs, confirmation))
+                if (ReferenceEquals(
+                        _offerConfirmationTcs,
+                        confirmation))
                 {
-                    _sasConfirmationTcs = null;
+                    _offerConfirmationTcs = null;
                 }
 
-                IsSasModalVisible = false;
+                IsOfferModalVisible = false;
             });
         }
     }
 
-    public Task<bool> ConfirmOfferAsync(
-        DesktopOffer offer,
+    public async Task<bool> ConfirmPeerEnrollmentAsync(
+        VerifiedDesktopPeerIdentity peer,
         CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (_trustManager == null)
+        {
+            return false;
+        }
+
+        var confirmation =
+            new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+
         RunOnUi(() =>
         {
-            SasPeerName = offer.PeerName;
+            _trustEnrollmentTcs
+                ?.TrySetResult(false);
+            _trustEnrollmentTcs =
+                confirmation;
+            TrustEnrollmentPeerName =
+                peer.DisplayName;
+            TrustEnrollmentFingerprint =
+                FormatFingerprint(
+                    peer.FingerprintHex);
             TransferTitle =
-                $"Receiving {offer.Items.Count} file(s) from {offer.PeerName}";
+                $"Verify identity for {peer.DisplayName}";
+            IsTrustEnrollmentModalVisible =
+                true;
         });
 
-        // Preserve current WPF behavior. HARD-015 adds explicit incoming-offer consent.
-        return Task.FromResult(true);
+        try
+        {
+            return await confirmation.Task.WaitAsync(
+                cancellationToken);
+        }
+        finally
+        {
+            RunOnUi(() =>
+            {
+                if (ReferenceEquals(
+                        _trustEnrollmentTcs,
+                        confirmation))
+                {
+                    _trustEnrollmentTcs =
+                        null;
+                }
+
+                IsTrustEnrollmentModalVisible =
+                    false;
+            });
+        }
     }
 
     public void OnInvitationConsumed(DesktopTransferDirection direction)
@@ -625,10 +770,12 @@ private async Task ExecuteSendFilesAsync()
             if (direction == DesktopTransferDirection.Send)
             {
                 _pairedInvitation = null;
+                CommandManager.InvalidateRequerySuggested();
             }
             else
             {
                 _activeInvitation = null;
+                _mdnsService.StopAdvertising();
                 ActiveInvitationUri = "";
             }
         });
@@ -638,13 +785,26 @@ private async Task ExecuteSendFilesAsync()
         DesktopTransferDirection direction,
         string peerName)
     {
-        RunOnUi(() => SasPeerName = peerName);
+        RunOnUi(() =>
+        {
+            TransferTitle =
+                direction == DesktopTransferDirection.Receive
+                    ? $"Receiving from {peerName}"
+                    : $"Sending to {peerName}";
+        });
     }
 
     public void OnStatus(
         DesktopTransferDirection direction,
         string message)
     {
+        if (message.Contains(
+                "Trusted identity authenticated",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            RefreshTrustSummary();
+        }
+
         RunOnUi(() =>
         {
             StatusMessage = message;
@@ -703,25 +863,141 @@ private async Task ExecuteSendFilesAsync()
 
     public void OnHistory(DesktopHistoryEntry entry)
     {
+        try
+        {
+            _stateStore.AppendVerifiedHistory(entry);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine(
+                $"Failed to persist transfer history: {ex.Message}");
+        }
+
         RunOnUi(() =>
         {
             HistoryItems.Insert(
                 0,
-                new HistoryItemViewModel
-                {
-                    Direction =
-                        entry.Direction == DesktopTransferDirection.Send
-                            ? "Sent"
-                            : "Received",
-                    ItemName = entry.ItemName,
-                    FormattedSize =
-                        TransferItemViewModel.FormatSize(entry.SizeBytes),
-                    TargetPath = entry.Path,
-                    PeerName = entry.PeerName,
-                    Timestamp = entry.Timestamp.LocalDateTime
-                });
+                ToHistoryViewModel(entry));
         });
     }
+
+    private void InitializePersistentTrust()
+    {
+        try
+        {
+            _trustManager =
+                new DesktopPersistentTrustManager(
+                    new DesktopPersistentIdentityStore(),
+                    new DesktopTrustStore());
+
+            DesktopTrustInitialization initialization =
+                _trustManager.Initialize();
+
+            LocalIdentityFingerprint =
+                FormatFingerprint(
+                    initialization.LocalFingerprintHex);
+            TrustedDeviceCount =
+                _trustManager
+                    .GetTrustedPeers()
+                    .Count;
+
+            if (initialization
+                .ResetAfterIdentityLossOrChange)
+            {
+                StatusMessage =
+                    $"Persistent identity changed or was restored without its protected key. " +
+                    $"{initialization.RevokedPeerCount} trusted device(s) were revoked.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _trustManager = null;
+            LocalIdentityFingerprint =
+                "Unavailable";
+            TrustedDeviceCount = 0;
+            StatusMessage =
+                "Persistent identity is unavailable. " +
+                "One-use invitation pairing remains available, but trusted-device mode is disabled. " +
+                ex.Message;
+        }
+    }
+
+    private void RefreshTrustSummary()
+    {
+        DesktopPersistentTrustManager? manager =
+            _trustManager;
+        if (manager == null)
+        {
+            return;
+        }
+
+        try
+        {
+            string fingerprint =
+                FormatFingerprint(
+                    manager.LocalFingerprintHex());
+            int count =
+                manager.GetTrustedPeers().Count;
+
+            RunOnUi(() =>
+            {
+                LocalIdentityFingerprint =
+                    fingerprint;
+                TrustedDeviceCount =
+                    count;
+            });
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine(
+                $"Failed to refresh persistent trust summary: {ex.Message}");
+        }
+    }
+
+    private static string FormatFingerprint(
+        string fingerprintHex)
+    {
+        if (string.IsNullOrWhiteSpace(
+                fingerprintHex))
+        {
+            return "Unavailable";
+        }
+
+        return string.Join(
+            " ",
+            Enumerable.Range(
+                    0,
+                    (fingerprintHex.Length + 7) / 8)
+                .Select(index =>
+                {
+                    int start =
+                        index * 8;
+                    int length =
+                        Math.Min(
+                            8,
+                            fingerprintHex.Length -
+                                start);
+                    return fingerprintHex.Substring(
+                        start,
+                        length);
+                }));
+    }
+
+    private static HistoryItemViewModel ToHistoryViewModel(
+        DesktopHistoryEntry entry) =>
+        new()
+        {
+            Direction =
+                entry.Direction == DesktopTransferDirection.Send
+                    ? "Sent"
+                    : "Received",
+            ItemName = entry.ItemName,
+            FormattedSize =
+                TransferItemViewModel.FormatSize(entry.SizeBytes),
+            TargetPath = entry.Path,
+            PeerName = entry.PeerName,
+            Timestamp = entry.Timestamp.LocalDateTime
+        };
 
     private static void RunOnUi(Action action)
     {
@@ -735,7 +1011,135 @@ private async Task ExecuteSendFilesAsync()
         dispatcher.Invoke(action);
     }
 
-private void ExecuteOpenDownloads()
+    private void ExecuteBrowseReceiveFolder()
+    {
+        var dialog = new OpenFolderDialog
+        {
+            Title = "Choose Glide receive folder",
+            InitialDirectory =
+                Directory.Exists(ReceiveDirectory)
+                    ? ReceiveDirectory
+                    : Environment.GetFolderPath(
+                        Environment.SpecialFolder.UserProfile)
+        };
+
+        if (dialog.ShowDialog() == true)
+        {
+            ReceiveDirectory = dialog.FolderName;
+        }
+    }
+
+    private void PersistDesktopSettings()
+    {
+        if (string.IsNullOrWhiteSpace(ReceiveDirectory) ||
+            ListenerPortPreference is < 1 or > 65535)
+        {
+            return;
+        }
+
+        try
+        {
+            _stateStore.SaveSettings(
+                new DesktopSettings(
+                    ReceiveDirectory,
+                    ListenerPortPreference));
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine(
+                $"Failed to persist desktop settings: {ex.Message}");
+        }
+    }
+
+    private void RefreshReceiverInvitation()
+    {
+        if (_listener == null || !IsListening)
+        {
+            return;
+        }
+
+        string presence =
+            LanDiscoveryConstants.GeneratePresenceId();
+        byte[] tokenBytes =
+            RandomNumberGenerator.GetBytes(32);
+        string token =
+            Convert.ToBase64String(tokenBytes)
+                .TrimEnd('=')
+                .Replace('+', '-')
+                .Replace('/', '_');
+        byte[] spkiHashBytes =
+            SHA256.HashData(
+                _listener.ServerCertificate
+                    .PublicKey
+                    .ExportSubjectPublicKeyInfo());
+        string spkiSha256 =
+            Convert.ToHexString(
+                    spkiHashBytes)
+                .ToLowerInvariant();
+        long expiresAt =
+            DateTimeOffset.UtcNow
+                .ToUnixTimeSeconds() + 120;
+
+        var localIps =
+            Dns.GetHostAddresses(
+                    Dns.GetHostName())
+                .Where(ip =>
+                    ip.AddressFamily ==
+                    System.Net.Sockets
+                        .AddressFamily.InterNetwork)
+                .Select(ip => ip.ToString())
+                .ToList();
+
+        var endpoints =
+            localIps
+                .Select(ip =>
+                    new LanEndpoint(
+                        ip,
+                        ListeningPort))
+                .Take(
+                    LanInvitation.MaxEndpoints)
+                .ToList();
+        if (endpoints.Count == 0)
+        {
+            endpoints.Add(
+                new LanEndpoint(
+                    "127.0.0.1",
+                    ListeningPort));
+        }
+
+        var invitation =
+            new LanInvitation(
+                invitationId:
+                    Guid.NewGuid()
+                        .ToString("D")
+                        .ToLowerInvariant(),
+                presence: presence,
+                name: Environment.MachineName,
+                platform: "windows",
+                endpoints: endpoints,
+                spkiSha256: spkiSha256,
+                token: token,
+                expiresAt: expiresAt.ToString(),
+                ttlSeconds: 120);
+
+        LanInvitation canonicalInvitation =
+            _invitationAuthority.Publish(
+                invitation);
+        _activeInvitation =
+            canonicalInvitation;
+        ActiveInvitationUri =
+            InvitationCodec.Encode(
+                canonicalInvitation);
+
+        _mdnsService.StartAdvertising(
+            deviceName:
+                Environment.MachineName,
+            port: ListeningPort,
+            presenceId:
+                canonicalInvitation.Presence);
+    }
+
+    private void ExecuteOpenDownloads()
     {
         string downloads = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
         if (Directory.Exists(downloads))
