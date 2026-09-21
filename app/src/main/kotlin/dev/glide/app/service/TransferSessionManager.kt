@@ -176,6 +176,30 @@ object TransferSessionManager {
         return true
     }
 
+    @Synchronized
+    private fun finalizeTerminalSession(coordinator: TransferCoordinator) {
+        if (activeCoordinator !== coordinator || !coordinator.state.value.phase.isTerminal) {
+            return
+        }
+
+        val committedKeys = coordinator.committedItemFiles
+            .mapKeys { it.key.value }
+            .mapValues { it.value.value }
+        _uiState.value = coordinator.state.value.toUiState(
+            peerDisplayName = activePeerDisplayName,
+            committedFileKey = coordinator.lastCommittedFileHandle?.value,
+            committedItemKeys = committedKeys
+        )
+
+        coordinator.stop()
+        ActiveSessionTracker.setSessionActive(coordinator.sessionId.value, false)
+
+        if (terminalCallbackSessionId != coordinator.sessionId.value) {
+            terminalCallbackSessionId = coordinator.sessionId.value
+            onTerminalCallback?.invoke()
+        }
+    }
+
     /**
      * Stops the active session, cancels jobs, and signals terminal teardown.
      */
@@ -186,6 +210,8 @@ object TransferSessionManager {
         activeCoordinator = null
         activeJob?.cancel()
         activeJob = null
+        terminalCallbackSessionId = null
+        activePeerDisplayName = "Nearby device"
         ActiveSessionTracker.reset()
         onTerminalCallback?.invoke()
     }
@@ -224,6 +250,8 @@ object TransferSessionManager {
         activeCoordinator = null
         _uiState = MutableStateFlow(TransferUiState.Idle)
         onTerminalCallback = null
+        terminalCallbackSessionId = null
+        activePeerDisplayName = "Nearby device"
         ActiveSessionTracker.reset()
     }
 }
