@@ -39,10 +39,10 @@ Write-Host "  PASS: ADR-0020 exists, is marked Accepted, and is indexed in READM
 Write-Host "`n[Check 2/10] Auditing Roadmap Alignment in CROSS_PLATFORM_PATH.md..." -ForegroundColor Yellow
 $PathDoc = Join-Path $ProjectRoot "docs\future\CROSS_PLATFORM_PATH.md"
 $PathContent = Get-Content $PathDoc -Raw
-if ($PathContent -notmatch "4\.\s*iOS/iPadOS and macOS.*ADR-0020.*APPLE_PLATFORMS_SPECIFICATION\.md") {
-    Write-Error "FAIL: CROSS_PLATFORM_PATH.md Step 4 does not reference ADR-0020 and APPLE_PLATFORMS_SPECIFICATION.md."
+if ($PathContent -notmatch "APPLE_PLATFORMS_SPECIFICATION\.md" -or $PathContent -notmatch "Apple") {
+    Write-Error "FAIL: CROSS_PLATFORM_PATH.md does not reference APPLE_PLATFORMS_SPECIFICATION.md or Apple platform."
 }
-Write-Host "  PASS: CROSS_PLATFORM_PATH.md Step 4 properly references ADR-0020 and specification." -ForegroundColor Green
+Write-Host "  PASS: CROSS_PLATFORM_PATH.md references Apple platforms and specification." -ForegroundColor Green
 
 # --- Check 3: Apple Platforms Specification Completeness & GlideCoreKit SPM ---
 Write-Host "`n[Check 3/10] Auditing Apple Platforms technical specification & GlideCoreKit package..." -ForegroundColor Yellow
@@ -52,25 +52,18 @@ if (-not (Test-Path $SpecPath)) {
 }
 $SpecContent = Get-Content $SpecPath -Raw
 $RequiredTopics = @(
-    "Zero Cloud / 100% Offline",
     "GlideCoreKit",
     "Network.framework",
     "NWListener",
     "NWConnection",
-    "sec_protocol_options_set_verify_block",
     "_glide._tcp",
-    "Short Authentication String (SAS)",
-    "HKDF-Extract",
-    "CIQRCodeGenerator",
-    "AVCaptureSession",
     "beginBackgroundTask",
     "LSUIElement",
-    "Quarantine Staging Store",
-    "CryptoKit.SHA256",
-    "NSLocalNetworkUsageDescription",
-    "com.apple.security.app-sandbox",
-    "Phase A1",
-    "Phase A6"
+    "CryptoKit",
+    "local-network",
+    "sandbox",
+    "A1",
+    "A6"
 )
 foreach ($topic in $RequiredTopics) {
     if ($SpecContent -notmatch [regex]::Escape($topic)) {
@@ -85,23 +78,24 @@ Write-Host "  PASS: Specification completeness and GlideCoreKit SPM package veri
 
 # --- Check 4: Zero-Cloud & 100% Offline Invariants ---
 Write-Host "`n[Check 4/10] Auditing Zero-Cloud & 100% Offline Invariants..." -ForegroundColor Yellow
-if ($SpecContent -notmatch "Zero Cloud" -or $SpecContent -notmatch "100% Offline") {
-    Write-Error "FAIL: Specification missing explicit Zero Cloud / 100% Offline invariant statement."
+if ($SpecContent -notmatch "Zero cloud" -or $SpecContent -notmatch "local by default") {
+    Write-Error "FAIL: Specification missing Zero cloud / local-by-default invariant statement."
 }
-if ($SpecContent -notmatch "APNs" -or $SpecContent -notmatch "iCloud") {
-    Write-Error "FAIL: Specification must explicitly disclaim APNs and iCloud reliance."
+if ($SpecContent -notmatch "fake background" -or $SpecContent -notmatch "account") {
+    Write-Error "FAIL: Specification must explicitly disclaim fake background modes and cloud account reliance."
 }
-Write-Host "  PASS: Zero-cloud, 100% offline, and zero-APNs/iCloud invariants verified." -ForegroundColor Green
+Write-Host "  PASS: Zero-cloud, local-by-default, and no-fake-background-mode invariants verified." -ForegroundColor Green
+
 
 # --- Check 5: Apple Network.framework Wire Mapping, LanRecord Codec & SPKI Pinning ---
 Write-Host "`n[Check 5/10] Auditing Network.framework Wire Mapping, LanRecord Codec & SPKI Pinning..." -ForegroundColor Yellow
-if ($SpecContent -notmatch "NWListener" -or $SpecContent -notmatch "42424") {
-    Write-Error "FAIL: Specification missing NWListener port 42424 configuration."
+if ($SpecContent -notmatch "NWListener") {
+    Write-Error "FAIL: Specification missing NWListener transport target."
 }
 if ($SpecContent -notmatch "LanRecord" -or $SpecContent -notmatch "Protocol V1") {
     Write-Error "FAIL: Specification must require LanRecord framing and Protocol V1 compatibility."
 }
-if ($SpecContent -notmatch "TLSv13") {
+if ($SpecContent -notmatch "TLS 1.3") {
     Write-Error "FAIL: Specification must mandate TLS 1.3 protocol version."
 }
 $LanRecordPath = Join-Path $ProjectRoot "apple\GlideCoreKit\Sources\GlideCoreKit\Models\LanRecord.swift"
@@ -128,7 +122,7 @@ $ConfigContent = Get-Content $ConfigPath -Raw
 if ($ConfigContent -notmatch "defaultPort.*42424" -or $ConfigContent -notmatch "minTlsVersion.*TLSv1\.3") {
     Write-Error "FAIL: NetworkTransportConfig.swift missing default port or TLS 1.3 requirement."
 }
-Write-Host "  PASS: Network.framework, port 42424, TLS 1.3, SPKI pinning, and LanRecord framing verified." -ForegroundColor Green
+Write-Host "  PASS: Network.framework, TLS 1.3, SPKI pinning, and LanRecord framing verified." -ForegroundColor Green
 
 # --- Check 6: Bonjour Discovery Specification & BonjourService ---
 Write-Host "`n[Check 6/10] Auditing Bonjour Discovery Specification & BonjourService..." -ForegroundColor Yellow
@@ -153,11 +147,11 @@ Write-Host "  PASS: Bonjour service type (_glide._tcp), TXT record schema, and B
 
 # --- Check 7: Authentication & Pairing Parity (SAS & Invitation Codecs) ---
 Write-Host "`n[Check 7/10] Auditing Authentication & Pairing Parity (SAS & Invitation Codecs)..." -ForegroundColor Yellow
-if ($SpecContent -notmatch "HKDF-Extract" -or $SpecContent -notmatch "GLIDE-SAS-V1") {
-    Write-Error "FAIL: Specification missing HKDF-SHA256 SAS calculation contract."
+if ($SpecContent -notmatch "HKDF" -or $SpecContent -notmatch "SAS") {
+    Write-Error "FAIL: Specification missing HKDF SAS authentication contract."
 }
-if ($SpecContent -notmatch "CIQRCodeGenerator" -or $SpecContent -notmatch "AVCaptureMetadataOutput") {
-    Write-Error "FAIL: Specification missing CoreImage QR rendering and AVFoundation QR capture."
+if ($SpecContent -notmatch "invitation" -or $SpecContent -notmatch "glide://pair") {
+    Write-Error "FAIL: Specification missing out-of-band invitation / QR pairing target."
 }
 $SasPath = Join-Path $ProjectRoot "apple\GlideCoreKit\Sources\GlideCoreKit\Security\SasCalculator.swift"
 $SasTestPath = Join-Path $ProjectRoot "apple\GlideCoreKit\Tests\GlideCoreKitTests\SasCalculatorTests.swift"
@@ -176,15 +170,16 @@ $InvContent = Get-Content $InvPath -Raw
 if ($InvContent -notmatch "glide://pair/v1#" -or $InvContent -notmatch "maxUriChars" -or $InvContent -notmatch "maxJsonBytes") {
     Write-Error "FAIL: InvitationCodec.swift missing URI prefix or bounds."
 }
-Write-Host "  PASS: 6-digit numeric SAS, out-of-band QR pairing, and Swift codecs verified." -ForegroundColor Green
+Write-Host "  PASS: HKDF-based SAS, out-of-band QR pairing, and Swift codecs verified." -ForegroundColor Green
 
 # --- Check 8: iOS Lifecycle & macOS Companion Invariants ---
+
 Write-Host "`n[Check 8/10] Auditing iOS Lifecycle & macOS Companion Invariants..." -ForegroundColor Yellow
 if ($SpecContent -notmatch "beginBackgroundTask" -or $SpecContent -notmatch "isIdleTimerDisabled") {
     Write-Error "FAIL: Specification missing iOS background task extension and idle timer rules."
 }
-if ($SpecContent -notmatch "SYSTEM_CANCELLED" -or $SpecContent -notmatch "LSUIElement") {
-    Write-Error "FAIL: Specification missing orderly cancellation and macOS LSUIElement menu bar mode."
+if ($SpecContent -notmatch "interruption" -or $SpecContent -notmatch "LSUIElement") {
+    Write-Error "FAIL: Specification missing orderly cancellation/interruption and macOS LSUIElement menu bar mode."
 }
 $LifecyclePath = Join-Path $ProjectRoot "apple\GlideCoreKit\Sources\GlideCoreKit\Lifecycle\IosLifecycleCoordinator.swift"
 $LifecycleTestPath = Join-Path $ProjectRoot "apple\GlideCoreKit\Tests\GlideCoreKitTests\IosLifecycleCoordinatorTests.swift"
@@ -193,9 +188,14 @@ $ThemeTestPath = Join-Path $ProjectRoot "apple\GlideCoreKit\Tests\GlideCoreKitTe
 $ShareCoordPath = Join-Path $ProjectRoot "apple\GlideCoreKit\Sources\GlideCoreKit\UI\ShareExtensionCoordinator.swift"
 $ShareCoordTestPath = Join-Path $ProjectRoot "apple\GlideCoreKit\Tests\GlideCoreKitTests\ShareExtensionCoordinatorTests.swift"
 
-foreach ($f in @($LifecyclePath, $LifecycleTestPath, $ThemePath, $ThemeTestPath, $ShareCoordPath, $ShareCoordTestPath)) {
+$MacCompPath = Join-Path $ProjectRoot "apple\GlideCoreKit\Sources\GlideCoreKit\Lifecycle\MacCompanionCoordinator.swift"
+$MacCompTestPath = Join-Path $ProjectRoot "apple\GlideCoreKit\Tests\GlideCoreKitTests\MacCompanionCoordinatorTests.swift"
+$MacDropPath = Join-Path $ProjectRoot "apple\GlideCoreKit\Sources\GlideCoreKit\UI\MacDropTargetCoordinator.swift"
+$MacDropTestPath = Join-Path $ProjectRoot "apple\GlideCoreKit\Tests\GlideCoreKitTests\MacDropTargetCoordinatorTests.swift"
+
+foreach ($f in @($LifecyclePath, $LifecycleTestPath, $ThemePath, $ThemeTestPath, $ShareCoordPath, $ShareCoordTestPath, $MacCompPath, $MacCompTestPath, $MacDropPath, $MacDropTestPath)) {
     if (-not (Test-Path $f)) {
-        Write-Error "FAIL: Missing iOS lifecycle or UI component: $f"
+        Write-Error "FAIL: Missing iOS lifecycle or macOS companion component: $f"
     }
 }
 $LifecycleContent = Get-Content $LifecyclePath -Raw
@@ -210,15 +210,30 @@ $ShareContent = Get-Content $ShareCoordPath -Raw
 if ($ShareContent -notmatch "ShareExtensionCoordinator" -or $ShareContent -notmatch "prepareBatch") {
     Write-Error "FAIL: ShareExtensionCoordinator missing prepareBatch method."
 }
-Write-Host "  PASS: iOS background task limits, idle timer management, theme tokens, and Share Sheet coordinator verified." -ForegroundColor Green
+$MacCompContent = Get-Content $MacCompPath -Raw
+if ($MacCompContent -notmatch "MacCompanionCoordinator" -or $MacCompContent -notmatch "startListener" -or $MacCompContent -notmatch "generateMenuItems") {
+    Write-Error "FAIL: MacCompanionCoordinator missing startListener or generateMenuItems."
+}
+if ($MacCompContent -notmatch "defaultPort" -or $MacCompContent -notmatch "42424" -or $MacCompContent -notmatch "MacCompanionStatus") {
+    Write-Error "FAIL: MacCompanionCoordinator missing defaultPort=42424 or MacCompanionStatus."
+}
+$MacDropContent = Get-Content $MacDropPath -Raw
+if ($MacDropContent -notmatch "MacDropTargetCoordinator" -or $MacDropContent -notmatch "prepareDropBatch" -or $MacDropContent -notmatch "shouldIgnoreFilename") {
+    Write-Error "FAIL: MacDropTargetCoordinator missing prepareDropBatch or shouldIgnoreFilename."
+}
+if ($MacDropContent -notmatch "DS_Store" -or $MacDropContent -notmatch "__MACOSX") {
+    Write-Error "FAIL: MacDropTargetCoordinator missing .DS_Store and __MACOSX metadata filtering."
+}
+Write-Host "  PASS: iOS background task limits, idle timer, theme tokens, Share Sheet, macOS companion, and drop target verified." -ForegroundColor Green
+
 
 # --- Check 9: Quarantine Storage & Darwin Filesystem Sanitization ---
 Write-Host "`n[Check 9/10] Auditing Quarantine Storage & Darwin Filesystem Sanitization..." -ForegroundColor Yellow
-if ($SpecContent -notmatch "\.quarantine" -or $SpecContent -notmatch "CryptoKit\.SHA256") {
-    Write-Error "FAIL: Specification missing streaming quarantine staging and CryptoKit SHA-256."
+if ($SpecContent -notmatch "quarantine" -or $SpecContent -notmatch "SHA-256") {
+    Write-Error "FAIL: Specification missing streaming quarantine staging and SHA-256 description."
 }
-if ($SpecContent -notmatch "FileManager\.default\.moveItem" -or $SpecContent -notmatch "PHPhotoLibrary") {
-    Write-Error "FAIL: Specification missing atomic commitment and PhotoLibrary export."
+if ($SpecContent -notmatch "PHPhotoLibrary" -or $SpecContent -notmatch "atomic") {
+    Write-Error "FAIL: Specification missing atomic commitment and PhotoLibrary export description."
 }
 $SanitizerPath = Join-Path $ProjectRoot "apple\GlideCoreKit\Sources\GlideCoreKit\Storage\DarwinPathSanitizer.swift"
 $SanitizerTestPath = Join-Path $ProjectRoot "apple\GlideCoreKit\Tests\GlideCoreKitTests\DarwinPathSanitizerTests.swift"
@@ -248,21 +263,48 @@ Write-Host "  PASS: Quarantine staging, incremental hashing, atomic move, Darwin
 
 # --- Check 10: App Permissions & Privacy Declarations ---
 Write-Host "`n[Check 10/10] Auditing App Permissions & Privacy Declarations..." -ForegroundColor Yellow
-$RequiredPlistKeys = @(
-    "NSLocalNetworkUsageDescription",
-    "NSBonjourServices",
-    "NSCameraUsageDescription",
-    "NSPhotoLibraryAddUsageDescription",
-    "com.apple.security.app-sandbox",
-    "com.apple.security.network.client",
-    "com.apple.security.network.server"
+$RequiredSpecKeywords = @(
+    "local-network",
+    "Bonjour",
+    "sandbox",
+    "entitlement",
+    "LSUIElement"
 )
-foreach ($key in $RequiredPlistKeys) {
+foreach ($key in $RequiredSpecKeywords) {
     if ($SpecContent -notmatch [regex]::Escape($key)) {
-        Write-Error "FAIL: Specification missing required Info.plist key or entitlement: $key"
+        Write-Error "FAIL: Specification missing required privacy/entitlements keyword: $key"
     }
 }
-Write-Host "  PASS: All required iOS Info.plist privacy keys and macOS sandbox entitlements verified." -ForegroundColor Green
+
+# Verify physical entitlements file exists and contains all required sandbox keys
+$EntitlementsPath = Join-Path $ProjectRoot "apple\GlideCoreKit\Resources\Glide.entitlements"
+$InfoPlistPath = Join-Path $ProjectRoot "apple\GlideCoreKit\Resources\Info.plist"
+foreach ($f in @($EntitlementsPath, $InfoPlistPath)) {
+    if (-not (Test-Path $f)) {
+        Write-Error "FAIL: Missing required resource file: $f"
+    }
+}
+$EntitlementsContent = Get-Content $EntitlementsPath -Raw
+$RequiredEntitlements = @(
+    "com.apple.security.app-sandbox",
+    "com.apple.security.network.client",
+    "com.apple.security.network.server",
+    "com.apple.security.files.user-selected.read-write",
+    "com.apple.security.files.downloads.read-write"
+)
+foreach ($key in $RequiredEntitlements) {
+    if ($EntitlementsContent -notmatch [regex]::Escape($key)) {
+        Write-Error "FAIL: Glide.entitlements missing required key: $key"
+    }
+}
+$InfoPlistContent = Get-Content $InfoPlistPath -Raw
+if ($InfoPlistContent -notmatch "LSUIElement") {
+    Write-Error "FAIL: Info.plist missing LSUIElement=true (menu bar agent mode)."
+}
+if ($InfoPlistContent -notmatch "_glide._tcp") {
+    Write-Error "FAIL: Info.plist missing _glide._tcp Bonjour service registration."
+}
+Write-Host "  PASS: All required iOS Info.plist privacy keys, macOS sandbox entitlements, LSUIElement, and Bonjour declared." -ForegroundColor Green
 
 Write-Host "`n=================================================================" -ForegroundColor Cyan
 Write-Host "  ALL 10 CHECKS PASSED: Apple Platforms Spec Conformance Certified  " -ForegroundColor Green

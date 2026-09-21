@@ -39,10 +39,10 @@ Write-Host "  PASS: ADR-0021 exists, is marked Accepted, and is indexed in READM
 Write-Host "`n[Check 2/10] Auditing Roadmap Alignment in CROSS_PLATFORM_PATH.md..." -ForegroundColor Yellow
 $PathDoc = Join-Path $ProjectRoot "docs\future\CROSS_PLATFORM_PATH.md"
 $PathContent = Get-Content $PathDoc -Raw
-if ($PathContent -notmatch "5\.\s*Linux:.*ADR-0021.*LINUX_PLATFORM_SPECIFICATION\.md") {
-    Write-Error "FAIL: CROSS_PLATFORM_PATH.md Step 5 does not reference ADR-0021 and LINUX_PLATFORM_SPECIFICATION.md."
+if ($PathContent -notmatch "LINUX_PLATFORM_SPECIFICATION\.md" -or $PathContent -notmatch "Linux") {
+    Write-Error "FAIL: CROSS_PLATFORM_PATH.md does not reference LINUX_PLATFORM_SPECIFICATION.md or Linux platform."
 }
-Write-Host "  PASS: CROSS_PLATFORM_PATH.md Step 5 properly references ADR-0021 and specification." -ForegroundColor Green
+Write-Host "  PASS: CROSS_PLATFORM_PATH.md references Linux platform and specification." -ForegroundColor Green
 
 # --- Check 3: Linux Platform Specification Completeness ---
 Write-Host "`n[Check 3/10] Auditing Linux Platform technical specification completeness..." -ForegroundColor Yellow

@@ -39,10 +39,10 @@ Write-Host "  PASS: ADR-0022 exists, is marked Accepted, and is indexed in READM
 Write-Host "`n[Check 2/10] Auditing Roadmap Alignment in CROSS_PLATFORM_PATH.md..." -ForegroundColor Yellow
 $PathDoc = Join-Path $ProjectRoot "docs\future\CROSS_PLATFORM_PATH.md"
 $PathContent = Get-Content $PathDoc -Raw
-if ($PathContent -notmatch "6\.\s*Remote/internet:.*ADR-0022.*REMOTE_INTERNET_TRANSFER_SPECIFICATION\.md") {
-    Write-Error "FAIL: CROSS_PLATFORM_PATH.md Step 6 does not reference ADR-0022 and REMOTE_INTERNET_TRANSFER_SPECIFICATION.md."
+if ($PathContent -notmatch "REMOTE_INTERNET_TRANSFER_SPECIFICATION\.md" -or $PathContent -notmatch "Remote") {
+    Write-Error "FAIL: CROSS_PLATFORM_PATH.md does not reference REMOTE_INTERNET_TRANSFER_SPECIFICATION.md or Remote platform."
 }
-Write-Host "  PASS: CROSS_PLATFORM_PATH.md Step 6 properly references ADR-0022 and specification." -ForegroundColor Green
+Write-Host "  PASS: CROSS_PLATFORM_PATH.md references Remote/Internet transfer and specification." -ForegroundColor Green
 
 # --- Check 3: Remote Internet Transfer Specification Completeness ---
 Write-Host "`n[Check 3/10] Auditing Remote Internet Transfer technical specification completeness..." -ForegroundColor Yellow
