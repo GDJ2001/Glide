@@ -1,3 +1,5 @@
+import org.gradle.api.tasks.testing.Test
+
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.ksp)
@@ -5,6 +7,21 @@ plugins {
 
 ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
+}
+
+// Host filesystem performance measurements are intentionally opt-in.
+// Shared CI runners are not authoritative for disk throughput/latency budgets.
+val runStorageBenchmarks = providers
+    .gradleProperty("runStorageBenchmarks")
+    .map(String::toBoolean)
+    .orElse(false)
+
+tasks.withType<Test>().configureEach {
+    if (!runStorageBenchmarks.get()) {
+        filter {
+            excludeTestsMatching("dev.glide.data.performance.StorageStreamingBenchmarkTest")
+        }
+    }
 }
 
 android {
