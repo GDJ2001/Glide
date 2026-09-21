@@ -1,5 +1,6 @@
 package dev.glide.app.lan
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
@@ -139,11 +140,13 @@ class ProductionLanController private constructor(
     private var receiverResources: ReceiverResources? = null
     private var senderResources: SenderResources? = null
     private var setupJob: Job? = null
+    private var lifecycleGeneration: Long = 0
 
     private val _receiverState =
         MutableStateFlow<LanReceiverRuntimeState>(LanReceiverRuntimeState.Idle)
     val receiverState: StateFlow<LanReceiverRuntimeState> = _receiverState.asStateFlow()
 
+    @SuppressLint("NewApi")
     fun startReceiver(
         ownerScope: CoroutineScope,
         deviceName: String,
@@ -156,6 +159,7 @@ class ProductionLanController private constructor(
         }
 
         stopAll()
+        val generation = synchronized(lock) { ++lifecycleGeneration }
         _receiverState.value = LanReceiverRuntimeState.Starting
 
         setupJob = ownerScope.launch {
@@ -216,6 +220,7 @@ class ProductionLanController private constructor(
                 lateinit var connectionJob: Job
                 connectionJob = activeTransportScope.launch {
                     activeTransport.observeConnectionEvents().collect { event ->
+                        if (!isCurrentGeneration(generation)) return@collect
                         when (event) {
                             is ConnectionEvent.Connected -> {
                                 authority.revokeActiveInvitation()
@@ -274,6 +279,7 @@ class ProductionLanController private constructor(
                 runCatching { networkScope?.close() }
                 listenerScope?.cancel()
                 transportScope?.cancel()
+                if (!isCurrentGeneration(generation)) return@launch
                 _receiverState.value = LanReceiverRuntimeState.Error(
                     message = error.message ?: "Unable to start LAN receiver."
                 )
@@ -282,6 +288,7 @@ class ProductionLanController private constructor(
         return true
     }
 
+    @SuppressLint("NewApi")
     fun startSender(
         ownerScope: CoroutineScope,
         invitation: LanInvitation,
@@ -296,6 +303,7 @@ class ProductionLanController private constructor(
         }
 
         stopAll()
+        val generation = synchronized(lock) { ++lifecycleGeneration }
 
         setupJob = ownerScope.launch {
             var networkScope: LanNetworkScope? = null
@@ -320,6 +328,7 @@ class ProductionLanController private constructor(
                 lateinit var connectionJob: Job
                 connectionJob = activeTransportScope.launch {
                     activeTransport.observeConnectionEvents().collect { event ->
+                        if (!isCurrentGeneration(generation)) return@collect
                         when (event) {
                             is ConnectionEvent.Connected ->
                                 onConnected(activeTransport, event.peer)
@@ -355,12 +364,14 @@ class ProductionLanController private constructor(
                 runCatching { transport?.close() }
                 runCatching { networkScope?.close() }
                 transportScope?.cancel()
+                if (!isCurrentGeneration(generation)) return@launch
                 onFailure(error.message ?: "Unable to connect to LAN invitation.")
             }
         }
         return true
     }
 
+    @SuppressLint("NewApi")
     fun revokeReceiverInvitation(closeListener: Boolean = true) {
         val resources = synchronized(lock) { receiverResources } ?: return
         resources.authority.revokeActiveInvitation()
@@ -374,10 +385,12 @@ class ProductionLanController private constructor(
         }
     }
 
+    @SuppressLint("NewApi")
     fun stopAll() {
         val receiver: ReceiverResources?
         val sender: SenderResources?
         synchronized(lock) {
+            lifecycleGeneration++
             setupJob?.cancel()
             setupJob = null
             receiver = receiverResources
@@ -406,6 +419,9 @@ class ProductionLanController private constructor(
 
         _receiverState.value = LanReceiverRuntimeState.Idle
     }
+
+    private fun isCurrentGeneration(generation: Long): Boolean =
+        synchronized(lock) { lifecycleGeneration == generation }
 
     private suspend fun awaitAvailableNetwork(
         networkScope: LanNetworkScope
@@ -468,6 +484,7 @@ class ProductionLanController private constructor(
     companion object {
         private const val NETWORK_READY_TIMEOUT_MS = 5_000L
 
+        @SuppressLint("NewApi")
         internal fun forTesting(
             networkScopeFactory: () -> LanNetworkScope,
             identityFactory: () -> LanLeaseIdentity =
