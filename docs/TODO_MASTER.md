@@ -29,7 +29,7 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 | --- | --- | ---: | --- |
 | M0 Honest baseline | HARD-001–004 | 4 / 4 | COMPLETE |
 | M1 Android production flow | HARD-005–010 | 3 / 6 | IN PROGRESS |
-| M2 Desktop/native interoperability | HARD-011–017 | 0 / 7 | IN PROGRESS |
+| M2 Desktop/native interoperability | HARD-011–017 | 0 / 7 | IN PROGRESS (HARD-014/015 branches merged 2564632, CI pending) |
 | M3 Trust, folders and true resume | HARD-018–024 | 0 / 7 | IN PROGRESS |
 | M4 Secure browser sharing | HARD-025–030 | 0 / 6 | NOT STARTED |
 | M5 Structure/developer experience | HARD-031–035 | 0 / 5 | NOT STARTED |
