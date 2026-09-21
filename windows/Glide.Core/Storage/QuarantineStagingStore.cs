@@ -48,9 +48,12 @@ public sealed class QuarantineStagingStore
 
         try
         {
-            string root = Path.GetPathRoot(Path.GetFullPath(_stagingRoot)) ?? (OperatingSystem.IsWindows() ? "C:\\" : "/");
-            var driveInfo = new DriveInfo(root);
-            return driveInfo.AvailableFreeSpace;
+            string root =
+                Path.GetPathRoot(_stagingRoot)
+                ?? (OperatingSystem.IsWindows()
+                    ? Path.GetPathRoot(Environment.SystemDirectory) ?? "C:\\"
+                    : "/");
+            return new DriveInfo(root).AvailableFreeSpace;
         }
         catch
         {
