@@ -7,7 +7,7 @@ Plan: [`planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md`](planning/CODE_R
 Latest reconciliation: [`planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md`](planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md)  
 Review baseline: `ea2e811a7f2d8aaddc552e894fe04782cd08a499`  
 HARD-002 captured source boundary: `12681eabba26387fe7d1bbaf309971f345642e41`  
-**Next recommended task: restore current-head CI and review HARD-008/HARD-009/HARD-011/HARD-012/HARD-013/HARD-014/HARD-015/HARD-016. HARD-016 is prepared as a stacked branch on HARD-015, but the M2 chain cannot satisfy its completion gates while Actions remains unscheduled and physical interoperability evidence is unavailable. HARD-010 still requires two physical Android devices.**
+**Next recommended task: restore current-head CI and execute the physical gates for HARD-010 and HARD-017. HARD-012–HARD-016 remain REVIEW_REQUIRED; HARD-017 now has a fail-closed evidence harness but is BLOCKED until the real Android↔Windows↔Linux matrix and dependency certification exist. Do not advance HARD-018 while HARD-017 is blocked.**
 
 Source/configuration commits after the HARD-002 captured boundary are not silently certified by HARD-002; the task that consumes them must inspect/reconcile them before relying on their claims.
 
@@ -75,7 +75,7 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 | HARD-014 | M2 | REVIEW_REQUIRED | Make desktop hashing/storage bounded and shared |
 | HARD-015 | M2 | REVIEW_REQUIRED | Complete desktop consent/history/settings/state |
 | HARD-016 | M2 | REVIEW_REQUIRED | Harden Linux CLI/daemon receiving lifecycle |
-| HARD-017 | M2 | NOT_STARTED | Prove native cross-platform interoperability |
+| HARD-017 | M2 | BLOCKED | Prove native cross-platform interoperability |
 | HARD-018 | M3 | NOT_STARTED | Finalize identity/resume protocol extension |
 | HARD-019 | M3 | NOT_STARTED | Integrate Android persistent identity/trust |
 | HARD-020 | M3 | NOT_STARTED | Integrate Windows/Linux persistent identity/trust |
@@ -274,10 +274,16 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 <a id="hard-017"></a>
 ## HARD-017 — Prove native cross-platform interoperability
 
-- **Milestone / status:** M2 / NOT_STARTED.
-- **Dependencies:** HARD-012, HARD-013, HARD-014, HARD-015, HARD-016.
-- **Acceptance:** Android↔Windows, Android↔Linux and Windows↔Linux pass both directions with multi-page/multi-file batches; failed items cannot yield successful batch status.
-- **Tests/evidence:** Empty/large/mixed files, reject/cancel, wrong authentication and reconnect boundaries with real platform/build identities, hashes and logs.
+- **Milestone / status:** M2 / BLOCKED.
+- **Dependencies:** HARD-012, HARD-013, HARD-014, HARD-015, HARD-016; all remain uncertified.
+- **Preparation state:** Evidence tooling is prepared on `hardening/hard-017-native-interop-proof`: deterministic 35-item multi-page corpus generator, exact Android/Windows/Linux endpoint/artifact capture, per-run evidence template, physical execution runbook, and a fail-closed structural evidence verifier.
+- **Required success matrix:** Android→Windows, Windows→Android, Android→Linux, Linux→Android, Windows→Linux and Linux→Windows, all using real platforms and the >32-item corpus with zero-byte + >=100 MiB coverage and per-item SHA-256 reconciliation.
+- **Required negative/recovery matrix:** reject, mid-transfer cancel, wrong authentication and fresh-invitation reconnect for each unordered native platform pair. A failed/rejected/cancelled/auth-failed session may not report successful batch status or expose an unverified commit.
+- **Evidence rule:** Existing Android LAN device instrumentation is preflight only because its transfer is loopback; it cannot certify cross-platform interoperability. The verifier also rejects missing/empty logs, mismatched artifact hashes/commit identities, missing directions/cases or payload authorization after failed authentication.
+- **Blocker:** This environment cannot supply the required physical Android + Windows 11 + supported Linux hosts, and GitHub Actions remains unscheduled. HARD-017 must not become COMPLETE from source/loopback evidence.
+- **Runbook:** [HARD-017 native interoperability runbook](testing/HARD017_NATIVE_INTEROP_RUNBOOK.md).
+- **Evidence record:** [HARD-017 physical interoperability blocker/preparation](development/sessions/2026-09-18-hard-017.md).
+- **Completion gate:** dependency certification plus retained/reviewed real-platform identities, exact artifact hashes, six successful directions, 12 negative/reconnect cases, sender/receiver logs and byte-identical file hashes.
 
 <a id="hard-018"></a>
 ## HARD-018 — Finalize identity/resume protocol extension
