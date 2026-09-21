@@ -30,6 +30,7 @@ Each device owns a P-256 ECDSA identity key. The public identity is the DER Subj
 Private-key storage is platform-specific:
 
 - Android: Android Keystore, non-exportable where supported.
+  - During verification the receiver computes a content-defined Merkle digest tree over the negotiated chunk size. Only contiguous verified chunks advance the durable journal.
 - Windows: protected/non-exportable platform storage selected by HARD-020.
 - Linux: restricted per-user key storage selected by HARD-020.
 

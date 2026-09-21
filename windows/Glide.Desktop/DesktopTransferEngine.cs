@@ -743,75 +743,7 @@ public sealed class DesktopTransferEngine
             bootstrapResult,
             cancellationToken);
 
-        // ProtocolCodec has already validated itemCount as an integer in 1..1000.
-        // Strict JSON parsing may materialize numeric values as Int64, so do not
-        // re-cast JsonValue directly to Int32 here.
-        long totalBytes = long.Parse(
-            offerBegin.Body["totalBytes"]?.ToString() ?? "0");
-
-        var offerPage = await channel.ReadEnvelopeAsync(cancellationToken);
-        var items = new List<DesktopOfferItem>();
-        if (offerPage.Body["items"] is JsonArray itemArray)
-        {
-            foreach (var node in itemArray)
-            {
-                if (node is not JsonObject itemObject)
-                {
-                    continue;
-                }
-
-                string itemId = itemObject["itemId"]!.ToString();
-                string name = itemObject["name"]!.ToString();
-                long size = long.Parse(itemObject["sizeBytes"]!.ToString());
-                string relativePath =
-                    itemObject.TryGetPropertyValue(
-                        "relativePath",
-                        out var relative) &&
-                    relative != null
-                        ? relative.ToString()
-                        : name;
-
-                items.Add(
-                    new DesktopOfferItem(
-                        itemId,
-                        name,
-                        size,
-                        relativePath));
-            }
-        }
-
-        await channel.ReadEnvelopeAsync(cancellationToken); // OFFER_END
-
-        string batchId = offerBegin.Body["batchId"]!.ToString();
-        bool offerAccepted = await interaction.ConfirmOfferAsync(
-            new DesktopOffer(
-                batchId,
-                peerName,
-                items,
-                totalBytes),
-            cancellationToken);
-
-        var decisionBody = new JsonObject
-        {
-            ["batchId"] = batchId,
-            ["accepted"] = offerAccepted
-        };
-        if (!offerAccepted)
-        {
-            decisionBody["code"] = "USER_REJECTED";
-        }
-
-        await channel.WriteEnvelopeAsync(
-            new Envelope(
-                1,
-                MessageTypes.OfferDecision,
-                hello.SessionId,
-                NewMessageId(),
-                3,
-                decisionBody),
-            cancellationToken);
-
-        if (!offerAccepted)
+        if (!bootstrapResult.IsAccepted)
         {
             return DesktopTransferResult.RejectedByPeer(
                 $"Inbound pairing bootstrap rejected: {bootstrapResult.Code}.");

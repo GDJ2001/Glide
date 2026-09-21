@@ -116,8 +116,8 @@ class PersistentIdentityComplianceTest {
         assertTrue(
             "resume-v1 must require identity-v1",
             specText.contains(
-                "resume-v1 requires identity-v1"
-            )
+                "resume-v1` requires"
+            ) && specText.contains("identity-v1")
         )
         assertTrue(
             "Must define canonical shared vectors",

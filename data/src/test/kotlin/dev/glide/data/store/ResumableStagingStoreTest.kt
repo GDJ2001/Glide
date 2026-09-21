@@ -249,7 +249,8 @@ class ResumableStagingStoreTest {
                     "same-session",
                     "same-item",
                     0L,
-                    chunks[0]
+                    chunks[0],
+                    nowMs = 2_000L
                 )
             )
 
@@ -311,7 +312,8 @@ class ResumableStagingStoreTest {
                         "restart-session",
                         "restart-item",
                         index.toLong(),
-                        bytes
+                        bytes,
+                        nowMs = 2_000L
                     )
                 )
             }
@@ -404,7 +406,8 @@ class ResumableStagingStoreTest {
                     "peer-session",
                     "peer-item",
                     0L,
-                    chunks[0]
+                    chunks[0],
+                    nowMs = 2_000L
                 )
             )
 
@@ -602,7 +605,8 @@ class ResumableStagingStoreTest {
                     "assemble-session",
                     "assemble-item",
                     0L,
-                    chunks[0]
+                    chunks[0],
+                    nowMs = 2_000L
                 )
             )
             assertFalse(
@@ -623,7 +627,8 @@ class ResumableStagingStoreTest {
                     "assemble-session",
                     "assemble-item",
                     1L,
-                    chunks[1]
+                    chunks[1],
+                    nowMs = 3_000L
                 )
             )
             assertTrue(

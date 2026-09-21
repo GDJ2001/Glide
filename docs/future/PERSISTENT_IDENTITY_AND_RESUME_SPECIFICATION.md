@@ -41,7 +41,7 @@ Android uses Android Keystore. Windows/Linux storage selection and lifecycle are
 
 ### 2.2 Channel binding
 
-Every `identity-v1` or `resume-v1` signature contains a **32-byte binding to the active secure channel**, represented as 64 lowercase hexadecimal characters.
+Every `identity-v1` or `resume-v1` signature contains a **32-byte binding to the active secure channel**, represented as 64 lowercase hexadecimal characters. The TLS-KEY-EXPORT label for native LAN profiles is `EXPORTER-GLIDE-IDENTITY-V1`.
 
 For native TLS LAN sessions, HARD-021 defines the binding as:
 

@@ -76,10 +76,7 @@ object TransferSessionManager {
         activeJob?.cancel()
         activeCoordinator = coordinator
         activePeerDisplayName = peerDisplayName
-<<<<<<< HEAD
-=======
         terminalCallbackSessionId = null
->>>>>>> origin/hardening/fix-current-head-tls-disposal
 
         // 4. Mark session active in global tracker
         ActiveSessionTracker.setSessionActive(coordinator.sessionId.value, true)
