@@ -212,7 +212,7 @@ class TransferCoordinator(
         persistentTrustManager?.let { manager ->
             TrustedSessionHandshake(
                 role = role,
-                sessionId = { sessionId },
+                sessionId = { this@TransferCoordinator.sessionId },
                 trustManager = manager,
                 expectedPeerFingerprintHex =
                     expectedPeerFingerprintHex,
