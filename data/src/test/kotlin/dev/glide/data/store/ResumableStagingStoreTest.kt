@@ -258,13 +258,14 @@ class ResumableStagingStoreTest {
                 originalSessionId =
                     "same-session",
                 itemId = "same-item",
-                itemName = "same.bin",
+                itemName = "same-item.bin",
                 peerFingerprintHex =
                     fingerprint('a'),
                 totalBytes = 8L,
                 chunkSize = 4,
                 chunkRootHashHex =
-                    tree.rootHashHex
+                    tree.rootHashHex,
+                nowMs = 3_000L
             )
 
             val entity =
@@ -346,7 +347,8 @@ class ResumableStagingStoreTest {
                         authenticatedPeerFingerprintHex =
                             fingerprint('a'),
                         peerStillTrusted =
-                            true
+                            true,
+                        nowMs = 3_000L
                     )
 
             assertTrue(
@@ -417,7 +419,8 @@ class ResumableStagingStoreTest {
                     "peer-item",
                     fingerprint('a'),
                     peerStillTrusted =
-                        false
+                        false,
+                    nowMs = 3_000L
                 )
             assertTrue(
                 revoked is
@@ -430,7 +433,8 @@ class ResumableStagingStoreTest {
                     "peer-item",
                     fingerprint('b'),
                     peerStillTrusted =
-                        true
+                        true,
+                    nowMs = 4_000L
                 )
             assertTrue(
                 substituted is
@@ -676,7 +680,8 @@ class ResumableStagingStoreTest {
                     "root-session",
                     "root-item",
                     0L,
-                    actualChunks[0]
+                    actualChunks[0],
+                    nowMs = 2_000L
                 )
             )
             assertTrue(
@@ -684,7 +689,8 @@ class ResumableStagingStoreTest {
                     "root-session",
                     "root-item",
                     1L,
-                    actualChunks[1]
+                    actualChunks[1],
+                    nowMs = 3_000L
                 )
             )
 
