@@ -1,0 +1,30 @@
+{
+  "schema": "glide-hard017-run-v1",
+  "id": "REPLACE_WITH_REQUIRED_CASE_ID",
+  "scenario": "success",
+  "senderPlatform": "android",
+  "receiverPlatform": "windows",
+  "observedResult": "not-run",
+  "repositoryHead": "REPLACE_40_CHAR_COMMIT_SHA",
+  "senderArtifactSha256": "REPLACE_64_CHAR_SHA256",
+  "receiverArtifactSha256": "REPLACE_64_CHAR_SHA256",
+  "startedAtUtc": "REPLACE_ISO8601",
+  "endedAtUtc": "REPLACE_ISO8601",
+  "corpusManifestSha256": "REPLACE_64_CHAR_SHA256",
+  "itemCount": 35,
+  "offerPageCount": 2,
+  "allItemHashesMatch": false,
+  "terminalBatchStatus": "not-run",
+  "offerRejected": false,
+  "cancelObserved": false,
+  "authenticationRejected": false,
+  "payloadBytesAuthorized": 0,
+  "freshInvitation": false,
+  "previousSessionTerminalNotSuccess": false,
+  "noUnverifiedCommit": false,
+  "logs": [
+    "runs/REPLACE_CASE_ID/sender.log",
+    "runs/REPLACE_CASE_ID/receiver.log"
+  ],
+  "notes": "Record what was done and what the retained logs prove. Do not set observedResult=pass unless the expected behavior was actually observed on the named real platforms."
+}

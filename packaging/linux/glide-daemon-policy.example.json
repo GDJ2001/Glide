@@ -1,0 +1,12 @@
+{
+  "destinationDirectory": "/home/CHANGE_ME/Downloads",
+  "enrollmentFile": "/home/CHANGE_ME/.config/glide/daemon-enrollment.txt",
+  "allowedRemoteAddresses": [
+    "192.168.1.50"
+  ],
+  "maxItemBytes": 1073741824,
+  "maxBatchBytes": 4294967296,
+  "maxItems": 100,
+  "invitationTtlSeconds": 300,
+  "deviceName": "Glide Headless Receiver"
+}
