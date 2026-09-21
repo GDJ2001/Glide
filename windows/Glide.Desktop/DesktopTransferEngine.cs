@@ -1652,3 +1652,62 @@ public sealed class DesktopTransferEngine
     private static int EstimateOfferItemBytes(
         PreparedSendItem item)
     {
+        const int JsonOverhead = 128;
+        return JsonOverhead +
+               Encoding.UTF8.GetByteCount(
+                   item.File.Name) * 2 +
+               item.DeclaredSize
+                   .ToString()
+                   .Length;
+    }
+
+    private static void RequireExactString(
+        Envelope envelope,
+        string key,
+        string expected)
+    {
+        string actual =
+            envelope.Body[key]?.ToString()
+            ?? throw new ProtocolViolationException(
+                WireErrorCodes.MalformedMessage,
+                $"{envelope.Type} is missing '{key}'.");
+
+        if (!string.Equals(
+                actual,
+                expected,
+                StringComparison.Ordinal))
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.ProtocolOrder,
+                $"{envelope.Type} '{key}' value '{actual}' does not match expected '{expected}'.");
+        }
+    }
+
+    private static void RequireExactLong(
+        Envelope envelope,
+        string key,
+        long expected)
+    {
+        string value =
+            envelope.Body[key]?.ToString()
+            ?? throw new ProtocolViolationException(
+                WireErrorCodes.MalformedMessage,
+                $"{envelope.Type} is missing '{key}'.");
+
+        if (!long.TryParse(
+                value,
+                out long actual) ||
+            actual != expected)
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.ProtocolOrder,
+                $"{envelope.Type} '{key}' value '{value}' does not match expected '{expected}'.");
+        }
+    }
+
+    private static SessionId NewSessionId() =>
+        new(
+            Guid.NewGuid()
+                .ToString("D")
+                .ToLowerInvariant());
+}
