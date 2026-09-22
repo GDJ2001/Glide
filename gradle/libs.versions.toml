@@ -89,6 +89,7 @@ zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" 
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidx-test-ext" }
 androidx-test-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espresso" }
+androidx-test-rules = { group = "androidx.test", name = "rules", version.ref = "androidx-test-ext" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
