@@ -171,6 +171,7 @@ public sealed class IdentityResumeTranscriptTests
             string candidate =
                 Path.Combine(
                     current.FullName,
+                    "shared",
                     "protocol",
                     "fixtures",
                     "identity_resume_v1_vectors.json");

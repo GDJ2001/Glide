@@ -90,8 +90,8 @@ class BaselineProfilePackagingTest {
             "Ldev/glide/core/coordinator/TransferReducer;",
             "Ldev/glide/core/stream/StreamHasher;",
             "Ldev/glide/core/stream/StreamProgressSampler;",
-            "Ldev/glide/shared/data/store/AndroidReceiveStore;",
-            "Ldev/glide/shared/data/media/BoundedThumbnailDecoder;"
+            "Ldev/glide/data/store/AndroidReceiveStore;",
+            "Ldev/glide/data/media/BoundedThumbnailDecoder;"
         )
         for (entry in streamingClasses) {
             assertTrue(
@@ -105,9 +105,9 @@ class BaselineProfilePackagingTest {
     fun baselineProfile_coversDesignSystemAndTokens() {
         val rules = profileLines.filter { it.isNotBlank() && !it.startsWith("#") }
         val designSystem = listOf(
-            "Ldev/glide/shared/designsystem/GlideThemeKt;",
-            "Ldev/glide/shared/designsystem/BidiIsolationKt;",
-            "Ldev/glide/shared/designsystem/AccessibilityProgressThrottler;"
+            "Ldev/glide/designsystem/GlideThemeKt;",
+            "Ldev/glide/designsystem/BidiIsolationKt;",
+            "Ldev/glide/designsystem/AccessibilityProgressThrottler;"
         )
         for (entry in designSystem) {
             assertTrue(
