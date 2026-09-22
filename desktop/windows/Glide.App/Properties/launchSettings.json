@@ -1,0 +1,19 @@
+{
+  "profiles": {
+    "Glide.App (Receive)": {
+      "commandName": "Project",
+      "commandLineArgs": "receive --port 42424",
+      "workingDirectory": "$(SolutionDir)"
+    },
+    "Glide.App (List)": {
+      "commandName": "Project",
+      "commandLineArgs": "list",
+      "workingDirectory": "$(SolutionDir)"
+    },
+    "Glide.App (Version)": {
+      "commandName": "Project",
+      "commandLineArgs": "--version",
+      "workingDirectory": "$(SolutionDir)"
+    }
+  }
+}

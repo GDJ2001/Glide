@@ -1,0 +1,11 @@
+{
+  "profiles": {
+    "Glide.Windows.UI": {
+      "commandName": "Project",
+      "workingDirectory": "$(SolutionDir)",
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}
