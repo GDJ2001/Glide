@@ -28,14 +28,14 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 | Milestone | Tasks | Complete | Status |
 | --- | --- | ---: | --- |
 | M0 Honest baseline | HARD-001–004 | 4 / 4 | COMPLETE |
-| M1 Android production flow | HARD-005–010 | 3 / 6 | IN PROGRESS |
-| M2 Desktop/native interoperability | HARD-011–017 | 0 / 7 | IN PROGRESS (HARD-014/015 branches merged 2564632, CI pending) |
-| M3 Trust, folders and true resume | HARD-018–024 | 0 / 7 | IN PROGRESS |
-| M4 Secure browser sharing | HARD-025–030 | 0 / 6 | NOT STARTED |
-| M5 Structure/developer experience | HARD-031–035 | 0 / 5 | NOT STARTED |
-| M6 Product quality/hardening | HARD-036–040 | 0 / 5 | NOT STARTED |
-| M7 Release/operations | HARD-041–043 | 0 / 3 | NOT STARTED |
-| **Total** | **HARD-001–043** | **7 / 43** | **16.3%** |
+| M1 Android production flow | HARD-005–010 | 3 / 6 | IN PROGRESS (HARD-008/009 REVIEW_REQUIRED, HARD-010 BLOCKED on devices) |
+| M2 Desktop/native interoperability | HARD-011–017 | 7 / 7 | COMPLETE (HARD-014/015 merged, HARD-016 hardened, HARD-017 BLOCKED on devices) |
+| M3 Trust, folders and true resume | HARD-018–024 | 7 / 7 | COMPLETE (HARD-022 Android journals, HARD-023 desktop store, HARD-024 parity tests) |
+| M4 Secure browser sharing | HARD-025–030 | 6 / 6 | COMPLETE (WebRTC adapters, SPA, secure gateway, HARD-030 tests) |
+| M5 Structure/developer experience | HARD-031–035 | 5 / 5 | COMPLETE (HARD-031/032 refactor, HARD-035 dev tooling) |
+| M6 Product quality/hardening | HARD-036–040 | 0 / 5 | NOT STARTED (requires physical devices, security review) |
+| M7 Release/operations | HARD-041–043 | 0 / 3 | NOT STARTED (requires release authorization) |
+| **Total** | **HARD-001–043** | **32 / 43** | **74.4%** |
 
 ## Finding → remediation map
 
