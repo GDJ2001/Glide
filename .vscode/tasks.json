@@ -1,0 +1,74 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "doctor",
+      "type": "shell",
+      "command": "pwsh",
+      "args": ["-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/doctor.ps1"],
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "shared" }
+    },
+    {
+      "label": "build-android",
+      "type": "shell",
+      "command": "pwsh",
+      "args": ["-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/build.ps1", "-Configuration", "Debug", "-Target", "Android"],
+      "group": { "kind": "build", "isDefault": false },
+      "problemMatcher": ["$msCompile", "$gradle"]
+    },
+    {
+      "label": "build-windows",
+      "type": "shell",
+      "command": "dotnet",
+      "args": ["build", "${workspaceFolder}/windows/Glide.slnx", "-c", "Debug", "--nologo"],
+      "group": { "kind": "build", "isDefault": false },
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "build-all",
+      "type": "shell",
+      "command": "pwsh",
+      "args": ["-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/build.ps1", "-Configuration", "Debug", "-Target", "All"],
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": ["$msCompile", "$gradle"]
+    },
+    {
+      "label": "test-all",
+      "type": "shell",
+      "command": "pwsh",
+      "args": ["-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/test.ps1", "-Target", "All"],
+      "group": { "kind": "test", "isDefault": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "test-windows",
+      "type": "shell",
+      "command": "dotnet",
+      "args": ["test", "${workspaceFolder}/windows/Glide.Tests/Glide.Tests.csproj", "-c", "Debug", "--nologo"],
+      "group": { "kind": "test", "isDefault": false },
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "lint-all",
+      "type": "shell",
+      "command": "pwsh",
+      "args": ["-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/lint.ps1", "-Target", "All"],
+      "problemMatcher": []
+    },
+    {
+      "label": "verify-all",
+      "type": "shell",
+      "command": "pwsh",
+      "args": ["-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/verify.ps1"],
+      "problemMatcher": []
+    },
+    {
+      "label": "architecture-check",
+      "type": "shell",
+      "command": "pwsh",
+      "args": ["-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/tools/check-architecture.ps1", "-FailFast"],
+      "problemMatcher": []
+    }
+  ]
+}

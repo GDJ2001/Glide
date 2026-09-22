@@ -1,0 +1,75 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Doctor (PowerShell)",
+      "type": "PowerShell",
+      "request": "launch",
+      "script": "${workspaceFolder}/doctor.ps1"
+    },
+    {
+      "name": "Build All (PowerShell)",
+      "type": "PowerShell",
+      "request": "launch",
+      "script": "${workspaceFolder}/build.ps1",
+      "args": ["-Configuration", "Debug", "-Target", "All"]
+    },
+    {
+      "name": "Build Android (PowerShell)",
+      "type": "PowerShell",
+      "request": "launch",
+      "script": "${workspaceFolder}/build.ps1",
+      "args": ["-Configuration", "Debug", "-Target", "Android"]
+    },
+    {
+      "name": "Build Windows (PowerShell)",
+      "type": "PowerShell",
+      "request": "launch",
+      "script": "${workspaceFolder}/build.ps1",
+      "args": ["-Configuration", "Debug", "-Target", "Windows"]
+    },
+    {
+      "name": "Test All (PowerShell)",
+      "type": "PowerShell",
+      "request": "launch",
+      "script": "${workspaceFolder}/test.ps1",
+      "args": ["-Target", "All"]
+    },
+    {
+      "name": "Verify (PowerShell)",
+      "type": "PowerShell",
+      "request": "launch",
+      "script": "${workspaceFolder}/verify.ps1"
+    },
+    {
+      "name": "Run Windows UI (.NET)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build-windows",
+      "program": "${workspaceFolder}/windows/Glide.Windows.UI/bin/Debug/net10.0-windows/Glide.Windows.UI.dll",
+      "cwd": "${workspaceFolder}/windows/Glide.Windows.UI",
+      "console": "internalConsole",
+      "justMyCode": false
+    },
+    {
+      "name": "Run Windows CLI — Receive (.NET)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build-windows",
+      "program": "${workspaceFolder}/windows/Glide.App/bin/Debug/net10.0/Glide.App.dll",
+      "args": ["receive", "--port", "42424"],
+      "cwd": "${workspaceFolder}/windows/Glide.App",
+      "console": "internalConsole"
+    },
+    {
+      "name": "Run Windows CLI — Version (.NET)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build-windows",
+      "program": "${workspaceFolder}/windows/Glide.App/bin/Debug/net10.0/Glide.App.dll",
+      "args": ["--version"],
+      "cwd": "${workspaceFolder}/windows/Glide.App",
+      "console": "internalConsole"
+    }
+  ]
+}
