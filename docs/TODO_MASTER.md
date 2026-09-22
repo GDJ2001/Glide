@@ -31,7 +31,7 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 | M1 Android production flow | HARD-005–010 | 5 / 6 | COMPLETE (HARD-010 BLOCKED on devices) |
 | M2 Desktop/native interoperability | HARD-011–017 | 6 / 7 | COMPLETE (HARD-017 BLOCKED on devices) |
 | M3 Trust, folders and true resume | HARD-018–024 | 7 / 7 | COMPLETE (HARD-022 Android journals, HARD-023 desktop store, HARD-024 parity tests) |
-| M4 Secure browser sharing | HARD-025–030 | 6 / 6 | COMPLETE (WebRTC adapters, SPA, secure gateway, HARD-030 tests) |
+| M4 Secure browser sharing | HARD-025–030 | 6 / 6 | ✅ COMPLETE (WebRTC adapters, SPA, secure gateway, HARD-030 tests PASS) |
 | M5 Structure/developer experience | HARD-031–035 | 5 / 5 | COMPLETE (HARD-031/032 refactor, HARD-035 dev tooling) |
 | M6 Product quality/hardening | HARD-036–040 | 0 / 5 | NOT STARTED (requires physical devices, security review) |
 | M7 Release/operations | HARD-041–043 | 0 / 3 | NOT STARTED (requires release authorization) |
