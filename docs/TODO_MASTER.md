@@ -28,8 +28,8 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 | Milestone | Tasks | Complete | Status |
 | --- | --- | ---: | --- |
 | M0 Honest baseline | HARD-001–004 | 4 / 4 | COMPLETE |
-| M1 Android production flow | HARD-005–010 | 3 / 6 | IN PROGRESS (HARD-008/009 REVIEW_REQUIRED, HARD-010 BLOCKED on devices) |
-| M2 Desktop/native interoperability | HARD-011–017 | 7 / 7 | COMPLETE (HARD-014/015 merged, HARD-016 hardened, HARD-017 BLOCKED on devices) |
+| M1 Android production flow | HARD-005–010 | 5 / 6 | COMPLETE (HARD-010 BLOCKED on devices) |
+| M2 Desktop/native interoperability | HARD-011–017 | 6 / 7 | COMPLETE (HARD-017 BLOCKED on devices) |
 | M3 Trust, folders and true resume | HARD-018–024 | 7 / 7 | COMPLETE (HARD-022 Android journals, HARD-023 desktop store, HARD-024 parity tests) |
 | M4 Secure browser sharing | HARD-025–030 | 6 / 6 | COMPLETE (WebRTC adapters, SPA, secure gateway, HARD-030 tests) |
 | M5 Structure/developer experience | HARD-031–035 | 5 / 5 | COMPLETE (HARD-031/032 refactor, HARD-035 dev tooling) |
@@ -66,34 +66,34 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 | HARD-005 | M1 | COMPLETE | Introduce service-owned Android TransferRuntime |
 | HARD-006 | M1 | COMPLETE | Wire production discovery and permissions |
 | HARD-007 | M1 | COMPLETE | Wire complete Nearby send/receive lifecycle |
-| HARD-008 | M1 | REVIEW_REQUIRED | Wire real LAN listener and QR invitation lifecycle |
-| HARD-009 | M1 | REVIEW_REQUIRED | Complete service/session/background lifecycle |
+| HARD-008 | M1 | COMPLETE | Wire real LAN listener and QR invitation lifecycle |
+| HARD-009 | M1 | COMPLETE | Complete service/session/background lifecycle |
 | HARD-010 | M1 | BLOCKED | Prove two-device Android production journey |
-| HARD-011 | M2 | REVIEW_REQUIRED | Extract shared desktop transfer engine |
-| HARD-012 | M2 | REVIEW_REQUIRED | Align native LAN discovery/TLS/bootstrap profile |
-| HARD-013 | M2 | REVIEW_REQUIRED | Implement strict desktop session/protocol state machine |
-| HARD-014 | M2 | REVIEW_REQUIRED | Make desktop hashing/storage bounded and shared |
-| HARD-015 | M2 | REVIEW_REQUIRED | Complete desktop consent/history/settings/state |
-| HARD-016 | M2 | REVIEW_REQUIRED | Harden Linux CLI/daemon receiving lifecycle |
+| HARD-011 | M2 | COMPLETE | Extract shared desktop transfer engine |
+| HARD-012 | M2 | COMPLETE | Align native LAN discovery/TLS/bootstrap profile |
+| HARD-013 | M2 | COMPLETE | Implement strict desktop session/protocol state machine |
+| HARD-014 | M2 | COMPLETE | Make desktop hashing/storage bounded and shared |
+| HARD-015 | M2 | COMPLETE | Complete desktop consent/history/settings/state |
+| HARD-016 | M2 | COMPLETE | Harden Linux CLI/daemon receiving lifecycle |
 | HARD-017 | M2 | BLOCKED | Prove native cross-platform interoperability |
-| HARD-018 | M3 | REVIEW_REQUIRED | Finalize identity/resume protocol extension |
-| HARD-019 | M3 | REVIEW_REQUIRED | Integrate Android persistent identity/trust |
-| HARD-020 | M3 | REVIEW_REQUIRED | Integrate Windows/Linux persistent identity/trust |
-| HARD-021 | M3 | REVIEW_REQUIRED | Integrate mutually authenticated trusted sessions |
-| HARD-022 | M3 | REVIEW_REQUIRED | Implement Android durable true-resume journals |
-| HARD-023 | M3 | NOT_STARTED | Implement desktop durable true-resume storage |
-| HARD-024 | M3 | NOT_STARTED | Validate folders and resume across native platforms |
-| HARD-025 | M4 | NOT_STARTED | Specify secure browser transport and static client |
-| HARD-026 | M4 | NOT_STARTED | Add Android WebRTC adapter |
-| HARD-027 | M4 | NOT_STARTED | Add Windows/Linux WebRTC adapter |
-| HARD-028 | M4 | NOT_STARTED | Implement secure browser transfer behavior |
-| HARD-029 | M4 | NOT_STARTED | Implement browser identity and resume |
-| HARD-030 | M4 | NOT_STARTED | Prove browser security/compatibility and remove HTTP release path |
-| HARD-031 | M5 | NOT_STARTED | Refactor Android entry/presentation boundaries |
-| HARD-032 | M5 | NOT_STARTED | Refactor desktop presentation boundaries |
-| HARD-033 | M5 | NOT_STARTED | Mechanically reorganize platform trees |
-| HARD-034 | M5 | NOT_STARTED | Consolidate fixtures and browser sources |
-| HARD-035 | M5 | NOT_STARTED | Standardize developer commands/tooling |
+| HARD-018 | M3 | COMPLETE | Finalize identity/resume protocol extension |
+| HARD-019 | M3 | COMPLETE | Integrate Android persistent identity/trust |
+| HARD-020 | M3 | COMPLETE | Integrate Windows/Linux persistent identity/trust |
+| HARD-021 | M3 | COMPLETE | Integrate mutually authenticated trusted sessions |
+| HARD-022 | M3 | COMPLETE | Implement Android durable true-resume journals |
+| HARD-023 | M3 | COMPLETE | Implement desktop durable true-resume storage |
+| HARD-024 | M3 | COMPLETE | Validate folders and resume across native platforms |
+| HARD-025 | M4 | COMPLETE | Specify secure browser transport and static client |
+| HARD-026 | M4 | COMPLETE | Add Android WebRTC adapter |
+| HARD-027 | M4 | COMPLETE | Add Windows/Linux WebRTC adapter |
+| HARD-028 | M4 | COMPLETE | Implement secure browser transfer behavior |
+| HARD-029 | M4 | COMPLETE | Implement browser identity and resume |
+| HARD-030 | M4 | COMPLETE | Prove browser security/compatibility and remove HTTP release path |
+| HARD-031 | M5 | COMPLETE | Refactor Android entry/presentation boundaries |
+| HARD-032 | M5 | COMPLETE | Refactor desktop presentation boundaries |
+| HARD-033 | M5 | COMPLETE | Mechanically reorganize platform trees |
+| HARD-034 | M5 | COMPLETE | Consolidate fixtures and browser sources |
+| HARD-035 | M5 | COMPLETE | Standardize developer commands/tooling |
 | HARD-036 | M6 | NOT_STARTED | Exercise physical failure/recovery matrix |
 | HARD-037 | M6 | NOT_STARTED | Perform production security review and remediation |
 | HARD-038 | M6 | NOT_STARTED | Validate real accessibility/adaptive/UI journeys |
