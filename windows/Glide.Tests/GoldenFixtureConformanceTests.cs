@@ -7,7 +7,7 @@ namespace Glide.Tests;
 public class GoldenFixtureConformanceTests
 {
     private static readonly string FixturesDir = Path.GetFullPath(
-        Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "transfer-core", "src", "test", "resources", "fixtures"));
+        Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "shared", "transfer-core", "src", "test", "resources", "fixtures"));
 
     [Theory]
     [InlineData("hello.json", MessageTypes.Hello)]

@@ -9,7 +9,7 @@ namespace Glide.Tests;
 public class LanRecordGoldenFixtureTests
 {
     private static readonly string FixturesDir = Path.GetFullPath(
-        Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "transfer-core", "src", "test", "resources", "fixtures", "lan"));
+        Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "shared", "transfer-core", "src", "test", "resources", "fixtures", "lan"));
 
     private static byte[] LoadFixture(string fileName)
     {

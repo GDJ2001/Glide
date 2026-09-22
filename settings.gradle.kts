@@ -19,10 +19,15 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "Glide"
-include(":app")
-include(":transfer-core")
-include(":transport-nearby")
-include(":transport-lan")
-include(":data")
-include(":designsystem")
+include(":android")
+include(":apple")
+include(":windows")
+include(":linux")
+include(":shared:transfer-core")
+include(":shared:transport-lan")
+include(":shared:transport-nearby")
+include(":shared:transport-webrtc")
+include(":shared:data")
+include(":shared:designsystem")
+include(":shared:protocol")
 include(":benchmark")

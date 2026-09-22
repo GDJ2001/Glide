@@ -12,7 +12,7 @@ plugins {
 tasks.register("checkArchitecture") {
     group = "verification"
     description = "Enforces architecture boundaries, pure JVM core isolation, UI main-thread I/O checks, and dependency catalog usage."
-    dependsOn(":app:testDebugUnitTest")
+    dependsOn(":android:testDebugUnitTest")
 }
 
 tasks.register("checkLanGate") {
@@ -22,7 +22,7 @@ tasks.register("checkLanGate") {
         ":transfer-core:test",
         ":transport-lan:testDebugUnitTest",
         ":data:testDebugUnitTest",
-        ":app:testDebugUnitTest"
+        ":android:testDebugUnitTest"
     )
 }
 
@@ -31,12 +31,12 @@ tasks.register("checkDocumentation") {
     description = "Validates documentation presence and local markdown reference integrity."
     doLast {
         val requiredDocs = listOf(
-            "docs/planning/LAN_QR_QUICK_SHARE_MASTER_PLAN.md",
-            "docs/protocol/GLIDE_PROTOCOL_V1.md",
-            "docs/security/GLIDE_THREAT_MODEL.md",
-            "docs/testing/GLIDE_TEST_STRATEGY.md",
-            "docs/android/PERMISSION_MATRIX.md",
-            "docs/android/STORAGE_AND_BACKGROUND.md"
+            "doc/planning/LAN_QR_QUICK_SHARE_MASTER_PLAN.md",
+            "doc/protocol/GLIDE_PROTOCOL_V1.md",
+            "doc/security/GLIDE_THREAT_MODEL.md",
+            "doc/testing/GLIDE_TEST_STRATEGY.md",
+            "doc/android/PERMISSION_MATRIX.md",
+            "doc/android/STORAGE_AND_BACKGROUND.md"
         )
         for (docPath in requiredDocs) {
             val docFile = file(docPath)
