@@ -113,7 +113,7 @@ Write-Host ""
 
 # Check 5: Pure JVM Implementation, Test Fixtures & Threat Matrix
 Write-Host "[Check 5/5] Auditing pure JVM ResumeToken, ContentDigestTree and threat matrix..." -ForegroundColor Yellow
-$corePrefix = if (Test-Path (Join-Path $repoRoot "shared\transfer-core")) { "shared\transfer-core" } else { "transfer-core" }
+$corePrefix = if (Test-Path (Join-Path $repoRoot "android\core")) { "android\core" } elseif (Test-Path (Join-Path $repoRoot "shared\transfer-core")) { "shared\transfer-core" } else { "transfer-core" }
 $tokenPath = Join-Path $repoRoot "$corePrefix\src\main\kotlin\dev\glide\core\resume\ResumeToken.kt"
 $treePath = Join-Path $repoRoot "$corePrefix\src\main\kotlin\dev\glide\core\resume\ContentDigestTree.kt"
 $testPath = Join-Path $repoRoot "$corePrefix\src\test\kotlin\dev\glide\core\resume\ResumeSecurityTest.kt"

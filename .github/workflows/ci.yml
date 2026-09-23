@@ -51,10 +51,10 @@ jobs:
         run: ./gradlew checkArchitecture
 
       - name: Assemble Debug APK
-        run: ./gradlew :app:assembleDebug
+        run: ./gradlew :android:app:assembleDebug
 
       - name: Compile HARD-003 JVM regression sources
-        run: ./gradlew :app:compileDebugUnitTestKotlin :transport-lan:compileDebugUnitTestKotlin
+        run: ./gradlew :android:app:compileDebugUnitTestKotlin :android:transport-lan:compileDebugUnitTestKotlin
 
       - name: Run Behavioral LAN and Protocol Gates
         run: ./gradlew checkLanGate
@@ -63,14 +63,14 @@ jobs:
         run: ./gradlew test
 
       - name: Run Android Lint
-        run: ./gradlew :app:lintDebug
+        run: ./gradlew :android:app:lintDebug
 
       - name: Upload Debug APK
         if: always()
         uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
         with:
           name: app-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: ignore
           retention-days: 14
 
@@ -80,14 +80,14 @@ jobs:
         with:
           name: android-verification-reports
           path: |
-            app/build/reports/
-            app/build/test-results/
-            transfer-core/build/reports/
-            transport-lan/build/reports/
-            transport-lan/build/test-results/
-            designsystem/build/reports/
-            transport-nearby/build/reports/
-            data/build/reports/
+            android/app/build/reports/
+            android/app/build/test-results/
+            android/core/build/reports/
+            android/transport-lan/build/reports/
+            android/transport-lan/build/test-results/
+            android/designsystem/build/reports/
+            android/transport-nearby/build/reports/
+            android/data/build/reports/
           if-no-files-found: ignore
           retention-days: 14
 
@@ -106,14 +106,14 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Build cross-platform .NET tests and dependencies
-        run: dotnet build windows/Glide.Tests/Glide.Tests.csproj -c Release
+        run: dotnet build desktop/tests/Glide.Tests/Glide.Tests.csproj -c Release
 
       - name: Run ordinary .NET tests
-        run: dotnet test windows/Glide.Tests/Glide.Tests.csproj -c Release --no-build --filter "HARD!=003-red" --logger "trx;LogFileName=ordinary-linux.trx"
+        run: dotnet test desktop/tests/Glide.Tests/Glide.Tests.csproj -c Release --no-build --filter "HARD!=003-red" --logger "trx;LogFileName=ordinary-linux.trx"
 
       - name: Build Linux self-contained package
         shell: pwsh
-        run: ./packaging/linux/build-linux-packages.ps1 -Configuration Release -Runtimes linux-x64
+        run: ./desktop/linux/build-linux-packages.ps1 -Configuration Release -Runtimes linux-x64
 
       - name: Upload Linux package and .NET reports
         if: always()
@@ -122,7 +122,7 @@ jobs:
           name: linux-dotnet-verification
           path: |
             build/distributions/linux/*.tar.gz
-            windows/Glide.Tests/TestResults/
+            desktop/tests/Glide.Tests/TestResults/
           if-no-files-found: ignore
           retention-days: 14
 
@@ -141,16 +141,16 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Build full Windows solution
-        run: dotnet build windows/Glide.slnx -c Release
+        run: dotnet build desktop/Glide.slnx -c Release
 
       - name: Run ordinary .NET tests on Windows
-        run: dotnet test windows/Glide.Tests/Glide.Tests.csproj -c Release --no-build --filter "HARD!=003-red" --logger "trx;LogFileName=ordinary-windows.trx"
+        run: dotnet test desktop/tests/Glide.Tests/Glide.Tests.csproj -c Release --no-build --filter "HARD!=003-red" --logger "trx;LogFileName=ordinary-windows.trx"
 
       - name: Upload Windows test reports
         if: always()
         uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
         with:
           name: windows-dotnet-verification
-          path: windows/Glide.Tests/TestResults/
+          path: desktop/tests/Glide.Tests/TestResults/
           if-no-files-found: ignore
           retention-days: 14

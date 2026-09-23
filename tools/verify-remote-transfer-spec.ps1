@@ -93,9 +93,9 @@ if ($SpecContent -notmatch "Blind Relays" -or $SpecContent -notmatch "End-to-End
 if ($SpecContent -notmatch "cannot inspect" -or $SpecContent -notmatch "no relay decryption") {
     Write-Error "FAIL: Specification must mandate that relays possess zero decryption capability."
 }
-$SigClientPath = Join-Path $ProjectRoot "windows\Glide.Transport\Remote\RemoteSignalingClient.cs"
-$SigMsgPath = Join-Path $ProjectRoot "windows\Glide.Transport\Remote\SignalingMessages.cs"
-$SigTestPath = Join-Path $ProjectRoot "windows\Glide.Tests\SignalingMessagesTests.cs"
+$SigClientPath = Join-Path $ProjectRoot "desktop\src\Glide.Transport\Remote\RemoteSignalingClient.cs"
+$SigMsgPath = Join-Path $ProjectRoot "desktop\src\Glide.Transport\Remote\SignalingMessages.cs"
+$SigTestPath = Join-Path $ProjectRoot "desktop\tests\Glide.Tests\SignalingMessagesTests.cs"
 foreach ($f in @($SigClientPath, $SigMsgPath, $SigTestPath)) {
     if (-not (Test-Path $f)) {
         Write-Error "FAIL: Missing remote signaling component: $f"
@@ -111,14 +111,14 @@ if ($SpecContent -notmatch "RFC 8445") {
 if ($SpecContent -notmatch "server-reflexive" -or $SpecContent -notmatch "relayed candidates") {
     Write-Error "FAIL: Specification missing ICE candidate gathering priorities."
 }
-$StunClientPath = Join-Path $ProjectRoot "windows\Glide.Transport\Remote\StunClient.cs"
-$StunTestPath = Join-Path $ProjectRoot "windows\Glide.Tests\StunClientTests.cs"
-$TurnClientPath = Join-Path $ProjectRoot "windows\Glide.Transport\Remote\TurnClient.cs"
-$TurnTestPath = Join-Path $ProjectRoot "windows\Glide.Tests\TurnClientTests.cs"
-$IceCandidatePath = Join-Path $ProjectRoot "windows\Glide.Core\Remote\IceCandidate.cs"
-$IceGathererPath = Join-Path $ProjectRoot "windows\Glide.Transport\Remote\IceCandidateGatherer.cs"
-$IceTestPath = Join-Path $ProjectRoot "windows\Glide.Tests\IceCandidateTests.cs"
-$GathererTestPath = Join-Path $ProjectRoot "windows\Glide.Tests\IceCandidateGathererTests.cs"
+$StunClientPath = Join-Path $ProjectRoot "desktop\src\Glide.Transport\Remote\StunClient.cs"
+$StunTestPath = Join-Path $ProjectRoot "desktop\tests\Glide.Tests\StunClientTests.cs"
+$TurnClientPath = Join-Path $ProjectRoot "desktop\src\Glide.Transport\Remote\TurnClient.cs"
+$TurnTestPath = Join-Path $ProjectRoot "desktop\tests\Glide.Tests\TurnClientTests.cs"
+$IceCandidatePath = Join-Path $ProjectRoot "desktop\src\Glide.Core\Remote\IceCandidate.cs"
+$IceGathererPath = Join-Path $ProjectRoot "desktop\src\Glide.Transport\Remote\IceCandidateGatherer.cs"
+$IceTestPath = Join-Path $ProjectRoot "desktop\tests\Glide.Tests\IceCandidateTests.cs"
+$GathererTestPath = Join-Path $ProjectRoot "desktop\tests\Glide.Tests\IceCandidateGathererTests.cs"
 
 foreach ($f in @($StunClientPath, $StunTestPath, $TurnClientPath, $TurnTestPath, $IceCandidatePath, $IceGathererPath, $IceTestPath, $GathererTestPath)) {
     if (-not (Test-Path $f)) {
@@ -143,10 +143,10 @@ if ($SpecContent -notmatch "out-of-band invitation" -or $SpecContent -notmatch "
 if ($SpecContent -notmatch "Canonical Glide semantics" -or $SpecContent -notmatch "bounded Protocol") {
     Write-Error "FAIL: Specification missing LAN-record/session semantics preservation requirement."
 }
-$CsModel = Join-Path $ProjectRoot "windows\Glide.Core\Remote\RemoteInvitation.cs"
-$CsCodec = Join-Path $ProjectRoot "windows\Glide.Core\Remote\RemoteInvitationCodec.cs"
-$CsTest = Join-Path $ProjectRoot "windows\Glide.Tests\RemoteInvitationCodecTests.cs"
-$corePrefix = if (Test-Path (Join-Path $ProjectRoot "shared\transfer-core")) { "shared\transfer-core" } else { "transfer-core" }
+$CsModel = Join-Path $ProjectRoot "desktop\src\Glide.Core\Remote\RemoteInvitation.cs"
+$CsCodec = Join-Path $ProjectRoot "desktop\src\Glide.Core\Remote\RemoteInvitationCodec.cs"
+$CsTest = Join-Path $ProjectRoot "desktop\tests\Glide.Tests\RemoteInvitationCodecTests.cs"
+$corePrefix = if (Test-Path (Join-Path $ProjectRoot "android\core")) { "android\core" } elseif (Test-Path (Join-Path $ProjectRoot "shared\transfer-core")) { "shared\transfer-core" } else { "transfer-core" }
 $KtModel = Join-Path $ProjectRoot "$corePrefix\src\main\kotlin\dev\glide\core\remote\RemoteInvitation.kt"
 $KtCodec = Join-Path $ProjectRoot "$corePrefix\src\main\kotlin\dev\glide\core\remote\RemoteInvitationCodec.kt"
 $KtTest = Join-Path $ProjectRoot "$corePrefix\src\test\kotlin\dev\glide\core\remote\RemoteInvitationCodecTest.kt"
@@ -166,8 +166,8 @@ if ($SpecContent -notmatch "bounded" -or $SpecContent -notmatch "relay") {
 if ($SpecContent -notmatch "concurrency" -or $SpecContent -notmatch "rate limits") {
     Write-Error "FAIL: Specification missing relay connection rate limiting rules."
 }
-$QuotaTrackerPath = Join-Path $ProjectRoot "windows\Glide.Core\Remote\RelayQuotaTracker.cs"
-$QuotaTestPath = Join-Path $ProjectRoot "windows\Glide.Tests\RelayQuotaTrackerTests.cs"
+$QuotaTrackerPath = Join-Path $ProjectRoot "desktop\src\Glide.Core\Remote\RelayQuotaTracker.cs"
+$QuotaTestPath = Join-Path $ProjectRoot "desktop\tests\Glide.Tests\RelayQuotaTrackerTests.cs"
 foreach ($f in @($QuotaTrackerPath, $QuotaTestPath)) {
     if (-not (Test-Path $f)) {
         Write-Error "FAIL: Missing relay quota component: $f"
@@ -187,8 +187,8 @@ if ($SpecContent -notmatch "metered" -or $SpecContent -notmatch "native APIs") {
 if ($SpecContent -notmatch "user decision" -or $SpecContent -notmatch "consent") {
     Write-Error "FAIL: Specification missing metered connection user decision contract."
 }
-$MeteredPath = Join-Path $ProjectRoot "windows\Glide.Core\Remote\MeteredNetworkProtection.cs"
-$MeteredTestPath = Join-Path $ProjectRoot "windows\Glide.Tests\MeteredNetworkProtectionTests.cs"
+$MeteredPath = Join-Path $ProjectRoot "desktop\src\Glide.Core\Remote\MeteredNetworkProtection.cs"
+$MeteredTestPath = Join-Path $ProjectRoot "desktop\tests\Glide.Tests\MeteredNetworkProtectionTests.cs"
 foreach ($f in @($MeteredPath, $MeteredTestPath)) {
     if (-not (Test-Path $f)) {
         Write-Error "FAIL: Missing metered protection component: $f"
@@ -208,8 +208,8 @@ foreach ($tid in $ThreatIds) {
         Write-Error "FAIL: Threat ID $tid missing from specification or ADR-0022 threat catalog."
     }
 }
-$OrchestratorPath = Join-Path $ProjectRoot "windows\Glide.Core\Remote\RemoteTransferSession.cs"
-$OrchestratorTestPath = Join-Path $ProjectRoot "windows\Glide.Tests\RemoteTransferSessionTests.cs"
+$OrchestratorPath = Join-Path $ProjectRoot "desktop\src\Glide.Core\Remote\RemoteTransferSession.cs"
+$OrchestratorTestPath = Join-Path $ProjectRoot "desktop\tests\Glide.Tests\RemoteTransferSessionTests.cs"
 foreach ($f in @($OrchestratorPath, $OrchestratorTestPath)) {
     if (-not (Test-Path $f)) {
         Write-Error "FAIL: Missing Phase R5 conformance component: $f"

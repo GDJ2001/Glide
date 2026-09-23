@@ -34,7 +34,7 @@ $EXPECTED_MAP_HASH = "9f108d84e77df3700b4944abd15cb2bd6fe439bf6cae01c7ea14c80d4a
 # --------------------------------------------------------------------------------------------------
 Write-Host "`n[Check 1/5] Auditing frozen Release Candidate cryptographic identity..." -ForegroundColor Yellow
 
-$androidPrefix = if (Test-Path "$projectRoot\android") { "$projectRoot\android" } else { "$projectRoot\app" }
+$androidPrefix = if (Test-Path "$projectRoot\android\app") { "$projectRoot\android\app" } elseif (Test-Path "$projectRoot\android") { "$projectRoot\android" } else { "$projectRoot\app" }
 $apkPath = "$androidPrefix\build\outputs\apk\release\app-release.apk"
 $aabPath = "$androidPrefix\build\outputs\bundle\release\app-release.aab"
 $mappingPath = "$androidPrefix\build\outputs\mapping\release\mapping.txt"

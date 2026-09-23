@@ -28,7 +28,7 @@ Write-Host "=================================================================" -
 # --------------------------------------------------------------------------------------------------
 Write-Host "`n[Check 1/5] Auditing Release Candidate artifacts & supply-chain manifests..." -ForegroundColor Yellow
 
-$androidPrefix = if (Test-Path "$projectRoot\android") { "$projectRoot\android" } else { "$projectRoot\app" }
+$androidPrefix = if (Test-Path "$projectRoot\android\app") { "$projectRoot\android\app" } elseif (Test-Path "$projectRoot\android") { "$projectRoot\android" } else { "$projectRoot\app" }
 $apkPath = "$androidPrefix\build\outputs\apk\release\android-release.apk"
 if (-not (Test-Path $apkPath)) {
     $apkPath = "$androidPrefix\build\outputs\apk\release\app-release.apk"

@@ -80,7 +80,7 @@ if (-not (Test-Path $gitIgnoreFile)) {
 # --------------------------------------------------------------------------------------------------
 Write-Host "`n[Check 3/5] Verifying app/build.gradle.kts signing configuration safety..." -ForegroundColor Yellow
 
-$buildFile = if (Test-Path "$projectRoot\android\build.gradle.kts") { "$projectRoot\android\build.gradle.kts" } else { "$projectRoot\app\build.gradle.kts" }
+$buildFile = if (Test-Path "$projectRoot\android\app\build.gradle.kts") { "$projectRoot\android\app\build.gradle.kts" } elseif (Test-Path "$projectRoot\android\build.gradle.kts") { "$projectRoot\android\build.gradle.kts" } else { "$projectRoot\app\build.gradle.kts" }
 $buildContent = Get-Content -Path $buildFile -Raw
 
 # Ensure no hardcoded passwords in build script

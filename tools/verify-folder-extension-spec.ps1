@@ -113,14 +113,9 @@ Write-Host ""
 
 # Check 5: Pure JVM Implementation, Test Fixtures & Threat Model
 Write-Host "[Check 5/5] Auditing pure JVM SafeRelativePath implementation and threat model..." -ForegroundColor Yellow
-$modelPath = Join-Path $repoRoot "shared\transfer-core\src\main\kotlin\dev\glide\core\folder\SafeRelativePath.kt"
-if (-not (Test-Path $modelPath)) {
-    $modelPath = Join-Path $repoRoot "transfer-core\src\main\kotlin\dev\glide\core\folder\SafeRelativePath.kt"
-}
-$testPath = Join-Path $repoRoot "shared\transfer-core\src\test\kotlin\dev\glide\core\folder\SafeRelativePathTest.kt"
-if (-not (Test-Path $testPath)) {
-    $testPath = Join-Path $repoRoot "transfer-core\src\test\kotlin\dev\glide\core\folder\SafeRelativePathTest.kt"
-}
+$corePrefix = if (Test-Path (Join-Path $repoRoot "android\core")) { "android\core" } elseif (Test-Path (Join-Path $repoRoot "shared\transfer-core")) { "shared\transfer-core" } else { "transfer-core" }
+$modelPath = Join-Path $repoRoot "$corePrefix\src\main\kotlin\dev\glide\core\folder\SafeRelativePath.kt"
+$testPath = Join-Path $repoRoot "$corePrefix\src\test\kotlin\dev\glide\core\folder\SafeRelativePathTest.kt"
 
 if (-not (Test-Path $modelPath) -or -not (Test-Path $testPath)) {
     Write-Host "  FAIL: SafeRelativePath.kt or SafeRelativePathTest.kt not found in :transfer-core" -ForegroundColor Red

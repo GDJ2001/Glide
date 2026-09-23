@@ -16,28 +16,28 @@ Write-Host "=================================================================" -
 
 # --- Check 1: Toolchain & Solution Existence ---
 Write-Host "`n[Check 1/8] Auditing .NET toolchain and solution structure..." -ForegroundColor Yellow
-$SolutionPath = Join-Path $ProjectRoot "windows\Glide.slnx"
+$SolutionPath = Join-Path $ProjectRoot "desktop\Glide.slnx"
 if (-not (Test-Path $SolutionPath)) {
-    Write-Error "FAIL: windows/Glide.slnx not found."
+    Write-Error "FAIL: desktop/Glide.slnx not found."
 }
 
-$UIProjPath = Join-Path $ProjectRoot "windows\Glide.Windows.UI\Glide.Windows.UI.csproj"
+$UIProjPath = Join-Path $ProjectRoot "desktop\windows\Glide.Windows.UI\Glide.Windows.UI.csproj"
 if (-not (Test-Path $UIProjPath)) {
-    Write-Error "FAIL: windows/Glide.Windows.UI/Glide.Windows.UI.csproj not found."
+    Write-Error "FAIL: desktop/windows/Glide.Windows.UI/Glide.Windows.UI.csproj not found."
 }
 
 $dotnetVersion = (dotnet --version).Trim()
 Write-Host "  PASS: .NET SDK version $dotnetVersion detected." -ForegroundColor Green
-Write-Host "  PASS: windows/Glide.slnx solution and Glide.Windows.UI verified." -ForegroundColor Green
+Write-Host "  PASS: desktop/Glide.slnx solution and Glide.Windows.UI verified." -ForegroundColor Green
 
 # --- Check 2: Solution Build (Release Configuration) ---
-Write-Host "`n[Check 2/8] Building windows/Glide.slnx in Release configuration..." -ForegroundColor Yellow
-$buildOutput = dotnet build (Join-Path $ProjectRoot "windows\Glide.slnx") -c Release --nologo
+Write-Host "`n[Check 2/8] Building desktop/Glide.slnx in Release configuration..." -ForegroundColor Yellow
+$buildOutput = dotnet build (Join-Path $ProjectRoot "desktop\Glide.slnx") -c Release --nologo
 if ($LASTEXITCODE -ne 0) {
     Write-Error "FAIL: dotnet build failed with exit code $LASTEXITCODE."
 }
 
-$UIDll = Join-Path $ProjectRoot "windows\Glide.Windows.UI\bin\Release\net10.0-windows\Glide.Windows.UI.dll"
+$UIDll = Join-Path $ProjectRoot "desktop\windows\Glide.Windows.UI\bin\Release\net10.0-windows\Glide.Windows.UI.dll"
 if (-not (Test-Path $UIDll)) {
     Write-Error "FAIL: Glide.Windows.UI.dll not produced in bin/Release/net10.0-windows."
 }
@@ -46,7 +46,7 @@ Write-Host "  PASS: Glide.Core, Glide.Transport, Glide.Tests, Glide.App, and Gli
 
 # --- Check 3: Golden Protocol Fixture Conformance Suite ---
 Write-Host "`n[Check 3/8] Running cross-platform golden fixture conformance tests..." -ForegroundColor Yellow
-$testOutput = dotnet test (Join-Path $ProjectRoot "windows\Glide.Tests\Glide.Tests.csproj") -c Release --no-build --logger "console;verbosity=normal"
+$testOutput = dotnet test (Join-Path $ProjectRoot "desktop\Glide.slnx") -c Release --no-build --logger "console;verbosity=normal"
 if ($LASTEXITCODE -ne 0) {
     Write-Error "FAIL: Golden fixture conformance tests failed with exit code $LASTEXITCODE."
 }
@@ -61,8 +61,8 @@ if ($passedMatches.Count -gt 0) {
 
 # --- Check 4: Windows Path Sanitizer & Staging Sandbox Audit ---
 Write-Host "`n[Check 4/8] Auditing Windows filesystem security and quarantine rules..." -ForegroundColor Yellow
-$SanitizerFile = Join-Path $ProjectRoot "windows\Glide.Core\Storage\WindowsPathSanitizer.cs"
-$StagingFile = Join-Path $ProjectRoot "windows\Glide.Core\Storage\QuarantineStagingStore.cs"
+$SanitizerFile = Join-Path $ProjectRoot "desktop\src\Glide.Core\Storage\WindowsPathSanitizer.cs"
+$StagingFile = Join-Path $ProjectRoot "desktop\src\Glide.Core\Storage\QuarantineStagingStore.cs"
 
 if (-not (Test-Path $SanitizerFile) -or -not (Test-Path $StagingFile)) {
     Write-Error "FAIL: Windows storage security classes missing."
@@ -85,8 +85,8 @@ Write-Host "  PASS: QuarantineStagingStore enforces sandboxed quarantine and ato
 
 # --- Check 5: Length-Prefixed TLS 1.3 Framing & SAS Derivation Audit ---
 Write-Host "`n[Check 5/8] Auditing Length-Prefixed Framing and SAS Derivation..." -ForegroundColor Yellow
-$SasFile = Join-Path $ProjectRoot "windows\Glide.Core\Security\SasCalculator.cs"
-$FramingFile = Join-Path $ProjectRoot "windows\Glide.Transport\Framing\LengthPrefixedFrameChannel.cs"
+$SasFile = Join-Path $ProjectRoot "desktop\src\Glide.Core\Security\SasCalculator.cs"
+$FramingFile = Join-Path $ProjectRoot "desktop\src\Glide.Transport\Framing\LengthPrefixedFrameChannel.cs"
 
 if (-not (Test-Path $SasFile) -or -not (Test-Path $FramingFile)) {
     Write-Error "FAIL: Security or framing classes missing."
@@ -107,9 +107,9 @@ Write-Host "  PASS: LengthPrefixedFrameChannel enforces 16 KiB control and 64 Ki
 # --- Check 6: LAN Profile 1 Records, QR Invitation & mDNS Service Audit ---
 Write-Host "`n[Check 6/8] Auditing LAN Profile 1 Records, QR Invitations, and mDNS Discovery..." -ForegroundColor Yellow
 
-$InviteFile = Join-Path $ProjectRoot "windows\Glide.Core\Pairing\InvitationCodec.cs"
-$LanRecordFile = Join-Path $ProjectRoot "windows\Glide.Core\Transport\Lan\LanRecordCodec.cs"
-$MdnsFile = Join-Path $ProjectRoot "windows\Glide.Transport\Discovery\MdnsDiscoveryService.cs"
+$InviteFile = Join-Path $ProjectRoot "desktop\src\Glide.Core\Pairing\InvitationCodec.cs"
+$LanRecordFile = Join-Path $ProjectRoot "desktop\src\Glide.Core\Transport\Lan\LanRecordCodec.cs"
+$MdnsFile = Join-Path $ProjectRoot "desktop\src\Glide.Transport\Discovery\MdnsDiscoveryService.cs"
 
 if (-not (Test-Path $InviteFile) -or -not (Test-Path $LanRecordFile) -or -not (Test-Path $MdnsFile)) {
     Write-Error "FAIL: LAN Profile 1, QR pairing, or mDNS classes missing."
@@ -128,15 +128,15 @@ if ($lanRecordCode -notmatch "HeaderSize = 5" -or $lanRecordCode -notmatch "6553
 Write-Host "  PASS: LanRecordCodec enforces 5-byte header and 64 KiB payload ceiling across typed records." -ForegroundColor Green
 
 $mdnsCode = Get-Content $MdnsFile -Raw
-$mdnsModelsFile = Join-Path $ProjectRoot "windows\Glide.Transport\Discovery\LanDiscoveryModels.cs"
+$mdnsModelsFile = Join-Path $ProjectRoot "desktop\src\Glide.Transport\Discovery\LanDiscoveryModels.cs"
 $mdnsModelsCode = if (Test-Path $mdnsModelsFile) { Get-Content $mdnsModelsFile -Raw } else { "" }
 if (($mdnsCode -notmatch "_glide._tcp.local" -and $mdnsModelsCode -notmatch "_glide._tcp.local") -or $mdnsCode -notmatch "224.0.0.251" -or $mdnsCode -notmatch "5353") {
     Write-Error "FAIL: MdnsDiscoveryService missing multicast IP, port 5353, or service type."
 }
 Write-Host "  PASS: MdnsDiscoveryService implements zero-dependency RFC 6762/6763 mDNS responder and browser." -ForegroundColor Green
 
-$LanChannelFile = Join-Path $ProjectRoot "windows\Glide.Transport\Framing\LanRecordChannel.cs"
-$TlsClientFile = Join-Path $ProjectRoot "windows\Glide.Transport\Sockets\TlsSocketClient.cs"
+$LanChannelFile = Join-Path $ProjectRoot "desktop\src\Glide.Transport\Framing\LanRecordChannel.cs"
+$TlsClientFile = Join-Path $ProjectRoot "desktop\src\Glide.Transport\Sockets\TlsSocketClient.cs"
 if (-not (Test-Path $LanChannelFile) -or -not (Test-Path $TlsClientFile)) {
     Write-Error "FAIL: LanRecordChannel or TlsSocketClient missing."
 }
@@ -155,11 +155,11 @@ Write-Host "  PASS: TlsSocketClient enforces out-of-band SPKI fingerprint pinnin
 
 # --- Check 7: Web Transfer Gateway, Embedded Assets & CSP Security ---
 Write-Host "`n[Check 7/8] Auditing Web Transfer Gateway, Embedded Assets, and CSP Security Headers..." -ForegroundColor Yellow
-$GatewayFile = Join-Path $ProjectRoot "windows\Glide.Transport\Web\GlideWebGateway.cs"
-$WebAssetHtml = Join-Path $ProjectRoot "windows\Glide.Transport\Web\Assets\index.html"
-$WebAssetCss = Join-Path $ProjectRoot "windows\Glide.Transport\Web\Assets\style.css"
-$WebAssetJs = Join-Path $ProjectRoot "windows\Glide.Transport\Web\Assets\app.js"
-$WebTestFile = Join-Path $ProjectRoot "windows\Glide.Tests\WebGatewayIntegrationTests.cs"
+$GatewayFile = Join-Path $ProjectRoot "desktop\src\Glide.Transport\Web\GlideWebGateway.cs"
+$WebAssetHtml = Join-Path $ProjectRoot "desktop\src\Glide.Transport\Web\Assets\index.html"
+$WebAssetCss = Join-Path $ProjectRoot "desktop\src\Glide.Transport\Web\Assets\style.css"
+$WebAssetJs = Join-Path $ProjectRoot "desktop\src\Glide.Transport\Web\Assets\app.js"
+$WebTestFile = Join-Path $ProjectRoot "desktop\tests\Glide.Tests\WebGatewayIntegrationTests.cs"
 
 if (-not (Test-Path $GatewayFile) -or -not (Test-Path $WebAssetHtml) -or -not (Test-Path $WebAssetCss) -or -not (Test-Path $WebAssetJs) -or -not (Test-Path $WebTestFile)) {
     Write-Error "FAIL: GlideWebGateway, embedded assets, or WebGatewayIntegrationTests missing."

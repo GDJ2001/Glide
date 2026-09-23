@@ -21,7 +21,7 @@
 
 [CmdletBinding()]
 param(
-    [ValidateSet("All", "Android", "Windows")]
+    [ValidateSet("All", "Android", "Windows", "Desktop")]
     [string]$Target = "All",
     [switch]$Fix = $false
 )
@@ -39,7 +39,7 @@ $lintErrors = [System.Collections.Generic.List[string]]::new()
 # --- Android Lint ---
 if ($Target -eq "All" -or $Target -eq "Android") {
     Write-Host "`n[Android] Running Android Lint..." -ForegroundColor Yellow
-    $gradleArgs = @(":android:lintDebug", "--no-daemon")
+    $gradleArgs = @(":android:app:lintDebug", "--no-daemon")
 
     Write-Host "  Running: gradlew.bat $($gradleArgs -join ' ')" -ForegroundColor Gray
     $pinfo = New-Object System.Diagnostics.ProcessStartInfo
@@ -61,7 +61,7 @@ if ($Target -eq "All" -or $Target -eq "Android") {
         $lintErrors.Add("Android lint failed (exit code $($process.ExitCode))")
     } else {
         Write-Host "  [OK]   Android lint passed." -ForegroundColor Green
-        $lintReport = "$projectRoot\android\build\reports\lint-results-debug.html"
+        $lintReport = "$projectRoot\android\app\build\reports\lint-results-debug.html"
         if (-not (Test-Path $lintReport)) {
             $fallback = "$projectRoot\app\build\reports\lint-results-debug.html"
             if (Test-Path $fallback) { $lintReport = $fallback }
@@ -72,10 +72,10 @@ if ($Target -eq "All" -or $Target -eq "Android") {
     }
 }
 
-# --- Windows Lint ---
-if ($Target -eq "All" -or $Target -eq "Windows") {
-    Write-Host "`n[Windows] Running dotnet build with analyzers..." -ForegroundColor Yellow
-    $dotnetArgs = @("build", "$projectRoot\windows\Glide.slnx", "-c", "Debug", "--nologo")
+# --- Desktop (Windows / Linux) Lint ---
+if ($Target -eq "All" -or $Target -eq "Windows" -or $Target -eq "Desktop") {
+    Write-Host "`n[Desktop] Running dotnet build with analyzers..." -ForegroundColor Yellow
+    $dotnetArgs = @("build", "$projectRoot\desktop\Glide.slnx", "-c", "Debug", "--nologo")
 
     Write-Host "  Running: dotnet $($dotnetArgs -join ' ')" -ForegroundColor Gray
     $pinfo = New-Object System.Diagnostics.ProcessStartInfo
@@ -94,9 +94,9 @@ if ($Target -eq "All" -or $Target -eq "Windows") {
     if ($process.ExitCode -ne 0) {
         Write-Host $stdout
         Write-Host $stderr -ForegroundColor Red
-        $lintErrors.Add("Windows build-with-analyzers failed (exit code $($process.ExitCode))")
+        $lintErrors.Add("Desktop build-with-analyzers failed (exit code $($process.ExitCode))")
     } else {
-        Write-Host "  [OK]   Windows code analysis passed." -ForegroundColor Green
+        Write-Host "  [OK]   Desktop code analysis passed." -ForegroundColor Green
     }
 }
 

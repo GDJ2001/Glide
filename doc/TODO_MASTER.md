@@ -138,7 +138,7 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 
 - **Milestone / status:** M0 / COMPLETE.
 - **Dependencies:** HARD-003.
-- **Scope:** `.github/workflows`, Gradle modules, `windows/Glide.slnx`, Linux-compatible packaging/tooling.
+- **Scope:** `.github/workflows`, Gradle modules, `desktop/Glide.slnx`, Linux-compatible packaging/tooling.
 - **Acceptance satisfied:** CI reaches checkout and executes Android build/lint/tests plus .NET build/tests and Linux-compatible shared/package checks; action pins resolve; secrets remain protected.
 - **Evidence:** [HARD-004 CI baseline evidence](development/sessions/2026-09-18-hard-004.md). Authoritative green run: **35286514435** at `234fb024f2fef2273c09e64ff15011b2b6663d15`; prior source-reaching failure run **35285947126** demonstrates an ordinary failing test blocks its job. Hardware-only gaps remain explicitly deferred to later gates.
 
@@ -478,7 +478,7 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 - **Dependencies:** HARD-037, HARD-038.
 - **Acceptance satisfied:** Full CI, architecture, migration, dependency, and spec validation gates green across all platforms.
 - **Tests/evidence:**
-  - Root CI gate `tools/verify.ps1` passing 4/4 gates (Architecture 7/7, Windows Companion 8/8, Build Debug Android & Windows, Lint Android & Windows).
+  - Root CI gate `tools/verify.ps1` passing 4/4 gates (Architecture 7/7, Windows Companion 8/8, Build Debug Android & Desktop, Lint Android & Desktop).
   - Local gate `tools/verify-local.ps1` passing all checks.
   - All 14 platform & spec auditors passing 100% (`verify-apple-platforms-spec.ps1`, `verify-folder-extension-spec.ps1`, `verify-hard017-evidence.ps1`, `verify-incident-operations.ps1`, `verify-lan-slice-spec.ps1`, `verify-linux-platform-spec.ps1`, `verify-production-health-baseline.ps1`, `verify-remote-transfer-spec.ps1`, `verify-resume-spec.ps1`, `verify-signing-custody.ps1`, `verify-transport-eval.ps1`, `verify-v1-closure.ps1`, `verify-web-transfer-spec.ps1`, `verify-windows-companion.ps1`).
   - Environment doctor `tools/doctor.ps1` passing.

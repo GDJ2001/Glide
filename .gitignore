@@ -23,6 +23,9 @@ obj/
 windows/publish/
 windows/**/bin/
 windows/**/obj/
+desktop/publish/
+desktop/**/bin/
+desktop/**/obj/
 .vs/
 .cxx/
 

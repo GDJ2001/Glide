@@ -88,8 +88,8 @@ $activeAlias = if ($KeyAlias) { $KeyAlias } else { $env:GLIDE_RELEASE_KEY_ALIAS 
 $activeKeyPass = if ($KeyPassword) { $KeyPassword } else { $env:GLIDE_RELEASE_KEY_PASSWORD }
 
 if (-not $activeKeystore) {
-    # Generate dedicated RC testing keystore under app/build/ (ignored by git and repository scans)
-    $rcKeystoreDir = "$projectRoot\app\build\rc-keystore"
+    # Generate dedicated RC testing keystore under android/app/build/ (ignored by git and repository scans)
+    $rcKeystoreDir = "$projectRoot\android\app\build\rc-keystore"
     if (-not (Test-Path $rcKeystoreDir)) {
         New-Item -ItemType Directory -Path $rcKeystoreDir -Force | Out-Null
     }
@@ -122,8 +122,8 @@ Write-Host "  Key Alias: $activeAlias" -ForegroundColor Green
 # --------------------------------------------------------------------------------------------------
 Write-Host "`n[Step 3/8] Compiling and assembling minified Release Candidate artifacts..." -ForegroundColor Yellow
 $gradleArgs = @(
-    ":app:bundleRelease",
-    ":app:assembleRelease",
+    ":android:app:bundleRelease",
+    ":android:app:assembleRelease",
     "-Pglide.release.keystorePath=$activeKeystore",
     "-Pglide.release.keystorePassword=$activeStorePass",
     "-Pglide.release.keyAlias=$activeAlias",
@@ -157,9 +157,9 @@ Write-Host "  Gradle build successful!" -ForegroundColor Green
 # --------------------------------------------------------------------------------------------------
 Write-Host "`n[Step 4/8] Validating generated artifacts..." -ForegroundColor Yellow
 
-$apkPath = "$projectRoot\app\build\outputs\apk\release\app-release.apk"
-$aabPath = "$projectRoot\app\build\outputs\bundle\release\app-release.aab"
-$mappingPath = "$projectRoot\app\build\outputs\mapping\release\mapping.txt"
+$apkPath = "$projectRoot\android\app\build\outputs\apk\release\app-release.apk"
+$aabPath = "$projectRoot\android\app\build\outputs\bundle\release\app-release.aab"
+$mappingPath = "$projectRoot\android\app\build\outputs\mapping\release\mapping.txt"
 
 if (-not (Test-Path $apkPath)) { throw "Release APK not found at: $apkPath" }
 if (-not (Test-Path $aabPath)) { throw "Release AAB not found at: $aabPath" }
@@ -230,7 +230,7 @@ Write-Host "  PASS: APK 16 KB page alignment verified successfully!" -Foreground
 # --------------------------------------------------------------------------------------------------
 Write-Host "`n[Step 7/8] Generating cryptographic checksums & auditing manifest badging..." -ForegroundColor Yellow
 
-$artifactsDir = "$projectRoot\app\build\outputs\release-artifacts"
+$artifactsDir = "$projectRoot\android\app\build\outputs\release-artifacts"
 if (-not (Test-Path $artifactsDir)) {
     New-Item -ItemType Directory -Path $artifactsDir -Force | Out-Null
 }

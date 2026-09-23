@@ -103,9 +103,9 @@ Write-Host "  PASS: CROSS_PLATFORM_PATH.md Step 3 properly references ADR-0019 a
 Write-Host "`n[Check 6/9] Auditing Cross-Platform Implementation Parity (.NET & Android/Kotlin)..." -ForegroundColor Yellow
 
 # Verify .NET Gateway
-$DotNetGateway = Join-Path $ProjectRoot "windows\Glide.Transport\Web\GlideWebGateway.cs"
+$DotNetGateway = Join-Path $ProjectRoot "desktop\src\Glide.Transport\Web\GlideWebGateway.cs"
 if (-not (Test-Path $DotNetGateway)) {
-    Write-Error "FAIL: windows/Glide.Transport/Web/GlideWebGateway.cs missing."
+    Write-Error "FAIL: desktop/src/Glide.Transport/Web/GlideWebGateway.cs missing."
 }
 $DotNetGatewaySrc = Get-Content $DotNetGateway -Raw
 if ($DotNetGatewaySrc -notmatch "Content-Security-Policy" -or $DotNetGatewaySrc -notmatch "glide_web_session") {
@@ -113,8 +113,8 @@ if ($DotNetGatewaySrc -notmatch "Content-Security-Policy" -or $DotNetGatewaySrc 
 }
 
 # Verify Android/JVM Kotlin Gateway
-$lanPrefix = if (Test-Path (Join-Path $ProjectRoot "shared\transport-lan")) { "shared\transport-lan" } else { "transport-lan" }
-$androidPrefix = if (Test-Path (Join-Path $ProjectRoot "android")) { "android" } else { "app" }
+$lanPrefix = if (Test-Path (Join-Path $ProjectRoot "android\transport-lan")) { "android\transport-lan" } elseif (Test-Path (Join-Path $ProjectRoot "shared\transport-lan")) { "shared\transport-lan" } else { "transport-lan" }
+$androidPrefix = if (Test-Path (Join-Path $ProjectRoot "android\app")) { "android\app" } elseif (Test-Path (Join-Path $ProjectRoot "android")) { "android" } else { "app" }
 
 $KotlinGateway = Join-Path $ProjectRoot "$lanPrefix\src\main\kotlin\dev\glide\transport\lan\web\GlideWebGateway.kt"
 if (-not (Test-Path $KotlinGateway)) {
@@ -126,17 +126,17 @@ if ($KotlinGatewaySrc -notmatch "Content-Security-Policy" -or $KotlinGatewaySrc 
 }
 
 # Verify Embedded Single-Page Application Assets in both trees
-$DotNetAssets = Join-Path $ProjectRoot "windows\Glide.Transport\Web\Assets\index.html"
+$DotNetAssets = Join-Path $ProjectRoot "desktop\src\Glide.Transport\Web\Assets\index.html"
 $KotlinAssets = Join-Path $ProjectRoot "$lanPrefix\src\main\resources\glide\web\index.html"
 if (-not (Test-Path $DotNetAssets) -or -not (Test-Path $KotlinAssets)) {
-    Write-Error "FAIL: Embedded index.html missing in windows or transport-lan."
+    Write-Error "FAIL: Embedded index.html missing in desktop or transport-lan."
 }
 
 # Verify Cross-Platform QR Code Visual Onboarding
-$QrGen = Join-Path $ProjectRoot "windows\Glide.Core\Security\QrCodeGenerator.cs"
+$QrGen = Join-Path $ProjectRoot "desktop\src\Glide.Core\Security\QrCodeGenerator.cs"
 $AndroidQr = Join-Path $ProjectRoot "$androidPrefix\src\main\kotlin\dev\glide\app\qr\QrEncoder.kt"
 if (-not (Test-Path $QrGen) -or -not (Test-Path $AndroidQr)) {
-    Write-Error "FAIL: QR code generation missing in windows or android."
+    Write-Error "FAIL: QR code generation missing in desktop or android."
 }
 
 Write-Host "  PASS: Cross-platform .NET and Android Web Gateways, embedded assets, and QR onboarding verified." -ForegroundColor Green
@@ -201,14 +201,14 @@ if ($WebPathSanitizerSrc -notmatch "object WebPathSanitizer" -or $WebPathSanitiz
 }
 
 # Verify WindowsPathSanitizer Web Sanitization method
-$WindowsPathSanitizerFile = Join-Path $ProjectRoot "windows\Glide.Core\Storage\WindowsPathSanitizer.cs"
+$WindowsPathSanitizerFile = Join-Path $ProjectRoot "desktop\src\Glide.Core\Storage\WindowsPathSanitizer.cs"
 $WindowsPathSanitizerSrc = Get-Content $WindowsPathSanitizerFile -Raw
 if ($WindowsPathSanitizerSrc -notmatch "SanitizeWebFilename") {
     Write-Error "FAIL: WindowsPathSanitizer.cs missing SanitizeWebFilename method."
 }
 
 # Verify Web Client Assets proposal flow in both trees
-$DotNetJs = Join-Path $ProjectRoot "windows\Glide.Transport\Web\Assets\app.js"
+$DotNetJs = Join-Path $ProjectRoot "desktop\src\Glide.Transport\Web\Assets\app.js"
 $KotlinJs = Join-Path $ProjectRoot "$lanPrefix\src\main\resources\glide\web\app.js"
 $DotNetJsSrc = Get-Content $DotNetJs -Raw
 $KotlinJsSrc = Get-Content $KotlinJs -Raw
@@ -238,9 +238,9 @@ if ($KotlinGatewaySrc -notmatch "isTokenRedeemed") {
 }
 
 # Verify .NET Security Conformance Test Suite
-$DotNetSecTests = Join-Path $ProjectRoot "windows\Glide.Tests\WebSecurityConformanceTests.cs"
+$DotNetSecTests = Join-Path $ProjectRoot "desktop\tests\Glide.Tests\WebSecurityConformanceTests.cs"
 if (-not (Test-Path $DotNetSecTests)) {
-    Write-Error "FAIL: windows/Glide.Tests/WebSecurityConformanceTests.cs missing."
+    Write-Error "FAIL: desktop/tests/Glide.Tests/WebSecurityConformanceTests.cs missing."
 }
 $DotNetSecTestsSrc = Get-Content $DotNetSecTests -Raw
 if ($DotNetSecTestsSrc -notmatch "TokenReplay" -or

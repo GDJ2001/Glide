@@ -83,7 +83,7 @@ Write-Host "  PASS: Threat model matrix (T01-T08, T10-T15, T17) and SAS/TLS 1.3 
 
 # --- Check 5: Pure JVM Transport Domain Models, Tests & Golden Fixtures ---
 Write-Host "`n[Check 5/5] Auditing pure JVM LanTransportContracts, test suite, and golden fixtures..." -ForegroundColor Yellow
-$corePrefix = if (Test-Path (Join-Path $ProjectRoot "shared\transfer-core")) { "shared\transfer-core" } else { "transfer-core" }
+$corePrefix = if (Test-Path (Join-Path $ProjectRoot "android\core")) { "android\core" } elseif (Test-Path (Join-Path $ProjectRoot "shared\transfer-core")) { "shared\transfer-core" } else { "transfer-core" }
 $DomainModel = Join-Path $ProjectRoot "$corePrefix\src\main\kotlin\dev\glide\core\transport\lan\LanTransportContracts.kt"
 $TestFile = Join-Path $ProjectRoot "$corePrefix\src\test\kotlin\dev\glide\core\transport\lan\LanFramingAndSecurityTest.kt"
 $FixturesDir = Join-Path $ProjectRoot "$corePrefix\src\test\resources\fixtures"

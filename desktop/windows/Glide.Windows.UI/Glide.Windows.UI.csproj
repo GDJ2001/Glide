@@ -1,9 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <ProjectReference Include="..\Glide.Core\Glide.Core.csproj" />
-    <ProjectReference Include="..\Glide.Transport\Glide.Transport.csproj" />
-    <ProjectReference Include="..\Glide.Desktop\Glide.Desktop.csproj" />
+    <ProjectReference Include="..\..\src\Glide.Core\Glide.Core.csproj" />
+    <ProjectReference Include="..\..\src\Glide.Transport\Glide.Transport.csproj" />
+    <ProjectReference Include="..\..\src\Glide.Desktop\Glide.Desktop.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

@@ -27,7 +27,7 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host "`n=== 4. Running Android Lint Analysis ===" -ForegroundColor Cyan
 $LASTEXITCODE = 0
-& "$PSScriptRoot\..\gradlew.bat" :android:lintDebug
+& "$PSScriptRoot\..\gradlew.bat" :android:app:lintDebug
 if ($LASTEXITCODE -ne 0) {
     Write-Error "lintDebug failed with exit code $LASTEXITCODE."
     exit $LASTEXITCODE

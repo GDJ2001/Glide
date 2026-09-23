@@ -32,12 +32,9 @@ function Report-Violation([string]$rule, [string]$file, [int]$lineNum, [string]$
 Write-Host "`n[Check 1/7] Scanning UI / Navigation layer for forbidden transport/Nearby/socket imports..." -ForegroundColor Yellow
 
 $uiPaths = @(
-    "$projectRoot/android/src/main/kotlin/dev/glide/app/ui",
-    "$projectRoot/android/src/main/kotlin/dev/glide/app/navigation",
-    "$projectRoot/shared/designsystem/src/main/kotlin/dev/glide/designsystem",
-    "$projectRoot/app/src/main/kotlin/dev/glide/app/ui",
-    "$projectRoot/app/src/main/kotlin/dev/glide/app/navigation",
-    "$projectRoot/designsystem/src/main/kotlin/dev/glide/designsystem"
+    "$projectRoot/android/app/src/main/kotlin/dev/glide/app/ui",
+    "$projectRoot/android/app/src/main/kotlin/dev/glide/app/navigation",
+    "$projectRoot/android/designsystem/src/main/kotlin/dev/glide/designsystem"
 )
 
 $forbiddenUiImports = @(
@@ -75,8 +72,7 @@ foreach ($dir in $uiPaths) {
 Write-Host "[Check 2/7] Verifying :transfer-core pure Kotlin JVM isolation (zero Android dependencies)..." -ForegroundColor Yellow
 
 $coreDirs = @(
-    "$projectRoot/shared/transfer-core/src/main/kotlin",
-    "$projectRoot/transfer-core/src/main/kotlin"
+    "$projectRoot/android/core/src/main/kotlin"
 )
 $forbiddenCoreImports = @(
     "android.",
@@ -109,10 +105,9 @@ foreach ($coreDir in $coreDirs) {
 Write-Host "[Check 3/7] Verifying Transport adapter does not import UI, ViewModel, or Data layers..." -ForegroundColor Yellow
 
 $transportDirs = @(
-    "$projectRoot/shared/transport-nearby/src/main/kotlin",
-    "$projectRoot/shared/transport-lan/src/main/kotlin",
-    "$projectRoot/shared/transport-webrtc/src/main/kotlin",
-    "$projectRoot/transport-nearby/src/main/kotlin"
+    "$projectRoot/android/transport-nearby/src/main/kotlin",
+    "$projectRoot/android/transport-lan/src/main/kotlin",
+    "$projectRoot/android/transport-webrtc/src/main/kotlin"
 )
 $forbiddenTransportImports = @(
     "dev.glide.app.ui.",
@@ -147,8 +142,7 @@ foreach ($transportDir in $transportDirs) {
 Write-Host "[Check 4/7] Verifying Data layer does not import UI or Transport implementations..." -ForegroundColor Yellow
 
 $dataDirs = @(
-    "$projectRoot/shared/data/src/main/kotlin",
-    "$projectRoot/data/src/main/kotlin"
+    "$projectRoot/android/data/src/main/kotlin"
 )
 $forbiddenDataImports = @(
     "dev.glide.app.ui.",
@@ -183,8 +177,7 @@ foreach ($dataDir in $dataDirs) {
 Write-Host "[Check 5/7] Scanning UI code for blocking main-thread file I/O operations..." -ForegroundColor Yellow
 
 $uiDirs = @(
-    "$projectRoot/android/src/main/kotlin/dev/glide/app/ui",
-    "$projectRoot/app/src/main/kotlin/dev/glide/app/ui"
+    "$projectRoot/android/app/src/main/kotlin/dev/glide/app/ui"
 )
 $blockingIoRegex = [regex]'\b(File|file)\s*\([^)]*\)\.(readBytes|readText|readLines|writeBytes|writeText|appendText)\(|\b(FileInputStream|FileOutputStream|RandomAccessFile|FileReader|FileWriter)\(|\bFiles\.(read|write|copy|move|delete)'
 
@@ -210,10 +203,8 @@ foreach ($uiDir in $uiDirs) {
 Write-Host "[Check 6/7] Verifying zero allowMainThreadQueries() in Room database builders..." -ForegroundColor Yellow
 
 $scanPaths = @(
-    "$projectRoot/android/src/main/kotlin",
-    "$projectRoot/shared/data/src/main/kotlin",
-    "$projectRoot/app/src/main/kotlin",
-    "$projectRoot/data/src/main/kotlin"
+    "$projectRoot/android/app/src/main/kotlin",
+    "$projectRoot/android/data/src/main/kotlin"
 )
 
 foreach ($dir in $scanPaths) {
@@ -236,19 +227,14 @@ Write-Host "[Check 7/7] Verifying dependency catalog usage and zero unreviewed d
 
 $buildFiles = @(
     "$projectRoot/build.gradle.kts",
-    "$projectRoot/android/build.gradle.kts",
-    "$projectRoot/shared/data/build.gradle.kts",
-    "$projectRoot/shared/transfer-core/build.gradle.kts",
-    "$projectRoot/shared/transport-nearby/build.gradle.kts",
-    "$projectRoot/shared/transport-lan/build.gradle.kts",
-    "$projectRoot/shared/transport-webrtc/build.gradle.kts",
-    "$projectRoot/shared/designsystem/build.gradle.kts",
-    "$projectRoot/benchmark/build.gradle.kts",
-    "$projectRoot/app/build.gradle.kts",
-    "$projectRoot/data/build.gradle.kts",
-    "$projectRoot/transfer-core/build.gradle.kts",
-    "$projectRoot/transport-nearby/build.gradle.kts",
-    "$projectRoot/designsystem/build.gradle.kts"
+    "$projectRoot/android/app/build.gradle.kts",
+    "$projectRoot/android/core/build.gradle.kts",
+    "$projectRoot/android/data/build.gradle.kts",
+    "$projectRoot/android/designsystem/build.gradle.kts",
+    "$projectRoot/android/transport-lan/build.gradle.kts",
+    "$projectRoot/android/transport-nearby/build.gradle.kts",
+    "$projectRoot/android/transport-webrtc/build.gradle.kts",
+    "$projectRoot/android/benchmark/build.gradle.kts"
 )
 
 $forbiddenDepKeywords = @(

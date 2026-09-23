@@ -82,9 +82,9 @@ Write-Host "  PASS: Specification contains all core architectural, XDG, systemd,
 # --- Check 4: Cross-Platform .NET 10 Target Framework Conformance ---
 Write-Host "`n[Check 4/10] Auditing Target Frameworks for net10.0 cross-platform portability..." -ForegroundColor Yellow
 $CsprojFiles = @(
-    "windows\Glide.Core\Glide.Core.csproj",
-    "windows\Glide.Transport\Glide.Transport.csproj",
-    "windows\Glide.App\Glide.App.csproj"
+    "desktop\src\Glide.Core\Glide.Core.csproj",
+    "desktop\src\Glide.Transport\Glide.Transport.csproj",
+    "desktop\src\Glide.App\Glide.App.csproj"
 )
 foreach ($relPath in $CsprojFiles) {
     $fullPath = Join-Path $ProjectRoot $relPath
@@ -100,7 +100,7 @@ Write-Host "  PASS: Glide.Core, Glide.Transport, and Glide.App strictly target p
 
 # --- Check 5: Dynamic OS Platform Detection in Program.cs ---
 Write-Host "`n[Check 5/10] Auditing Dynamic OS Platform Detection in Program.cs..." -ForegroundColor Yellow
-$ProgramPath = Join-Path $ProjectRoot "windows\Glide.App\Program.cs"
+$ProgramPath = Join-Path $ProjectRoot "desktop\src\Glide.App\Program.cs"
 $ProgramContent = Get-Content $ProgramPath -Raw
 if ($ProgramContent -notmatch "GetCurrentPlatform\(\)" -or
     $ProgramContent -notmatch "OperatingSystem\.IsLinux\(\)") {
@@ -110,7 +110,7 @@ Write-Host "  PASS: Program.cs dynamically resolves 'linux', 'macos', and 'windo
 
 # --- Check 6: XDG Base Directory & Quarantine Staging Resolution ---
 Write-Host "`n[Check 6/10] Auditing XDG Base Directory Support in QuarantineStagingStore.cs..." -ForegroundColor Yellow
-$StorePath = Join-Path $ProjectRoot "windows\Glide.Core\Storage\QuarantineStagingStore.cs"
+$StorePath = Join-Path $ProjectRoot "desktop\src\Glide.Core\Storage\QuarantineStagingStore.cs"
 $StoreContent = Get-Content $StorePath -Raw
 if ($StoreContent -notmatch "XDG_DATA_HOME" -or $StoreContent -notmatch "GetDefaultStagingRoot") {
     Write-Error "FAIL: QuarantineStagingStore.cs missing XDG_DATA_HOME environment variable resolution."
@@ -132,11 +132,11 @@ if ($SpecContent -notmatch "\[Desktop Entry\]" -or $SpecContent -notmatch "dev\.
 if ($SpecContent -notmatch "\[Unit\]" -or $SpecContent -notmatch "systemctl --user enable") {
     Write-Error "FAIL: Specification missing valid systemd user service definition."
 }
-$DesktopPath = Join-Path $ProjectRoot "linux\glide.desktop"
+$DesktopPath = Join-Path $ProjectRoot "desktop\linux\glide.desktop"
 if (-not (Test-Path $DesktopPath)) {
     $DesktopPath = Join-Path $ProjectRoot "packaging\linux\glide.desktop"
 }
-$ServicePath = Join-Path $ProjectRoot "linux\glide.service"
+$ServicePath = Join-Path $ProjectRoot "desktop\linux\glide.service"
 if (-not (Test-Path $ServicePath)) {
     $ServicePath = Join-Path $ProjectRoot "packaging\linux\glide.service"
 }
@@ -153,7 +153,7 @@ Write-Host "`n[Check 9/10] Auditing Headless Terminal QR Code Rendering Contract
 if ($SpecContent -notmatch "\\u2580" -and $SpecContent -notmatch "▀") {
     Write-Error "FAIL: Specification missing terminal half-block QR code rendering contract."
 }
-$QrGenPath = Join-Path $ProjectRoot "windows\Glide.Core\Security\QrCodeGenerator.cs"
+$QrGenPath = Join-Path $ProjectRoot "desktop\src\Glide.Core\Security\QrCodeGenerator.cs"
 $QrGenContent = Get-Content $QrGenPath -Raw
 if ($QrGenContent -notmatch "ToTerminalString") {
     Write-Error "FAIL: QrCodeGenerator.cs missing ToTerminalString UTF-8 block renderer."

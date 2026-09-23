@@ -12,11 +12,11 @@ Write-Host "====================================================================
 $gradlew = Join-Path $PSScriptRoot "..\gradlew.bat"
 
 Write-Host "Executing TransportBenchmarkTest via Gradle..." -ForegroundColor Yellow
-$result = & $gradlew :shared:transport-nearby:testDebugUnitTest --tests "dev.glide.transport.nearby.benchmark.TransportBenchmarkTest" 2>&1
+$result = & $gradlew :android:transport-nearby:testDebugUnitTest --tests "dev.glide.transport.nearby.benchmark.TransportBenchmarkTest" 2>&1
 
-$xmlReport = Join-Path $PSScriptRoot "..\shared\transport-nearby\build\test-results\testDebugUnitTest\TEST-dev.glide.transport.nearby.benchmark.TransportBenchmarkTest.xml"
+$xmlReport = Join-Path $PSScriptRoot "..\android\transport-nearby\build\test-results\testDebugUnitTest\TEST-dev.glide.transport.nearby.benchmark.TransportBenchmarkTest.xml"
 if (-not (Test-Path $xmlReport)) {
-    $fallback = Join-Path $PSScriptRoot "..\transport-nearby\build\test-results\testDebugUnitTest\TEST-dev.glide.transport.nearby.benchmark.TransportBenchmarkTest.xml"
+    $fallback = Join-Path $PSScriptRoot "..\shared\transport-nearby\build\test-results\testDebugUnitTest\TEST-dev.glide.transport.nearby.benchmark.TransportBenchmarkTest.xml"
     if (Test-Path $fallback) { $xmlReport = $fallback }
 }
 

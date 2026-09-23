@@ -21,7 +21,7 @@
 param(
     [ValidateSet("Debug", "Release")]
     [string]$Configuration = "Debug",
-    [ValidateSet("All", "Android", "Windows")]
+    [ValidateSet("All", "Android", "Windows", "Desktop")]
     [string]$Target = "All"
 )
 
@@ -37,7 +37,7 @@ $buildErrors = [System.Collections.Generic.List[string]]::new()
 # --- Android Build ---
 if ($Target -eq "All" -or $Target -eq "Android") {
     Write-Host "`n[Android] Building via Gradle..." -ForegroundColor Yellow
-    $gradleTask = if ($Configuration -eq "Release") { "assembleRelease" } else { "assembleDebug" }
+    $gradleTask = if ($Configuration -eq "Release") { ":android:app:assembleRelease" } else { ":android:app:assembleDebug" }
     $gradleArgs = @($gradleTask, "--no-daemon")
     if ($Configuration -eq "Release") {
         $gradleArgs += "--console=plain"
@@ -64,15 +64,15 @@ if ($Target -eq "All" -or $Target -eq "Android") {
     } else {
         Write-Host "  [OK]   Android $Configuration build succeeded." -ForegroundColor Green
         $apkPath = if ($Configuration -eq "Release") {
-            "$projectRoot\android\build\outputs\apk\release\android-release.apk"
+            "$projectRoot\android\app\build\outputs\apk\release\app-release.apk"
         } else {
-            "$projectRoot\android\build\outputs\apk\debug\android-debug.apk"
+            "$projectRoot\android\app\build\outputs\apk\debug\app-debug.apk"
         }
         if (-not (Test-Path $apkPath)) {
             $fallback = if ($Configuration -eq "Release") {
-                "$projectRoot\android\build\outputs\apk\release\app-release.apk"
+                "$projectRoot\android\app\build\outputs\apk\release\android-release.apk"
             } else {
-                "$projectRoot\android\build\outputs\apk\debug\app-debug.apk"
+                "$projectRoot\android\app\build\outputs\apk\debug\android-debug.apk"
             }
             if (Test-Path $fallback) { $apkPath = $fallback }
         }
@@ -83,10 +83,10 @@ if ($Target -eq "All" -or $Target -eq "Android") {
     }
 }
 
-# --- Windows Build ---
-if ($Target -eq "All" -or $Target -eq "Windows") {
-    Write-Host "`n[Windows] Building via dotnet..." -ForegroundColor Yellow
-    $dotnetArgs = @("build", "$projectRoot\windows\Glide.slnx", "-c", $Configuration, "--nologo")
+# --- Desktop (Windows / Linux) Build ---
+if ($Target -eq "All" -or $Target -eq "Windows" -or $Target -eq "Desktop") {
+    Write-Host "`n[Desktop] Building via dotnet..." -ForegroundColor Yellow
+    $dotnetArgs = @("build", "$projectRoot\desktop\Glide.slnx", "-c", $Configuration, "--nologo")
     Write-Host "  Running: dotnet $($dotnetArgs -join ' ')" -ForegroundColor Gray
     $pinfo = New-Object System.Diagnostics.ProcessStartInfo
     $pinfo.FileName = "dotnet"
@@ -104,9 +104,9 @@ if ($Target -eq "All" -or $Target -eq "Windows") {
     if ($process.ExitCode -ne 0) {
         Write-Host $stdout
         Write-Host $stderr -ForegroundColor Red
-        $buildErrors.Add("Windows dotnet build failed (exit code $($process.ExitCode))")
+        $buildErrors.Add("Desktop dotnet build failed (exit code $($process.ExitCode))")
     } else {
-        Write-Host "  [OK]   Windows $Configuration build succeeded." -ForegroundColor Green
+        Write-Host "  [OK]   Desktop $Configuration build succeeded." -ForegroundColor Green
     }
 }
 

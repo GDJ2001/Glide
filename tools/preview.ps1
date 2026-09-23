@@ -47,15 +47,15 @@ if ($Target -eq "Android") {
         Write-Host "  Device: $deviceId" -ForegroundColor Green
 
         $apkPath = if ($Configuration -eq "Release") {
-            "$projectRoot\android\build\outputs\apk\release\android-release.apk"
+            "$projectRoot\android\app\build\outputs\apk\release\app-release.apk"
         } else {
-            "$projectRoot\android\build\outputs\apk\debug\android-debug.apk"
+            "$projectRoot\android\app\build\outputs\apk\debug\app-debug.apk"
         }
         if (-not (Test-Path $apkPath)) {
             $fallback = if ($Configuration -eq "Release") {
-                "$projectRoot\android\build\outputs\apk\release\app-release.apk"
+                "$projectRoot\android\app\build\outputs\apk\release\android-release.apk"
             } else {
-                "$projectRoot\android\build\outputs\apk\debug\app-debug.apk"
+                "$projectRoot\android\app\build\outputs\apk\debug\android-debug.apk"
             }
             if (Test-Path $fallback) { $apkPath = $fallback }
         }
@@ -80,7 +80,7 @@ if ($Target -eq "Android") {
 # --- Windows UI Preview ---
 if ($Target -eq "WindowsUI") {
     Write-Host "`n[Windows UI] Launching Glide.Windows.UI..." -ForegroundColor Yellow
-    $csproj = "$projectRoot\windows\Glide.Windows.UI\Glide.Windows.UI.csproj"
+    $csproj = "$projectRoot\desktop\windows\Glide.Windows.UI\Glide.Windows.UI.csproj"
     Write-Host "  Project: $csproj" -ForegroundColor Gray
     Write-Host "  Starting WPF application..." -ForegroundColor Cyan
     & dotnet run --project $csproj -c $Configuration
@@ -89,7 +89,7 @@ if ($Target -eq "WindowsUI") {
 # --- Windows CLI Preview ---
 if ($Target -eq "WindowsCLI") {
     Write-Host "`n[Windows CLI] Launching Glide.App..." -ForegroundColor Yellow
-    $csproj = "$projectRoot\windows\Glide.App\Glide.App.csproj"
+    $csproj = "$projectRoot\desktop\src\Glide.App\Glide.App.csproj"
     Write-Host "  Project: $csproj" -ForegroundColor Gray
     & dotnet run --project $csproj -c $Configuration
 }

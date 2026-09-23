@@ -1,7 +1,7 @@
 # Script to inspect and install Glide on physical Android devices for GLIDE-017
 param(
     [string]$AdbPath = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe",
-    [string]$ApkPath = "$PSScriptRoot\..\android\build\outputs\apk\debug\android-debug.apk",
+    [string]$ApkPath = "$PSScriptRoot\..\android\app\build\outputs\apk\debug\app-debug.apk",
     [string]$FixturePath = "$PSScriptRoot\..\build\fixtures\glide-test-10mb.bin"
 )
 
@@ -56,7 +56,7 @@ foreach ($line in $deviceLines) {
         Write-Host "  Installing $ApkPath ..."
         & $AdbPath -s $serial install -r -d $ApkPath
     } else {
-        Write-Warning "  APK not found at $ApkPath. Please run: .\gradlew.bat :app:assembleDebug"
+        Write-Warning "  APK not found at $ApkPath. Please run: .\gradlew.bat :android:app:assembleDebug"
     }
 
     if (Test-Path $FixturePath) {

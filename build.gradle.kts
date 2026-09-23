@@ -12,17 +12,17 @@ plugins {
 tasks.register("checkArchitecture") {
     group = "verification"
     description = "Enforces architecture boundaries, pure JVM core isolation, UI main-thread I/O checks, and dependency catalog usage."
-    dependsOn(":android:testDebugUnitTest")
+    dependsOn(":android:app:testDebugUnitTest")
 }
 
 tasks.register("checkLanGate") {
     group = "verification"
     description = "Runs functional LAN verification gates: TLS loopback, protocol vectors, network/storage chaos, and storage correctness."
     dependsOn(
-        ":transfer-core:test",
-        ":transport-lan:testDebugUnitTest",
-        ":data:testDebugUnitTest",
-        ":android:testDebugUnitTest"
+        ":android:core:test",
+        ":android:transport-lan:testDebugUnitTest",
+        ":android:data:testDebugUnitTest",
+        ":android:app:testDebugUnitTest"
     )
 }
 

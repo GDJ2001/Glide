@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Glide.App/Glide.App.csproj" />
+    <Project Path="src/Glide.Core/Glide.Core.csproj" />
+    <Project Path="src/Glide.Desktop/Glide.Desktop.csproj" />
+    <Project Path="src/Glide.Transport/Glide.Transport.csproj" />
+  </Folder>
+  <Folder Name="/windows/">
+    <Project Path="windows/Glide.Windows.UI/Glide.Windows.UI.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Glide.Tests/Glide.Tests.csproj" />
+  </Folder>
+</Solution>

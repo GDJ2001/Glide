@@ -68,7 +68,9 @@ if (-not (Test-Path $PermMatrix)) {
     Write-Error "FAIL: PERMISSION_MATRIX.md missing."
 }
 
-$AppManifest = if (Test-Path (Join-Path $ProjectRoot "android\src\main\AndroidManifest.xml")) {
+$AppManifest = if (Test-Path (Join-Path $ProjectRoot "android\app\src\main\AndroidManifest.xml")) {
+    Join-Path $ProjectRoot "android\app\src\main\AndroidManifest.xml"
+} elseif (Test-Path (Join-Path $ProjectRoot "android\src\main\AndroidManifest.xml")) {
     Join-Path $ProjectRoot "android\src\main\AndroidManifest.xml"
 } else {
     Join-Path $ProjectRoot "app\src\main\AndroidManifest.xml"
@@ -121,7 +123,7 @@ Write-Host "  PASS: Threat model matrix (T01-T08, T10-T15, T17, T18) and SAS/TLS
 
 # --- Check 5: Pure JVM Transport Domain Models and Tests ---
 Write-Host "`n[Check 5/5] Auditing pure JVM TransportCapability and unit test suite..." -ForegroundColor Yellow
-$coreDir = if (Test-Path (Join-Path $ProjectRoot "shared\transfer-core")) { "shared\transfer-core" } else { "transfer-core" }
+$coreDir = if (Test-Path (Join-Path $ProjectRoot "android\core")) { "android\core" } elseif (Test-Path (Join-Path $ProjectRoot "shared\transfer-core")) { "shared\transfer-core" } else { "transfer-core" }
 $DomainModel = Join-Path $ProjectRoot "$coreDir\src\main\kotlin\dev\glide\core\transport\TransportCapability.kt"
 $TestFile = Join-Path $ProjectRoot "$coreDir\src\test\kotlin\dev\glide\core\transport\TransportEvaluationMatrixTest.kt"
 

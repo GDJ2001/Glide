@@ -22,7 +22,7 @@
 
 [CmdletBinding()]
 param(
-    [ValidateSet("All", "Android", "Windows")]
+    [ValidateSet("All", "Android", "Windows", "Desktop")]
     [string]$Target = "All",
     [ValidateSet("Debug", "Release")]
     [string]$Configuration = "Debug",
@@ -67,7 +67,7 @@ if ($Target -eq "All" -or $Target -eq "Android") {
         $testErrors.Add("Android unit tests failed (exit code $($process.ExitCode))")
     } else {
         Write-Host "  [OK]   Android unit tests passed." -ForegroundColor Green
-        $reportDir = "$projectRoot\android\build\reports\tests\test${Configuration}UnitTest"
+        $reportDir = "$projectRoot\android\app\build\reports\tests\test${Configuration}UnitTest"
         if (-not (Test-Path $reportDir)) {
             $fallback = "$projectRoot\app\build\reports\tests\test${Configuration}UnitTest"
             if (Test-Path $fallback) { $reportDir = $fallback }
@@ -78,10 +78,15 @@ if ($Target -eq "All" -or $Target -eq "Android") {
     }
 }
 
-# --- Windows Test ---
-if ($Target -eq "All" -or $Target -eq "Windows") {
-    Write-Host "`n[Windows] Running tests via dotnet test..." -ForegroundColor Yellow
-    $dotnetArgs = @("test", "$projectRoot\windows\Glide.Tests\Glide.Tests.csproj", "-c", $Configuration, "--nologo", "--logger", "console;verbosity=detailed")
+# --- Desktop (Windows / Linux) Test ---
+if ($Target -eq "All" -or $Target -eq "Windows" -or $Target -eq "Desktop") {
+    Write-Host "`n[Desktop] Running tests via dotnet test..." -ForegroundColor Yellow
+    $testTarget = if (Test-Path "$projectRoot\desktop\Glide.slnx") {
+        "$projectRoot\desktop\Glide.slnx"
+    } else {
+        "$projectRoot\desktop\tests\Glide.Tests\Glide.Tests.csproj"
+    }
+    $dotnetArgs = @("test", $testTarget, "-c", $Configuration, "--nologo", "--logger", "console;verbosity=detailed")
     if ($Filter) {
         $dotnetArgs += "--filter", $Filter
     }
@@ -103,9 +108,9 @@ if ($Target -eq "All" -or $Target -eq "Windows") {
     if ($process.ExitCode -ne 0) {
         Write-Host $stdout
         Write-Host $stderr -ForegroundColor Red
-        $testErrors.Add("Windows tests failed (exit code $($process.ExitCode))")
+        $testErrors.Add("Desktop tests failed (exit code $($process.ExitCode))")
     } else {
-        Write-Host "  [OK]   Windows tests passed." -ForegroundColor Green
+        Write-Host "  [OK]   Desktop tests passed." -ForegroundColor Green
     }
 }
 

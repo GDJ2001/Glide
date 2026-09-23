@@ -150,7 +150,7 @@ After the common prefix:
 
 The verified chunk count must be exactly derivable from the offset/chunk size, allowing the final partial chunk only when the offset equals the complete source size.
 
-Shared vectors: `shared/protocol/fixtures/identity_resume_v1_vectors.json`.
+Shared vectors: `assets/protocol/fixtures/identity_resume_v1_vectors.json`.
 
 ---
 
