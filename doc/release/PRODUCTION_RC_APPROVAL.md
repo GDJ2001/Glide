@@ -14,10 +14,13 @@ The following production Release Candidate artifacts have been compiled, minifie
 
 | Artifact Identity | Output Filename | File Size | SHA-256 Cryptographic Hash |
 |---|---|:---:|---|
-| **Google Play App Bundle** | `app-release.aab` | 6.27 MB | `728d919b76b444f72795f63422eaf5bf312de50b80215c64a804baf1b13d1d52` |
-| **Signed Release Tester APK** | `app-release.apk` | 2.91 MB | `cf771dbaf068e7656b2c848300c7679d3e7309a1fc081a2edbc9da56eba6f21c` |
-| **R8 Deobfuscation Mapping** | `mapping.txt` | 49.79 MB | `9f108d84e77df3700b4944abd15cb2bd6fe439bf6cae01c7ea14c80d4aa9d6e4` |
-| **fs-verity Signature File** | `app-release.apk.idsig`| 31.35 KB | Verified Android Signature Scheme v4 |
+| **Google Play App Bundle** | `app-release.aab` | 9.61 MB | `a2d12fb51e3fa293e9190849abae9ed72fb906dff05a2a18eb069ef1a5d941c2` |
+| **Signed Release Tester APK** | `app-release.apk` | 4.93 MB | `22d5db96b773c370a90c7fdf65f2b779e52437ecf4a2ccff94037b83d1489493` |
+| **R8 Deobfuscation Mapping** | `mapping.txt` | 67.63 MB | `e4c1de9006da57630b4c79773ae456d582cc14a8f9db5751db5edca631491cfd` |
+| **fs-verity Signature File** | `app-release.apk.idsig`| 46.6 KB | Verified Android Signature Scheme v4 |
+| **Windows Desktop Package** | `glide-windows-win-x64.zip` | 552 KB | `aa395c77c4e8d732d96579a802a76dfe062565d6e0f9ea1cee5bdd041d212282` |
+| **Linux Distribution Tarball** | `glide-linux-linux-x64.tar.gz` | 30.62 MB | `8596e909c7305fcd31ad8ae46aaf21cedb0cb1fd3cdb0f3c1b027244a65f1b9c` |
+| **Web Client Package** | `glide-web-client.zip` | 10.9 KB | `b899693a97234cfdff611a16358449c50debb2b79bfae899fa3fad24558476d0` |
 
 ### Application Specification
 - **Application ID:** `dev.glide.app`
@@ -79,7 +82,7 @@ Any of the following conditions detected during internal, closed, or staged roll
 ### Rollback & Recovery Execution
 - **Forward-Fix Rollback:** Because Android and Google Play versioning policies make binary downgrade unreliable, emergency rollback is executed by halting distribution in Play Console and publishing a forward-fix with an incremented `versionCode` (e.g., `versionCode 2`, `0.1.1-alpha`).
 - **Data Safety Preservation:** Rollback fixes must preserve Room database schema forward-compatibility and must **never** delete user files committed to public storage.
-- **Deobfuscation Diagnostics:** Retained `mapping.txt` (`9f108d84e77df3700b4944abd15cb2bd6fe439bf6cae01c7ea14c80d4aa9d6e4`) must be used to deobfuscate any production stack traces.
+- **Deobfuscation Diagnostics:** Retained `mapping.txt` (`e4c1de9006da57630b4c79773ae456d582cc14a8f9db5751db5edca631491cfd`) must be used to deobfuscate any production stack traces.
 
 ---
 

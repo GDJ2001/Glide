@@ -23,6 +23,13 @@ Glide is built with the assistance of open-source software. Below is a consolida
 | **Google Play Services Nearby** (`play-services-nearby`) | Google LLC | [Google APIs Terms](https://developers.google.com/terms) |
 | **AndroidX CameraX** (`camera-core`, `camera-camera2`, `camera-lifecycle`, `camera-view`) | The Android Open Source Project | Apache 2.0 |
 | **ZXing Core** (`com.google.zxing:core`) | ZXing Authors | Apache 2.0 |
+| **.NET Runtime & Base Class Libraries** (`System.*`, `Microsoft.NETCore.App`) | Microsoft Corporation | MIT License |
+
+### Desktop Runtime Notice
+The shipping desktop binaries (`Glide.Windows.UI` on Windows and `Glide.App` on Linux) are implemented strictly using the .NET standard Base Class Library (`System.Net.Sockets`, `System.Security.Cryptography`, `System.Text.Json`, `System.IO`, and WPF). There are **zero external third-party NuGet dependencies** linked into production desktop artifacts.
+
+### Web Client Notice
+The browser transfer client (`glide-web-client.zip` / embedded gateway client) is authored in 100% vanilla ES2022 JavaScript, semantic HTML5, and CSS3. There are **zero npm packages, external build tools, or CDN dependencies** bundled or requested at runtime.
 
 ---
 

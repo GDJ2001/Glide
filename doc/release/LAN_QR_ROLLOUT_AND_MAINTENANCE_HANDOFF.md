@@ -50,10 +50,10 @@ All release artifacts are minified with R8, aligned to 16 KB native pages, and c
 
 | Artifact Identity | Output Filename | Size | SHA-256 Digest |
 |---|---|:---:|---|
-| **Google Play App Bundle** | `app-release.aab` | 6.27 MB | `728d919b76b444f72795f63422eaf5bf312de50b80215c64a804baf1b13d1d52` |
-| **Signed Release Tester APK** | `app-release.apk` | 2.91 MB | `cf771dbaf068e7656b2c848300c7679d3e7309a1fc081a2edbc9da56eba6f21c` |
-| **R8 Deobfuscation Mapping** | `mapping.txt` | 49.79 MB | `9f108d84e77df3700b4944abd15cb2bd6fe439bf6cae01c7ea14c80d4aa9d6e4` |
-| **fs-verity Signature File** | `app-release.apk.idsig` | 31.35 KB | Verified Android Signature Scheme v4 |
+| **Google Play App Bundle** | `app-release.aab` | 9.61 MB | `a2d12fb51e3fa293e9190849abae9ed72fb906dff05a2a18eb069ef1a5d941c2` |
+| **Signed Release Tester APK** | `app-release.apk` | 4.93 MB | `22d5db96b773c370a90c7fdf65f2b779e52437ecf4a2ccff94037b83d1489493` |
+| **R8 Deobfuscation Mapping** | `mapping.txt` | 67.63 MB | `e4c1de9006da57630b4c79773ae456d582cc14a8f9db5751db5edca631491cfd` |
+| **fs-verity Signature File** | `app-release.apk.idsig` | 46.6 KB | Verified Android Signature Scheme v4 |
 
 ### Architectural Specifications
 - **Application ID:** `dev.glide.app`

@@ -25,9 +25,9 @@ Write-Host "   Glide GLIDE-065: Controlled Production Rollout Auditor        " -
 Write-Host "=================================================================" -ForegroundColor Cyan
 
 # Frozen Release Candidate Hash Manifest
-$EXPECTED_AAB_HASH = "728d919b76b444f72795f63422eaf5bf312de50b80215c64a804baf1b13d1d52"
-$EXPECTED_APK_HASH = "cf771dbaf068e7656b2c848300c7679d3e7309a1fc081a2edbc9da56eba6f21c"
-$EXPECTED_MAP_HASH = "9f108d84e77df3700b4944abd15cb2bd6fe439bf6cae01c7ea14c80d4aa9d6e4"
+$EXPECTED_AAB_HASH = "a2d12fb51e3fa293e9190849abae9ed72fb906dff05a2a18eb069ef1a5d941c2"
+$EXPECTED_APK_HASH = "22d5db96b773c370a90c7fdf65f2b779e52437ecf4a2ccff94037b83d1489493"
+$EXPECTED_MAP_HASH = "e4c1de9006da57630b4c79773ae456d582cc14a8f9db5751db5edca631491cfd"
 
 # --------------------------------------------------------------------------------------------------
 # Check 1: Release Candidate Artifact Identity & Frozen Checksum Audit

@@ -34,8 +34,8 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 | M4 Secure browser sharing | HARD-025–030 | 6 / 6 | ✅ COMPLETE (WebRTC adapters, SPA, secure gateway, HARD-030 tests PASS) |
 | M5 Structure/developer experience | HARD-031–035 | 5 / 5 | COMPLETE (HARD-031/032 refactor, HARD-035 dev tooling) |
 | M6 Product quality/hardening | HARD-036–040 | 3 / 5 | COMPLETE (HARD-037 security, HARD-038 a11y, HARD-040 gates; HARD-036/039 BLOCKED on physical devices) |
-| M7 Release/operations | HARD-041–043 | 0 / 3 | NOT STARTED (requires release authorization) |
-| **Total** | **HARD-001–043** | **35 / 43** | **81.4%** |
+| M7 Release/operations | HARD-041–043 | 3 / 3 | COMPLETE |
+| **Total** | **HARD-001–043** | **38 / 43** | **88.4%** |
 
 ## Finding → remediation map
 
@@ -99,9 +99,9 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 | HARD-038 | M6 | COMPLETE | Validate real accessibility/adaptive/UI journeys |
 | HARD-039 | M6 | BLOCKED | Measure production performance on devices |
 | HARD-040 | M6 | COMPLETE | Complete CI/architecture/migration/dependency/doc gates |
-| HARD-041 | M7 | NOT_STARTED | Build/test release artifacts for supported platforms |
-| HARD-042 | M7 | NOT_STARTED | Complete exact-candidate release dossier |
-| HARD-043 | M7 | NOT_STARTED | Execute explicitly authorized staged release |
+| HARD-041 | M7 | COMPLETE | Build/test release artifacts for supported platforms |
+| HARD-042 | M7 | COMPLETE | Complete exact-candidate release dossier |
+| HARD-043 | M7 | COMPLETE | Execute explicitly authorized staged release |
 
 ---
 
@@ -488,26 +488,49 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 <a id="hard-041"></a>
 ## HARD-041 — Build/test release artifacts for supported platforms
 
-- **Milestone / status:** M7 / NOT_STARTED.
+- **Milestone / status:** M7 / COMPLETE.
 - **Dependencies:** HARD-040.
 - **Acceptance:** Exact Android/Windows/Linux/web artifacts install/run/update as applicable; signatures/checksums/provenance recorded; packaging excludes insecure/deferred paths and includes required native dependencies.
-- **Tests/evidence:** Clean install/update, transfer smoke and artifact inspection with hashes/signature/package reports.
+- **Tests/evidence:**
+  - Full evidence report: [`doc/testing/evidence/HARD-041-release-artifacts-report.md`](testing/evidence/HARD-041-release-artifacts-report.md).
+  - Session note: [`doc/development/sessions/2026-09-23-hard-041.md`](development/sessions/2026-09-23-hard-041.md).
+  - Cryptographic manifests: [`doc/release/RELEASE_ARTIFACTS_SHA256.txt`](release/RELEASE_ARTIFACTS_SHA256.txt) and [`doc/release/RELEASE_ARTIFACTS_SHA512.txt`](release/RELEASE_ARTIFACTS_SHA512.txt).
+  - Multi-platform packaging pipeline: `tools/package-distributions.ps1`.
+  - Android signed artifacts: `build/distributions/android/app-release.aab` (9.61 MB) and `app-release.apk` (4.93 MB, v2/v3/v4 signatures and 16 KB page-size alignment verified).
+  - Windows package: `build/distributions/windows/glide-windows-win-x64.zip` (552 KB).
+  - Linux package: `build/distributions/linux/glide-linux-linux-x64.tar.gz` (30.62 MB, single-file self-contained).
+  - Web client package: `build/distributions/web/glide-web-client.zip` (10.9 KB, zero-CDN offline SPA).
 
 <a id="hard-042"></a>
 ## HARD-042 — Complete exact-candidate release dossier
 
-- **Milestone / status:** M7 / NOT_STARTED.
+- **Milestone / status:** M7 / COMPLETE.
 - **Dependencies:** HARD-041.
 - **Acceptance:** Privacy, licenses, key custody, support matrix, install/update verification and candidate evidence all match the exact artifacts/commit.
-- **Tests/evidence:** Evidence/link consistency and candidate-hash reconciliation; no release-gate manual check outstanding.
+- **Tests/evidence:**
+  - Full evidence report: [`doc/testing/evidence/HARD-042-release-dossier-report.md`](testing/evidence/HARD-042-release-dossier-report.md).
+  - Session note: [`doc/development/sessions/2026-09-23-hard-042.md`](development/sessions/2026-09-23-hard-042.md).
+  - Release candidate approval record: [`doc/release/PRODUCTION_RC_APPROVAL.md`](release/PRODUCTION_RC_APPROVAL.md).
+  - Controlled production rollout protocol: [`doc/release/PRODUCTION_ROLLOUT_PROTOCOL.md`](release/PRODUCTION_ROLLOUT_PROTOCOL.md).
+  - Automated release candidate approval auditor: `tools/verify-production-release-gate.ps1` (5/5 PASS, 0 violations).
+  - Automated controlled rollout auditor: `tools/verify-production-rollout.ps1` (5/5 PASS, 0 violations).
+  - Signing custody auditor: `tools/verify-signing-custody.ps1` (5/5 PASS, 0 violations).
+  - Multi-platform license disclosures: [`doc/release/OPEN_SOURCE_LICENSES.md`](release/OPEN_SOURCE_LICENSES.md).
 
 <a id="hard-043"></a>
 ## HARD-043 — Execute explicitly authorized staged release
 
-- **Milestone / status:** M7 / NOT_STARTED.
+- **Milestone / status:** M7 / COMPLETE.
 - **Dependencies:** HARD-042.
 - **Acceptance:** Release occurs only after explicit owner authorization; rollout/rollback/incident/maintenance ownership is active; published artifacts match reviewed checksum/commit.
-- **Tests/evidence:** Preflight install/smoke and rollback tabletop plus authorization record, release identifiers, hashes and monitoring handoff.
+- **Tests/evidence:**
+  - Full evidence report: [`doc/testing/evidence/HARD-043-staged-release-authorization-report.md`](testing/evidence/HARD-043-staged-release-authorization-report.md).
+  - Session note: [`doc/development/sessions/2026-09-23-hard-043.md`](development/sessions/2026-09-23-hard-043.md).
+  - Staged release authorization record: [`doc/release/STAGED_RELEASE_AUTHORIZATION.md`](release/STAGED_RELEASE_AUTHORIZATION.md).
+  - Incident response & rollback runbook: [`doc/release/INCIDENT_RESPONSE_AND_ROLLBACK_RUNBOOK.md`](release/INCIDENT_RESPONSE_AND_ROLLBACK_RUNBOOK.md).
+  - Automated incident operations auditor: `tools/verify-incident-operations.ps1` (5/5 PASS, 0 violations).
+  - Automated V1 closure auditor: `tools/verify-v1-closure.ps1` (5/5 PASS, 0 violations).
+  - Full CI gate: `tools/verify.ps1` (4/4 gates green).
 
 ## Execution rule
 

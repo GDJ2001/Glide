@@ -27,10 +27,10 @@ All production distribution actions must utilize the exact cryptographic binarie
 
 | Artifact Identity | Output Path | File Size | SHA-256 Cryptographic Hash |
 |---|---|:---:|---|
-| **Google Play App Bundle** | `app/build/outputs/bundle/release/app-release.aab` | 6.27 MB | `728d919b76b444f72795f63422eaf5bf312de50b80215c64a804baf1b13d1d52` |
-| **Signed Release Tester APK** | `app/build/outputs/apk/release/app-release.apk` | 2.91 MB | `cf771dbaf068e7656b2c848300c7679d3e7309a1fc081a2edbc9da56eba6f21c` |
-| **R8 Deobfuscation Mapping** | `app/build/outputs/mapping/release/mapping.txt` | 49.79 MB | `9f108d84e77df3700b4944abd15cb2bd6fe439bf6cae01c7ea14c80d4aa9d6e4` |
-| **fs-verity Signature File** | `app/build/outputs/apk/release/app-release.apk.idsig` | 31.35 KB | Verified Android Signature Scheme v4 |
+| **Google Play App Bundle** | `app/build/outputs/bundle/release/app-release.aab` | 9.61 MB | `a2d12fb51e3fa293e9190849abae9ed72fb906dff05a2a18eb069ef1a5d941c2` |
+| **Signed Release Tester APK** | `app/build/outputs/apk/release/app-release.apk` | 4.93 MB | `22d5db96b773c370a90c7fdf65f2b779e52437ecf4a2ccff94037b83d1489493` |
+| **R8 Deobfuscation Mapping** | `app/build/outputs/mapping/release/mapping.txt` | 67.63 MB | `e4c1de9006da57630b4c79773ae456d582cc14a8f9db5751db5edca631491cfd` |
+| **fs-verity Signature File** | `app/build/outputs/apk/release/app-release.apk.idsig` | 46.6 KB | Verified Android Signature Scheme v4 |
 
 ### Target Application Specifications
 - **Application ID:** `dev.glide.app`
@@ -135,8 +135,8 @@ Rollout expansion must be halted within **2 hours** of detecting any of the foll
 2. Select application **Glide** (`dev.glide.app`).
 3. Navigate to **Release** $\rightarrow$ **Production**.
 4. Click **Create new release**.
-5. Upload the signed `app-release.aab` (`SHA-256: 728d919b76b4...`).
-6. Upload the R8 deobfuscation file `mapping.txt` (`SHA-256: 9f108d84...`).
+5. Upload the signed `app-release.aab` (`SHA-256: a2d12fb51e3f...`).
+6. Upload the R8 deobfuscation file `mapping.txt` (`SHA-256: e4c1de90...`).
 7. Enter release name: `0.1.0-alpha (1)`.
 8. Enter localized release notes from [`docs/release/store_assets/STORE_LISTING_METADATA.md`](store_assets/STORE_LISTING_METADATA.md).
 9. Select rollout type: **Staged rollout**.
