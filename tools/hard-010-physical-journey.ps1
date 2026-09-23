@@ -6,7 +6,7 @@ param(
     [ValidateSet("Prepare","BeginRun","EndRun","Audit")]
     [string]$Mode = "Prepare",
     [string]$AdbPath = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe",
-    [string]$ApkPath = "$PSScriptRoot\..\app\build\outputs\apk\debug\app-debug.apk",
+    [string]$ApkPath = "$PSScriptRoot\..\android\build\outputs\apk\debug\android-debug.apk",
     [string]$EvidenceDir = "",
     [string]$PackageId = "dev.glide.app.debug",
     [string]$DeviceA = "",

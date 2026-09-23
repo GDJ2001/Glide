@@ -7,7 +7,7 @@ param()
 $ErrorActionPreference = "Stop"
 
 Write-Host "=== 1. Validating Canonical Brand Assets ===" -ForegroundColor Cyan
-& "$PSScriptRoot\..\asset\tools\Export-GlideAssets.ps1" -ValidateOnly
+& "$PSScriptRoot\..\assets\tools\Export-GlideAssets.ps1" -ValidateOnly
 
 Write-Host "`n=== 2. Enforcing Architecture & Static Analysis ===" -ForegroundColor Cyan
 $LASTEXITCODE = 0
@@ -27,7 +27,7 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host "`n=== 4. Running Android Lint Analysis ===" -ForegroundColor Cyan
 $LASTEXITCODE = 0
-& "$PSScriptRoot\..\gradlew.bat" :app:lintDebug
+& "$PSScriptRoot\..\gradlew.bat" :android:lintDebug
 if ($LASTEXITCODE -ne 0) {
     Write-Error "lintDebug failed with exit code $LASTEXITCODE."
     exit $LASTEXITCODE

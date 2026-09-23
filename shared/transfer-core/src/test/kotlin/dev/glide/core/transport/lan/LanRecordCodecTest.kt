@@ -85,14 +85,21 @@ class LanRecordCodecTest {
 
     private fun loadFixture(path: String): ByteArray {
         val stream = javaClass.classLoader?.getResourceAsStream(path)
-        if (stream != null) {
-            return stream.readAllBytes()
+        val raw = if (stream != null) {
+            stream.readAllBytes()
+        } else {
+            val file = File("src/test/resources/$path")
+            if (file.exists()) {
+                file.readBytes()
+            } else {
+                error("Fixture not found: $path")
+            }
         }
-        val file = File("src/test/resources/$path")
-        if (file.exists()) {
-            return file.readBytes()
+        return if (path.endsWith(".json")) {
+            String(raw, Charsets.UTF_8).replace("\r\n", "\n").toByteArray(Charsets.UTF_8)
+        } else {
+            raw
         }
-        error("Fixture not found: $path")
     }
 
     @Test

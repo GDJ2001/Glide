@@ -16,8 +16,9 @@ Write-Host "=================================================================" -
 
 # --- Check 1: ADR-0022 Existence, Accepted Status, and Decision Index ---
 Write-Host "`n[Check 1/10] Auditing ADR-0022 existence, Accepted status, and index..." -ForegroundColor Yellow
-$AdrPath = Join-Path $ProjectRoot "docs\adr\ADR-0022-remote-internet-transfer.md"
-$AdrIndex = Join-Path $ProjectRoot "docs\adr\README.md"
+$docDir = if (Test-Path (Join-Path $ProjectRoot "doc")) { "doc" } else { "docs" }
+$AdrPath = Join-Path $ProjectRoot "$docDir\adr\ADR-0022-remote-internet-transfer.md"
+$AdrIndex = Join-Path $ProjectRoot "$docDir\adr\README.md"
 
 if (-not (Test-Path $AdrPath)) {
     Write-Error "FAIL: ADR-0022 not found at $AdrPath"
@@ -30,14 +31,14 @@ if ($AdrContent -notmatch "Zero-Knowledge" -or $AdrContent -notmatch "NAT Traver
     Write-Error "FAIL: ADR-0022 missing Zero-Knowledge or NAT Traversal decisions."
 }
 $IndexContent = Get-Content $AdrIndex -Raw
-if ($IndexContent -notmatch "ADR-0022 — Remote and internet transfer architecture") {
-    Write-Error "FAIL: ADR-0022 not properly indexed in docs/adr/README.md."
+if ($IndexContent -notmatch "ADR-0022.*Remote and internet transfer architecture") {
+    Write-Error "FAIL: ADR-0022 not properly indexed in $docDir/adr/README.md."
 }
 Write-Host "  PASS: ADR-0022 exists, is marked Accepted, and is indexed in README.md." -ForegroundColor Green
 
 # --- Check 2: Roadmap Alignment in CROSS_PLATFORM_PATH.md ---
 Write-Host "`n[Check 2/10] Auditing Roadmap Alignment in CROSS_PLATFORM_PATH.md..." -ForegroundColor Yellow
-$PathDoc = Join-Path $ProjectRoot "docs\future\CROSS_PLATFORM_PATH.md"
+$PathDoc = Join-Path $ProjectRoot "$docDir\future\CROSS_PLATFORM_PATH.md"
 $PathContent = Get-Content $PathDoc -Raw
 if ($PathContent -notmatch "REMOTE_INTERNET_TRANSFER_SPECIFICATION\.md" -or $PathContent -notmatch "Remote") {
     Write-Error "FAIL: CROSS_PLATFORM_PATH.md does not reference REMOTE_INTERNET_TRANSFER_SPECIFICATION.md or Remote platform."
@@ -46,7 +47,7 @@ Write-Host "  PASS: CROSS_PLATFORM_PATH.md references Remote/Internet transfer a
 
 # --- Check 3: Remote Internet Transfer Specification Completeness ---
 Write-Host "`n[Check 3/10] Auditing Remote Internet Transfer technical specification completeness..." -ForegroundColor Yellow
-$SpecPath = Join-Path $ProjectRoot "docs\future\REMOTE_INTERNET_TRANSFER_SPECIFICATION.md"
+$SpecPath = Join-Path $ProjectRoot "$docDir\future\REMOTE_INTERNET_TRANSFER_SPECIFICATION.md"
 if (-not (Test-Path $SpecPath)) {
     Write-Error "FAIL: Specification not found at $SpecPath"
 }
@@ -145,9 +146,10 @@ if ($SpecContent -notmatch "Canonical Glide semantics" -or $SpecContent -notmatc
 $CsModel = Join-Path $ProjectRoot "windows\Glide.Core\Remote\RemoteInvitation.cs"
 $CsCodec = Join-Path $ProjectRoot "windows\Glide.Core\Remote\RemoteInvitationCodec.cs"
 $CsTest = Join-Path $ProjectRoot "windows\Glide.Tests\RemoteInvitationCodecTests.cs"
-$KtModel = Join-Path $ProjectRoot "transfer-core\src\main\kotlin\dev\glide\core\remote\RemoteInvitation.kt"
-$KtCodec = Join-Path $ProjectRoot "transfer-core\src\main\kotlin\dev\glide\core\remote\RemoteInvitationCodec.kt"
-$KtTest = Join-Path $ProjectRoot "transfer-core\src\test\kotlin\dev\glide\core\remote\RemoteInvitationCodecTest.kt"
+$corePrefix = if (Test-Path (Join-Path $ProjectRoot "shared\transfer-core")) { "shared\transfer-core" } else { "transfer-core" }
+$KtModel = Join-Path $ProjectRoot "$corePrefix\src\main\kotlin\dev\glide\core\remote\RemoteInvitation.kt"
+$KtCodec = Join-Path $ProjectRoot "$corePrefix\src\main\kotlin\dev\glide\core\remote\RemoteInvitationCodec.kt"
+$KtTest = Join-Path $ProjectRoot "$corePrefix\src\test\kotlin\dev\glide\core\remote\RemoteInvitationCodecTest.kt"
 
 foreach ($file in @($CsModel, $CsCodec, $CsTest, $KtModel, $KtCodec, $KtTest)) {
     if (-not (Test-Path $file)) {

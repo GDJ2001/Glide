@@ -30,7 +30,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$projectRoot = (Resolve-Path "$PSScriptRoot").Path
+$projectRoot = (Resolve-Path "$PSScriptRoot\..").Path
 
 Write-Host "=================================================================" -ForegroundColor Cyan
 Write-Host "   Glide Test Run ($Configuration) — Target: $Target                 " -ForegroundColor Cyan
@@ -67,7 +67,11 @@ if ($Target -eq "All" -or $Target -eq "Android") {
         $testErrors.Add("Android unit tests failed (exit code $($process.ExitCode))")
     } else {
         Write-Host "  [OK]   Android unit tests passed." -ForegroundColor Green
-        $reportDir = "$projectRoot\app\build\reports\tests\test${Configuration}UnitTest"
+        $reportDir = "$projectRoot\android\build\reports\tests\test${Configuration}UnitTest"
+        if (-not (Test-Path $reportDir)) {
+            $fallback = "$projectRoot\app\build\reports\tests\test${Configuration}UnitTest"
+            if (Test-Path $fallback) { $reportDir = $fallback }
+        }
         if (Test-Path $reportDir) {
             Write-Host "  Report: $reportDir" -ForegroundColor Gray
         }

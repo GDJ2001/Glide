@@ -15,8 +15,9 @@ Write-Host "=================================================================" -
 
 # --- Check 1: ADR-0017 and Architecture Decision Index ---
 Write-Host "`n[Check 1/5] Auditing ADR-0017 existence and decision index..." -ForegroundColor Yellow
-$AdrPath = Join-Path $ProjectRoot "docs\adr\ADR-0017-android-windows-interoperable-lan-slice.md"
-$AdrIndex = Join-Path $ProjectRoot "docs\adr\README.md"
+$docDir = if (Test-Path (Join-Path $ProjectRoot "doc")) { "doc" } else { "docs" }
+$AdrPath = Join-Path $ProjectRoot "$docDir\adr\ADR-0017-android-windows-interoperable-lan-slice.md"
+$AdrIndex = Join-Path $ProjectRoot "$docDir\adr\README.md"
 
 if (-not (Test-Path $AdrPath)) {
     Write-Error "FAIL: ADR-0017 not found at $AdrPath"
@@ -26,14 +27,14 @@ if ($AdrContent -notmatch "Standard LAN Transport" -or $AdrContent -notmatch "mD
     Write-Error "FAIL: ADR-0017 missing Standard LAN Transport decision with mDNS and TLS 1.3."
 }
 $IndexContent = Get-Content $AdrIndex -Raw
-if ($IndexContent -notmatch "ADR-0017 — Android-to-Windows interoperable LAN slice") {
-    Write-Error "FAIL: ADR-0017 not indexed in docs/adr/README.md."
+if ($IndexContent -notmatch "ADR-0017.*Android-to-Windows interoperable LAN slice") {
+    Write-Error "FAIL: ADR-0017 not indexed in $docDir/adr/README.md."
 }
 Write-Host "  PASS: ADR-0017 documents standard LAN transport with mDNS/TLS 1.3 and is properly indexed." -ForegroundColor Green
 
 # --- Check 2: Cross-Platform LAN Technical Specification ---
 Write-Host "`n[Check 2/5] Auditing cross-platform technical specification completeness..." -ForegroundColor Yellow
-$SpecPath = Join-Path $ProjectRoot "docs\future\ANDROID_WINDOWS_LAN_SPECIFICATION.md"
+$SpecPath = Join-Path $ProjectRoot "$docDir\future\ANDROID_WINDOWS_LAN_SPECIFICATION.md"
 if (-not (Test-Path $SpecPath)) {
     Write-Error "FAIL: Specification not found at $SpecPath"
 }
@@ -82,9 +83,10 @@ Write-Host "  PASS: Threat model matrix (T01-T08, T10-T15, T17) and SAS/TLS 1.3 
 
 # --- Check 5: Pure JVM Transport Domain Models, Tests & Golden Fixtures ---
 Write-Host "`n[Check 5/5] Auditing pure JVM LanTransportContracts, test suite, and golden fixtures..." -ForegroundColor Yellow
-$DomainModel = Join-Path $ProjectRoot "transfer-core\src\main\kotlin\dev\glide\core\transport\lan\LanTransportContracts.kt"
-$TestFile = Join-Path $ProjectRoot "transfer-core\src\test\kotlin\dev\glide\core\transport\lan\LanFramingAndSecurityTest.kt"
-$FixturesDir = Join-Path $ProjectRoot "transfer-core\src\test\resources\fixtures"
+$corePrefix = if (Test-Path (Join-Path $ProjectRoot "shared\transfer-core")) { "shared\transfer-core" } else { "transfer-core" }
+$DomainModel = Join-Path $ProjectRoot "$corePrefix\src\main\kotlin\dev\glide\core\transport\lan\LanTransportContracts.kt"
+$TestFile = Join-Path $ProjectRoot "$corePrefix\src\test\kotlin\dev\glide\core\transport\lan\LanFramingAndSecurityTest.kt"
+$FixturesDir = Join-Path $ProjectRoot "$corePrefix\src\test\resources\fixtures"
 
 if (-not (Test-Path $DomainModel)) {
     Write-Error "FAIL: LanTransportContracts.kt not found at $DomainModel"

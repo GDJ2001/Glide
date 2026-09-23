@@ -26,7 +26,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$projectRoot = (Resolve-Path "$PSScriptRoot").Path
+$projectRoot = (Resolve-Path "$PSScriptRoot\..").Path
 
 Write-Host "=================================================================" -ForegroundColor Cyan
 Write-Host "   Glide Build ($Configuration) — Target: $Target                      " -ForegroundColor Cyan
@@ -64,9 +64,17 @@ if ($Target -eq "All" -or $Target -eq "Android") {
     } else {
         Write-Host "  [OK]   Android $Configuration build succeeded." -ForegroundColor Green
         $apkPath = if ($Configuration -eq "Release") {
-            "$projectRoot\app\build\outputs\apk\release\app-release.apk"
+            "$projectRoot\android\build\outputs\apk\release\android-release.apk"
         } else {
-            "$projectRoot\app\build\outputs\apk\debug\app-debug.apk"
+            "$projectRoot\android\build\outputs\apk\debug\android-debug.apk"
+        }
+        if (-not (Test-Path $apkPath)) {
+            $fallback = if ($Configuration -eq "Release") {
+                "$projectRoot\android\build\outputs\apk\release\app-release.apk"
+            } else {
+                "$projectRoot\android\build\outputs\apk\debug\app-debug.apk"
+            }
+            if (Test-Path $fallback) { $apkPath = $fallback }
         }
         if (Test-Path $apkPath) {
             $sizeMB = [math]::Round((Get-Item $apkPath).Length / 1MB, 2)

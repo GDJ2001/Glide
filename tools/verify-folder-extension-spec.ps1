@@ -22,8 +22,9 @@ $violations = 0
 
 # Check 1: ADR-0014 Architecture Decision Record Audit
 Write-Host "[Check 1/5] Auditing ADR-0014 existence and decision index..." -ForegroundColor Yellow
-$adrPath = Join-Path $repoRoot "docs\adr\ADR-0014-safe-folder-transfer-extension.md"
-$adrIndexPath = Join-Path $repoRoot "docs\adr\README.md"
+$docDir = if (Test-Path (Join-Path $repoRoot "doc")) { "doc" } else { "docs" }
+$adrPath = Join-Path $repoRoot "$docDir\adr\ADR-0014-safe-folder-transfer-extension.md"
+$adrIndexPath = Join-Path $repoRoot "$docDir\adr\README.md"
 
 if (-not (Test-Path $adrPath)) {
     Write-Host "  FAIL: ADR-0014 not found at $adrPath" -ForegroundColor Red
@@ -39,14 +40,14 @@ if (-not (Test-Path $adrPath)) {
 }
 
 if (-not (Test-Path $adrIndexPath)) {
-    Write-Host "  FAIL: docs/adr/README.md not found." -ForegroundColor Red
+    Write-Host "  FAIL: $docDir/adr/README.md not found." -ForegroundColor Red
     $violations++
 } else {
     $indexContent = Get-Content -Raw -Path $adrIndexPath
     if ($indexContent -match "ADR-0014") {
-        Write-Host "  PASS: ADR-0014 properly indexed in docs/adr/README.md." -ForegroundColor Green
+        Write-Host "  PASS: ADR-0014 properly indexed in $docDir/adr/README.md." -ForegroundColor Green
     } else {
-        Write-Host "  FAIL: ADR-0014 not referenced in docs/adr/README.md." -ForegroundColor Red
+        Write-Host "  FAIL: ADR-0014 not referenced in $docDir/adr/README.md." -ForegroundColor Red
         $violations++
     }
 }
@@ -54,7 +55,7 @@ Write-Host ""
 
 # Check 2: Technical Specification & Bounded Complexity Limits
 Write-Host "[Check 2/5] Auditing SAFE_FOLDER_TRANSFER_SPECIFICATION.md and bounded limits..." -ForegroundColor Yellow
-$specPath = Join-Path $repoRoot "docs\future\SAFE_FOLDER_TRANSFER_SPECIFICATION.md"
+$specPath = Join-Path $repoRoot "$docDir\future\SAFE_FOLDER_TRANSFER_SPECIFICATION.md"
 if (-not (Test-Path $specPath)) {
     Write-Host "  FAIL: Specification not found at $specPath" -ForegroundColor Red
     $violations++
@@ -112,8 +113,14 @@ Write-Host ""
 
 # Check 5: Pure JVM Implementation, Test Fixtures & Threat Model
 Write-Host "[Check 5/5] Auditing pure JVM SafeRelativePath implementation and threat model..." -ForegroundColor Yellow
-$modelPath = Join-Path $repoRoot "transfer-core\src\main\kotlin\dev\glide\core\folder\SafeRelativePath.kt"
-$testPath = Join-Path $repoRoot "transfer-core\src\test\kotlin\dev\glide\core\folder\SafeRelativePathTest.kt"
+$modelPath = Join-Path $repoRoot "shared\transfer-core\src\main\kotlin\dev\glide\core\folder\SafeRelativePath.kt"
+if (-not (Test-Path $modelPath)) {
+    $modelPath = Join-Path $repoRoot "transfer-core\src\main\kotlin\dev\glide\core\folder\SafeRelativePath.kt"
+}
+$testPath = Join-Path $repoRoot "shared\transfer-core\src\test\kotlin\dev\glide\core\folder\SafeRelativePathTest.kt"
+if (-not (Test-Path $testPath)) {
+    $testPath = Join-Path $repoRoot "transfer-core\src\test\kotlin\dev\glide\core\folder\SafeRelativePathTest.kt"
+}
 
 if (-not (Test-Path $modelPath) -or -not (Test-Path $testPath)) {
     Write-Host "  FAIL: SafeRelativePath.kt or SafeRelativePathTest.kt not found in :transfer-core" -ForegroundColor Red

@@ -24,10 +24,11 @@ Write-Host "=================================================================" -
 Write-Host "   Glide GLIDE-067: Production Health & Maintenance Auditor      " -ForegroundColor Cyan
 Write-Host "=================================================================" -ForegroundColor Cyan
 
-$baselinePath = "$projectRoot\docs\release\PRODUCTION_HEALTH_AND_MAINTENANCE_BASELINE.md"
+$docDir = if (Test-Path "$projectRoot\doc") { "doc" } else { "docs" }
+$baselinePath = "$projectRoot\$docDir\release\PRODUCTION_HEALTH_AND_MAINTENANCE_BASELINE.md"
 
 if (-not (Test-Path $baselinePath)) {
-    $msg = "docs/release/PRODUCTION_HEALTH_AND_MAINTENANCE_BASELINE.md is missing!"
+    $msg = "$docDir/release/PRODUCTION_HEALTH_AND_MAINTENANCE_BASELINE.md is missing!"
     Write-Host "  VIOLATION: $msg" -ForegroundColor Red
     $violations.Add($msg)
     exit 1

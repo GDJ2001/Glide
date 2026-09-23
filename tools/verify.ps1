@@ -33,7 +33,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$projectRoot = (Resolve-Path "$PSScriptRoot").Path
+$projectRoot = (Resolve-Path "$PSScriptRoot\..").Path
 
 Write-Host "=================================================================" -ForegroundColor Cyan
 Write-Host "   Glide Verify — Full CI Gate                                    " -ForegroundColor Cyan
@@ -63,7 +63,7 @@ if ($LASTEXITCODE -ne 0) {
 
 # --- 3. Build ---
 Write-Host "`n[3/4] Build..." -ForegroundColor Yellow
-& "$projectRoot\build.ps1" -Configuration Debug -Target All
+& "$projectRoot\tools\build.ps1" -Configuration Debug -Target All
 if ($LASTEXITCODE -ne 0) {
     $verifyErrors.Add("Build failed")
 } else {
@@ -73,7 +73,7 @@ if ($LASTEXITCODE -ne 0) {
 # --- 4. Lint ---
 if (-not $SkipLint) {
     Write-Host "`n[4/4] Lint..." -ForegroundColor Yellow
-    & "$projectRoot\lint.ps1" -Target All
+    & "$projectRoot\tools\lint.ps1" -Target All
     if ($LASTEXITCODE -ne 0) {
         $verifyErrors.Add("Lint failed")
     } else {

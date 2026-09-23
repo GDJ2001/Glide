@@ -31,8 +31,9 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
 
     // Platform-native WebRTC library for Android
-    // Uses Google's WebRTC implementation via the org.webrtc Maven artifact
-    implementation("org.webrtc:google-webrtc:1.0.32003@aar")
+    // Note: org.webrtc:google-webrtc was deprecated with JCenter sunset; the current adapter
+    // uses standard Java SE security/crypto and coroutines directly.
+    // compileOnly("org.webrtc:google-webrtc:1.0.32003@aar")
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

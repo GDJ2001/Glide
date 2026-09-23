@@ -33,10 +33,11 @@ $EXPECTED_MAP_HASH = "9f108d84e77df3700b4944abd15cb2bd6fe439bf6cae01c7ea14c80d4a
 # --------------------------------------------------------------------------------------------------
 Write-Host "`n[Check 1/5] Auditing frozen Release Candidate cryptographic identity..." -ForegroundColor Yellow
 
-$apkPath = "$projectRoot\app\build\outputs\apk\release\app-release.apk"
-$aabPath = "$projectRoot\app\build\outputs\bundle\release\app-release.aab"
-$mappingPath = "$projectRoot\app\build\outputs\mapping\release\mapping.txt"
-$checksumPath = "$projectRoot\app\build\outputs\release-artifacts\SHA256SUMS.txt"
+$androidPrefix = if (Test-Path "$projectRoot\android") { "$projectRoot\android" } else { "$projectRoot\app" }
+$apkPath = "$androidPrefix\build\outputs\apk\release\app-release.apk"
+$aabPath = "$androidPrefix\build\outputs\bundle\release\app-release.aab"
+$mappingPath = "$androidPrefix\build\outputs\mapping\release\mapping.txt"
+$checksumPath = "$androidPrefix\build\outputs\release-artifacts\SHA256SUMS.txt"
 
 if (-not (Test-Path $aabPath)) {
     $msg = "Production App Bundle (app-release.aab) not found on disk."
@@ -88,9 +89,12 @@ if (-not (Test-Path $checksumPath)) {
     Write-Host "  VIOLATION: $msg" -ForegroundColor Red
     $violations.Add($msg)
 } else {
-    $sums = Get-Content -Path $checksumPath -Raw
-    if ($sums -notmatch $EXPECTED_AAB_HASH -or $sums -notmatch $EXPECTED_APK_HASH -or $sums -notmatch $EXPECTED_MAP_HASH) {
-        $msg = "SHA256SUMS.txt does not contain all expected frozen hashes."
+    Write-Host "  PASS: SHA256SUMS.txt manifest present." -ForegroundColor Green
+    $checksumContent = Get-Content -Path $checksumPath -Raw
+    if ($checksumContent -notmatch $EXPECTED_AAB_HASH -or
+        $checksumContent -notmatch $EXPECTED_APK_HASH -or
+        $checksumContent -notmatch $EXPECTED_MAP_HASH) {
+        $msg = "SHA256SUMS.txt does not contain all expected frozen digests!"
         Write-Host "  VIOLATION: $msg" -ForegroundColor Red
         $violations.Add($msg)
     } else {
@@ -103,15 +107,16 @@ if (-not (Test-Path $checksumPath)) {
 # --------------------------------------------------------------------------------------------------
 Write-Host "`n[Check 2/5] Auditing Definition of Done quality gate evidence files..." -ForegroundColor Yellow
 
+$docDir = if (Test-Path "$projectRoot\doc") { "doc" } else { "docs" }
 $requiredEvidenceFiles = @(
-    "docs/testing/evidence/GLIDE-043-premium-ux-gate-report.md",
-    "docs/testing/evidence/GLIDE-047-adaptive-accessibility-gate-report.md",
-    "docs/testing/evidence/GLIDE-050-security-review-gate-report.md",
-    "docs/testing/evidence/GLIDE-054-performance-gate-report.md",
-    "docs/testing/evidence/GLIDE-055-architecture-static-analysis-report.md",
-    "docs/testing/evidence/GLIDE-061-store-assets-legal-listing-report.md",
-    "docs/testing/evidence/GLIDE-062-signed-rc-artifacts-report.md",
-    "docs/testing/evidence/GLIDE-063-closed-testing-report.md"
+    "$docDir/testing/evidence/GLIDE-043-premium-ux-gate-report.md",
+    "$docDir/testing/evidence/GLIDE-047-adaptive-accessibility-gate-report.md",
+    "$docDir/testing/evidence/GLIDE-050-security-review-gate-report.md",
+    "$docDir/testing/evidence/GLIDE-054-performance-gate-report.md",
+    "$docDir/testing/evidence/GLIDE-055-architecture-static-analysis-report.md",
+    "$docDir/testing/evidence/GLIDE-061-store-assets-legal-listing-report.md",
+    "$docDir/testing/evidence/GLIDE-062-signed-rc-artifacts-report.md",
+    "$docDir/testing/evidence/GLIDE-063-closed-testing-report.md"
 )
 
 foreach ($relPath in $requiredEvidenceFiles) {
@@ -130,9 +135,9 @@ foreach ($relPath in $requiredEvidenceFiles) {
 # --------------------------------------------------------------------------------------------------
 Write-Host "`n[Check 3/5] Auditing Store readiness checklist in GLIDE_RELEASE_PLAN.md..." -ForegroundColor Yellow
 
-$releasePlanPath = "$projectRoot\docs\release\GLIDE_RELEASE_PLAN.md"
+$releasePlanPath = "$projectRoot\$docDir\release\GLIDE_RELEASE_PLAN.md"
 if (-not (Test-Path $releasePlanPath)) {
-    $msg = "docs/release/GLIDE_RELEASE_PLAN.md is missing!"
+    $msg = "$docDir/release/GLIDE_RELEASE_PLAN.md is missing!"
     Write-Host "  VIOLATION: $msg" -ForegroundColor Red
     $violations.Add($msg)
 } else {
@@ -177,9 +182,9 @@ if (-not (Test-Path $releasePlanPath)) {
 # --------------------------------------------------------------------------------------------------
 Write-Host "`n[Check 4/5] Auditing formal approval record in PRODUCTION_RC_APPROVAL.md..." -ForegroundColor Yellow
 
-$approvalDocPath = "$projectRoot\docs\release\PRODUCTION_RC_APPROVAL.md"
+$approvalDocPath = "$projectRoot\$docDir\release\PRODUCTION_RC_APPROVAL.md"
 if (-not (Test-Path $approvalDocPath)) {
-    $msg = "docs/release/PRODUCTION_RC_APPROVAL.md is missing!"
+    $msg = "$docDir/release/PRODUCTION_RC_APPROVAL.md is missing!"
     Write-Host "  VIOLATION: $msg" -ForegroundColor Red
     $violations.Add($msg)
 } else {

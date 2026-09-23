@@ -34,10 +34,11 @@ $EXPECTED_MAP_HASH = "9f108d84e77df3700b4944abd15cb2bd6fe439bf6cae01c7ea14c80d4a
 # --------------------------------------------------------------------------------------------------
 Write-Host "`n[Check 1/5] Auditing frozen Release Candidate cryptographic identity..." -ForegroundColor Yellow
 
-$apkPath = "$projectRoot\app\build\outputs\apk\release\app-release.apk"
-$aabPath = "$projectRoot\app\build\outputs\bundle\release\app-release.aab"
-$mappingPath = "$projectRoot\app\build\outputs\mapping\release\mapping.txt"
-$checksumPath = "$projectRoot\app\build\outputs\release-artifacts\SHA256SUMS.txt"
+$androidPrefix = if (Test-Path "$projectRoot\android") { "$projectRoot\android" } else { "$projectRoot\app" }
+$apkPath = "$androidPrefix\build\outputs\apk\release\app-release.apk"
+$aabPath = "$androidPrefix\build\outputs\bundle\release\app-release.aab"
+$mappingPath = "$androidPrefix\build\outputs\mapping\release\mapping.txt"
+$checksumPath = "$androidPrefix\build\outputs\release-artifacts\SHA256SUMS.txt"
 
 if (-not (Test-Path $aabPath)) {
     $msg = "Play App Bundle (app-release.aab) not found on disk."
@@ -104,9 +105,10 @@ if (-not (Test-Path $checksumPath)) {
 # --------------------------------------------------------------------------------------------------
 Write-Host "`n[Check 2/5] Auditing PRODUCTION_ROLLOUT_PROTOCOL.md phased schedule..." -ForegroundColor Yellow
 
-$protocolPath = "$projectRoot\docs\release\PRODUCTION_ROLLOUT_PROTOCOL.md"
+$docDir = if (Test-Path "$projectRoot\doc") { "doc" } else { "docs" }
+$protocolPath = "$projectRoot\$docDir\release\PRODUCTION_ROLLOUT_PROTOCOL.md"
 if (-not (Test-Path $protocolPath)) {
-    $msg = "docs/release/PRODUCTION_ROLLOUT_PROTOCOL.md is missing!"
+    $msg = "$docDir/release/PRODUCTION_ROLLOUT_PROTOCOL.md is missing!"
     Write-Host "  VIOLATION: $msg" -ForegroundColor Red
     $violations.Add($msg)
 } else {

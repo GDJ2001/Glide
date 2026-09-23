@@ -16,8 +16,9 @@ Write-Host "=================================================================" -
 
 # --- Check 1: ADR-0019 Existence and Decision Index ---
 Write-Host "`n[Check 1/9] Auditing ADR-0019 existence and decision index..." -ForegroundColor Yellow
-$AdrPath = Join-Path $ProjectRoot "docs\adr\ADR-0019-browser-web-local-transfer.md"
-$AdrIndex = Join-Path $ProjectRoot "docs\adr\README.md"
+$docDir = if (Test-Path (Join-Path $ProjectRoot "doc")) { "doc" } else { "docs" }
+$AdrPath = Join-Path $ProjectRoot "$docDir\adr\ADR-0019-browser-web-local-transfer.md"
+$AdrIndex = Join-Path $ProjectRoot "$docDir\adr\README.md"
 
 if (-not (Test-Path $AdrPath)) {
     Write-Error "FAIL: ADR-0019 not found at $AdrPath"
@@ -27,14 +28,14 @@ if ($AdrContent -notmatch "Zero-Install Ephemeral Local Web Gateway" -or $AdrCon
     Write-Error "FAIL: ADR-0019 missing Zero-Install Local Web Gateway decision."
 }
 $IndexContent = Get-Content $AdrIndex -Raw
-if ($IndexContent -notmatch "ADR-0019 — Browser and web client zero-install local transfer gateway") {
-    Write-Error "FAIL: ADR-0019 not properly indexed in docs/adr/README.md."
+if ($IndexContent -notmatch "ADR-0019.*Browser and web client zero-install local transfer gateway") {
+    Write-Error "FAIL: ADR-0019 not properly indexed in $docDir/adr/README.md."
 }
-Write-Host "  PASS: ADR-0019 exists and is indexed in docs/adr/README.md." -ForegroundColor Green
+Write-Host "  PASS: ADR-0019 exists and is indexed in $docDir/adr/README.md." -ForegroundColor Green
 
 # --- Check 2: Technical Specification Completeness ---
 Write-Host "`n[Check 2/9] Auditing Browser Web technical specification completeness..." -ForegroundColor Yellow
-$SpecPath = Join-Path $ProjectRoot "docs\future\ANDROID_BROWSER_WEB_SPECIFICATION.md"
+$SpecPath = Join-Path $ProjectRoot "$docDir\future\ANDROID_BROWSER_WEB_SPECIFICATION.md"
 if (-not (Test-Path $SpecPath)) {
     Write-Error "FAIL: Specification not found at $SpecPath"
 }
@@ -88,9 +89,9 @@ Write-Host "  PASS: CSP, X-Content-Type-Options, X-Frame-Options, and cookie sec
 
 # --- Check 5: Cross-Platform Path Strategic Alignment ---
 Write-Host "`n[Check 5/9] Auditing cross-platform roadmap strategic alignment..." -ForegroundColor Yellow
-$PathFile = Join-Path $ProjectRoot "docs\future\CROSS_PLATFORM_PATH.md"
+$PathFile = Join-Path $ProjectRoot "$docDir\future\CROSS_PLATFORM_PATH.md"
 if (-not (Test-Path $PathFile)) {
-    Write-Error "FAIL: docs/future/CROSS_PLATFORM_PATH.md missing."
+    Write-Error "FAIL: $docDir/future/CROSS_PLATFORM_PATH.md missing."
 }
 $PathContent = Get-Content $PathFile -Raw
 if ($PathContent -notmatch "Android↔Browser" -or $PathContent -notmatch "ADR-0019") {
@@ -112,9 +113,12 @@ if ($DotNetGatewaySrc -notmatch "Content-Security-Policy" -or $DotNetGatewaySrc 
 }
 
 # Verify Android/JVM Kotlin Gateway
-$KotlinGateway = Join-Path $ProjectRoot "transport-lan\src\main\kotlin\dev\glide\transport\lan\web\GlideWebGateway.kt"
+$lanPrefix = if (Test-Path (Join-Path $ProjectRoot "shared\transport-lan")) { "shared\transport-lan" } else { "transport-lan" }
+$androidPrefix = if (Test-Path (Join-Path $ProjectRoot "android")) { "android" } else { "app" }
+
+$KotlinGateway = Join-Path $ProjectRoot "$lanPrefix\src\main\kotlin\dev\glide\transport\lan\web\GlideWebGateway.kt"
 if (-not (Test-Path $KotlinGateway)) {
-    Write-Error "FAIL: transport-lan/src/main/kotlin/dev/glide/transport/lan/web/GlideWebGateway.kt missing."
+    Write-Error "FAIL: $lanPrefix/src/main/kotlin/dev/glide/transport/lan/web/GlideWebGateway.kt missing."
 }
 $KotlinGatewaySrc = Get-Content $KotlinGateway -Raw
 if ($KotlinGatewaySrc -notmatch "Content-Security-Policy" -or $KotlinGatewaySrc -notmatch "glide_web_session") {
@@ -123,14 +127,14 @@ if ($KotlinGatewaySrc -notmatch "Content-Security-Policy" -or $KotlinGatewaySrc 
 
 # Verify Embedded Single-Page Application Assets in both trees
 $DotNetAssets = Join-Path $ProjectRoot "windows\Glide.Transport\Web\Assets\index.html"
-$KotlinAssets = Join-Path $ProjectRoot "transport-lan\src\main\resources\glide\web\index.html"
+$KotlinAssets = Join-Path $ProjectRoot "$lanPrefix\src\main\resources\glide\web\index.html"
 if (-not (Test-Path $DotNetAssets) -or -not (Test-Path $KotlinAssets)) {
     Write-Error "FAIL: Embedded index.html missing in windows or transport-lan."
 }
 
 # Verify Cross-Platform QR Code Visual Onboarding
 $QrGen = Join-Path $ProjectRoot "windows\Glide.Core\Security\QrCodeGenerator.cs"
-$AndroidQr = Join-Path $ProjectRoot "app\src\main\kotlin\dev\glide\app\qr\QrEncoder.kt"
+$AndroidQr = Join-Path $ProjectRoot "$androidPrefix\src\main\kotlin\dev\glide\app\qr\QrEncoder.kt"
 if (-not (Test-Path $QrGen) -or -not (Test-Path $AndroidQr)) {
     Write-Error "FAIL: QR code generation missing in windows or android."
 }
@@ -157,9 +161,9 @@ if ($KotlinGatewaySrc -notmatch "Accept-Ranges" -or
 }
 
 # Verify WebShareViewModel existence
-$WebShareVm = Join-Path $ProjectRoot "app\src\main\kotlin\dev\glide\app\ui\web\WebShareViewModel.kt"
+$WebShareVm = Join-Path $ProjectRoot "$androidPrefix\src\main\kotlin\dev\glide\app\ui\web\WebShareViewModel.kt"
 if (-not (Test-Path $WebShareVm)) {
-    Write-Error "FAIL: app/src/main/kotlin/dev/glide/app/ui/web/WebShareViewModel.kt missing."
+    Write-Error "FAIL: $androidPrefix/src/main/kotlin/dev/glide/app/ui/web/WebShareViewModel.kt missing."
 }
 
 Write-Host "  PASS: HTTP Range 206/416 partial streaming, HEAD support, RFC 6266 disposition, and WebShareViewModel verified." -ForegroundColor Green
@@ -187,9 +191,9 @@ if ($KotlinGatewaySrc -notmatch "/api/v1/upload/proposal" -or
 }
 
 # Verify WebPathSanitizer existence in Kotlin
-$WebPathSanitizerFile = Join-Path $ProjectRoot "transport-lan\src\main\kotlin\dev\glide\transport\lan\web\WebPathSanitizer.kt"
+$WebPathSanitizerFile = Join-Path $ProjectRoot "$lanPrefix\src\main\kotlin\dev\glide\transport\lan\web\WebPathSanitizer.kt"
 if (-not (Test-Path $WebPathSanitizerFile)) {
-    Write-Error "FAIL: transport-lan/src/main/kotlin/dev/glide/transport/lan/web/WebPathSanitizer.kt missing."
+    Write-Error "FAIL: $lanPrefix/src/main/kotlin/dev/glide/transport/lan/web/WebPathSanitizer.kt missing."
 }
 $WebPathSanitizerSrc = Get-Content $WebPathSanitizerFile -Raw
 if ($WebPathSanitizerSrc -notmatch "object WebPathSanitizer" -or $WebPathSanitizerSrc -notmatch "resolveUniqueName") {
@@ -205,7 +209,7 @@ if ($WindowsPathSanitizerSrc -notmatch "SanitizeWebFilename") {
 
 # Verify Web Client Assets proposal flow in both trees
 $DotNetJs = Join-Path $ProjectRoot "windows\Glide.Transport\Web\Assets\app.js"
-$KotlinJs = Join-Path $ProjectRoot "transport-lan\src\main\resources\glide\web\app.js"
+$KotlinJs = Join-Path $ProjectRoot "$lanPrefix\src\main\resources\glide\web\app.js"
 $DotNetJsSrc = Get-Content $DotNetJs -Raw
 $KotlinJsSrc = Get-Content $KotlinJs -Raw
 
@@ -220,7 +224,7 @@ Write-Host "`n[Check 9/9] Auditing Phase W5 Security Conformance & ADR-0019 Acce
 
 # Verify ADR-0019 status is Accepted
 if ($AdrContent -notmatch "Status.*\bAccepted\b") {
-    Write-Error "FAIL: docs/adr/ADR-0019-browser-web-local-transfer.md status must be Accepted."
+    Write-Error "FAIL: $docDir/adr/ADR-0019-browser-web-local-transfer.md status must be Accepted."
 }
 
 # Verify Token Replay Protection in .NET Gateway
@@ -247,9 +251,9 @@ if ($DotNetSecTestsSrc -notmatch "TokenReplay" -or
 }
 
 # Verify Kotlin Security Conformance Test Suite
-$KotlinSecTests = Join-Path $ProjectRoot "transport-lan\src\test\kotlin\dev\glide\transport\lan\web\WebSecurityConformanceTest.kt"
+$KotlinSecTests = Join-Path $ProjectRoot "$lanPrefix\src\test\kotlin\dev\glide\transport\lan\web\WebSecurityConformanceTest.kt"
 if (-not (Test-Path $KotlinSecTests)) {
-    Write-Error "FAIL: transport-lan/src/test/kotlin/dev/glide/transport/lan/web/WebSecurityConformanceTest.kt missing."
+    Write-Error "FAIL: $lanPrefix/src/test/kotlin/dev/glide/transport/lan/web/WebSecurityConformanceTest.kt missing."
 }
 $KotlinSecTestsSrc = Get-Content $KotlinSecTests -Raw
 if ($KotlinSecTestsSrc -notmatch "tokenReplay" -or

@@ -17,7 +17,7 @@
 param()
 
 $ErrorActionPreference = "Stop"
-$projectRoot = (Resolve-Path "$PSScriptRoot").Path
+$projectRoot = (Resolve-Path "$PSScriptRoot\..").Path
 
 Write-Host "=================================================================" -ForegroundColor Cyan
 Write-Host "   Glide Developer Environment Doctor (HARD-035)                  " -ForegroundColor Cyan

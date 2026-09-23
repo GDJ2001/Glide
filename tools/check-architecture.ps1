@@ -32,6 +32,9 @@ function Report-Violation([string]$rule, [string]$file, [int]$lineNum, [string]$
 Write-Host "`n[Check 1/7] Scanning UI / Navigation layer for forbidden transport/Nearby/socket imports..." -ForegroundColor Yellow
 
 $uiPaths = @(
+    "$projectRoot/android/src/main/kotlin/dev/glide/app/ui",
+    "$projectRoot/android/src/main/kotlin/dev/glide/app/navigation",
+    "$projectRoot/shared/designsystem/src/main/kotlin/dev/glide/designsystem",
     "$projectRoot/app/src/main/kotlin/dev/glide/app/ui",
     "$projectRoot/app/src/main/kotlin/dev/glide/app/navigation",
     "$projectRoot/designsystem/src/main/kotlin/dev/glide/designsystem"
@@ -71,23 +74,28 @@ foreach ($dir in $uiPaths) {
 # --------------------------------------------------------------------------------------------------
 Write-Host "[Check 2/7] Verifying :transfer-core pure Kotlin JVM isolation (zero Android dependencies)..." -ForegroundColor Yellow
 
-$coreDir = "$projectRoot/transfer-core/src/main/kotlin"
+$coreDirs = @(
+    "$projectRoot/shared/transfer-core/src/main/kotlin",
+    "$projectRoot/transfer-core/src/main/kotlin"
+)
 $forbiddenCoreImports = @(
     "android.",
     "androidx.",
     "com.google.android.gms."
 )
 
-if (Test-Path $coreDir) {
-    Get-ChildItem -Path $coreDir -Filter "*.kt" -Recurse | ForEach-Object {
-        $lines = Get-Content -Path $_.FullName
-        for ($i = 0; $i -lt $lines.Count; $i++) {
-            $trimmed = $lines[$i].Trim()
-            if ($trimmed.StartsWith("import ")) {
-                $imported = $trimmed.Substring(7).Trim()
-                foreach ($forbidden in $forbiddenCoreImports) {
-                    if ($imported.StartsWith($forbidden)) {
-                        Report-Violation "RULE_2_CORE_ANDROID_ISOLATION" $_.FullName ($i + 1) "Core must not import Android API '$imported'"
+foreach ($coreDir in $coreDirs) {
+    if (Test-Path $coreDir) {
+        Get-ChildItem -Path $coreDir -Filter "*.kt" -Recurse | ForEach-Object {
+            $lines = Get-Content -Path $_.FullName
+            for ($i = 0; $i -lt $lines.Count; $i++) {
+                $trimmed = $lines[$i].Trim()
+                if ($trimmed.StartsWith("import ")) {
+                    $imported = $trimmed.Substring(7).Trim()
+                    foreach ($forbidden in $forbiddenCoreImports) {
+                        if ($imported.StartsWith($forbidden)) {
+                            Report-Violation "RULE_2_CORE_ANDROID_ISOLATION" $_.FullName ($i + 1) "Core must not import Android API '$imported'"
+                        }
                     }
                 }
             }
@@ -100,7 +108,12 @@ if (Test-Path $coreDir) {
 # --------------------------------------------------------------------------------------------------
 Write-Host "[Check 3/7] Verifying Transport adapter does not import UI, ViewModel, or Data layers..." -ForegroundColor Yellow
 
-$transportDir = "$projectRoot/transport-nearby/src/main/kotlin"
+$transportDirs = @(
+    "$projectRoot/shared/transport-nearby/src/main/kotlin",
+    "$projectRoot/shared/transport-lan/src/main/kotlin",
+    "$projectRoot/shared/transport-webrtc/src/main/kotlin",
+    "$projectRoot/transport-nearby/src/main/kotlin"
+)
 $forbiddenTransportImports = @(
     "dev.glide.app.ui.",
     "dev.glide.app.navigation.",
@@ -109,16 +122,18 @@ $forbiddenTransportImports = @(
     "androidx.compose."
 )
 
-if (Test-Path $transportDir) {
-    Get-ChildItem -Path $transportDir -Filter "*.kt" -Recurse | ForEach-Object {
-        $lines = Get-Content -Path $_.FullName
-        for ($i = 0; $i -lt $lines.Count; $i++) {
-            $trimmed = $lines[$i].Trim()
-            if ($trimmed.StartsWith("import ")) {
-                $imported = $trimmed.Substring(7).Trim()
-                foreach ($forbidden in $forbiddenTransportImports) {
-                    if ($imported.StartsWith($forbidden)) {
-                        Report-Violation "RULE_3_TRANSPORT_LEAKAGE" $_.FullName ($i + 1) "Transport adapter imports UI/Data '$imported'"
+foreach ($transportDir in $transportDirs) {
+    if (Test-Path $transportDir) {
+        Get-ChildItem -Path $transportDir -Filter "*.kt" -Recurse | ForEach-Object {
+            $lines = Get-Content -Path $_.FullName
+            for ($i = 0; $i -lt $lines.Count; $i++) {
+                $trimmed = $lines[$i].Trim()
+                if ($trimmed.StartsWith("import ")) {
+                    $imported = $trimmed.Substring(7).Trim()
+                    foreach ($forbidden in $forbiddenTransportImports) {
+                        if ($imported.StartsWith($forbidden)) {
+                            Report-Violation "RULE_3_TRANSPORT_LEAKAGE" $_.FullName ($i + 1) "Transport adapter imports UI/Data '$imported'"
+                        }
                     }
                 }
             }
@@ -131,7 +146,10 @@ if (Test-Path $transportDir) {
 # --------------------------------------------------------------------------------------------------
 Write-Host "[Check 4/7] Verifying Data layer does not import UI or Transport implementations..." -ForegroundColor Yellow
 
-$dataDir = "$projectRoot/data/src/main/kotlin"
+$dataDirs = @(
+    "$projectRoot/shared/data/src/main/kotlin",
+    "$projectRoot/data/src/main/kotlin"
+)
 $forbiddenDataImports = @(
     "dev.glide.app.ui.",
     "dev.glide.app.navigation.",
@@ -140,16 +158,18 @@ $forbiddenDataImports = @(
     "androidx.compose."
 )
 
-if (Test-Path $dataDir) {
-    Get-ChildItem -Path $dataDir -Filter "*.kt" -Recurse | ForEach-Object {
-        $lines = Get-Content -Path $_.FullName
-        for ($i = 0; $i -lt $lines.Count; $i++) {
-            $trimmed = $lines[$i].Trim()
-            if ($trimmed.StartsWith("import ")) {
-                $imported = $trimmed.Substring(7).Trim()
-                foreach ($forbidden in $forbiddenDataImports) {
-                    if ($imported.StartsWith($forbidden)) {
-                        Report-Violation "RULE_4_DATA_LEAKAGE" $_.FullName ($i + 1) "Data layer imports UI/Transport '$imported'"
+foreach ($dataDir in $dataDirs) {
+    if (Test-Path $dataDir) {
+        Get-ChildItem -Path $dataDir -Filter "*.kt" -Recurse | ForEach-Object {
+            $lines = Get-Content -Path $_.FullName
+            for ($i = 0; $i -lt $lines.Count; $i++) {
+                $trimmed = $lines[$i].Trim()
+                if ($trimmed.StartsWith("import ")) {
+                    $imported = $trimmed.Substring(7).Trim()
+                    foreach ($forbidden in $forbiddenDataImports) {
+                        if ($imported.StartsWith($forbidden)) {
+                            Report-Violation "RULE_4_DATA_LEAKAGE" $_.FullName ($i + 1) "Data layer imports UI/Transport '$imported'"
+                        }
                     }
                 }
             }
@@ -162,17 +182,22 @@ if (Test-Path $dataDir) {
 # --------------------------------------------------------------------------------------------------
 Write-Host "[Check 5/7] Scanning UI code for blocking main-thread file I/O operations..." -ForegroundColor Yellow
 
-$uiDir = "$projectRoot/app/src/main/kotlin/dev/glide/app/ui"
+$uiDirs = @(
+    "$projectRoot/android/src/main/kotlin/dev/glide/app/ui",
+    "$projectRoot/app/src/main/kotlin/dev/glide/app/ui"
+)
 $blockingIoRegex = [regex]'\b(File|file)\s*\([^)]*\)\.(readBytes|readText|readLines|writeBytes|writeText|appendText)\(|\b(FileInputStream|FileOutputStream|RandomAccessFile|FileReader|FileWriter)\(|\bFiles\.(read|write|copy|move|delete)'
 
-if (Test-Path $uiDir) {
-    Get-ChildItem -Path $uiDir -Filter "*.kt" -Recurse | ForEach-Object {
-        $lines = Get-Content -Path $_.FullName
-        for ($i = 0; $i -lt $lines.Count; $i++) {
-            $trimmed = $lines[$i].Trim()
-            if (-not $trimmed.StartsWith("//") -and -not $trimmed.StartsWith("*") -and -not $trimmed.StartsWith("/*")) {
-                if ($blockingIoRegex.IsMatch($trimmed)) {
-                    Report-Violation "RULE_5_UI_MAIN_THREAD_IO" $_.FullName ($i + 1) "Blocking I/O in UI layer: '$trimmed'"
+foreach ($uiDir in $uiDirs) {
+    if (Test-Path $uiDir) {
+        Get-ChildItem -Path $uiDir -Filter "*.kt" -Recurse | ForEach-Object {
+            $lines = Get-Content -Path $_.FullName
+            for ($i = 0; $i -lt $lines.Count; $i++) {
+                $trimmed = $lines[$i].Trim()
+                if (-not $trimmed.StartsWith("//") -and -not $trimmed.StartsWith("*") -and -not $trimmed.StartsWith("/*")) {
+                    if ($blockingIoRegex.IsMatch($trimmed)) {
+                        Report-Violation "RULE_5_UI_MAIN_THREAD_IO" $_.FullName ($i + 1) "Blocking I/O in UI layer: '$trimmed'"
+                    }
                 }
             }
         }
@@ -185,6 +210,8 @@ if (Test-Path $uiDir) {
 Write-Host "[Check 6/7] Verifying zero allowMainThreadQueries() in Room database builders..." -ForegroundColor Yellow
 
 $scanPaths = @(
+    "$projectRoot/android/src/main/kotlin",
+    "$projectRoot/shared/data/src/main/kotlin",
     "$projectRoot/app/src/main/kotlin",
     "$projectRoot/data/src/main/kotlin"
 )
@@ -209,12 +236,19 @@ Write-Host "[Check 7/7] Verifying dependency catalog usage and zero unreviewed d
 
 $buildFiles = @(
     "$projectRoot/build.gradle.kts",
+    "$projectRoot/android/build.gradle.kts",
+    "$projectRoot/shared/data/build.gradle.kts",
+    "$projectRoot/shared/transfer-core/build.gradle.kts",
+    "$projectRoot/shared/transport-nearby/build.gradle.kts",
+    "$projectRoot/shared/transport-lan/build.gradle.kts",
+    "$projectRoot/shared/transport-webrtc/build.gradle.kts",
+    "$projectRoot/shared/designsystem/build.gradle.kts",
+    "$projectRoot/benchmark/build.gradle.kts",
     "$projectRoot/app/build.gradle.kts",
     "$projectRoot/data/build.gradle.kts",
     "$projectRoot/transfer-core/build.gradle.kts",
     "$projectRoot/transport-nearby/build.gradle.kts",
-    "$projectRoot/designsystem/build.gradle.kts",
-    "$projectRoot/benchmark/build.gradle.kts"
+    "$projectRoot/designsystem/build.gradle.kts"
 )
 
 $forbiddenDepKeywords = @(

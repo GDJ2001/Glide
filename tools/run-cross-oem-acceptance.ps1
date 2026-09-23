@@ -3,8 +3,8 @@
 
 param(
     [string]$AdbPath = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe",
-    [string]$ApkPath = "$PSScriptRoot\..\app\build\outputs\apk\debug\app-debug.apk",
-    [string]$ReportPath = "$PSScriptRoot\..\docs\testing\evidence\GLIDE-058-cross-oem-physical-acceptance-report.md",
+    [string]$ApkPath = "$PSScriptRoot\..\android\build\outputs\apk\debug\android-debug.apk",
+    [string]$ReportPath = "$PSScriptRoot\..\doc\testing\evidence\GLIDE-058-cross-oem-physical-acceptance-report.md",
     [int]$SoakSeconds = 15,
     [switch]$SkipInstall = $false
 )

@@ -111,7 +111,7 @@ class SecureBrowserGateway(
         startHttpServer()
 
         // Observe transport events
-        launch { observeTransportEvents() }
+        observeTransportEvents()
 
         isStarted = true
     }
@@ -119,7 +119,7 @@ class SecureBrowserGateway(
     /**
      * Stop the gateway server.
      */
-    suspend fun stop() = withContext(scope.coroutineContext) {
+    suspend fun stop() {
         acceptJob?.cancel()
         try {
             serverSocket?.close()
@@ -129,14 +129,26 @@ class SecureBrowserGateway(
         isStarted = false
     }
 
+    @Volatile
+    private var isClosed = false
+
     /**
      * Close the gateway and release all resources.
      */
     override fun close() {
-        runBlocking {
-            stop()
+        if (isClosed) return
+        isClosed = true
+        acceptJob?.cancel()
+        try {
+            serverSocket?.close()
+        } catch (_: Exception) {
         }
-        transport.close()
+        serverSocket = null
+        isStarted = false
+        try {
+            transport.close()
+        } catch (_: Exception) {
+        }
         scope.cancel()
     }
 
@@ -257,9 +269,9 @@ class SecureBrowserGateway(
     // Transport Event Observation
     // ═══════════════════════════════════════════════════════════════════
 
-    private suspend fun observeTransportEvents() {
+    private fun observeTransportEvents() {
         // Observe peer state changes
-        launch {
+        scope.launch {
             transport.observePeerState().collect { state ->
                 when (state) {
                     WebRtcPeerState.CONNECTED -> {
@@ -277,7 +289,7 @@ class SecureBrowserGateway(
         }
 
         // Forward local ICE candidates via signaling
-        launch {
+        scope.launch {
             transport.observeLocalIceCandidates().collect { candidate ->
                 // ICE candidates are forwarded via the signaling WebSocket
                 // In this abstraction, they're emitted as local candidates
@@ -286,7 +298,7 @@ class SecureBrowserGateway(
         }
 
         // Handle incoming data channel messages
-        launch {
+        scope.launch {
             transport.observeDataChannelMessages().collect { message ->
                 handleDataChannelMessage(message)
             }

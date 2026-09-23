@@ -16,8 +16,9 @@ Write-Host "=================================================================" -
 
 # --- Check 1: ADR-0020 Existence, Accepted Status, and Decision Index ---
 Write-Host "`n[Check 1/10] Auditing ADR-0020 existence, Accepted status, and index..." -ForegroundColor Yellow
-$AdrPath = Join-Path $ProjectRoot "docs\adr\ADR-0020-apple-platforms-architecture.md"
-$AdrIndex = Join-Path $ProjectRoot "docs\adr\README.md"
+$docDir = if (Test-Path (Join-Path $ProjectRoot "doc")) { "doc" } else { "docs" }
+$AdrPath = Join-Path $ProjectRoot "$docDir\adr\ADR-0020-apple-platforms-architecture.md"
+$AdrIndex = Join-Path $ProjectRoot "$docDir\adr\README.md"
 
 if (-not (Test-Path $AdrPath)) {
     Write-Error "FAIL: ADR-0020 not found at $AdrPath"
@@ -30,14 +31,14 @@ if ($AdrContent -notmatch "Network\.framework" -or $AdrContent -notmatch "TLS 1\
     Write-Error "FAIL: ADR-0020 missing Network.framework and TLS 1.3 decisions."
 }
 $IndexContent = Get-Content $AdrIndex -Raw
-if ($IndexContent -notmatch "ADR-0020 — Apple platforms") {
-    Write-Error "FAIL: ADR-0020 not properly indexed in docs/adr/README.md."
+if ($IndexContent -notmatch "ADR-0020.*Apple platforms") {
+    Write-Error "FAIL: ADR-0020 not properly indexed in $docDir/adr/README.md."
 }
 Write-Host "  PASS: ADR-0020 exists, is marked Accepted, and is indexed in README.md." -ForegroundColor Green
 
 # --- Check 2: Roadmap Alignment in CROSS_PLATFORM_PATH.md ---
 Write-Host "`n[Check 2/10] Auditing Roadmap Alignment in CROSS_PLATFORM_PATH.md..." -ForegroundColor Yellow
-$PathDoc = Join-Path $ProjectRoot "docs\future\CROSS_PLATFORM_PATH.md"
+$PathDoc = Join-Path $ProjectRoot "$docDir\future\CROSS_PLATFORM_PATH.md"
 $PathContent = Get-Content $PathDoc -Raw
 if ($PathContent -notmatch "APPLE_PLATFORMS_SPECIFICATION\.md" -or $PathContent -notmatch "Apple") {
     Write-Error "FAIL: CROSS_PLATFORM_PATH.md does not reference APPLE_PLATFORMS_SPECIFICATION.md or Apple platform."
@@ -46,7 +47,7 @@ Write-Host "  PASS: CROSS_PLATFORM_PATH.md references Apple platforms and specif
 
 # --- Check 3: Apple Platforms Specification Completeness & GlideCoreKit SPM ---
 Write-Host "`n[Check 3/10] Auditing Apple Platforms technical specification & GlideCoreKit package..." -ForegroundColor Yellow
-$SpecPath = Join-Path $ProjectRoot "docs\future\APPLE_PLATFORMS_SPECIFICATION.md"
+$SpecPath = Join-Path $ProjectRoot "$docDir\future\APPLE_PLATFORMS_SPECIFICATION.md"
 if (-not (Test-Path $SpecPath)) {
     Write-Error "FAIL: Specification not found at $SpecPath"
 }

@@ -24,10 +24,11 @@ Write-Host "=================================================================" -
 Write-Host "   Glide GLIDE-066: Incident & Rollback Operations Auditor       " -ForegroundColor Cyan
 Write-Host "=================================================================" -ForegroundColor Cyan
 
-$runbookPath = "$projectRoot\docs\release\INCIDENT_RESPONSE_AND_ROLLBACK_RUNBOOK.md"
+$docDir = if (Test-Path "$projectRoot\doc") { "doc" } else { "docs" }
+$runbookPath = "$projectRoot\$docDir\release\INCIDENT_RESPONSE_AND_ROLLBACK_RUNBOOK.md"
 
 if (-not (Test-Path $runbookPath)) {
-    $msg = "docs/release/INCIDENT_RESPONSE_AND_ROLLBACK_RUNBOOK.md is missing!"
+    $msg = "$docDir/release/INCIDENT_RESPONSE_AND_ROLLBACK_RUNBOOK.md is missing!"
     Write-Host "  VIOLATION: $msg" -ForegroundColor Red
     $violations.Add($msg)
     exit 1

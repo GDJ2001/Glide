@@ -22,8 +22,9 @@ $violations = 0
 
 # Check 1: ADR-0015 Architecture Decision Record Audit
 Write-Host "[Check 1/5] Auditing ADR-0015 existence and decision index..." -ForegroundColor Yellow
-$adrPath = Join-Path $repoRoot "docs\adr\ADR-0015-persistent-identity-and-true-resume.md"
-$adrIndexPath = Join-Path $repoRoot "docs\adr\README.md"
+$docDir = if (Test-Path (Join-Path $repoRoot "doc")) { "doc" } else { "docs" }
+$adrPath = Join-Path $repoRoot "$docDir\adr\ADR-0015-persistent-identity-and-true-resume.md"
+$adrIndexPath = Join-Path $repoRoot "$docDir\adr\README.md"
 
 if (-not (Test-Path $adrPath)) {
     Write-Host "  FAIL: ADR-0015 not found at $adrPath" -ForegroundColor Red
@@ -39,14 +40,14 @@ if (-not (Test-Path $adrPath)) {
 }
 
 if (-not (Test-Path $adrIndexPath)) {
-    Write-Host "  FAIL: docs/adr/README.md not found." -ForegroundColor Red
+    Write-Host "  FAIL: $docDir/adr/README.md not found." -ForegroundColor Red
     $violations++
 } else {
     $indexContent = Get-Content -Raw -Path $adrIndexPath
     if ($indexContent -match "ADR-0015") {
-        Write-Host "  PASS: ADR-0015 properly indexed in docs/adr/README.md." -ForegroundColor Green
+        Write-Host "  PASS: ADR-0015 properly indexed in $docDir/adr/README.md." -ForegroundColor Green
     } else {
-        Write-Host "  FAIL: ADR-0015 not referenced in docs/adr/README.md." -ForegroundColor Red
+        Write-Host "  FAIL: ADR-0015 not referenced in $docDir/adr/README.md." -ForegroundColor Red
         $violations++
     }
 }
@@ -54,7 +55,7 @@ Write-Host ""
 
 # Check 2: Technical Specification & Hardware Keystore Identity
 Write-Host "[Check 2/5] Auditing specification for Android Keystore identity and TOFU pairing..." -ForegroundColor Yellow
-$specPath = Join-Path $repoRoot "docs\future\PERSISTENT_IDENTITY_AND_RESUME_SPECIFICATION.md"
+$specPath = Join-Path $repoRoot "$docDir\future\PERSISTENT_IDENTITY_AND_RESUME_SPECIFICATION.md"
 if (-not (Test-Path $specPath)) {
     Write-Host "  FAIL: Specification not found at $specPath" -ForegroundColor Red
     $violations++
@@ -112,9 +113,10 @@ Write-Host ""
 
 # Check 5: Pure JVM Implementation, Test Fixtures & Threat Matrix
 Write-Host "[Check 5/5] Auditing pure JVM ResumeToken, ContentDigestTree and threat matrix..." -ForegroundColor Yellow
-$tokenPath = Join-Path $repoRoot "transfer-core\src\main\kotlin\dev\glide\core\resume\ResumeToken.kt"
-$treePath = Join-Path $repoRoot "transfer-core\src\main\kotlin\dev\glide\core\resume\ContentDigestTree.kt"
-$testPath = Join-Path $repoRoot "transfer-core\src\test\kotlin\dev\glide\core\resume\ResumeSecurityTest.kt"
+$corePrefix = if (Test-Path (Join-Path $repoRoot "shared\transfer-core")) { "shared\transfer-core" } else { "transfer-core" }
+$tokenPath = Join-Path $repoRoot "$corePrefix\src\main\kotlin\dev\glide\core\resume\ResumeToken.kt"
+$treePath = Join-Path $repoRoot "$corePrefix\src\main\kotlin\dev\glide\core\resume\ContentDigestTree.kt"
+$testPath = Join-Path $repoRoot "$corePrefix\src\test\kotlin\dev\glide\core\resume\ResumeSecurityTest.kt"
 
 if (-not (Test-Path $tokenPath) -or -not (Test-Path $treePath) -or -not (Test-Path $testPath)) {
     Write-Host "  FAIL: ResumeToken.kt, ContentDigestTree.kt, or ResumeSecurityTest.kt not found in :transfer-core" -ForegroundColor Red

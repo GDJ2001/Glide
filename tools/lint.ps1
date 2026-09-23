@@ -27,7 +27,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$projectRoot = (Resolve-Path "$PSScriptRoot").Path
+$projectRoot = (Resolve-Path "$PSScriptRoot\..").Path
 
 Write-Host "=================================================================" -ForegroundColor Cyan
 Write-Host "   Glide Lint — Target: $Target                                   " -ForegroundColor Cyan
@@ -39,7 +39,7 @@ $lintErrors = [System.Collections.Generic.List[string]]::new()
 # --- Android Lint ---
 if ($Target -eq "All" -or $Target -eq "Android") {
     Write-Host "`n[Android] Running Android Lint..." -ForegroundColor Yellow
-    $gradleArgs = @(":app:lintDebug", "--no-daemon")
+    $gradleArgs = @(":android:lintDebug", "--no-daemon")
 
     Write-Host "  Running: gradlew.bat $($gradleArgs -join ' ')" -ForegroundColor Gray
     $pinfo = New-Object System.Diagnostics.ProcessStartInfo
@@ -61,7 +61,11 @@ if ($Target -eq "All" -or $Target -eq "Android") {
         $lintErrors.Add("Android lint failed (exit code $($process.ExitCode))")
     } else {
         Write-Host "  [OK]   Android lint passed." -ForegroundColor Green
-        $lintReport = "$projectRoot\app\build\reports\lint-results-debug.html"
+        $lintReport = "$projectRoot\android\build\reports\lint-results-debug.html"
+        if (-not (Test-Path $lintReport)) {
+            $fallback = "$projectRoot\app\build\reports\lint-results-debug.html"
+            if (Test-Path $fallback) { $lintReport = $fallback }
+        }
         if (Test-Path $lintReport) {
             Write-Host "  Report: $lintReport" -ForegroundColor Gray
         }

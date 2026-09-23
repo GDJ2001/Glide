@@ -16,8 +16,9 @@ Write-Host "=================================================================" -
 
 # --- Check 1: ADR-0021 Existence, Accepted Status, and Decision Index ---
 Write-Host "`n[Check 1/10] Auditing ADR-0021 existence, Accepted status, and index..." -ForegroundColor Yellow
-$AdrPath = Join-Path $ProjectRoot "docs\adr\ADR-0021-linux-platform-architecture.md"
-$AdrIndex = Join-Path $ProjectRoot "docs\adr\README.md"
+$docDir = if (Test-Path (Join-Path $ProjectRoot "doc")) { "doc" } else { "docs" }
+$AdrPath = Join-Path $ProjectRoot "$docDir\adr\ADR-0021-linux-platform-architecture.md"
+$AdrIndex = Join-Path $ProjectRoot "$docDir\adr\README.md"
 
 if (-not (Test-Path $AdrPath)) {
     Write-Error "FAIL: ADR-0021 not found at $AdrPath"
@@ -30,14 +31,14 @@ if ($AdrContent -notmatch "\.NET 10" -or $AdrContent -notmatch "XDG") {
     Write-Error "FAIL: ADR-0021 missing .NET 10 cross-platform or XDG decisions."
 }
 $IndexContent = Get-Content $AdrIndex -Raw
-if ($IndexContent -notmatch "ADR-0021 — Linux platform architecture") {
-    Write-Error "FAIL: ADR-0021 not properly indexed in docs/adr/README.md."
+if ($IndexContent -notmatch "ADR-0021.*Linux platform architecture") {
+    Write-Error "FAIL: ADR-0021 not properly indexed in $docDir/adr/README.md."
 }
 Write-Host "  PASS: ADR-0021 exists, is marked Accepted, and is indexed in README.md." -ForegroundColor Green
 
 # --- Check 2: Roadmap Alignment in CROSS_PLATFORM_PATH.md ---
 Write-Host "`n[Check 2/10] Auditing Roadmap Alignment in CROSS_PLATFORM_PATH.md..." -ForegroundColor Yellow
-$PathDoc = Join-Path $ProjectRoot "docs\future\CROSS_PLATFORM_PATH.md"
+$PathDoc = Join-Path $ProjectRoot "$docDir\future\CROSS_PLATFORM_PATH.md"
 $PathContent = Get-Content $PathDoc -Raw
 if ($PathContent -notmatch "LINUX_PLATFORM_SPECIFICATION\.md" -or $PathContent -notmatch "Linux") {
     Write-Error "FAIL: CROSS_PLATFORM_PATH.md does not reference LINUX_PLATFORM_SPECIFICATION.md or Linux platform."
@@ -46,7 +47,7 @@ Write-Host "  PASS: CROSS_PLATFORM_PATH.md references Linux platform and specifi
 
 # --- Check 3: Linux Platform Specification Completeness ---
 Write-Host "`n[Check 3/10] Auditing Linux Platform technical specification completeness..." -ForegroundColor Yellow
-$SpecPath = Join-Path $ProjectRoot "docs\future\LINUX_PLATFORM_SPECIFICATION.md"
+$SpecPath = Join-Path $ProjectRoot "$docDir\future\LINUX_PLATFORM_SPECIFICATION.md"
 if (-not (Test-Path $SpecPath)) {
     Write-Error "FAIL: Specification not found at $SpecPath"
 }
@@ -131,8 +132,14 @@ if ($SpecContent -notmatch "\[Desktop Entry\]" -or $SpecContent -notmatch "dev\.
 if ($SpecContent -notmatch "\[Unit\]" -or $SpecContent -notmatch "systemctl --user enable") {
     Write-Error "FAIL: Specification missing valid systemd user service definition."
 }
-$DesktopPath = Join-Path $ProjectRoot "packaging\linux\glide.desktop"
-$ServicePath = Join-Path $ProjectRoot "packaging\linux\glide.service"
+$DesktopPath = Join-Path $ProjectRoot "linux\glide.desktop"
+if (-not (Test-Path $DesktopPath)) {
+    $DesktopPath = Join-Path $ProjectRoot "packaging\linux\glide.desktop"
+}
+$ServicePath = Join-Path $ProjectRoot "linux\glide.service"
+if (-not (Test-Path $ServicePath)) {
+    $ServicePath = Join-Path $ProjectRoot "packaging\linux\glide.service"
+}
 if (-not (Test-Path $DesktopPath)) {
     Write-Error "FAIL: FreeDesktop packaging asset missing: $DesktopPath"
 }

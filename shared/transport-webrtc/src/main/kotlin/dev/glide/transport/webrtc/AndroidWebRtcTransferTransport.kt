@@ -166,83 +166,88 @@ class AndroidWebRtcTransferTransport(
         sessionId: String,
         localDeviceName: String,
         localPlatform: String
-    ): WebRtcSessionInfo = withContext(scope.coroutineContext) {
+    ): WebRtcSessionInfo {
         checkNotClosed()
+        return withContext(scope.coroutineContext) {
+            // Generate ephemeral ECDSA P-256 key pair
+            val keyPair = generateKeyPair()
 
-        // Generate ephemeral ECDSA P-256 key pair
-        val keyPair = generateKeyPair()
+            // Create self-signed X.509 certificate
+            val certificate = generateSelfSignedCertificate(keyPair, sessionId)
 
-        // Create self-signed X.509 certificate
-        val certificate = generateSelfSignedCertificate(keyPair, sessionId)
+            // Compute SHA-256 DTLS fingerprint
+            val fingerprint = computeFingerprint(certificate)
 
-        // Compute SHA-256 DTLS fingerprint
-        val fingerprint = computeFingerprint(certificate)
+            // Start local signaling server
+            startSignalingServer()
 
-        // Start local signaling server
-        startSignalingServer()
+            // Build SDP offer
+            val sdpOffer = buildSdpOffer(fingerprint)
 
-        // Build SDP offer
-        val sdpOffer = buildSdpOffer(fingerprint)
+            val now = System.currentTimeMillis()
+            val expiresAt = now + (signalingTtlSeconds * 1000L)
+            val signalingUrl = "ws://$localAddress:${getSignalingPort()}/signal"
 
-        val now = System.currentTimeMillis()
-        val expiresAt = now + (signalingTtlSeconds * 1000L)
-        val signalingUrl = "ws://$localAddress:${getSignalingPort()}/signal"
+            currentSession = SessionState(
+                sessionId = sessionId,
+                localDeviceName = localDeviceName,
+                localPlatform = localPlatform,
+                keyPair = keyPair,
+                certificate = certificate,
+                dtlsFingerprintSha256 = fingerprint,
+                localSdpOffer = sdpOffer,
+                signalingUrl = signalingUrl,
+                expiresAtEpochMs = expiresAt
+            )
 
-        currentSession = SessionState(
-            sessionId = sessionId,
-            localDeviceName = localDeviceName,
-            localPlatform = localPlatform,
-            keyPair = keyPair,
-            certificate = certificate,
-            dtlsFingerprintSha256 = fingerprint,
-            localSdpOffer = sdpOffer,
-            signalingUrl = signalingUrl,
-            expiresAtEpochMs = expiresAt
-        )
+            _peerState.emit(WebRtcPeerState.NEW)
 
-        _peerState.emit(WebRtcPeerState.NEW)
-
-        WebRtcSessionInfo(
-            sessionId = sessionId,
-            localSdpOffer = sdpOffer,
-            dtlsFingerprintSha256 = fingerprint,
-            signalingUrl = signalingUrl,
-            expiresAtEpochMs = expiresAt
-        )
-    }
-
-    override suspend fun handleSdpAnswer(sdpAnswer: String) = withContext(scope.coroutineContext) {
-        checkNotClosed()
-        requireSession()
-
-        _peerState.emit(WebRtcPeerState.CONNECTING)
-
-        // In production, this would call PeerConnection.setRemoteDescription()
-        // For now, simulate the connection flow
-
-        _peerState.emit(WebRtcPeerState.CONNECTED)
-
-        // Open the data channel
-        activeDataChannel = SimulatedDataChannel(
-            onText = { text ->
-                scope.launch { _dataChannelMessages.emit(DataChannelMessage.Text(text)) }
-            },
-            onBinary = { data ->
-                scope.launch { _dataChannelMessages.emit(DataChannelMessage.Binary(data)) }
-            }
-        )
-
-        // Emit local ICE candidates
-        scope.launch {
-            emitLocalIceCandidates()
+            WebRtcSessionInfo(
+                sessionId = sessionId,
+                localSdpOffer = sdpOffer,
+                dtlsFingerprintSha256 = fingerprint,
+                signalingUrl = signalingUrl,
+                expiresAtEpochMs = expiresAt
+            )
         }
     }
 
-    override suspend fun addIceCandidate(candidate: String, sdpMid: String, sdpMLineIndex: Int) =
-        withContext(scope.coroutineContext) {
-            checkNotClosed()
+    override suspend fun handleSdpAnswer(sdpAnswer: String): Unit {
+        checkNotClosed()
+        return withContext(scope.coroutineContext) {
+            requireSession()
+
+            _peerState.emit(WebRtcPeerState.CONNECTING)
+
+            // In production, this would call PeerConnection.setRemoteDescription()
+            // For now, simulate the connection flow
+
+            _peerState.emit(WebRtcPeerState.CONNECTED)
+
+            // Open the data channel
+            activeDataChannel = SimulatedDataChannel(
+                onText = { text ->
+                    scope.launch { _dataChannelMessages.emit(DataChannelMessage.Text(text)) }
+                },
+                onBinary = { data ->
+                    scope.launch { _dataChannelMessages.emit(DataChannelMessage.Binary(data)) }
+                }
+            )
+
+            // Emit local ICE candidates
+            scope.launch {
+                emitLocalIceCandidates()
+            }
+            Unit
+        }
+    }
+
+    override suspend fun addIceCandidate(candidate: String, sdpMid: String, sdpMLineIndex: Int): Unit {
+        checkNotClosed()
+        return withContext(scope.coroutineContext) {
             // In production: peerConnection.addIceCandidate()
         }
+    }
 
     override fun observePeerState(): Flow<WebRtcPeerState> = _peerState.asSharedFlow()
 
@@ -252,13 +257,15 @@ class AndroidWebRtcTransferTransport(
     override fun observeDataChannelMessages(): Flow<DataChannelMessage> =
         _dataChannelMessages.asSharedFlow()
 
-    override suspend fun sendControlMessage(text: String) = withContext(scope.coroutineContext) {
+    override suspend fun sendControlMessage(text: String): Unit {
         checkNotClosed()
-        val channel = requireOpenChannel()
+        return withContext(scope.coroutineContext) {
+            val channel = requireOpenChannel()
 
-        // Frame the control message
-        val frame = ProtocolFrame.encodeControlJson(text)
-        channel.sendBinary(frame)
+            // Frame the control message
+            val frame = ProtocolFrame.encodeControlJson(text)
+            channel.sendBinary(frame)
+        }
     }
 
     override fun sendBinaryData(
@@ -388,73 +395,83 @@ class AndroidWebRtcTransferTransport(
     }
 
     private fun generateSelfSignedCertificate(keyPair: KeyPair, sessionId: String): X509Certificate {
-        val now = System.currentTimeMillis()
-        val startDate = Date(now)
-        val expiryDate = Date(now + 24 * 60 * 60 * 1000L) // 24 hours
-
-        val issuer = X500Principal("CN=glide-webrtc-$sessionId, O=Glide, C=US")
-
-        // Use BouncyCastle-style certificate generation via Java SE KeyStore trick
-        // For production, org.webrtc handles DTLS certs internally.
-        // This is the host-side cert for the abstraction.
-        val certBytes = generateX509CertBytes(keyPair, issuer, startDate, expiryDate)
-
-        val certFactory = CertificateFactory.getInstance("X.509")
-        return certFactory.generateCertificate(ByteArrayInputStream(certBytes)) as X509Certificate
+        return WebRtcCertGenerator.generate(keyPair, "glide-webrtc-$sessionId")
     }
 
-    private fun generateX509CertBytes(
-        keyPair: KeyPair,
-        subject: java.security.Principal,
-        startDate: Date,
-        expiryDate: Date
-    ): ByteArray {
-        // Simplified self-signed cert generation using Java SE KeyStore approach
-        // In production, org.webrtc:google-webrtc generates certs internally
-        // We generate a minimal valid DER-encoded cert structure
+    private object WebRtcCertGenerator {
+        private val OID_ECDSA_SHA256 = byteArrayOf(0x2A, 0x86.toByte(), 0x48, 0xCE.toByte(), 0x3D, 0x04, 0x03, 0x02)
+        private val OID_COMMON_NAME = byteArrayOf(0x55, 0x04, 0x03)
 
-        // Use a KeyStore-based approach to create a self-signed cert
-        val keyStore = KeyStore.getInstance(KeyStore.getDefaultType())
-        keyStore.load(null, null)
+        fun generate(
+            keyPair: KeyPair,
+            commonName: String,
+            notBefore: Date = Date(System.currentTimeMillis() - 60_000),
+            notAfter: Date = Date(System.currentTimeMillis() + 86_400_000)
+        ): X509Certificate {
+            val algId = encodeSequence(encodeOid(OID_ECDSA_SHA256))
+            val version = byteArrayOf(0xA0.toByte(), 0x03, 0x02, 0x01, 0x02)
+            val serialNumber = encodeInteger(java.math.BigInteger.valueOf(System.currentTimeMillis()).abs())
+            val name = encodeSequence(
+                encodeSet(
+                    encodeSequence(
+                        encodeOid(OID_COMMON_NAME) + encodeUtf8String(commonName)
+                    )
+                )
+            )
+            val validity = encodeSequence(
+                encodeUtcTime(notBefore) + encodeUtcTime(notAfter)
+            )
+            val spki = keyPair.public.encoded
+            val tbsCertificate = encodeSequence(
+                version + serialNumber + algId + name + validity + name + spki
+            )
+            val signer = Signature.getInstance("SHA256withECDSA")
+            signer.initSign(keyPair.private)
+            signer.update(tbsCertificate)
+            val signatureBytes = signer.sign()
+            val signatureBitString = encodeBitString(signatureBytes)
+            val certDer = encodeSequence(
+                tbsCertificate + algId + signatureBitString
+            )
+            val factory = CertificateFactory.getInstance("X.509")
+            return factory.generateCertificate(ByteArrayInputStream(certDer)) as X509Certificate
+        }
 
-        // Create a minimal self-signed cert using sun.security.tools.keytool approach
-        // For now, generate a valid structure
-        val cert = generateMinimalCert(keyPair, subject, startDate, expiryDate)
-        return cert.encoded
-    }
+        private fun encodeSequence(contents: ByteArray): ByteArray =
+            byteArrayOf(0x30) + encodeLength(contents.size) + contents
 
-    private fun generateMinimalCert(
-        keyPair: KeyPair,
-        subject: java.security.Principal,
-        startDate: Date,
-        expiryDate: Date
-    ): X509Certificate {
-        // Use BouncyCastle-style cert builder
-        // Since BC may not be available, use Java's internal sun.security.x509 classes
-        // via reflection or a simple approach
+        private fun encodeSet(contents: ByteArray): ByteArray =
+            byteArrayOf(0x31) + encodeLength(contents.size) + contents
 
-        // Fallback: use Java's cert generation via CertificateFactory
-        val certFactory = CertificateFactory.getInstance("X.509")
+        private fun encodeInteger(value: java.math.BigInteger): ByteArray {
+            val bytes = value.toByteArray()
+            return byteArrayOf(0x02) + encodeLength(bytes.size) + bytes
+        }
 
-        // Generate a minimal self-signed X.509 certificate
-        val info = sun.security.x509.X509CertInfo()
-        val from = startDate
-        val to = expiryDate
-        val interval = sun.security.x509.CertificateValidity(from, to)
-        val serialNumber = java.math.BigInteger.valueOf(System.nanoTime())
-        val algorithm = sun.security.x509.AlgorithmId.get(SIGNATURE_ALGORITHM)
+        private fun encodeBitString(bytes: ByteArray): ByteArray =
+            byteArrayOf(0x03) + encodeLength(bytes.size + 1) + byteArrayOf(0x00) + bytes
 
-        info.set(sun.security.x509.X509CertInfo.VALIDITY, interval)
-        info.set(sun.security.x509.X509CertInfo.SERIAL_NUMBER, sun.security.x509.CertificateSerialNumber(serialNumber))
-        info.set(sun.security.x509.X509CertInfo.SUBJECT, sun.security.x509.X500Name(subject.name))
-        info.set(sun.security.x509.X509CertInfo.ISSUER, sun.security.x509.X500Name(subject.name))
-        info.set(sun.security.x509.X509CertInfo.KEY, sun.security.x509.X509CertKey(keyPair.public))
-        info.set(sun.security.x509.X509CertInfo.VERSION, sun.security.x509.CertificateVersion(sun.security.x509.CertificateVersion.V3))
-        info.set(sun.security.x509.X509CertInfo.ALGORITHM_ID, sun.security.x509.CertificateAlgorithmId(algorithm))
+        private fun encodeOid(oidBytes: ByteArray): ByteArray =
+            byteArrayOf(0x06) + encodeLength(oidBytes.size) + oidBytes
 
-        val cert = sun.security.x509.X509CertImpl(info)
-        cert.sign(keyPair.private, SIGNATURE_ALGORITHM)
-        return cert
+        private fun encodeUtf8String(str: String): ByteArray {
+            val bytes = str.toByteArray(Charsets.UTF_8)
+            return byteArrayOf(0x0C) + encodeLength(bytes.size) + bytes
+        }
+
+        private fun encodeUtcTime(date: Date): ByteArray {
+            val sdf = java.text.SimpleDateFormat("yyMMddHHmmss'Z'", Locale.US).apply {
+                timeZone = TimeZone.getTimeZone("UTC")
+            }
+            val bytes = sdf.format(date).toByteArray(Charsets.US_ASCII)
+            return byteArrayOf(0x17) + encodeLength(bytes.size) + bytes
+        }
+
+        private fun encodeLength(length: Int): ByteArray = when {
+            length < 128 -> byteArrayOf(length.toByte())
+            length <= 255 -> byteArrayOf(0x81.toByte(), length.toByte())
+            else -> byteArrayOf(0x82.toByte(), (length shr 8).toByte(), (length and 0xFF).toByte())
+        }
     }
 
     private fun computeFingerprint(certificate: X509Certificate): String {
@@ -483,9 +500,11 @@ class AndroidWebRtcTransferTransport(
     }
 
     private fun startSignalingServer() {
+        if (signalingServerSocket != null && !signalingServerSocket!!.isClosed) return
         val address = InetAddress.getByName(localAddress)
-        val socket = ServerSocket(signalingPort, 50, address)
+        val socket = ServerSocket()
         socket.reuseAddress = true
+        socket.bind(java.net.InetSocketAddress(address, signalingPort), 50)
         signalingServerSocket = socket
     }
 
@@ -513,7 +532,7 @@ class AndroidWebRtcTransferTransport(
      *
      * Format: [messageType:1 byte][payloadLength:4 bytes BE][payload:variable]
      */
-    private object ProtocolFrame {
+    internal object ProtocolFrame {
         const val CONTROL_JSON: Byte = 0x01
         const val DATA_BINARY: Byte = 0x02
         const val CHECKSUM_SHA256: Byte = 0x03

@@ -128,7 +128,9 @@ if ($lanRecordCode -notmatch "HeaderSize = 5" -or $lanRecordCode -notmatch "6553
 Write-Host "  PASS: LanRecordCodec enforces 5-byte header and 64 KiB payload ceiling across typed records." -ForegroundColor Green
 
 $mdnsCode = Get-Content $MdnsFile -Raw
-if ($mdnsCode -notmatch "_glide._tcp.local" -or $mdnsCode -notmatch "224.0.0.251" -or $mdnsCode -notmatch "5353") {
+$mdnsModelsFile = Join-Path $ProjectRoot "windows\Glide.Transport\Discovery\LanDiscoveryModels.cs"
+$mdnsModelsCode = if (Test-Path $mdnsModelsFile) { Get-Content $mdnsModelsFile -Raw } else { "" }
+if (($mdnsCode -notmatch "_glide._tcp.local" -and $mdnsModelsCode -notmatch "_glide._tcp.local") -or $mdnsCode -notmatch "224.0.0.251" -or $mdnsCode -notmatch "5353") {
     Write-Error "FAIL: MdnsDiscoveryService missing multicast IP, port 5353, or service type."
 }
 Write-Host "  PASS: MdnsDiscoveryService implements zero-dependency RFC 6762/6763 mDNS responder and browser." -ForegroundColor Green

@@ -28,27 +28,34 @@ Write-Host "=================================================================" -
 # --------------------------------------------------------------------------------------------------
 Write-Host "`n[Check 1/5] Auditing Release Candidate artifacts & supply-chain manifests..." -ForegroundColor Yellow
 
-$apkPath = "$projectRoot\app\build\outputs\apk\release\app-release.apk"
-$aabPath = "$projectRoot\app\build\outputs\bundle\release\app-release.aab"
-$mappingPath = "$projectRoot\app\build\outputs\mapping\release\mapping.txt"
-$checksumPath = "$projectRoot\app\build\outputs\release-artifacts\SHA256SUMS.txt"
+$androidPrefix = if (Test-Path "$projectRoot\android") { "$projectRoot\android" } else { "$projectRoot\app" }
+$apkPath = "$androidPrefix\build\outputs\apk\release\android-release.apk"
+if (-not (Test-Path $apkPath)) {
+    $apkPath = "$androidPrefix\build\outputs\apk\release\app-release.apk"
+}
+$aabPath = "$androidPrefix\build\outputs\bundle\release\android-release.aab"
+if (-not (Test-Path $aabPath)) {
+    $aabPath = "$androidPrefix\build\outputs\bundle\release\app-release.aab"
+}
+$mappingPath = "$androidPrefix\build\outputs\mapping\release\mapping.txt"
+$checksumPath = "$androidPrefix\build\outputs\release-artifacts\SHA256SUMS.txt"
 
 if (-not (Test-Path $aabPath)) {
-    $msg = "Play App Bundle (app-release.aab) is missing!"
+    $msg = "Play App Bundle (aab) is missing at $aabPath!"
     Write-Host "  VIOLATION: $msg" -ForegroundColor Red
     $violations.Add($msg)
 } else {
     $aabSize = [math]::Round((Get-Item $aabPath).Length / 1MB, 2)
-    Write-Host "  app-release.aab present ($aabSize MB)" -ForegroundColor Green
+    Write-Host "  aab present ($aabSize MB)" -ForegroundColor Green
 }
 
 if (-not (Test-Path $apkPath)) {
-    $msg = "Signed Release Tester APK (app-release.apk) is missing!"
+    $msg = "Signed Release Tester APK is missing at $apkPath!"
     Write-Host "  VIOLATION: $msg" -ForegroundColor Red
     $violations.Add($msg)
 } else {
     $apkSize = [math]::Round((Get-Item $apkPath).Length / 1MB, 2)
-    Write-Host "  app-release.apk present ($apkSize MB)" -ForegroundColor Green
+    Write-Host "  apk present ($apkSize MB)" -ForegroundColor Green
 }
 
 if (-not (Test-Path $mappingPath)) {
@@ -73,7 +80,8 @@ if (-not (Test-Path $checksumPath)) {
 # --------------------------------------------------------------------------------------------------
 Write-Host "`n[Check 2/5] Auditing Google Play closed testing policy compliance..." -ForegroundColor Yellow
 
-$protocolFile = "$projectRoot\docs\release\CLOSED_TESTING_PROTOCOL.md"
+$docDir = if (Test-Path "$projectRoot\doc") { "doc" } else { "docs" }
+$protocolFile = "$projectRoot\$docDir\release\CLOSED_TESTING_PROTOCOL.md"
 if (-not (Test-Path $protocolFile)) {
     $msg = "CLOSED_TESTING_PROTOCOL.md does not exist!"
     Write-Host "  VIOLATION: $msg" -ForegroundColor Red

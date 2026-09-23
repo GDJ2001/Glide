@@ -27,7 +27,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$projectRoot = (Resolve-Path "$PSScriptRoot").Path
+$projectRoot = (Resolve-Path "$PSScriptRoot\..").Path
 
 Write-Host "=================================================================" -ForegroundColor Cyan
 Write-Host "   Glide Preview — $Target ($Configuration)                            " -ForegroundColor Cyan
@@ -47,13 +47,21 @@ if ($Target -eq "Android") {
         Write-Host "  Device: $deviceId" -ForegroundColor Green
 
         $apkPath = if ($Configuration -eq "Release") {
-            "$projectRoot\app\build\outputs\apk\release\app-release.apk"
+            "$projectRoot\android\build\outputs\apk\release\android-release.apk"
         } else {
-            "$projectRoot\app\build\outputs\apk\debug\app-debug.apk"
+            "$projectRoot\android\build\outputs\apk\debug\android-debug.apk"
+        }
+        if (-not (Test-Path $apkPath)) {
+            $fallback = if ($Configuration -eq "Release") {
+                "$projectRoot\android\build\outputs\apk\release\app-release.apk"
+            } else {
+                "$projectRoot\android\build\outputs\apk\debug\app-debug.apk"
+            }
+            if (Test-Path $fallback) { $apkPath = $fallback }
         }
         if (-not (Test-Path $apkPath)) {
             Write-Host "  APK not found. Building first..." -ForegroundColor Yellow
-            & "$projectRoot\build.ps1" -Configuration $Configuration -Target Android
+            & "$projectRoot\tools\build.ps1" -Configuration $Configuration -Target Android
         }
 
         Write-Host "  Installing $apkPath ..." -ForegroundColor Cyan

@@ -2,6 +2,7 @@ package dev.glide.core.coordinator
 
 import dev.glide.core.domain.BatchId
 import dev.glide.core.domain.BulkRef
+import dev.glide.core.domain.CommittedFileHandle
 import dev.glide.core.domain.DeviceRole
 import dev.glide.core.domain.ItemId
 import dev.glide.core.domain.PeerId
@@ -517,6 +518,8 @@ class TrustedSessionCoordinatorTest {
                                         )
                                 )
                         },
+                        recordReceiverResumeChunk = { _, _, _, _ -> true },
+                        finalizeReceiverResumeItem = { _, _, _, _ -> CommittedFileHandle("test-file") },
                         enableTrueResumeCapability =
                             true
                     )
