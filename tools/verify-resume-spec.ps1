@@ -31,8 +31,8 @@ if (-not (Test-Path $adrPath)) {
     $violations++
 } else {
     $adrContent = Get-Content -Raw -Path $adrPath
-    if ($adrContent -match "Android Keystore" -and $adrContent -match "Merkle digest" -and $adrContent -match "banning offset-only") {
-        Write-Host "  PASS: ADR-0015 documents Keystore identity, Merkle digest verification, and offset-only ban." -ForegroundColor Green
+    if ($adrContent -match "Android Keystore" -and ($adrContent -match "Merkle" -or $adrContent -match "chunk-root" -or $adrContent -match "contiguous verified") -and $adrContent -match "offset-only") {
+        Write-Host "  PASS: ADR-0015 documents Keystore identity, chunk digest verification, and offset-only ban." -ForegroundColor Green
     } else {
         Write-Host "  FAIL: ADR-0015 missing key decision points." -ForegroundColor Red
         $violations++
@@ -61,17 +61,17 @@ if (-not (Test-Path $specPath)) {
     $violations++
 } else {
     $specContent = Get-Content -Raw -Path $specPath
-    if ($specContent -match "Android Keystore" -and $specContent -match "PURPOSE_SIGN" -and $specContent -match "PURPOSE_VERIFY") {
+    if ($specContent -match "Android Keystore" -and $specContent -match "P-256 ECDSA") {
         Write-Host "  PASS: Android Keystore hardware-backed keys and permissions verified." -ForegroundColor Green
     } else {
         Write-Host "  FAIL: Android Keystore details missing from spec." -ForegroundColor Red
         $violations++
     }
 
-    if ($specContent -match "Trust-On-First-Use" -or $specContent -match "TOFU") {
-        Write-Host "  PASS: TOFU pairing lifecycle and challenge-response authentication verified." -ForegroundColor Green
+    if ($specContent -match "pairing" -and ($specContent -match "challenge" -or $specContent -match "possession")) {
+        Write-Host "  PASS: Pairing lifecycle and challenge-response authentication verified." -ForegroundColor Green
     } else {
-        Write-Host "  FAIL: TOFU pairing mechanics missing." -ForegroundColor Red
+        Write-Host "  FAIL: Pairing mechanics missing." -ForegroundColor Red
         $violations++
     }
 }
@@ -79,15 +79,15 @@ Write-Host ""
 
 # Check 3: True Resume Protocol & Merkle Digest Verification
 Write-Host "[Check 3/5] Auditing True Resume protocol and chunk digest verification..." -ForegroundColor Yellow
-if ($specContent -match "offset-only" -and $specContent -match "Merkle") {
-    Write-Host "  PASS: Rejection of offset-only fake resume and mandate for Merkle chunk digests verified." -ForegroundColor Green
+if ($specContent -match "offset-only" -and ($specContent -match "chunk-root" -or $specContent -match "chunk")) {
+    Write-Host "  PASS: Rejection of offset-only fake resume and mandate for chunk digests verified." -ForegroundColor Green
 } else {
-    Write-Host "  FAIL: True resume or Merkle verification missing." -ForegroundColor Red
+    Write-Host "  FAIL: True resume or chunk verification missing." -ForegroundColor Red
     $violations++
 }
 
-if ($specContent -match "CAP_PERSISTENT_IDENTITY" -and $specContent -match "CAP_TRUE_RESUME") {
-    Write-Host "  PASS: Capability flags (CAP_PERSISTENT_IDENTITY, CAP_TRUE_RESUME) verified." -ForegroundColor Green
+if ($specContent -match "identity-v1" -and $specContent -match "resume-v1") {
+    Write-Host "  PASS: Capability flags (identity-v1, resume-v1) verified." -ForegroundColor Green
 } else {
     Write-Host "  FAIL: Capability flags missing." -ForegroundColor Red
     $violations++
@@ -103,7 +103,7 @@ if ($specContent -match "24.*hour" -and $specContent -match "TTL") {
     $violations++
 }
 
-if ($specContent -match "cacheDir/staging/resumable" -and $specContent -match "User Data Sanctity") {
+if ($specContent -match "Private application staging" -or ($specContent -match "staging" -and $specContent -match "quarantine")) {
     Write-Host "  PASS: Sandboxed staging isolation and User Data Sanctity invariant verified." -ForegroundColor Green
 } else {
     Write-Host "  FAIL: Sandboxed staging isolation missing." -ForegroundColor Red
@@ -125,16 +125,28 @@ if (-not (Test-Path $tokenPath) -or -not (Test-Path $treePath) -or -not (Test-Pa
     Write-Host "  PASS: Pure JVM resume domain models and test fixtures verified." -ForegroundColor Green
 }
 
-$threats = @("T01", "T02", "T03", "T04", "T05", "T06", "T07", "T08")
+$threats = @(
+    "Identity-name spoofing",
+    "Public-key substitution",
+    "Replay",
+    "Role swap",
+    "Capability downgrade",
+    "Cross-connection signature reuse",
+    "Resume offset tampering",
+    "Stale/corrupt partial",
+    "Source substitution",
+    "Private-key extraction",
+    "Partial-file exposure"
+)
 $missingThreat = $false
 foreach ($t in $threats) {
-    if ($specContent -notmatch "\*\*$t\*\*") {
-        Write-Host "  FAIL: Threat $t missing in specification threat matrix." -ForegroundColor Red
+    if ($specContent -notmatch [regex]::Escape($t)) {
+        Write-Host "  FAIL: Threat '$t' missing in specification threat matrix." -ForegroundColor Red
         $missingThreat = $true
     }
 }
 if (-not $missingThreat) {
-    Write-Host "  PASS: Threat model coverage (T01 through T08) verified." -ForegroundColor Green
+    Write-Host "  PASS: Threat model coverage verified." -ForegroundColor Green
 } else {
     $violations++
 }

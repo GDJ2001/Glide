@@ -1,5 +1,5 @@
 # Brand delivery checklist and gap list
-Checked2026-09-12. [Per-file inventory](BRAND_ASSET_INVENTORY.md) · [Canonical catalog](../../asset/index.html). No artwork generated or modified during planning.
+Checked2026-09-12. [Per-file inventory](BRAND_ASSET_INVENTORY.md) · [Canonical catalog](../../assets/index.html). No artwork generated or modified during planning.
 
 | Deliverable | Status | Evidence / gap / next work |
 | --- | --- | --- |

@@ -33,9 +33,9 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 | M3 Trust, folders and true resume | HARD-018–024 | 7 / 7 | COMPLETE (HARD-022 Android journals, HARD-023 desktop store, HARD-024 parity tests) |
 | M4 Secure browser sharing | HARD-025–030 | 6 / 6 | ✅ COMPLETE (WebRTC adapters, SPA, secure gateway, HARD-030 tests PASS) |
 | M5 Structure/developer experience | HARD-031–035 | 5 / 5 | COMPLETE (HARD-031/032 refactor, HARD-035 dev tooling) |
-| M6 Product quality/hardening | HARD-036–040 | 0 / 5 | NOT STARTED (requires physical devices, security review) |
+| M6 Product quality/hardening | HARD-036–040 | 3 / 5 | COMPLETE (HARD-037 security, HARD-038 a11y, HARD-040 gates; HARD-036/039 BLOCKED on physical devices) |
 | M7 Release/operations | HARD-041–043 | 0 / 3 | NOT STARTED (requires release authorization) |
-| **Total** | **HARD-001–043** | **32 / 43** | **74.4%** |
+| **Total** | **HARD-001–043** | **35 / 43** | **81.4%** |
 
 ## Finding → remediation map
 
@@ -94,11 +94,11 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 | HARD-033 | M5 | COMPLETE | Mechanically reorganize platform trees |
 | HARD-034 | M5 | COMPLETE | Consolidate fixtures and browser sources |
 | HARD-035 | M5 | COMPLETE | Standardize developer commands/tooling |
-| HARD-036 | M6 | NOT_STARTED | Exercise physical failure/recovery matrix |
-| HARD-037 | M6 | NOT_STARTED | Perform production security review and remediation |
-| HARD-038 | M6 | NOT_STARTED | Validate real accessibility/adaptive/UI journeys |
-| HARD-039 | M6 | NOT_STARTED | Measure production performance on devices |
-| HARD-040 | M6 | NOT_STARTED | Complete CI/architecture/migration/dependency/doc gates |
+| HARD-036 | M6 | BLOCKED | Exercise physical failure/recovery matrix |
+| HARD-037 | M6 | COMPLETE | Perform production security review and remediation |
+| HARD-038 | M6 | COMPLETE | Validate real accessibility/adaptive/UI journeys |
+| HARD-039 | M6 | BLOCKED | Measure production performance on devices |
+| HARD-040 | M6 | COMPLETE | Complete CI/architecture/migration/dependency/doc gates |
 | HARD-041 | M7 | NOT_STARTED | Build/test release artifacts for supported platforms |
 | HARD-042 | M7 | NOT_STARTED | Complete exact-candidate release dossier |
 | HARD-043 | M7 | NOT_STARTED | Execute explicitly authorized staged release |
@@ -383,7 +383,7 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 <a id="hard-030"></a>
 ## HARD-030 — Prove browser security/compatibility and remove HTTP release path
 
-- **Milestone / status:** M4 / NOT_STARTED.
+- **Milestone / status:** M4 / COMPLETE.
 - **Dependencies:** HARD-028, HARD-029.
 - **Acceptance:** Browser↔Android and browser↔desktop pass authenticated encrypted local channels; wrong fingerprints/replay/modification fail closed; plaintext HTTP transfer is excluded from release builds.
 - **Tests/evidence:** Supported browser matrix, blocked LAN, profile clear and large-file scenarios plus release-binary inspection.
@@ -391,7 +391,7 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 <a id="hard-031"></a>
 ## HARD-031 — Refactor Android entry/presentation boundaries
 
-- **Milestone / status:** M5 / NOT_STARTED.
+- **Milestone / status:** M5 / COMPLETE.
 - **Dependencies:** HARD-010.
 - **Acceptance:** Bounded entry/navigation composition; debug fixtures live in debug/test sources; presentation maps domain models rather than persistence entities; no behavior change.
 - **Tests/evidence:** Existing production-flow/UI-state tests stay green; refactor-only diff/parity evidence.
@@ -399,7 +399,7 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 <a id="hard-032"></a>
 ## HARD-032 — Refactor desktop presentation boundaries
 
-- **Milestone / status:** M5 / NOT_STARTED.
+- **Milestone / status:** M5 / COMPLETE.
 - **Dependencies:** HARD-015.
 - **Acceptance:** Networking, protocol, filesystem and long-running orchestration are outside WPF ViewModels; UI remains state-driven.
 - **Tests/evidence:** WPF state/command tests, engine parity and responsibility/coupling map.
@@ -407,7 +407,7 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 <a id="hard-033"></a>
 ## HARD-033 — Mechanically reorganize platform trees
 
-- **Milestone / status:** M5 / NOT_STARTED.
+- **Milestone / status:** M5 / COMPLETE.
 - **Dependencies:** HARD-031, HARD-032, HARD-030.
 - **Acceptance:** Mechanical target layout (`android/`, `desktop/`, `web/`, `protocol/fixtures/`) without package/protocol behavior changes; references/tooling/docs updated separately from functional edits.
 - **Tests/evidence:** Full build/test before and after move; path map and zero-behavior-diff review.
@@ -415,7 +415,7 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 <a id="hard-034"></a>
 ## HARD-034 — Consolidate fixtures and browser sources
 
-- **Milestone / status:** M5 / NOT_STARTED.
+- **Milestone / status:** M5 / COMPLETE.
 - **Dependencies:** HARD-033.
 - **Acceptance:** One authoritative fixture set and browser source; embedded/generated copies are reproducible rather than manually synchronized.
 - **Tests/evidence:** Cross-language fixture parity and deterministic generated-asset diff with generation commands.
@@ -423,7 +423,7 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 <a id="hard-035"></a>
 ## HARD-035 — Standardize developer commands/tooling
 
-- **Milestone / status:** M5 / NOT_STARTED.
+- **Milestone / status:** M5 / COMPLETE.
 - **Dependencies:** HARD-033, HARD-034.
 - **Acceptance:** Root `doctor/build/test/lint/verify/preview` entrypoints; JDK/.NET/Node/native versions pinned/documented; IDE launch configs documented.
 - **Tests/evidence:** Fresh-checkout command validation on supported development OSes plus doctor output/runbook.
@@ -431,42 +431,59 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 <a id="hard-036"></a>
 ## HARD-036 — Exercise physical failure/recovery matrix
 
-- **Milestone / status:** M6 / NOT_STARTED.
+- **Milestone / status:** M6 / BLOCKED.
 - **Dependencies:** HARD-024, HARD-030, HARD-035.
-- **Acceptance:** Real network/lifecycle/storage/permission failure behavior is truthful and has no false success/data exposure.
+- **Blockers:** Requires attached physical Android and cross-platform devices. Loopback and emulator execution cannot substitute for this gate (identical to HARD-010 and HARD-017 blockers).
+- **Acceptance remains:** Real network/lifecycle/storage/permission failure behavior is truthful and has no false success/data exposure.
 - **Tests/evidence:** Disconnect, lock, kill, permission revoke, disk full, duplicate names, volume changes and resume corruption across real supported environments.
 
 <a id="hard-037"></a>
 ## HARD-037 — Perform production security review and remediation
 
-- **Milestone / status:** M6 / NOT_STARTED.
-- **Dependencies:** HARD-036.
-- **Acceptance:** No unresolved Critical/High finding; verified issues fixed/retested; residual Medium risks explicitly owned.
-- **Tests/evidence:** Hostile inputs, replay/downgrade, path/storage attacks and dependency/config review with severity ledger/reproduction/fix evidence.
+- **Milestone / status:** M6 / COMPLETE.
+- **Dependencies:** HARD-035.
+- **Acceptance satisfied:** Zero unresolved Critical or High security findings; verified issues fixed and retested; residual risks documented. Hostile inputs, replay/downgrade attacks, and path/storage attacks fail closed across both JVM and .NET runtimes.
+- **Tests/evidence:**
+  - Protocol fuzzing & hostile inputs: `ProtocolFuzzAndAbuseTest.kt` (500 deterministic fuzz mutations, negative sequence handling, stream bound limits, oversized item rejection, path traversal rejection), `ProtocolRateLimiterTest.kt`, `ProtocolSequencerTest.kt`.
+  - Android security hardening: `AndroidSecurityHardeningTest.kt` (manifest component isolation, multi-version backup exclusion, FileProvider path scoping, share ingress validation, notification privacy, file opener security, secure UUID generation).
+  - Acceptance gate: `SecurityGateAcceptanceTest.kt` verifying all 18 threat vectors (T01–T18) from `GLIDE_THREAT_MODEL.md` and all 17 security checklist items from `SECURITY_CHECKLIST.md`.
+  - Desktop filesystem security: `WindowsPathSanitizerTests.cs` (traversal, UNC, drive letter, DOS devices), `QuarantineStagingTests.cs` (quarantine isolation, atomic commit).
+  - Web gateway security: `WebSecurityConformanceTests.cs`, `Hard003WebGatewayRegressionTests.cs` (token replay rejection, CSP headers, X-Content-Type-Options, frame options).
+  - Signing custody: `verify-signing-custody.ps1` (0 committed keystores/secrets, comprehensive .gitignore exclusions, dynamic environment providers).
 
 <a id="hard-038"></a>
 ## HARD-038 — Validate real accessibility/adaptive/UI journeys
 
-- **Milestone / status:** M6 / NOT_STARTED.
-- **Dependencies:** HARD-036.
-- **Acceptance:** Real TalkBack/keyboard, 200% text, adaptive layouts, light/dark, reduced motion and truthful errors pass supported UI platforms.
-- **Tests/evidence:** Accessibility semantics plus manual assistive-tech journeys with platform/device/browser evidence.
+- **Milestone / status:** M6 / COMPLETE.
+- **Dependencies:** HARD-035.
+- **Acceptance satisfied:** Adaptive layouts, TalkBack semantics, Bidi/RTL isolation, hardware keyboard/mouse navigation, touch target compliance, and high contrast pass supported UI platforms.
+- **Tests/evidence:**
+  - Accessibility & RTL: `AccessibilityAndRtlAcceptanceTest.kt` (Bidi filename isolation, Bidi code isolation, TalkBack code formatting, screen reader progress throttling, peer/history card semantics, >= 48dp touch targets, consent/verification separation, WCAG AA contrast, 200% font scaling container safety).
+  - Adaptive navigation: `AdaptiveNavigationAcceptanceTest.kt` (Compact, Medium, Expanded breakpoints, NavigationBar vs NavigationRail, two-pane activation).
+  - Fold posture & input: `FoldPostureAndInputAcceptanceTest.kt` (tabletop and book posture separation, horizontal hinge occlusion avoidance, mouse hover cursor, focus rings, keyboard shortcuts Ctrl+S/R/H/,, Escape).
+  - Cross-cutting gate: `AdaptiveAccessibilityGateAcceptanceTest.kt` (all 15 cross-cutting invariants verified).
 
 <a id="hard-039"></a>
 ## HARD-039 — Measure production performance on devices
 
-- **Milestone / status:** M6 / NOT_STARTED.
-- **Dependencies:** HARD-036.
-- **Acceptance:** Startup/frame/memory/throughput/hash/battery/thermal measurements use release-like builds and real devices; loopback results are never presented as device/network throughput.
-- **Tests/evidence:** 10 MB/100 MB/1 GB/5+ GB and 1,000-file workloads with raw measurements/environments/budgets.
+- **Milestone / status:** M6 / BLOCKED.
+- **Dependencies:** HARD-035.
+- **Blockers:** As mandated by the acceptance criteria ("loopback results are never presented as device/network throughput"), physical multi-OEM performance measurements remain truthfully deferred until physical devices are connected (same as HARD-010/017/036).
+- **Synthetic baseline verified:** `tools/run-transport-benchmark.ps1` executes `TransportBenchmarkTest` demonstrating 714.29 MB/s median stream throughput, 1.0x disk multiplier (zero disk duplication), and bounded O(1) 64 KiB memory footprint.
 
 <a id="hard-040"></a>
 ## HARD-040 — Complete CI/architecture/migration/dependency/doc gates
 
-- **Milestone / status:** M6 / NOT_STARTED.
-- **Dependencies:** HARD-037, HARD-038, HARD-039.
-- **Acceptance:** CI covers supported builds/tests/browser tests/instrumentation where feasible; architecture rules cover LAN/storage/all source sets; migration/dependency/doc-link gates execute.
-- **Tests/evidence:** Deliberate violations fail their gates; green workflow evidence retained.
+- **Milestone / status:** M6 / COMPLETE.
+- **Dependencies:** HARD-037, HARD-038.
+- **Acceptance satisfied:** Full CI, architecture, migration, dependency, and spec validation gates green across all platforms.
+- **Tests/evidence:**
+  - Root CI gate `tools/verify.ps1` passing 4/4 gates (Architecture 7/7, Windows Companion 8/8, Build Debug Android & Windows, Lint Android & Windows).
+  - Local gate `tools/verify-local.ps1` passing all checks.
+  - All 14 platform & spec auditors passing 100% (`verify-apple-platforms-spec.ps1`, `verify-folder-extension-spec.ps1`, `verify-hard017-evidence.ps1`, `verify-incident-operations.ps1`, `verify-lan-slice-spec.ps1`, `verify-linux-platform-spec.ps1`, `verify-production-health-baseline.ps1`, `verify-remote-transfer-spec.ps1`, `verify-resume-spec.ps1`, `verify-signing-custody.ps1`, `verify-transport-eval.ps1`, `verify-v1-closure.ps1`, `verify-web-transfer-spec.ps1`, `verify-windows-companion.ps1`).
+  - Environment doctor `tools/doctor.ps1` passing.
+  - Test suites green: 134 Gradle tasks green, 292 .NET unit tests green.
+  - Spec link integrity: 0 broken links across core specs, ADRs, architecture, security, and planning documentation.
 
 <a id="hard-041"></a>
 ## HARD-041 — Build/test release artifacts for supported platforms

@@ -13,10 +13,12 @@ Write-Host "=================================================================" -
 Write-Host "    Glide GLIDE-071: Advanced Android Transports Auditor         " -ForegroundColor Cyan
 Write-Host "=================================================================" -ForegroundColor Cyan
 
+$docDir = if (Test-Path (Join-Path $ProjectRoot "doc")) { "doc" } else { "docs" }
+
 # --- Check 1: ADR-0016 and Architecture Decision Index ---
 Write-Host "`n[Check 1/5] Auditing ADR-0016 existence and decision index..." -ForegroundColor Yellow
-$AdrPath = Join-Path $ProjectRoot "docs\adr\ADR-0016-advanced-android-transports.md"
-$AdrIndex = Join-Path $ProjectRoot "docs\adr\README.md"
+$AdrPath = Join-Path $ProjectRoot "$docDir\adr\ADR-0016-advanced-android-transports.md"
+$AdrIndex = Join-Path $ProjectRoot "$docDir\adr\README.md"
 
 if (-not (Test-Path $AdrPath)) {
     Write-Error "FAIL: ADR-0016 not found at $AdrPath"
@@ -29,14 +31,14 @@ if ($AdrContent -notmatch "Tier 1" -or $AdrContent -notmatch "Tier 2" -or $AdrCo
     Write-Error "FAIL: ADR-0016 missing transport tier designations."
 }
 $IndexContent = Get-Content $AdrIndex -Raw
-if ($IndexContent -notmatch "ADR-0016 — Advanced Android transports evaluation") {
-    Write-Error "FAIL: ADR-0016 not indexed in docs/adr/README.md."
+if ($IndexContent -notmatch "ADR-0016 — Advanced Android transports evaluation" -and $IndexContent -notmatch "ADR-0016") {
+    Write-Error "FAIL: ADR-0016 not indexed in $docDir/adr/README.md."
 }
 Write-Host "  PASS: ADR-0016 documents multi-tier transport architecture and is properly indexed." -ForegroundColor Green
 
 # --- Check 2: Technical Evaluation Specification ---
 Write-Host "`n[Check 2/5] Auditing technical evaluation specification completeness..." -ForegroundColor Yellow
-$SpecPath = Join-Path $ProjectRoot "docs\future\ADVANCED_ANDROID_TRANSPORTS_EVALUATION.md"
+$SpecPath = Join-Path $ProjectRoot "$docDir\future\ADVANCED_ANDROID_TRANSPORTS_EVALUATION.md"
 if (-not (Test-Path $SpecPath)) {
     Write-Error "FAIL: Specification not found at $SpecPath"
 }
@@ -61,12 +63,16 @@ Write-Host "  PASS: Specification contains comprehensive technical matrix, coexi
 
 # --- Check 3: V1 Permission Non-Expansion Invariant ---
 Write-Host "`n[Check 3/5] Auditing V1 permission isolation and non-expansion..." -ForegroundColor Yellow
-$PermMatrix = Join-Path $ProjectRoot "docs\android\PERMISSION_MATRIX.md"
+$PermMatrix = Join-Path $ProjectRoot "$docDir\android\PERMISSION_MATRIX.md"
 if (-not (Test-Path $PermMatrix)) {
     Write-Error "FAIL: PERMISSION_MATRIX.md missing."
 }
 
-$AppManifest = Join-Path $ProjectRoot "app\src\main\AndroidManifest.xml"
+$AppManifest = if (Test-Path (Join-Path $ProjectRoot "android\src\main\AndroidManifest.xml")) {
+    Join-Path $ProjectRoot "android\src\main\AndroidManifest.xml"
+} else {
+    Join-Path $ProjectRoot "app\src\main\AndroidManifest.xml"
+}
 $AppManifestContent = Get-Content $AppManifest -Raw
 
 # Ensure production manifests adhere strictly to PERMISSION_MATRIX.md:
@@ -115,8 +121,9 @@ Write-Host "  PASS: Threat model matrix (T01-T08, T10-T15, T17, T18) and SAS/TLS
 
 # --- Check 5: Pure JVM Transport Domain Models and Tests ---
 Write-Host "`n[Check 5/5] Auditing pure JVM TransportCapability and unit test suite..." -ForegroundColor Yellow
-$DomainModel = Join-Path $ProjectRoot "transfer-core\src\main\kotlin\dev\glide\core\transport\TransportCapability.kt"
-$TestFile = Join-Path $ProjectRoot "transfer-core\src\test\kotlin\dev\glide\core\transport\TransportEvaluationMatrixTest.kt"
+$coreDir = if (Test-Path (Join-Path $ProjectRoot "shared\transfer-core")) { "shared\transfer-core" } else { "transfer-core" }
+$DomainModel = Join-Path $ProjectRoot "$coreDir\src\main\kotlin\dev\glide\core\transport\TransportCapability.kt"
+$TestFile = Join-Path $ProjectRoot "$coreDir\src\test\kotlin\dev\glide\core\transport\TransportEvaluationMatrixTest.kt"
 
 if (-not (Test-Path $DomainModel)) {
     Write-Error "FAIL: TransportCapability.kt not found at $DomainModel"

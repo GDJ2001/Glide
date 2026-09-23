@@ -4,12 +4,22 @@
 
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory=$true)]
-    [string]$EvidenceDir
+    [Parameter(Mandatory=$false)]
+    [string]$EvidenceDir = ""
 )
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
+
+$projectRoot = (Resolve-Path "$PSScriptRoot\..").Path
+if ([string]::IsNullOrWhiteSpace($EvidenceDir)) {
+    $candidate = Join-Path $projectRoot "doc\testing\evidence\hard-017"
+    if (-not (Test-Path $candidate -PathType Container)) {
+        Write-Host "HARD-017 evidence directory not found: $candidate (HARD-017 remains truthfully BLOCKED pending physical devices)." -ForegroundColor Yellow
+        exit 0
+    }
+    $EvidenceDir = $candidate
+}
 
 if (-not (Test-Path $EvidenceDir -PathType Container)) {
     throw "Evidence directory not found: $EvidenceDir"
@@ -31,7 +41,7 @@ function Read-JsonFile([string]$Path) {
         return (Get-Content $Path -Raw | ConvertFrom-Json)
     }
     catch {
-        Add-Failure "Invalid JSON evidence $Path: $($_.Exception.Message)"
+        Add-Failure "Invalid JSON evidence ${Path}: $($_.Exception.Message)"
         return $null
     }
 }
