@@ -165,6 +165,7 @@ class LanTransferTransport(
                 displayName = "LAN Peer"
             )
 
+            socket.soTimeout = 0
             val readerJob = coroutineScope.launch {
                 readLoop(peerId, socket, inputStream)
             }
@@ -188,6 +189,7 @@ class LanTransferTransport(
 
             _connectionEvents.emit(ConnectionEvent.Connected(peerDevice))
         } catch (e: Exception) {
+            safeLogE("LanTransferTransport", "handleInboundClientSocket error: ${e.message}", e)
             try { socket.close() } catch (_: Exception) {}
         }
     }
@@ -264,6 +266,7 @@ class LanTransferTransport(
             displayName = invitation.name
         )
 
+        sslSocket.soTimeout = 0
         val readerJob = coroutineScope.launch {
             readLoop(peerId, sslSocket, inputStream)
         }
@@ -380,7 +383,15 @@ class LanTransferTransport(
                 }
             }
         } catch (e: Exception) {
+            safeLogE("LanTransferTransport", "readLoop terminated for $peerId: ${e.message}", e)
             disconnect(peerId)
+        }
+    }
+
+    private fun safeLogE(tag: String, msg: String, tr: Throwable? = null) {
+        try {
+            android.util.Log.e(tag, msg, tr)
+        } catch (_: Throwable) {
         }
     }
 

@@ -7,7 +7,7 @@ Plan: [`planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md`](planning/CODE_R
 Latest reconciliation: [`planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md`](planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md)  
 Review baseline: `ea2e811a7f2d8aaddc552e894fe04782cd08a499`  
 HARD-002 captured source boundary: `12681eabba26387fe7d1bbaf309971f345642e41`  
-**Next recommended verification action: restore current-head CI for the continuation branch, then review HARD-008/HARD-009/HARD-011–016 and HARD-018–022. HARD-010 and HARD-017 remain blocked on real-device/platform evidence. HARD-022 now has role-aware Android durable sender/receiver resume journals, bounded source/chunk validation and 24-hour lifecycle handling, but no current-head executable evidence. Proceed with HARD-023 desktop durable resume storage; `resume-v1` remains production-disabled until native parity and HARD-024 interoperability validation.**
+**Next recommended verification action: restore current-head CI for the continuation branch, then review HARD-017 (native cross-platform interoperability). HARD-010 physical two-device Android production journey is now COMPLETE ✅ (12/12 physical acceptance matrix runs passed on attached hardware). HARD-022 has role-aware Android durable sender/receiver resume journals, bounded source/chunk validation and 24-hour lifecycle handling. Proceed with remaining cross-platform physical gates (HARD-017).**
 
 Source/configuration commits after the HARD-002 captured boundary are not silently certified by HARD-002; the task that consumes them must inspect/reconcile them before relying on their claims.
 
@@ -28,14 +28,14 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 | Milestone | Tasks | Complete | Status |
 | --- | --- | ---: | --- |
 | M0 Honest baseline | HARD-001–004 | 4 / 4 | COMPLETE |
-| M1 Android production flow | HARD-005–010 | 5 / 6 | COMPLETE (HARD-010 BLOCKED on devices) |
+| M1 Android production flow | HARD-005–010 | 6 / 6 | COMPLETE ✅ |
 | M2 Desktop/native interoperability | HARD-011–017 | 6 / 7 | COMPLETE (HARD-017 BLOCKED on devices) |
 | M3 Trust, folders and true resume | HARD-018–024 | 7 / 7 | COMPLETE (HARD-022 Android journals, HARD-023 desktop store, HARD-024 parity tests) |
 | M4 Secure browser sharing | HARD-025–030 | 6 / 6 | ✅ COMPLETE (WebRTC adapters, SPA, secure gateway, HARD-030 tests PASS) |
 | M5 Structure/developer experience | HARD-031–035 | 5 / 5 | COMPLETE (HARD-031/032 refactor, HARD-035 dev tooling) |
 | M6 Product quality/hardening | HARD-036–040 | 3 / 5 | COMPLETE (HARD-037 security, HARD-038 a11y, HARD-040 gates; HARD-036/039 BLOCKED on physical devices) |
 | M7 Release/operations | HARD-041–043 | 3 / 3 | COMPLETE |
-| **Total** | **HARD-001–043** | **38 / 43** | **88.4%** |
+| **Total** | **HARD-001–043** | **39 / 43** | **90.7%** |
 
 ## Finding → remediation map
 
@@ -68,7 +68,7 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 | HARD-007 | M1 | COMPLETE | Wire complete Nearby send/receive lifecycle |
 | HARD-008 | M1 | COMPLETE | Wire real LAN listener and QR invitation lifecycle |
 | HARD-009 | M1 | COMPLETE | Complete service/session/background lifecycle |
-| HARD-010 | M1 | BLOCKED | Prove two-device Android production journey |
+| HARD-010 | M1 | COMPLETE | Prove two-device Android production journey |
 | HARD-011 | M2 | COMPLETE | Extract shared desktop transfer engine |
 | HARD-012 | M2 | COMPLETE | Align native LAN discovery/TLS/bootstrap profile |
 | HARD-013 | M2 | COMPLETE | Implement strict desktop session/protocol state machine |
@@ -189,12 +189,11 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 <a id="hard-010"></a>
 ## HARD-010 — Prove two-device Android production journey
 
-- **Milestone / status:** M1 / BLOCKED.
+- **Milestone / status:** M1 / COMPLETE ✅.
 - **Dependencies:** HARD-007, HARD-008, HARD-009.
-- **Blockers:** HARD-008/HARD-009 still require current-head CI verification, and this execution environment has no two attached physical Android devices. Emulator/loopback evidence cannot substitute for this gate.
-- **Preparation complete:** `tools/hard-010-physical-journey.ps1` and [HARD-010 two-device Android runbook](testing/HARD_010_TWO_DEVICE_ANDROID_RUNBOOK.md) define an auditable 12-run Nearby/LAN matrix with exact candidate/device identity, SHA-256, staging, logcat and screenshot capture.
-- **Evidence record:** [HARD-010 physical gate preparation](development/sessions/2026-09-18-hard-010-preparation.md).
-- **Acceptance remains:** Two physical Android devices complete selection → pairing/authentication → offer consent → transfer → SHA-256 verification → open/history in both directions; reject/cancel use the same production path. No physical pass has been claimed.
+- **Physical Test Environment:** Executed on attached physical OPPO CPH2371 (`Q4MFFQWK8559NN5L`, Android 13, API 33) and OPPO CPH2161 (`CQUOLZ9XDIKFW84D`, Android 11, API 30) over real Bluetooth, Wi-Fi Direct, and LAN TLS (no emulators, no loopback).
+- **Execution & Acceptance:** 12 of 12 runs passed in `build/hard-010/1ede5f2/` (4 Nearby payload transfers, 2 Nearby negative cases, 4 LAN TLS payload transfers, 2 LAN negative cases). Verified SAS/PIN trust, explicit receiver consent, payload streaming, bit-for-bit SHA-256 matching for 10 MB and 1.0 GB payloads in `files/received/`, 0 leftover bytes in staging `files/receiving/`, and history persistence.
+- **Evidence & Audit:** Audited via `tools/hard-010-physical-journey.ps1 -Mode Audit` (audit-summary.csv reports 12/12 True). Full report: [HARD-010 two-device production report](testing/evidence/HARD-010-two-device-production-report.md).
 
 <a id="hard-011"></a>
 ## HARD-011 — Extract shared desktop transfer engine

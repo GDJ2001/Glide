@@ -116,6 +116,9 @@ class PinnedTlsConnector(
                 throw IOException("Incompatible ALPN: expected '$ALPN_GLIDE_LAN_V1', got '$negotiatedAlpn'")
             }
 
+            rawSocket.soTimeout = 0
+            sslSocket.soTimeout = 0
+
             return sslSocket
         } catch (e: Exception) {
             try { sslSocket?.close() } catch (_: Exception) {}

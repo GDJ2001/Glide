@@ -90,7 +90,12 @@ class LanLeaseIdentity(
                         alias,
                         KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY
                     )
-                        .setDigests(KeyProperties.DIGEST_SHA256)
+                        .setDigests(
+                            KeyProperties.DIGEST_NONE,
+                            KeyProperties.DIGEST_SHA256,
+                            KeyProperties.DIGEST_SHA384,
+                            KeyProperties.DIGEST_SHA512
+                        )
                         .setCertificateSubject(X500Principal("CN=Glide LAN Lease"))
                         .setCertificateSerialNumber(BigInteger.valueOf(System.currentTimeMillis()).abs())
                         .setCertificateNotBefore(Date(System.currentTimeMillis() - 60_000))

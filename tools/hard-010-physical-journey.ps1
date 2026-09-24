@@ -147,10 +147,10 @@ function Get-PrivateState {
     $received = ""
     $staging = ""
     try {
-        $received = Invoke-AdbText $Serial shell run-as $PackageId sh -c "if [ -d files/received ]; then for f in files/received/*; do [ -f \"$f\" ] && sha256sum \"$f\"; done; fi"
+        $received = Invoke-AdbText $Serial shell "run-as $PackageId sh -c 'if [ -d files/received ]; then find files/received -type f -exec sha256sum {} +; fi'"
     } catch { $received = "UNAVAILABLE: " + $_.Exception.Message }
     try {
-        $staging = Invoke-AdbText $Serial shell run-as $PackageId sh -c "if [ -d files/receiving ]; then find files/receiving -maxdepth 1 -type f -print; fi"
+        $staging = Invoke-AdbText $Serial shell "run-as $PackageId sh -c 'if [ -d files/receiving ]; then find files/receiving -maxdepth 1 -type f; fi'"
     } catch { $staging = "UNAVAILABLE: " + $_.Exception.Message }
     return [pscustomobject]@{ receivedHashes=$received; stagingFiles=$staging }
 }

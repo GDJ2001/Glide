@@ -156,6 +156,9 @@ class LanListener(
                     throw IOException("Incompatible handshake: protocol=$negotiatedProtocol, alpn=$negotiatedAlpn")
                 }
 
+                rawSocket.soTimeout = 0
+                sslSocket.soTimeout = 0
+
                 // Handshake succeeded; emit to channel
                 _incomingSockets.send(sslSocket)
             } catch (e: Exception) {
