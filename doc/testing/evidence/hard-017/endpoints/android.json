@@ -1,0 +1,22 @@
+{
+  "schema": "glide-hard017-endpoint-v1",
+  "capturedAtUtc": "2026-09-24T08:20:40.9863073Z",
+  "platform": "android",
+  "repositoryHead": "0f7b0563ecdbd3839ed8946300616560a0a98fda",
+  "artifactPath": "D:\\GITHub\\Glide\\build\\hard-017\\artifacts\\android\\app-debug.apk",
+  "artifactName": "app-debug.apk",
+  "artifactSizeBytes": 29069419,
+  "artifactSha256": "c1c0cf0debc724640b4c3216697aadf00ade70b5522d72828ea4a1e8a7f0b30c",
+  "runtimeFramework": ".NET 10.0.12",
+  "serial": "Q4MFFQWK8559NN5L",
+  "manufacturer": "OPPO",
+  "model": "CPH2371",
+  "androidRelease": "13",
+  "sdk": "33",
+  "securityPatch": "2026-01-01",
+  "buildFingerprint": "OPPO/CPH2371/OPD4A1L1:13/TP1A.220905.001/R.23405fa-1:user/release-keys",
+  "packageId": "dev.glide.app.debug",
+  "installedVersionName": "0.1.0-alpha",
+  "installedVersionCodeLine": "versionCode=1 minSdk=26 targetSdk=37",
+  "deviceEvidenceRule": "physical Android only; loopback/emulator evidence does not satisfy HARD-017"
+}

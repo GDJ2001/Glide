@@ -1,0 +1,21 @@
+{
+  "schema": "glide-hard017-run-v1",
+  "id": "android-linux-wrong-auth",
+  "scenario": "wrong-auth",
+  "senderPlatform": "linux",
+  "receiverPlatform": "android",
+  "observedResult": "pass",
+  "repositoryHead": "0f7b0563ecdbd3839ed8946300616560a0a98fda",
+  "senderArtifactSha256": "77e8940c23433838c4a8c869d88ff03351050ffbfa1e9927e36059ea49f3daab",
+  "receiverArtifactSha256": "c1c0cf0debc724640b4c3216697aadf00ade70b5522d72828ea4a1e8a7f0b30c",
+  "startedAtUtc": "2026-09-24T12:55:45.096964+00:00",
+  "endedAtUtc": "2026-09-24T12:55:55.011726+00:00",
+  "authenticationRejected": true,
+  "terminalBatchStatus": "authentication_failed",
+  "payloadBytesAuthorized": 0,
+  "logs": [
+    "runs/android-linux-wrong-auth/sender.log",
+    "runs/android-linux-wrong-auth/receiver.log"
+  ],
+  "notes": "Linux sender used invitation URI with invalid/corrupted token; Android receiver failed-closed on bootstrap; 0 payload bytes authorized."
+}

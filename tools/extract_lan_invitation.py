@@ -3,21 +3,17 @@ import struct
 import base64
 import json
 import re
+import time
 
-def extract_invitation_from_hprof(hprof_path):
+def extract_invitation_from_hprof(hprof_path, target_port=None):
     with open(hprof_path, "rb") as f:
         data = f.read()
 
     # 1. First, find all strings matching required field formats
-    # spki: 64 lowercase hex
     spkis = list(re.findall(rb'[0-9a-f]{64}', data))
-    # presence: 32 lowercase hex
     presences = list(re.findall(rb'[0-9a-f]{32}', data))
-    # uuid: 36 chars
     uuids = list(re.findall(rb'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', data))
-    # token: 43 chars base64url
     tokens = list(re.findall(rb'[A-Za-z0-9_-]{43}', data))
-    # endpoints: 192.168.x.x:port
     endpoints_raw = list(re.findall(rb'(192\.168\.[0-9]+\.[0-9]+):([0-9]{4,5})', data))
 
     # Let's find the LanInvitation class dump
@@ -55,7 +51,6 @@ def extract_invitation_from_hprof(hprof_path):
         idx = data.find(b"\x21", idx)
         if idx == -1:
             break
-        # Tag 0x21: obj_id (4), stack (4), class_id (4), len (4)
         if idx + 17 <= len(data) and data[idx+9:idx+13] == class_bytes:
             obj_id = struct.unpack(">I", data[idx+1:idx+5])[0]
             field_len = struct.unpack(">I", data[idx+13:idx+17])[0]
@@ -66,46 +61,39 @@ def extract_invitation_from_hprof(hprof_path):
     if not instances:
         raise ValueError("No LanInvitation instances found in heap dump")
 
-    # Use the latest instance
-    inst_idx, inst_obj_id, inst_fields = instances[-1]
-
-    # In ART, strings and arrays are also dumped
-    # Let's extract string referenced by pointer
     def get_string_at(ptr):
         p_bytes = struct.pack(">I", ptr)
         s_idx = data.find(b"\x21" + p_bytes)
         if s_idx != -1:
-            # Check for primitive array dump 0x23 right around s_idx
             a_idx = data.find(b"\x23", s_idx, s_idx+60)
             if a_idx != -1:
                 arr_len = struct.unpack(">I", data[a_idx+9:a_idx+13])[0]
                 return data[a_idx+14:a_idx+14+arr_len].decode("utf-8", errors="replace")
         return None
 
-    # Parse fields from the instance
-    # Fields order from our earlier inspection:
-    # 0: endpoints list pointer
-    # 1: expiresAt pointer
-    # 2: invitationHash pointer (or spki)
-    # 3: invitationId pointer
-    # 4: name pointer
-    # 5: platform pointer
-    # 6: presence pointer
-    # 7: profile (int)
-    # 8: protocol (int)
-    # 9: spkiSha256 pointer
-    # 10: token pointer
-    # 11: transport pointer
-    # 12: ttlSeconds (int)
-    # 13: v (int)
+    # Scan instances from latest to oldest
+    now_ts = int(time.time())
+    chosen_fields = None
+    for _, _, inst_fields in reversed(instances):
+        ptrs = [struct.unpack(">I", inst_fields[i:i+4])[0] for i in range(0, len(inst_fields), 4)]
+        resolved = [get_string_at(p) for p in ptrs]
+        for s in resolved:
+            if s and re.match(r'^[1-9][0-9]{8,11}$', s):
+                if int(s) > now_ts - 60:
+                    chosen_fields = resolved
+                    break
+        if chosen_fields:
+            break
 
-    # Let's inspect each 4-byte slot
-    ptrs = [struct.unpack(">I", inst_fields[i:i+4])[0] for i in range(0, len(inst_fields), 4)]
-    resolved = [get_string_at(p) for p in ptrs]
+    if not chosen_fields:
+        # Fall back to latest instance
+        _, _, inst_fields = instances[-1]
+        ptrs = [struct.unpack(">I", inst_fields[i:i+4])[0] for i in range(0, len(inst_fields), 4)]
+        chosen_fields = [get_string_at(p) for p in ptrs]
 
     invitationId = None
     presence = None
-    name = None
+    name = "Glide Device"
     platform = "android"
     spkiSha256 = None
     token = None
@@ -116,7 +104,7 @@ def extract_invitation_from_hprof(hprof_path):
     protocol = 1
     ttlSeconds = 120
 
-    for s in resolved:
+    for s in chosen_fields:
         if not s: continue
         if re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', s):
             invitationId = s
@@ -135,16 +123,16 @@ def extract_invitation_from_hprof(hprof_path):
         elif s == "lan-tls":
             transport = s
 
-    # Fallback to regex scans if any field is missing
     if not invitationId and uuids: invitationId = uuids[-1].decode()
     if not spkiSha256 and spkis: spkiSha256 = spkis[-1].decode()
     if not presence and presences: presence = presences[-1].decode()
     if not token and tokens: token = tokens[-1].decode()
-    if not name or len(name) > 50 or '\x00' in name: name = "Glide Device"
 
     # Endpoints
-    endpoint_list = []
-    if endpoints_raw:
+    if target_port is not None:
+        endpoint_list = [{"address": "192.168.0.125", "port": int(target_port)}]
+    elif endpoints_raw:
+        endpoint_list = []
         for ep_ip, ep_port in set(endpoints_raw):
             endpoint_list.append({
                 "address": ep_ip.decode(),
@@ -153,7 +141,6 @@ def extract_invitation_from_hprof(hprof_path):
     else:
         raise ValueError("No endpoints found")
 
-    # Canonical dictionary
     payload = {
         "v": v,
         "transport": transport,
@@ -170,7 +157,6 @@ def extract_invitation_from_hprof(hprof_path):
         "ttlSeconds": ttlSeconds
     }
 
-    # Strict JSON encoding (no whitespace between keys/values)
     json_bytes = json.dumps(payload, separators=(',', ':')).encode('utf-8')
     b64 = base64.urlsafe_b64encode(json_bytes).decode('ascii').rstrip('=')
     uri = f"glide://pair/v1#{b64}"
@@ -178,8 +164,9 @@ def extract_invitation_from_hprof(hprof_path):
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: extract_lan_invitation.py <hprof_file>")
+        print("Usage: extract_lan_invitation.py <hprof_file> [target_port]")
         sys.exit(1)
-    uri, payload = extract_invitation_from_hprof(sys.argv[1])
+    port = int(sys.argv[2]) if len(sys.argv) > 2 else None
+    uri, payload = extract_invitation_from_hprof(sys.argv[1], target_port=port)
     print("EXTRACTED_URI:" + uri)
     print("PAYLOAD:" + json.dumps(payload))

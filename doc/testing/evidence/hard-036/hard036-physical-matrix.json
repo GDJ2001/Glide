@@ -1,0 +1,70 @@
+{
+  "schema": "glide-hard036-evidence-v1",
+  "task": "HARD-036",
+  "repositoryHead": "0f7b0563ecdbd3839ed8946300616560a0a98fda",
+  "deviceSerial": "Q4MFFQWK8559NN5L",
+  "deviceModel": "OPPO CPH2371 (Android 13 / ColorOS 13)",
+  "windowsHost": "LAPTOP-H99OPQFQ",
+  "executedAtUtc": "2026-09-25T05:57:38.451764+00:00",
+  "totalScenarios": 6,
+  "passedScenarios": 6,
+  "scenarios": [
+    {
+      "id": "hard036-01-lock-consent-and-fgs-survival",
+      "category": "lifecycle_lock",
+      "startedAtUtc": "2026-09-25T05:56:31.983429+00:00",
+      "endedAtUtc": "2026-09-25T05:56:52.471134+00:00",
+      "consentBypassWhileLocked": false,
+      "foregroundServiceSurvivedLock": true,
+      "sha256Verified": true,
+      "stagingClean": true,
+      "status": "PASS"
+    },
+    {
+      "id": "hard036-02-network-disconnect-quarantine",
+      "category": "network_failure",
+      "startedAtUtc": "2026-09-25T05:56:52.471134+00:00",
+      "endedAtUtc": "2026-09-25T05:57:07.441142+00:00",
+      "unverifiedFilesCommitted": 0,
+      "senderNonZeroExit": true,
+      "status": "PASS"
+    },
+    {
+      "id": "hard036-03-process-kill-startup-reconciliation",
+      "category": "process_death",
+      "startedAtUtc": "2026-09-25T05:57:07.441142+00:00",
+      "endedAtUtc": "2026-09-25T05:57:11.122440+00:00",
+      "orphanDetectedBeforeReconcile": true,
+      "orphanPurgedAfterReconcile": true,
+      "verifiedFilesPreserved": true,
+      "status": "PASS"
+    },
+    {
+      "id": "hard036-04-permission-revocation-recovery",
+      "category": "permission_revocation",
+      "startedAtUtc": "2026-09-25T05:57:11.122440+00:00",
+      "endedAtUtc": "2026-09-25T05:57:12.862728+00:00",
+      "processSurvivedRevocation": true,
+      "permissionRestored": true,
+      "status": "PASS"
+    },
+    {
+      "id": "hard036-05-duplicate-filename-isolation",
+      "category": "storage_collision",
+      "startedAtUtc": "2026-09-25T05:57:12.862728+00:00",
+      "endedAtUtc": "2026-09-25T05:57:36.659566+00:00",
+      "committedFileCount": 2,
+      "allHashesMatchExpected": true,
+      "status": "PASS"
+    },
+    {
+      "id": "hard036-06-disk-full-and-resume-corruption",
+      "category": "storage_and_resume_corruption",
+      "startedAtUtc": "2026-09-25T05:57:36.659566+00:00",
+      "endedAtUtc": "2026-09-25T05:57:38.451764+00:00",
+      "diskFullFailClosedVerified": true,
+      "corruptedResumeJournalRejected": true,
+      "status": "PASS"
+    }
+  ]
+}

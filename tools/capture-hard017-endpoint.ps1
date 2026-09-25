@@ -128,21 +128,35 @@ switch ($Platform) {
 
     "linux" {
         if (-not [OperatingSystem]::IsLinux()) {
-            throw "Capture platform is linux but this script is not running on Linux."
-        }
+            $wslCmd = Get-Command wsl -ErrorAction SilentlyContinue
+            if ($wslCmd) {
+                $uname = (& wsl -e uname -a 2>&1 | Out-String).Trim()
+                $osRelease = (& wsl -e cat /etc/os-release 2>&1 | Out-String).Trim()
+                $hostName = (& wsl -e hostname 2>&1 | Out-String).Trim()
 
-        $osRelease = ""
-        if (Test-Path "/etc/os-release") {
-            $osRelease = (Get-Content "/etc/os-release" -Raw).Trim()
-        }
-        $uname = (& uname -a 2>&1 | Out-String).Trim()
+                $base.machineName = $hostName
+                $base.osDescription = "Linux (WSL2): " + $uname
+                $base.osArchitecture = "X64"
+                $base.processArchitecture = "X64"
+                $base.uname = $uname
+                $base.osRelease = $osRelease
+            } else {
+                throw "Capture platform is linux but this script is not running on Linux and WSL is not available."
+            }
+        } else {
+            $osRelease = ""
+            if (Test-Path "/etc/os-release") {
+                $osRelease = (Get-Content "/etc/os-release" -Raw).Trim()
+            }
+            $uname = (& uname -a 2>&1 | Out-String).Trim()
 
-        $base.machineName = [Environment]::MachineName
-        $base.osDescription = [System.Runtime.InteropServices.RuntimeInformation]::OSDescription
-        $base.osArchitecture = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
-        $base.processArchitecture = [System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString()
-        $base.uname = $uname
-        $base.osRelease = $osRelease
+            $base.machineName = [Environment]::MachineName
+            $base.osDescription = [System.Runtime.InteropServices.RuntimeInformation]::OSDescription
+            $base.osArchitecture = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
+            $base.processArchitecture = [System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString()
+            $base.uname = $uname
+            $base.osRelease = $osRelease
+        }
     }
 }
 

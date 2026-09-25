@@ -151,9 +151,8 @@ public static class InvitationCodec
             throw new InvitationException($"Decoded JSON byte length {jsonBytes.Length} exceeds maximum {MaxJsonBytes} bytes");
         }
 
-        // Compute SHA-256 over the ASCII representation of the unpadded base64url payload fragment
-        byte[] payloadAsciiBytes = Encoding.ASCII.GetBytes(rawBase64Url);
-        byte[] hashBytes = SHA256.HashData(payloadAsciiBytes);
+        // Compute SHA-256 over decoded QR JSON bytes (as specified in Master Plan line 214)
+        byte[] hashBytes = SHA256.HashData(jsonBytes);
         string invitationHash = Convert.ToHexString(hashBytes).ToLowerInvariant();
 
         // Strict JSON parsing enforcing max depth 4 and duplicate key rejection

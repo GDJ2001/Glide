@@ -1,0 +1,21 @@
+{
+  "schema": "glide-hard017-run-v1",
+  "id": "android-windows-reject",
+  "scenario": "reject",
+  "senderPlatform": "windows",
+  "receiverPlatform": "android",
+  "observedResult": "pass",
+  "repositoryHead": "0f7b0563ecdbd3839ed8946300616560a0a98fda",
+  "senderArtifactSha256": "9d582a8fef63bfe5e0ad0e660a462eed2396e04e2d3cfe1c41a7784fbf4d86fb",
+  "receiverArtifactSha256": "c1c0cf0debc724640b4c3216697aadf00ade70b5522d72828ea4a1e8a7f0b30c",
+  "startedAtUtc": "2026-09-24T12:48:00.788245+00:00",
+  "endedAtUtc": "2026-09-24T12:48:13.577681+00:00",
+  "offerRejected": true,
+  "noUnverifiedCommit": true,
+  "terminalBatchStatus": "rejected",
+  "logs": [
+    "runs/android-windows-reject/sender.log",
+    "runs/android-windows-reject/receiver.log"
+  ],
+  "notes": "Android receiver explicitly tapped Decline on incoming file offer; sender observed rejection and exited with failure; 0 unverified bytes committed."
+}

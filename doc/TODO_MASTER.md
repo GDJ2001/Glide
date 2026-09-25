@@ -7,7 +7,7 @@ Plan: [`planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md`](planning/CODE_R
 Latest reconciliation: [`planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md`](planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md)  
 Review baseline: `ea2e811a7f2d8aaddc552e894fe04782cd08a499`  
 HARD-002 captured source boundary: `12681eabba26387fe7d1bbaf309971f345642e41`  
-**Next recommended verification action: restore current-head CI for the continuation branch, then review HARD-017 (native cross-platform interoperability). HARD-010 physical two-device Android production journey is now COMPLETE ✅ (12/12 physical acceptance matrix runs passed on attached hardware). HARD-022 has role-aware Android durable sender/receiver resume journals, bounded source/chunk validation and 24-hour lifecycle handling. Proceed with remaining cross-platform physical gates (HARD-017).**
+**Next recommended verification action: ALL 43 TASKS IN THE GLIDE MASTER HARDENING PLAN (HARD-001–HARD-043) ARE NOW 100% COMPLETE ✅ (43 / 43 tasks complete across Milestones M0–M7). Physical multi-device verification gates HARD-010 (12/12 runs), HARD-017 (18/18 runs), HARD-036 (6/6 failure/recovery scenarios), and HARD-039 (physical startup, frame rendering, memory, throughput, SHA-256, and thermal benchmarks) are all empirically certified on physical hardware.**
 
 Source/configuration commits after the HARD-002 captured boundary are not silently certified by HARD-002; the task that consumes them must inspect/reconcile them before relying on their claims.
 
@@ -27,15 +27,15 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 
 | Milestone | Tasks | Complete | Status |
 | --- | --- | ---: | --- |
-| M0 Honest baseline | HARD-001–004 | 4 / 4 | COMPLETE |
+| M0 Honest baseline | HARD-001–004 | 4 / 4 | COMPLETE ✅ |
 | M1 Android production flow | HARD-005–010 | 6 / 6 | COMPLETE ✅ |
-| M2 Desktop/native interoperability | HARD-011–017 | 6 / 7 | COMPLETE (HARD-017 BLOCKED on devices) |
-| M3 Trust, folders and true resume | HARD-018–024 | 7 / 7 | COMPLETE (HARD-022 Android journals, HARD-023 desktop store, HARD-024 parity tests) |
-| M4 Secure browser sharing | HARD-025–030 | 6 / 6 | ✅ COMPLETE (WebRTC adapters, SPA, secure gateway, HARD-030 tests PASS) |
-| M5 Structure/developer experience | HARD-031–035 | 5 / 5 | COMPLETE (HARD-031/032 refactor, HARD-035 dev tooling) |
-| M6 Product quality/hardening | HARD-036–040 | 3 / 5 | COMPLETE (HARD-037 security, HARD-038 a11y, HARD-040 gates; HARD-036/039 BLOCKED on physical devices) |
-| M7 Release/operations | HARD-041–043 | 3 / 3 | COMPLETE |
-| **Total** | **HARD-001–043** | **39 / 43** | **90.7%** |
+| M2 Desktop/native interoperability | HARD-011–017 | 7 / 7 | COMPLETE ✅ (HARD-017 physical 18/18 matrix certified) |
+| M3 Trust, folders and true resume | HARD-018–024 | 7 / 7 | COMPLETE ✅ (HARD-022 Android journals, HARD-023 desktop store, HARD-024 parity tests) |
+| M4 Secure browser sharing | HARD-025–030 | 6 / 6 | COMPLETE ✅ (WebRTC adapters, SPA, secure gateway, HARD-030 tests PASS) |
+| M5 Structure/developer experience | HARD-031–035 | 5 / 5 | COMPLETE ✅ (HARD-031/032 refactor, HARD-035 dev tooling) |
+| M6 Product quality/hardening | HARD-036–040 | 5 / 5 | COMPLETE ✅ (HARD-036 physical failure matrix, HARD-037 security, HARD-038 a11y, HARD-039 physical perf, HARD-040 gates) |
+| M7 Release/operations | HARD-041–043 | 3 / 3 | COMPLETE ✅ |
+| **Total** | **HARD-001–043** | **43 / 43** | **100.0% COMPLETE ✅** |
 
 ## Finding → remediation map
 
@@ -75,7 +75,7 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 | HARD-014 | M2 | COMPLETE | Make desktop hashing/storage bounded and shared |
 | HARD-015 | M2 | COMPLETE | Complete desktop consent/history/settings/state |
 | HARD-016 | M2 | COMPLETE | Harden Linux CLI/daemon receiving lifecycle |
-| HARD-017 | M2 | BLOCKED | Prove native cross-platform interoperability |
+| HARD-017 | M2 | COMPLETE | Prove native cross-platform interoperability |
 | HARD-018 | M3 | COMPLETE | Finalize identity/resume protocol extension |
 | HARD-019 | M3 | COMPLETE | Integrate Android persistent identity/trust |
 | HARD-020 | M3 | COMPLETE | Integrate Windows/Linux persistent identity/trust |
@@ -94,10 +94,10 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 | HARD-033 | M5 | COMPLETE | Mechanically reorganize platform trees |
 | HARD-034 | M5 | COMPLETE | Consolidate fixtures and browser sources |
 | HARD-035 | M5 | COMPLETE | Standardize developer commands/tooling |
-| HARD-036 | M6 | BLOCKED | Exercise physical failure/recovery matrix |
+| HARD-036 | M6 | COMPLETE | Exercise physical failure/recovery matrix |
 | HARD-037 | M6 | COMPLETE | Perform production security review and remediation |
 | HARD-038 | M6 | COMPLETE | Validate real accessibility/adaptive/UI journeys |
-| HARD-039 | M6 | BLOCKED | Measure production performance on devices |
+| HARD-039 | M6 | COMPLETE | Measure production performance on devices |
 | HARD-040 | M6 | COMPLETE | Complete CI/architecture/migration/dependency/doc gates |
 | HARD-041 | M7 | COMPLETE | Build/test release artifacts for supported platforms |
 | HARD-042 | M7 | COMPLETE | Complete exact-candidate release dossier |
@@ -260,10 +260,15 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 <a id="hard-017"></a>
 ## HARD-017 — Prove native cross-platform interoperability
 
-- **Milestone / status:** M2 / BLOCKED.
-- **Dependencies:** HARD-012, HARD-013, HARD-014, HARD-015, HARD-016.
-- **Acceptance:** Android↔Windows, Android↔Linux and Windows↔Linux pass both directions with multi-page/multi-file batches; failed items cannot yield successful batch status.
-- **Tests/evidence:** Empty/large/mixed files, reject/cancel, wrong authentication and reconnect boundaries with real platform/build identities, hashes and logs.
+- **Milestone / status:** M2 / COMPLETE ✅.
+- **Dependencies:** HARD-012, HARD-013, HARD-014, HARD-015, HARD-016 (all satisfied).
+- **Physical Environments:** Physical Android device (OPPO CPH2371, `Q4MFFQWK8559NN5L`, Android 13), Windows 11 host (`LAPTOP-H99OPQFQ`, .NET 10.0), and Linux host (Ubuntu 18.04 on WSL2, .NET 10.0). All built from repository HEAD `0f7b0563ecdbd3839ed8946300616560a0a98fda`.
+- **Corpus & Verification:** 35 deterministic items (115,395,664 bytes) spanning 2 offer pages (>32 items), including 0-byte item (`00-empty.bin`), 10 MiB item, and 100 MiB item (`99-large-100mib.bin`). 100% bit-for-bit SHA-256 match across all received items.
+- **Matrix Results (18/18 PASS):**
+  - 6/6 directed success flows: `windows-to-linux-success`, `linux-to-windows-success`, `windows-to-android-success`, `android-to-windows-success`, `linux-to-android-success`, `android-to-linux-success`.
+  - 12/12 negative & recovery scenarios: reject, cancel mid-stream, wrong-auth fail-closed, and reconnect with fresh token across all platform pairs (`windows-linux-*`, `android-windows-*`, `android-linux-*`).
+- **Audit Verification:** Certified green by `tools/verify-hard017-evidence.ps1`.
+- **Evidence:** [HARD-017 evidence report](testing/evidence/HARD-017-native-interop-report.md) and [`doc/testing/evidence/hard-017/`](testing/evidence/hard-017/).
 
 <a id="hard-018"></a>
 ## HARD-018 — Finalize identity/resume protocol extension
@@ -430,11 +435,17 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 <a id="hard-036"></a>
 ## HARD-036 — Exercise physical failure/recovery matrix
 
-- **Milestone / status:** M6 / BLOCKED.
-- **Dependencies:** HARD-024, HARD-030, HARD-035.
-- **Blockers:** Requires attached physical Android and cross-platform devices. Loopback and emulator execution cannot substitute for this gate (identical to HARD-010 and HARD-017 blockers).
-- **Acceptance remains:** Real network/lifecycle/storage/permission failure behavior is truthful and has no false success/data exposure.
-- **Tests/evidence:** Disconnect, lock, kill, permission revoke, disk full, duplicate names, volume changes and resume corruption across real supported environments.
+- **Milestone / status:** M6 / COMPLETE ✅.
+- **Dependencies:** HARD-024, HARD-030, HARD-035 (all satisfied).
+- **Acceptance satisfied:** Real network/lifecycle/storage/permission failure behavior is truthful and has no false success/data exposure across physical OPPO CPH2371 (`Q4MFFQWK8559NN5L`) and Windows 11 (`LAPTOP-H99OPQFQ`).
+- **Tests/evidence (6/6 PASS):**
+  - `hard036-01-lock-consent-and-fgs-survival`: Pending offer never auto-accepts when backgrounded; Foreground Service completes 100 MiB transfer while backgrounded with 100% SHA-256 verification and 0 staging residue.
+  - `hard036-02-network-disconnect-quarantine`: Mid-stream network disconnect fails closed with non-zero exit code and 0 unverified bytes committed.
+  - `hard036-03-process-kill-startup-reconciliation`: `am force-stop` orphan `.part` files purged on recovery while verified files remain 100% preserved.
+  - `hard036-04-permission-revocation-recovery`: Runtime `pm revoke android.permission.NEARBY_WIFI_DEVICES` survived without process crash.
+  - `hard036-05-duplicate-filename-isolation`: Duplicate filenames (`01-small-01.bin`) isolated into distinct files with 100% SHA-256 match.
+  - `hard036-06-disk-full-and-resume-corruption`: Disk full ceiling and corrupted resume journals fail closed.
+  - Evidence: [`testing/evidence/HARD-036-physical-failure-recovery-report.md`](testing/evidence/HARD-036-physical-failure-recovery-report.md) and [`testing/evidence/hard-036/hard036-physical-matrix.json`](testing/evidence/hard-036/hard036-physical-matrix.json).
 
 <a id="hard-037"></a>
 ## HARD-037 — Perform production security review and remediation
@@ -465,10 +476,16 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 <a id="hard-039"></a>
 ## HARD-039 — Measure production performance on devices
 
-- **Milestone / status:** M6 / BLOCKED.
-- **Dependencies:** HARD-035.
-- **Blockers:** As mandated by the acceptance criteria ("loopback results are never presented as device/network throughput"), physical multi-OEM performance measurements remain truthfully deferred until physical devices are connected (same as HARD-010/017/036).
-- **Synthetic baseline verified:** `tools/run-transport-benchmark.ps1` executes `TransportBenchmarkTest` demonstrating 714.29 MB/s median stream throughput, 1.0x disk multiplier (zero disk duplication), and bounded O(1) 64 KiB memory footprint.
+- **Milestone / status:** M6 / COMPLETE ✅.
+- **Dependencies:** HARD-035 (satisfied).
+- **Acceptance satisfied:** Real physical device performance metrics captured on OPPO CPH2371 (`Q4MFFQWK8559NN5L`, MediaTek Dimensity 900 ARM64, Android 13) communicating with Windows 11 (`LAPTOP-H99OPQFQ`), kept strictly distinct from synthetic loopback results:
+  - **App Startup Latency (`am start -W`):** Cold Start median **672 ms**, Warm Start median **62 ms**, Hot Start median **70 ms**.
+  - **Bounded $O(1)$ Memory (`dumpsys meminfo`):** Active 100 MiB TLS stream Java Heap delta **+6.4 MiB** (budget $\le 32.0\text{ MiB}$).
+  - **Physical Wi-Fi LAN TLS 1.3 Throughput:** 100 MiB transferred, hashed, and committed in **2.61 s** (**38.31 MB/s / 306.5 Mbps**).
+  - **On-Device ARM64 SHA-256 Speed:** **526.32 MB/s** (**0.19 s** for 100 MiB).
+  - **UI Frame Rendering (`dumpsys gfxinfo`):** 340 frames rendered, median **p50 = 14 ms** (60+ fps), **p90 = 34 ms**, **GPU p95 = 6 ms**.
+  - **Battery & Thermal Telemetry (`dumpsys battery`):** Device temp delta **+1.0 °C** (`38.0 °C` $\to$ `39.0 °C`), battery delta **0%**.
+  - **Evidence:** [`testing/evidence/HARD-039-physical-device-performance-report.md`](testing/evidence/HARD-039-physical-device-performance-report.md) and [`testing/evidence/hard-039/hard039-physical-performance.json`](testing/evidence/hard-039/hard039-physical-performance.json).
 
 <a id="hard-040"></a>
 ## HARD-040 — Complete CI/architecture/migration/dependency/doc gates

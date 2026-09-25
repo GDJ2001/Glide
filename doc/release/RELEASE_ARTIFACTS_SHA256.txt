@@ -1,6 +1,14 @@
 a2d12fb51e3fa293e9190849abae9ed72fb906dff05a2a18eb069ef1a5d941c2  android/app-release.aab
 22d5db96b773c370a90c7fdf65f2b779e52437ecf4a2ccff94037b83d1489493  android/app-release.apk
+22d5db96b773c370a90c7fdf65f2b779e52437ecf4a2ccff94037b83d1489493  android/Glide-v1.0.0-android.apk
 e4c1de9006da57630b4c79773ae456d582cc14a8f9db5751db5edca631491cfd  android/mapping.txt
-8596e909c7305fcd31ad8ae46aaf21cedb0cb1fd3cdb0f3c1b027244a65f1b9c  linux/glide-linux-linux-x64.tar.gz
-b899693a97234cfdff611a16358449c50debb2b79bfae899fa3fad24558476d0  web/glide-web-client.zip
-aa395c77c4e8d732d96579a802a76dfe062565d6e0f9ea1cee5bdd041d212282  windows/glide-windows-win-x64.zip
+8f4d7007ff3ce0e5ab6aecb09b84a86cc9e2842f0eb271a0795d9e4935de37f3  linux/glide_1.0.0_amd64.deb
+6b162d88047b4a3892cf1c6caffcabb4b99a48899bac63d280148c764b53d41b  linux/Glide-Installer-v1.0.0-linux-x64.run
+cadd6f81877bea4b7b9f8af65a71e2bbad81690936e01ce0d90887a5c5c64f0f  linux/glide-linux-linux-x64.tar.gz
+41425bd428b39ebfa55eb68bb478934419f1f538d1873d4043eb2881dc325c82  macos/Glide-Installer-v1.0.0-macos-universal.command
+b2c12c4e4b0d52bc99a5f36e41f883f4128e6317eda7f4c81328a7353d88d852  macos/glide-macos-osx-arm64.tar.gz
+266e8d50016981edd085750bc9f5bdcf511f4e6530d71f4d2786bc73471b8ad2  macos/glide-macos-osx-x64.tar.gz
+33db214bca2480dee75f35dc176879971d480c209dbd23a04016e5728f39e70e  macos/Glide-v1.0.0-macos-universal.app.tar.gz
+31fc155d95d025692fa6afbcd280c700593b43bee9039ecefc74b43b98ae64ec  web/glide-web-client.zip
+0677264e64d4685fdd5f510199329486a20e4f0fcdebe327919180f97a4ff93f  windows/Glide-Setup-v1.0.0-win-x64.exe
+ba3c80f9101fe07c74aa344469d75da7590ba1cf9458bf59a1944f880dd4e9c7  windows/glide-windows-win-x64.zip

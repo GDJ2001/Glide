@@ -1,0 +1,103 @@
+{
+  "schema": "glide-hard039-performance-v1",
+  "task": "HARD-039",
+  "repositoryHead": "0f7b0563ecdbd3839ed8946300616560a0a98fda",
+  "deviceSerial": "Q4MFFQWK8559NN5L",
+  "deviceModel": "OPPO CPH2371 (MediaTek Dimensity 900 / ARM64, Android 13)",
+  "windowsHost": "LAPTOP-H99OPQFQ",
+  "executedAtUtc": "2026-09-25T05:49:05.998605+00:00",
+  "startupLatency": {
+    "coldStartMs": {
+      "samples": [
+        676,
+        669,
+        683,
+        672,
+        670
+      ],
+      "min": 669,
+      "median": 672,
+      "mean": 674,
+      "max": 683
+    },
+    "warmStartMs": {
+      "samples": [
+        61,
+        63,
+        75,
+        62,
+        61
+      ],
+      "min": 61,
+      "median": 62,
+      "mean": 64.4,
+      "max": 75
+    },
+    "hotStartMs": {
+      "samples": [
+        70,
+        75,
+        66
+      ],
+      "min": 66,
+      "median": 70,
+      "mean": 70.3,
+      "max": 75
+    }
+  },
+  "memoryFootprint": {
+    "idle": {
+      "totalPssKb": 100715,
+      "javaHeapKb": 12440,
+      "nativeHeapKb": 19580,
+      "rawExcerpt": "Applications Memory Usage (in Kilobytes):\r\nUptime: 186158964 Realtime: 224864373\r\n\r\n** MEMINFO in pid 23957 [dev.glide.app.debug] **\r\n                   Pss  Private  Private  SwapPss      Rss     Heap     Heap     Heap\r\n                 Total    Dirty    Clean    Dirty    Total     Size    Alloc     Free\r\n                ------   ------   ------   ------   ------   ------   ------   ------\r\n  Native Heap    19616    19580        0       29    21424    32768    26624     6143\r\n  Dalvik Heap     3320     3300        0       84     4476    10781     4637     6144\r\n Dalvik Other    12193     4132        8        0    20552                           \r\n        Stack     1848     1848        0        0     1856                           \r\n       Ashmem       11        0        0        0      436                           \r\n    Other dev       25        0       24        0      644                           \r\n     .so mmap    10842      424     6440       19    48440                           \r\n    .jar mmap     5278        0     2416        0    39084                           \r\n    .apk mmap      331        0       76        0     1944                           \r\n    .ttf mmap      215"
+    },
+    "active100MiBStream": {
+      "totalPssKb": 155163,
+      "javaHeapKb": 18996,
+      "nativeHeapKb": 23600,
+      "rawExcerpt": "Applications Memory Usage (in Kilobytes):\r\nUptime: 186172016 Realtime: 224877425\r\n\r\n** MEMINFO in pid 24046 [dev.glide.app.debug] **\r\n                   Pss  Private  Private  SwapPss      Rss     Heap     Heap     Heap\r\n                 Total    Dirty    Clean    Dirty    Total     Size    Alloc     Free\r\n                ------   ------   ------   ------   ------   ------   ------   ------\r\n  Native Heap    23634    23600        0       29    25448    38912    31702     7209\r\n  Dalvik Heap     9733     9704        0       81    11024    24275    12138    12137\r\n Dalvik Other    16561     5440        0        0    27968                           \r\n        Stack     2500     2500        0        0     2508                           \r\n       Ashmem       17        0        0        0      452                           \r\n    Other dev       25        0       24        0      652                           \r\n     .so mmap    11086      428     6620       19    49664                           \r\n    .jar mmap     5839        0     2668        0    41552                           \r\n    .apk mmap      405        0      128        0     2100                           \r\n    .ttf mmap      283"
+    },
+    "postStream": {
+      "totalPssKb": 158054,
+      "javaHeapKb": 15908,
+      "nativeHeapKb": 23856,
+      "rawExcerpt": "Applications Memory Usage (in Kilobytes):\r\nUptime: 186173391 Realtime: 224878800\r\n\r\n** MEMINFO in pid 24046 [dev.glide.app.debug] **\r\n                   Pss  Private  Private  SwapPss      Rss     Heap     Heap     Heap\r\n                 Total    Dirty    Clean    Dirty    Total     Size    Alloc     Free\r\n                ------   ------   ------   ------   ------   ------   ------   ------\r\n  Native Heap    23892    23856        0       29    25708    38912    32506     6405\r\n  Dalvik Heap    10312     5468     4704       20    11912    12131     5987     6144\r\n Dalvik Other    17089     5668       20        0    28776                           \r\n        Stack     2516     2516        0        0     2524                           \r\n       Ashmem       17        0        0        0      456                           \r\n    Other dev       25        0       24        0      652                           \r\n     .so mmap    11105      448     6620       19    49680                           \r\n    .jar mmap     5841        0     2652        0    41608                           \r\n    .apk mmap      405        0      128        0     2100                           \r\n    .ttf mmap      285"
+    },
+    "activeJavaHeapDeltaMiB": 6.4,
+    "budgetMaxJavaHeapDeltaMiB": 32.0,
+    "boundedHeapPass": true
+  },
+  "frameRendering": {
+    "totalFramesRendered": 340,
+    "jankyFrames": 82,
+    "p50Ms": 14,
+    "p90Ms": 34,
+    "p95Ms": 57,
+    "p99Ms": 350,
+    "gpuP95Ms": 6
+  },
+  "throughputAndHashing": {
+    "physicalLan100MiBDurationSec": 2.61,
+    "physicalLan100MiBThroughputMBps": 38.31,
+    "onDeviceArm64Sha256DurationSec": 0.19,
+    "onDeviceArm64Sha256ThroughputMBps": 526.32,
+    "syntheticLoopbackBaselineMBps": 714.29
+  },
+  "batteryAndThermals": {
+    "beforeLoad": {
+      "phoneTempCelsius": 38.0,
+      "batteryTempCelsius": 36.1,
+      "batteryCurrentMa": 0,
+      "batteryLevelPct": 100
+    },
+    "afterLoad": {
+      "phoneTempCelsius": 39.0,
+      "batteryTempCelsius": 36.2,
+      "batteryCurrentMa": 0,
+      "batteryLevelPct": 100
+    },
+    "phoneTempDeltaCelsius": 1.0,
+    "batteryLevelDeltaPct": 0
+  }
+}

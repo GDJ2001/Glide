@@ -28,16 +28,17 @@ Write-Host "=================================================================" -
 $AndroidDist = Join-Path $DistDir "android"
 $WindowsDist = Join-Path $DistDir "windows"
 $LinuxDist = Join-Path $DistDir "linux"
+$MacDist = Join-Path $DistDir "macos"
 $WebDist = Join-Path $DistDir "web"
 
-foreach ($dir in @($AndroidDist, $WindowsDist, $LinuxDist, $WebDist)) {
+foreach ($dir in @($AndroidDist, $WindowsDist, $LinuxDist, $MacDist, $WebDist)) {
     if (-not (Test-Path $dir)) {
         New-Item -ItemType Directory -Path $dir -Force | Out-Null
     }
 }
 
 # 1. Android Artifacts
-Write-Host "`n[1/5] Collecting Android Release Candidate artifacts..." -ForegroundColor Yellow
+Write-Host "`n[1/6] Collecting Android Release Candidate artifacts..." -ForegroundColor Yellow
 $AndroidOutputs = Join-Path $RepoRoot "android\app\build\outputs"
 $ApkSrc = Join-Path $AndroidOutputs "apk\release\app-release.apk"
 $AabSrc = Join-Path $AndroidOutputs "bundle\release\app-release.aab"
@@ -54,33 +55,43 @@ if (-not (Test-Path $ApkSrc) -or -not (Test-Path $AabSrc)) {
 }
 
 Copy-Item $ApkSrc (Join-Path $AndroidDist "app-release.apk") -Force
+Copy-Item $ApkSrc (Join-Path $AndroidDist "Glide-v1.0.0-android.apk") -Force
 Copy-Item $AabSrc (Join-Path $AndroidDist "app-release.aab") -Force
 if (Test-Path $MapSrc) { Copy-Item $MapSrc (Join-Path $AndroidDist "mapping.txt") -Force }
-if (Test-Path $IdsigSrc) { Copy-Item $IdsigSrc (Join-Path $AndroidDist "app-release.apk.idsig") -Force }
+if (Test-Path $IdsigSrc) {
+    Copy-Item $IdsigSrc (Join-Path $AndroidDist "app-release.apk.idsig") -Force
+    Copy-Item $IdsigSrc (Join-Path $AndroidDist "Glide-v1.0.0-android.apk.idsig") -Force
+}
 Write-Host "  Android artifacts staged to $AndroidDist" -ForegroundColor Green
 
-# 2. Windows Package
-Write-Host "`n[2/5] Packaging Windows x64 distribution..." -ForegroundColor Yellow
-$WinZip = Join-Path $WindowsDist "glide-windows-win-x64.zip"
-if (-not (Test-Path $WinZip) -or -not $SkipBuild) {
+# 2. Windows Package & Full Installer
+Write-Host "`n[2/6] Packaging Windows x64 distribution & setup installer..." -ForegroundColor Yellow
+$WinExe = Join-Path $WindowsDist "Glide-Setup-v1.0.0-win-x64.exe"
+if (-not (Test-Path $WinExe) -or -not $SkipBuild) {
     & (Join-Path $RepoRoot "desktop\windows\package-windows.ps1")
 }
-# Remove staging directory
 Remove-Item -Recurse -Force (Join-Path $WindowsDist "stage-win-x64") -ErrorAction SilentlyContinue
-Write-Host "  Windows package ready: $WinZip" -ForegroundColor Green
+Write-Host "  Windows installer ready: $WinExe" -ForegroundColor Green
 
-# 3. Linux Package
-Write-Host "`n[3/5] Packaging Linux x64 distribution..." -ForegroundColor Yellow
-$LinuxTar = Join-Path $LinuxDist "glide-linux-linux-x64.tar.gz"
-if (-not (Test-Path $LinuxTar) -or -not $SkipBuild) {
+# 3. Linux Package & Full Installers (.deb, .run, .tar.gz)
+Write-Host "`n[3/6] Packaging Linux x64 distribution & installers..." -ForegroundColor Yellow
+$LinuxDeb = Join-Path $LinuxDist "glide_1.0.0_amd64.deb"
+if (-not (Test-Path $LinuxDeb) -or -not $SkipBuild) {
     & (Join-Path $RepoRoot "desktop\linux\build-linux-packages.ps1")
 }
-# Remove staging directory
 Remove-Item -Recurse -Force (Join-Path $LinuxDist "stage-linux-x64") -ErrorAction SilentlyContinue
-Write-Host "  Linux package ready: $LinuxTar" -ForegroundColor Green
+Write-Host "  Linux installers ready: $LinuxDeb" -ForegroundColor Green
 
-# 4. Web Client Package
-Write-Host "`n[4/5] Packaging Web Client distribution..." -ForegroundColor Yellow
+# 4. macOS Universal App Bundle & Full Installer
+Write-Host "`n[4/6] Packaging macOS Universal distribution & installer..." -ForegroundColor Yellow
+$MacInstaller = Join-Path $MacDist "Glide-Installer-v1.0.0-macos-universal.command"
+if (-not (Test-Path $MacInstaller) -or -not $SkipBuild) {
+    & (Join-Path $RepoRoot "desktop\macos\build-macos-packages.ps1")
+}
+Write-Host "  macOS installer ready: $MacInstaller" -ForegroundColor Green
+
+# 5. Web Client Package
+Write-Host "`n[5/6] Packaging Web Client distribution..." -ForegroundColor Yellow
 $WebZip = Join-Path $WebDist "glide-web-client.zip"
 $WebStage = Join-Path $WebDist "web-stage"
 if (Test-Path $WebStage) { Remove-Item -Recurse -Force $WebStage }
@@ -91,11 +102,11 @@ Compress-Archive -Path (Join-Path $WebStage "*") -DestinationPath $WebZip -Compr
 Remove-Item -Recurse -Force $WebStage
 Write-Host "  Web client package ready: $WebZip" -ForegroundColor Green
 
-# 5. Cryptographic Digest Calculation & Catalog
-Write-Host "`n[5/5] Generating cryptographic digests (SHA-256 / SHA-512)..." -ForegroundColor Yellow
+# 6. Cryptographic Digest Calculation & Catalog
+Write-Host "`n[6/6] Generating cryptographic digests (SHA-256 / SHA-512)..." -ForegroundColor Yellow
 
 $allArtifacts = Get-ChildItem -Path $DistDir -Recurse -File |
-    Where-Object { $_.Extension -in @(".apk", ".aab", ".zip", ".tar.gz", ".gz", ".txt") } |
+    Where-Object { $_.Extension -in @(".apk", ".aab", ".exe", ".deb", ".run", ".command", ".zip", ".tar.gz", ".gz", ".txt") } |
     Sort-Object FullName
 
 $sha256Lines = [System.Collections.Generic.List[string]]::new()
@@ -103,7 +114,7 @@ $sha512Lines = [System.Collections.Generic.List[string]]::new()
 $summaryItems = [System.Collections.Generic.List[PSObject]]::new()
 
 foreach ($file in $allArtifacts) {
-    $relPath = [System.IO.Path]::GetRelativePath($DistDir, $file.FullName).Replace("\", "/")
+    $relPath = $file.FullName.Substring($DistDir.ToString().TrimEnd('\', '/').Length + 1).Replace("\", "/")
     # Skip any previously existing checksum manifest files
     if ($relPath -match "SHA(256|512)SUMS\.txt$") { continue }
 

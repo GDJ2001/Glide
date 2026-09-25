@@ -1,0 +1,16 @@
+{
+  "schema": "glide-hard017-endpoint-v1",
+  "capturedAtUtc": "2026-09-24T08:20:39.8724182Z",
+  "platform": "windows",
+  "repositoryHead": "0f7b0563ecdbd3839ed8946300616560a0a98fda",
+  "artifactPath": "D:\\GITHub\\Glide\\build\\hard-017\\artifacts\\windows\\Glide.App.exe",
+  "artifactName": "Glide.App.exe",
+  "artifactSizeBytes": 74027428,
+  "artifactSha256": "9d582a8fef63bfe5e0ad0e660a462eed2396e04e2d3cfe1c41a7784fbf4d86fb",
+  "runtimeFramework": ".NET 10.0.12",
+  "machineName": "LAPTOP-H99OPQFQ",
+  "osDescription": "Microsoft Windows 10.0.26200",
+  "osArchitecture": "X64",
+  "processArchitecture": "X64",
+  "osVersion": "Microsoft Windows NT 10.0.26200.0"
+}

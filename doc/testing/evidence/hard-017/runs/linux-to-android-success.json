@@ -1,0 +1,23 @@
+{
+  "schema": "glide-hard017-run-v1",
+  "id": "linux-to-android-success",
+  "scenario": "success",
+  "senderPlatform": "linux",
+  "receiverPlatform": "android",
+  "observedResult": "pass",
+  "repositoryHead": "0f7b0563ecdbd3839ed8946300616560a0a98fda",
+  "senderArtifactSha256": "77e8940c23433838c4a8c869d88ff03351050ffbfa1e9927e36059ea49f3daab",
+  "receiverArtifactSha256": "c1c0cf0debc724640b4c3216697aadf00ade70b5522d72828ea4a1e8a7f0b30c",
+  "startedAtUtc": "2026-09-24T12:54:20.988041+00:00",
+  "endedAtUtc": "2026-09-24T12:54:47.801477+00:00",
+  "corpusManifestSha256": "ddc22f3e39fde8a2c4801bbf2e9dde2b07a249f52e2a3df415412589069c10ae",
+  "itemCount": 35,
+  "offerPageCount": 2,
+  "allItemHashesMatch": true,
+  "terminalBatchStatus": "success",
+  "logs": [
+    "runs/linux-to-android-success/sender.log",
+    "runs/linux-to-android-success/receiver.log"
+  ],
+  "notes": "Linux WSL2 sender transferred full 35-item corpus across 2 offer pages to physical Android device over TLS 1.3 with 100% SHA-256 match."
+}
