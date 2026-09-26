@@ -20,7 +20,7 @@ namespace Glide.Desktop;
 /// ceiling, all identifiers are correlated exactly, control/data reads have deadlines, and file
 /// hashing is performed incrementally while bytes are streamed.
 /// </summary>
-public sealed class DesktopTransferEngine
+public sealed class DesktopTransferEngine : IDesktopTransferExecutor
 {
     private const int MaxOfferPageItems = 32;
     private const int SafeOfferPagePayloadBytes = 14_000;
@@ -1665,7 +1665,7 @@ public sealed class DesktopTransferEngine
             ["sizeBytes"] =
                 item.DeclaredSize.ToString(),
             ["relativePath"] =
-                item.File.Name
+                item.File.TransferRelativePath
         };
 
     private static int EstimateOfferItemBytes(
@@ -1674,7 +1674,7 @@ public sealed class DesktopTransferEngine
         const int JsonOverhead = 128;
         return JsonOverhead +
                Encoding.UTF8.GetByteCount(
-                   item.File.Name) * 2 +
+                   item.File.TransferRelativePath) * 2 +
                item.DeclaredSize
                    .ToString()
                    .Length;

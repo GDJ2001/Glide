@@ -1443,6 +1443,7 @@ public sealed class DesktopResumeStore
                     })
                 .ToList();
 
+        byte[] combined = new byte[64];
         while (level.Count > 1)
         {
             var next =
@@ -1461,8 +1462,6 @@ public sealed class DesktopResumeStore
                     continue;
                 }
 
-                Span<byte> combined =
-                    stackalloc byte[64];
                 level[index]
                     .CopyTo(
                         combined[..32]);

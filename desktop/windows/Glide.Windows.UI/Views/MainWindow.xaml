@@ -207,8 +207,10 @@
                                 <TextBox Grid.Column="3" Style="{StaticResource ModernTextBoxStyle}" Text="{Binding PeerPort, UpdateSourceTrigger=PropertyChanged}"
                                          Margin="0,0,14,0" VerticalAlignment="Center" />
 
+                                <!-- Browser sharing is intentionally deferred from the Windows native release. -->
                                 <Button Grid.Column="4" Style="{StaticResource SecondaryButtonStyle}" Content="🌐 Web Share"
                                         Command="{Binding StartWebShareCommand}" Margin="0,0,10,0" Padding="14,8"
+                                        Visibility="Collapsed"
                                         ToolTip="Share selected files with any web browser on local Wi-Fi" />
 
                                 <Button Grid.Column="5" Style="{StaticResource PrimaryButtonStyle}" Content="🚀 Send Files"
@@ -574,7 +576,7 @@
         </Border>
 
         <!-- Web Share Active Modal Overlay -->
-        <Border Background="#CC070B16" Visibility="{Binding IsWebShareModalVisible, Converter={StaticResource BoolToVis}}"
+        <Border Background="#CC070B16" Visibility="Collapsed"
                 HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
             <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource CardBorderBrush}"
                     BorderThickness="1" CornerRadius="16" Padding="28" Width="520" HorizontalAlignment="Center"

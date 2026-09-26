@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using System.Runtime.Versioning;
 
 namespace Glide.Core.Security;
 
@@ -397,6 +398,7 @@ public sealed class DesktopTrustStore
             "Trust database");
     }
 
+    [SupportedOSPlatform("linux")]
     private static void RequireNoGroupOtherPermissions(
         string path,
         string label)

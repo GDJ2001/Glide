@@ -48,7 +48,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     private string _transferredBytesText = "";
     private string _currentFileName = "";
     private CancellationTokenSource? _activeTransferCts;
-    private readonly DesktopTransferEngine _desktopTransferEngine = new();
+    private readonly DesktopTransferRuntime _transferRuntime = new();
     private readonly DesktopStateStore _stateStore = new();
     private readonly Stopwatch _transferStopwatch = new();
     private string _receiveDirectory = "";
@@ -195,7 +195,11 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         AcceptTrustEnrollmentCommand = new RelayCommand(() => _trustEnrollmentTcs?.TrySetResult(true));
         RejectTrustEnrollmentCommand = new RelayCommand(() => _trustEnrollmentTcs?.TrySetResult(false));
         BrowseReceiveFolderCommand = new RelayCommand(ExecuteBrowseReceiveFolder);
-        CancelTransferCommand = new RelayCommand(() => _activeTransferCts?.Cancel());
+        CancelTransferCommand = new RelayCommand(() =>
+        {
+            _transferRuntime.CancelActiveTransfer();
+            _activeTransferCts?.Cancel();
+        });
         OpenDownloadsCommand = new RelayCommand(ExecuteOpenDownloads);
         ShowPairModalCommand = new RelayCommand(() => IsPairModalVisible = true);
         CancelPairModalCommand = new RelayCommand(() => { IsPairModalVisible = false; PairInputUri = ""; });
@@ -248,7 +252,9 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             }
         });
 
-        StartWebShareCommand = new RelayCommand(async () => await ExecuteStartWebShareAsync(), () => !IsTransferActive && SelectedFiles.Count > 0);
+        StartWebShareCommand = new RelayCommand(
+            () => StatusMessage = "Browser sharing is not included in this Windows release.",
+            () => false);
         StopWebShareCommand = new RelayCommand(async () => await ExecuteStopWebShareAsync());
         CopyWebShareLinkCommand = new RelayCommand(() =>
         {
@@ -482,12 +488,20 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
 
     public void AddDroppedFiles(string[] filePaths)
     {
-        foreach (var path in filePaths)
+        DesktopTransferSelectionResult selection =
+            DesktopTransferSelection.Expand(filePaths);
+
+        foreach (DesktopTransferFile file in selection.Files)
         {
-            if (File.Exists(path) && !SelectedFiles.Any(f => f.FilePath.Equals(path, StringComparison.OrdinalIgnoreCase)))
+            if (!SelectedFiles.Any(f => f.FilePath.Equals(file.FilePath, StringComparison.OrdinalIgnoreCase)))
             {
-                SelectedFiles.Add(new TransferItemViewModel(path));
+                SelectedFiles.Add(new TransferItemViewModel(file.FilePath, file.TransferRelativePath));
             }
+        }
+
+        if (selection.Skipped.Count > 0)
+        {
+            StatusMessage = $"Added {selection.Files.Count} item(s). Skipped {selection.Skipped.Count}: {selection.Skipped[0].Reason}";
         }
         CommandManager.InvalidateRequerySuggested();
     }
@@ -666,7 +680,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                     _transferStopwatch.Restart();
                 });
 
-                var result = await _desktopTransferEngine.ReceiveAsync(
+                var result = await _transferRuntime.ReceiveAsync(
                     conn,
                     new DesktopReceiveRequest(
                         new QuarantineStagingStore(
@@ -726,10 +740,10 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             _transferStopwatch.Restart();
 
             var files = SelectedFiles
-                .Select(item => new DesktopTransferFile(item.FilePath))
+                .Select(item => new DesktopTransferFile(item.FilePath, item.Name))
                 .ToList();
 
-            var result = await _desktopTransferEngine.SendAsync(
+            var result = await _transferRuntime.SendAsync(
                 new DesktopSendRequest(
                     PeerHost,
                     PeerPort,

@@ -3,11 +3,14 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using Glide.Windows.UI.ViewModels;
 using Glide.Windows.UI.Views;
+using Glide.Windows.UI.Services;
 
 namespace Glide.Windows.UI;
 
 public partial class App : Application
 {
+    private GlideUpdateCoordinator? _updateCoordinator;
+    private WindowsSingleInstance? _singleInstance;
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool AttachConsole(int dwProcessId);
 
@@ -81,103 +84,113 @@ public partial class App : Application
             return;
         }
 
+        _singleInstance = WindowsSingleInstance.Acquire();
+        if (!_singleInstance.IsPrimaryInstance)
+        {
+            bool forwarded = await WindowsSingleInstance.ForwardActivationAsync(e.Args);
+            if (!forwarded)
+            {
+                MessageBox.Show(
+                    "Glide is already starting or running, but it could not receive this request. Try again in a moment.",
+                    "Glide",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
+            await _singleInstance.DisposeAsync();
+            _singleInstance = null;
+            Shutdown(0);
+            return;
+        }
+
         base.OnStartup(e);
 
         var mainWindow = new MainWindow();
         MainWindow = mainWindow;
 
-        if (mainWindow.DataContext is MainViewModel vm && e.Args.Length > 0)
-        {
-            var filesToQueue = new List<string>();
-            foreach (string arg in e.Args)
-            {
-                if (arg.StartsWith("glide://", StringComparison.OrdinalIgnoreCase))
-                {
-                    vm.PairInputUri = arg;
-                    vm.SubmitPairModalCommand.Execute(null);
-                }
-                else if (File.Exists(arg))
-                {
-                    filesToQueue.Add(Path.GetFullPath(arg));
-                }
-                else if (Directory.Exists(arg))
-                {
-                    try
-                    {
-                        filesToQueue.AddRange(Directory.GetFiles(arg, "*", SearchOption.AllDirectories));
-                    }
-                    catch
-                    {
-                        // Ignore inaccessible subdirectories
-                    }
-                }
-            }
+        ActivateArguments(mainWindow, e.Args);
 
-            if (filesToQueue.Count > 0)
+        _singleInstance.Start(arguments => Dispatcher.InvokeAsync(
+            () => ActivateArguments(mainWindow, arguments)).Task);
+
+        mainWindow.Show();
+
+        _updateCoordinator = new GlideUpdateCoordinator(
+            GlideUpdateConfiguration.FromBuildProperties(),
+            () => mainWindow.DataContext is MainViewModel viewModel && viewModel.IsTransferActive);
+        _updateCoordinator.StartDailyChecks();
+    }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        _updateCoordinator?.Dispose();
+        // Do not synchronously wait for a pipe handler here: it may already be posting an
+        // activation to this dispatcher during shutdown. Process exit also releases the mutex.
+        if (_singleInstance is not null)
+        {
+            _ = _singleInstance.DisposeAsync();
+        }
+        base.OnExit(e);
+    }
+
+    private static void ActivateArguments(MainWindow mainWindow, IReadOnlyList<string> arguments)
+    {
+        if (mainWindow.DataContext is not MainViewModel vm || arguments.Count == 0)
+        {
+            return;
+        }
+
+        var filesToQueue = new List<string>();
+        foreach (string arg in arguments)
+        {
+            if (arg.StartsWith("glide://", StringComparison.OrdinalIgnoreCase))
             {
-                vm.AddDroppedFiles(filesToQueue.ToArray());
-                vm.CurrentTab = "Send";
+                vm.PairInputUri = arg;
+                vm.SubmitPairModalCommand.Execute(null);
+            }
+            else if (File.Exists(arg) || Directory.Exists(arg))
+            {
+                filesToQueue.Add(Path.GetFullPath(arg));
             }
         }
 
-        mainWindow.Show();
+        if (filesToQueue.Count > 0)
+        {
+            vm.AddDroppedFiles(filesToQueue.ToArray());
+            vm.CurrentTab = "Send";
+            if (!mainWindow.IsVisible)
+            {
+                mainWindow.Show();
+            }
+            if (mainWindow.WindowState == WindowState.Minimized)
+            {
+                mainWindow.WindowState = WindowState.Normal;
+            }
+            mainWindow.Activate();
+        }
     }
 
     private static void RunSelfUninstall(bool silent)
     {
-        string installDir = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        if (!silent)
+        string uninstallerPath = Path.Combine(AppContext.BaseDirectory, "Uninstall.exe");
+        if (!File.Exists(uninstallerPath))
         {
-            var confirm = MessageBox.Show(
-                $"Are you sure you want to uninstall Glide from:\n{installDir}\n\nYour received files in Downloads will NOT be deleted.",
-                "Uninstall Glide",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Question);
-            if (confirm != MessageBoxResult.Yes)
+            if (!silent)
             {
-                return;
+                MessageBox.Show(
+                    "Glide was not installed with the current installer. Remove the portable application folder manually.",
+                    "Glide",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
             }
+            return;
         }
 
-        try
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
         {
-            Microsoft.Win32.Registry.CurrentUser.DeleteSubKeyTree(
-                @"Software\Microsoft\Windows\CurrentVersion\Uninstall\Glide",
-                throwOnMissingSubKey: false);
-        }
-        catch { }
-
-        try
-        {
-            string startMenuLnk = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.StartMenu), "Programs", "Glide.lnk");
-            string desktopLnk = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "Glide.lnk");
-            string sendToLnk = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.SendTo), "Send with Glide.lnk");
-            if (File.Exists(startMenuLnk)) File.Delete(startMenuLnk);
-            if (File.Exists(desktopLnk)) File.Delete(desktopLnk);
-            if (File.Exists(sendToLnk)) File.Delete(sendToLnk);
-        }
-        catch { }
-
-        try
-        {
-            if (Directory.Exists(installDir))
-            {
-                string cmdCleanup = $"/C timeout /t 2 /nobreak > NUL & rmdir /s /q \"{installDir}\"";
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-                {
-                    FileName = "cmd.exe",
-                    Arguments = cmdCleanup,
-                    CreateNoWindow = true,
-                    UseShellExecute = false
-                });
-            }
-        }
-        catch { }
-
-        if (!silent)
-        {
-            MessageBox.Show("Glide has been uninstalled from your computer.", "Uninstall Complete", MessageBoxButton.OK, MessageBoxImage.Information);
-        }
+            FileName = uninstallerPath,
+            Arguments = silent ? "/S" : string.Empty,
+            UseShellExecute = true
+        });
     }
 }
 

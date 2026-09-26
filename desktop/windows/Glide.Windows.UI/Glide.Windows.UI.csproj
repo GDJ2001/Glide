@@ -17,10 +17,19 @@
     <ApplicationIcon>glide.ico</ApplicationIcon>
     <DebugType>none</DebugType>
     <DebugSymbols>false</DebugSymbols>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <GlideUpdateFeedUrl Condition="'$(GlideUpdateFeedUrl)' == ''"></GlideUpdateFeedUrl>
+    <GlideUpdatePublicKey Condition="'$(GlideUpdatePublicKey)' == ''"></GlideUpdatePublicKey>
   </PropertyGroup>
 
   <ItemGroup>
     <Resource Include="glide.ico" />
+    <AssemblyMetadata Include="GlideUpdateFeedUrl" Value="$(GlideUpdateFeedUrl)" />
+    <AssemblyMetadata Include="GlideUpdatePublicKey" Value="$(GlideUpdatePublicKey)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NetSparkleUpdater.UI.WPF" Version="3.1.0" />
   </ItemGroup>
 
 </Project>

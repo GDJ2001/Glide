@@ -11,11 +11,11 @@ public class TransferItemViewModel : ViewModelBase
     private string _status = "Pending";
     private double _progress = 0.0;
 
-    public TransferItemViewModel(string filePath)
+    public TransferItemViewModel(string filePath, string? relativePath = null)
     {
         _filePath = filePath;
         var fi = new FileInfo(filePath);
-        _name = fi.Name;
+        _name = relativePath ?? fi.Name;
         _sizeBytes = fi.Exists ? fi.Length : 0;
     }
 

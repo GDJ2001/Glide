@@ -130,4 +130,36 @@ public sealed class DesktopStateAndDaemonPolicyTests : IDisposable
             1,
             exitCode);
     }
+
+    [Fact]
+    public void StateStore_InvalidJson_IsArchivedAndReplacedWithSafeDefaults()
+    {
+        string path = Path.Combine(_root, "desktop-state.json");
+        File.WriteAllText(path, "{ not valid json");
+
+        var store = new DesktopStateStore(path);
+        DesktopPersistentState state = store.Load();
+
+        Assert.Equal(DesktopPersistentState.CurrentSchemaVersion, state.SchemaVersion);
+        Assert.Empty(state.History);
+        Assert.False(File.Exists(path));
+        Assert.NotNull(store.LastRecoveryPath);
+        Assert.True(File.Exists(store.LastRecoveryPath));
+    }
+
+    [Fact]
+    public void StateStore_LegacyDocument_IsMigratedToCurrentSchema()
+    {
+        string path = Path.Combine(_root, "desktop-state.json");
+        File.WriteAllText(
+            path,
+            """
+            { "Settings": { "ReceiveDirectory": "C:\\Downloads\\Glide", "ListenerPort": 42424 }, "History": [] }
+            """);
+
+        DesktopPersistentState state = new DesktopStateStore(path).Load();
+
+        Assert.Equal(DesktopPersistentState.CurrentSchemaVersion, state.SchemaVersion);
+        Assert.Contains("SchemaVersion", File.ReadAllText(path), StringComparison.Ordinal);
+    }
 }

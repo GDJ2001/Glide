@@ -246,7 +246,7 @@ public interface IWebRtcTransferTransport : IAsyncDisposable
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Async enumerable of peer state changes</returns>
     IAsyncEnumerable<WebRtcPeerState> ObservePeerStateAsync(
-        [EnumeratorCancellation] CancellationToken cancellationToken = default
+        CancellationToken cancellationToken = default
     );
 
     /// <summary>
@@ -259,7 +259,7 @@ public interface IWebRtcTransferTransport : IAsyncDisposable
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Async enumerable of ICE candidates</returns>
     IAsyncEnumerable<IceCandidateInfo> ObserveLocalIceCandidatesAsync(
-        [EnumeratorCancellation] CancellationToken cancellationToken = default
+        CancellationToken cancellationToken = default
     );
 
     /// <summary>
@@ -272,7 +272,7 @@ public interface IWebRtcTransferTransport : IAsyncDisposable
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Async enumerable of data channel messages</returns>
     IAsyncEnumerable<DataChannelMessage> ObserveDataChannelMessagesAsync(
-        [EnumeratorCancellation] CancellationToken cancellationToken = default
+        CancellationToken cancellationToken = default
     );
 
     /// <summary>
@@ -346,7 +346,7 @@ public interface IWebRtcTransferTransport : IAsyncDisposable
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Async enumerable of incoming streams</returns>
     IAsyncEnumerable<IncomingWebRtcStream> ObserveIncomingStreamsAsync(
-        [EnumeratorCancellation] CancellationToken cancellationToken = default
+        CancellationToken cancellationToken = default
     );
 }
 
@@ -430,21 +430,21 @@ public sealed class PlaceholderWebRtcTransferTransport : IWebRtcTransferTranspor
         );
     }
 
-    public IAsyncEnumerable<WebRtcPeerState> ObservePeerStateAsync([EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public IAsyncEnumerable<WebRtcPeerState> ObservePeerStateAsync(CancellationToken cancellationToken = default)
     {
         throw new NotImplementedException(
             "IWebRtcTransferTransport.ObservePeerStateAsync not implemented."
         );
     }
 
-    public IAsyncEnumerable<IceCandidateInfo> ObserveLocalIceCandidatesAsync([EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public IAsyncEnumerable<IceCandidateInfo> ObserveLocalIceCandidatesAsync(CancellationToken cancellationToken = default)
     {
         throw new NotImplementedException(
             "IWebRtcTransferTransport.ObserveLocalIceCandidatesAsync not implemented."
         );
     }
 
-    public IAsyncEnumerable<DataChannelMessage> ObserveDataChannelMessagesAsync([EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public IAsyncEnumerable<DataChannelMessage> ObserveDataChannelMessagesAsync(CancellationToken cancellationToken = default)
     {
         throw new NotImplementedException(
             "IWebRtcTransferTransport.ObserveDataChannelMessagesAsync not implemented."
@@ -479,7 +479,7 @@ public sealed class PlaceholderWebRtcTransferTransport : IWebRtcTransferTranspor
         );
     }
 
-    public IAsyncEnumerable<IncomingWebRtcStream> ObserveIncomingStreamsAsync([EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public IAsyncEnumerable<IncomingWebRtcStream> ObserveIncomingStreamsAsync(CancellationToken cancellationToken = default)
     {
         throw new NotImplementedException(
             "IWebRtcTransferTransport.ObserveIncomingStreamsAsync not implemented."

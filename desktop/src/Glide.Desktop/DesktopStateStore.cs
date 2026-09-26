@@ -18,7 +18,11 @@ public sealed record DesktopSettings(
 
 public sealed record DesktopPersistentState(
     DesktopSettings Settings,
-    IReadOnlyList<DesktopHistoryEntry> History);
+    IReadOnlyList<DesktopHistoryEntry> History,
+    int SchemaVersion = DesktopPersistentState.CurrentSchemaVersion)
+{
+    public const int CurrentSchemaVersion = 1;
+}
 
 /// <summary>
 /// Small desktop-owned persistence boundary for non-secret settings and verified transfer history.
@@ -33,6 +37,8 @@ public sealed class DesktopStateStore
     private readonly object _gate = new();
     private readonly string _statePath;
     private DesktopPersistentState? _cached;
+
+    public string? LastRecoveryPath { get; private set; }
 
     public DesktopStateStore(string? statePath = null)
     {
@@ -53,22 +59,25 @@ public sealed class DesktopStateStore
             {
                 if (!File.Exists(_statePath))
                 {
-                    return _cached =
-                        new DesktopPersistentState(
-                            DesktopSettings.CreateDefault(),
-                            []);
+                    return _cached = CreateDefaultState();
                 }
 
                 string json =
                     File.ReadAllText(_statePath);
+                using JsonDocument document = JsonDocument.Parse(json);
+                bool hasSchemaVersion = document.RootElement.TryGetProperty(
+                    "SchemaVersion",
+                    out _);
                 DesktopPersistentState? state =
                     JsonSerializer.Deserialize<
                         DesktopPersistentState>(json);
                 if (state == null ||
                     string.IsNullOrWhiteSpace(
-                        state.Settings.ReceiveDirectory) ||
+                        state.Settings?.ReceiveDirectory) ||
                     state.Settings.ListenerPort
-                        is < 1 or > 65535)
+                        is < 1 or > 65535 ||
+                    state.History is null ||
+                    state.SchemaVersion > DesktopPersistentState.CurrentSchemaVersion)
                 {
                     throw new InvalidDataException(
                         "Desktop state is invalid.");
@@ -82,18 +91,39 @@ public sealed class DesktopStateStore
                         .Take(MaxHistoryEntries)
                         .ToList();
 
-                return _cached =
-                    state with
-                    {
-                        History = boundedHistory
-                    };
+                DesktopPersistentState normalized = state with
+                {
+                    SchemaVersion = DesktopPersistentState.CurrentSchemaVersion,
+                    History = boundedHistory
+                };
+
+                // Legacy documents omit SchemaVersion and deserialize through the optional
+                // constructor default. Persist the normalized form so later migrations have a
+                // stable starting point.
+                if (!hasSchemaVersion || state.SchemaVersion != normalized.SchemaVersion)
+                {
+                    PersistLocked(normalized);
+                }
+
+                return _cached = normalized;
             }
-            catch
+            catch (JsonException)
             {
-                return _cached =
-                    new DesktopPersistentState(
-                        DesktopSettings.CreateDefault(),
-                        []);
+                return RecoverInvalidStateLocked();
+            }
+            catch (InvalidDataException)
+            {
+                return RecoverInvalidStateLocked();
+            }
+            catch (IOException)
+            {
+                // Do not overwrite an unavailable or locked state file. The caller gets safe
+                // defaults and can still operate; a later load may recover the existing state.
+                return _cached = CreateDefaultState();
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return _cached = CreateDefaultState();
             }
         }
     }
@@ -187,6 +217,33 @@ public sealed class DesktopStateStore
             _statePath,
             overwrite: true);
     }
+
+    private DesktopPersistentState RecoverInvalidStateLocked()
+    {
+        LastRecoveryPath = null;
+        try
+        {
+            if (File.Exists(_statePath))
+            {
+                string recoveryPath = $"{_statePath}.corrupt-{DateTimeOffset.UtcNow:yyyyMMddHHmmssfff}";
+                File.Move(_statePath, recoveryPath);
+                LastRecoveryPath = recoveryPath;
+            }
+        }
+        catch (IOException)
+        {
+            // Keep the original file for manual recovery if it cannot be moved.
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Keep the original file for manual recovery if permissions do not allow archival.
+        }
+
+        return _cached = CreateDefaultState();
+    }
+
+    private static DesktopPersistentState CreateDefaultState() =>
+        new(DesktopSettings.CreateDefault(), []);
 
     private static string GetDefaultStatePath()
     {

@@ -1,0 +1,6 @@
+Glide
+
+Copyright (c) Glide contributors.
+
+This installer deploys the Glide local file-sharing application. Received files are not removed
+by uninstall. To also remove Glide application data, run the uninstaller with /REMOVEAPPDATA.

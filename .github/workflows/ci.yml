@@ -143,8 +143,12 @@ jobs:
       - name: Build full Windows solution
         run: dotnet build desktop/Glide.slnx -c Release
 
-      - name: Run ordinary .NET tests on Windows
-        run: dotnet test desktop/tests/Glide.Tests/Glide.Tests.csproj -c Release --no-build --filter "HARD!=003-red" --logger "trx;LogFileName=ordinary-windows.trx"
+      - name: Run all .NET tests on Windows
+        run: dotnet test desktop/Glide.slnx -c Release --no-build --logger "trx;LogFileName=windows.trx"
+
+      - name: Build self-contained Windows portable artifact
+        shell: pwsh
+        run: ./desktop/windows/package-windows.ps1 -Configuration Release -Version 0.0.0-ci -SkipInstaller
 
       - name: Upload Windows test reports
         if: always()
@@ -153,4 +157,13 @@ jobs:
           name: windows-dotnet-verification
           path: desktop/tests/Glide.Tests/TestResults/
           if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload Windows portable artifact
+        if: always()
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
+        with:
+          name: glide-windows-portable
+          path: build/distributions/windows/glide-windows-win-x64.zip
+          if-no-files-found: error
           retention-days: 14

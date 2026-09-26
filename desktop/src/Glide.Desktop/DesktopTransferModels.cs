@@ -10,9 +10,19 @@ public enum DesktopTransferDirection
     Receive
 }
 
-public sealed record DesktopTransferFile(string FilePath)
+/// <summary>
+/// An immutable source file selected for a transfer. <see cref="RelativePath"/> is the
+/// receiver-visible, protocol-safe path; it is deliberately separate from the local source path.
+/// </summary>
+public sealed record DesktopTransferFile(
+    string FilePath,
+    string? RelativePath = null)
 {
     public string Name => Path.GetFileName(FilePath);
+
+    public string TransferRelativePath =>
+        RelativePath ?? Name;
+
     public long SizeBytes => new FileInfo(FilePath).Length;
 }
 
@@ -84,6 +94,24 @@ public interface IDesktopTransferInteraction
     void OnProgress(DesktopTransferProgress progress);
     void OnItemStatus(DesktopTransferDirection direction, string itemName, string status);
     void OnHistory(DesktopHistoryEntry entry);
+}
+
+/// <summary>
+/// Protocol execution boundary owned by the desktop runtime. It keeps queue/lifecycle policy
+/// independent from the concrete LAN implementation and makes that policy testable.
+/// </summary>
+public interface IDesktopTransferExecutor
+{
+    Task<DesktopTransferResult> SendAsync(
+        DesktopSendRequest request,
+        IDesktopTransferInteraction interaction,
+        CancellationToken cancellationToken = default);
+
+    Task<DesktopTransferResult> ReceiveAsync(
+        Glide.Transport.Sockets.TlsSocketConnection connection,
+        DesktopReceiveRequest request,
+        IDesktopTransferInteraction interaction,
+        CancellationToken cancellationToken = default);
 }
 
 public abstract class DesktopTransferInteractionBase : IDesktopTransferInteraction

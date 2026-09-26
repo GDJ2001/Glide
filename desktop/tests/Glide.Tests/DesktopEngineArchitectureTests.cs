@@ -3,7 +3,7 @@ namespace Glide.Tests;
 public sealed class DesktopEngineArchitectureTests
 {
     [Fact]
-    public void CliAndWpf_DelegateProtocolLoopsToSharedDesktopEngine()
+    public void CliAndWpf_DelegateProtocolLoopsToSharedDesktopRuntime()
     {
         string root = ResolveRepositoryRoot();
         string cliPath = Path.Combine(
@@ -24,7 +24,7 @@ public sealed class DesktopEngineArchitectureTests
         string wpf = File.ReadAllText(wpfPath);
 
         Assert.Contains("DesktopTransferEngine", cli);
-        Assert.Contains("DesktopTransferEngine", wpf);
+        Assert.Contains("DesktopTransferRuntime", wpf);
 
         Assert.DoesNotContain("new LanRecordChannel", cli);
         Assert.DoesNotContain("new LanRecordChannel", wpf);
