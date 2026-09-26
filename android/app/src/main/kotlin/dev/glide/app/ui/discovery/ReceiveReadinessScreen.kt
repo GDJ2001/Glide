@@ -71,10 +71,9 @@ fun ReceiveReadinessScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .safeDrawingPadding()
-            .padding(horizontal = 20.dp, vertical = 16.dp)
-            .verticalScroll(scrollState),
-        verticalArrangement = Arrangement.spacedBy(24.dp)
+            .verticalScroll(scrollState)
+            .padding(horizontal = 20.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         // Navigation Header
         Row(
@@ -182,46 +181,6 @@ fun ReceiveReadinessScreen(
                                     )
                                 }
                             }
-                        }
-                    }
-                }
-
-                // Privacy Reassurance Card
-                Card(
-                    shape = MaterialTheme.shapes.medium,
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .semantics {
-                            contentDescription = "Privacy: Direct local transfer. No cloud, no accounts, direct Wi-Fi and Bluetooth."
-                        }
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Lock,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(28.dp)
-                        )
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(
-                                text = "Direct & private transfer",
-                                style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = "No cloud, no accounts, direct local Wi-Fi & Bluetooth. Both devices verify matching codes before any data is sent.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
                         }
                     }
                 }

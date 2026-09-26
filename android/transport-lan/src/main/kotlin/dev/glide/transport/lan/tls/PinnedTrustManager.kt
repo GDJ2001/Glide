@@ -1,10 +1,12 @@
 package dev.glide.transport.lan.tls
 
 import android.annotation.SuppressLint
+import java.net.Socket
 import java.security.MessageDigest
 import java.security.cert.CertificateException
 import java.security.cert.X509Certificate
-import javax.net.ssl.X509TrustManager
+import javax.net.ssl.SSLEngine
+import javax.net.ssl.X509ExtendedTrustManager
 
 /**
  * Strict SPKI SHA-256 pinning trust manager for server-authenticated LAN transfer (LAN-010, Section 6).
@@ -19,7 +21,7 @@ import javax.net.ssl.X509TrustManager
 @SuppressLint("CustomX509TrustManager")
 class PinnedTrustManager(
     private val expectedSpkiSha256Hex: String
-) : X509TrustManager {
+) : X509ExtendedTrustManager() {
 
     init {
         require(expectedSpkiSha256Hex.length == 64 && expectedSpkiSha256Hex.matches(Regex("^[0-9a-fA-F]{64}$"))) {
@@ -73,9 +75,29 @@ class PinnedTrustManager(
     }
 
     @Throws(CertificateException::class)
+    override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?, socket: Socket?) {
+        checkServerTrusted(chain, authType)
+    }
+
+    @Throws(CertificateException::class)
+    override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?, engine: SSLEngine?) {
+        checkServerTrusted(chain, authType)
+    }
+
+    @Throws(CertificateException::class)
     override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) {
         // LAN profile 1 does not support client certificate authentication; client possession is authenticated via token
         throw CertificateException("Client certificate authentication is not supported in Glide LAN profile 1")
+    }
+
+    @Throws(CertificateException::class)
+    override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?, socket: Socket?) {
+        checkClientTrusted(chain, authType)
+    }
+
+    @Throws(CertificateException::class)
+    override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?, engine: SSLEngine?) {
+        checkClientTrusted(chain, authType)
     }
 
     override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()

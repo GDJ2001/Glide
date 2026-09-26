@@ -110,21 +110,40 @@ public sealed class DesktopTransferEngine
                     "Pairing invitation has expired. Request a new pairing code.");
             }
 
-            LanEndpoint endpoint = invitation.Endpoints.First();
-            string host = endpoint.Address;
-            int port = endpoint.Port;
-
-            interaction.OnStatus(
-                DesktopTransferDirection.Send,
-                $"Connecting to {host}:{port} over TLS 1.3...");
-
             var client = new TlsSocketClient();
-            await using TlsSocketConnection connection =
-                await client.ConnectAsync(
-                    host,
-                    port,
-                    expectedSpkiSha256: invitation.SpkiSha256,
-                    cancellationToken);
+            TlsSocketConnection? connectedSocket = null;
+            Exception? lastConnectException = null;
+
+            foreach (LanEndpoint endpoint in invitation.Endpoints)
+            {
+                string host = endpoint.Address;
+                int port = endpoint.Port;
+
+                interaction.OnStatus(
+                    DesktopTransferDirection.Send,
+                    $"Connecting to {host}:{port} over TLS 1.3...");
+
+                try
+                {
+                    connectedSocket = await client.ConnectAsync(
+                        host,
+                        port,
+                        expectedSpkiSha256: invitation.SpkiSha256,
+                        cancellationToken);
+                    break;
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    lastConnectException = ex;
+                }
+            }
+
+            if (connectedSocket == null)
+            {
+                throw lastConnectException ?? new InvalidOperationException("Unable to connect to any endpoint in pairing invitation.");
+            }
+
+            await using TlsSocketConnection connection = connectedSocket;
 
             return await RunSenderSessionAsync(
                 connection,

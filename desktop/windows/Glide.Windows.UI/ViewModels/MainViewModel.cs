@@ -73,6 +73,13 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
 
     private ImageSource? _webShareQrImage;
     private ImageSource? _pairingQrImage;
+    private bool _isQrZoomModalVisible;
+
+    public bool IsQrZoomModalVisible
+    {
+        get => _isQrZoomModalVisible;
+        set => SetProperty(ref _isQrZoomModalVisible, value);
+    }
 
     public bool IsWebShareModalVisible
     {
@@ -125,6 +132,8 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     public RelayCommand SubmitPairModalCommand { get; }
     public RelayCommand SelectPeerCommand { get; }
     public RelayCommand RefreshPeersCommand { get; }
+    public RelayCommand RefreshQrCommand { get; }
+    public RelayCommand ToggleQrZoomCommand { get; }
     public RelayCommand CopyPairingLinkCommand { get; }
     public RelayCommand StartWebShareCommand { get; }
     public RelayCommand StopWebShareCommand { get; }
@@ -132,12 +141,40 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
 
     public MainViewModel()
     {
-        DesktopPersistentState persisted = _stateStore.Load();
-        _receiveDirectory = persisted.Settings.ReceiveDirectory;
-        _listenerPortPreference = persisted.Settings.ListenerPort;
-        foreach (DesktopHistoryEntry entry in persisted.History)
+        try
         {
-            HistoryItems.Add(ToHistoryViewModel(entry));
+            DesktopPersistentState persisted = _stateStore.Load();
+            _receiveDirectory = persisted.Settings.ReceiveDirectory;
+            _listenerPortPreference = persisted.Settings.ListenerPort;
+            foreach (DesktopHistoryEntry entry in persisted.History)
+            {
+                HistoryItems.Add(ToHistoryViewModel(entry));
+            }
+        }
+        catch
+        {
+            _receiveDirectory = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                "Downloads",
+                "Glide");
+            _listenerPortPreference = LanDiscoveryConstants.DefaultPort;
+        }
+
+        if (string.IsNullOrWhiteSpace(_receiveDirectory))
+        {
+            _receiveDirectory = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                "Downloads",
+                "Glide");
+        }
+
+        try
+        {
+            Directory.CreateDirectory(_receiveDirectory);
+        }
+        catch
+        {
+            // Ignore directory creation error until transfer
         }
 
         InitializePersistentTrust();
@@ -151,7 +188,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         ClearFilesCommand = new RelayCommand(() => SelectedFiles.Clear());
         SendFilesCommand = new RelayCommand(
             async () => await ExecuteSendFilesAsync(),
-            () => !IsTransferActive && SelectedFiles.Count > 0 && _pairedInvitation != null);
+            () => !IsTransferActive && SelectedFiles.Count > 0);
         ToggleListenerCommand = new RelayCommand(async () => await ToggleListenerAsync());
         AcceptOfferCommand = new RelayCommand(() => _offerConfirmationTcs?.TrySetResult(true));
         RejectOfferCommand = new RelayCommand(() => _offerConfirmationTcs?.TrySetResult(false));
@@ -170,14 +207,37 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                 PeerHost = peer.Host;
                 PeerPort = peer.Port;
                 StatusMessage =
-                    $"Found {peer.DeviceName} ({peer.Host}:{peer.Port}). " +
-                    "Scan or paste that device's pairing invitation before sending.";
+                    $"Selected {peer.DeviceName} ({peer.Host}:{peer.Port}). " +
+                    "Paste or pair that device's invitation link to send.";
             }
         });
         RefreshPeersCommand = new RelayCommand(() =>
         {
-            _mdnsService.QueryPeers();
-            StatusMessage = "Scanning for nearby Glide devices...";
+            try
+            {
+                _mdnsService.QueryPeers();
+                StatusMessage = "Scanning for nearby Glide devices...";
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Discovery scan warning: {ex.Message}";
+            }
+        });
+        RefreshQrCommand = new RelayCommand(() =>
+        {
+            if (IsListening && _listener != null)
+            {
+                _invitationAuthority.RevokeActive();
+                RefreshReceiverInvitation();
+                StatusMessage = "Pairing QR code refreshed.";
+            }
+        });
+        ToggleQrZoomCommand = new RelayCommand(() =>
+        {
+            if (!string.IsNullOrEmpty(ActiveInvitationUri))
+            {
+                IsQrZoomModalVisible = !IsQrZoomModalVisible;
+            }
         });
         CopyPairingLinkCommand = new RelayCommand(() =>
         {
@@ -224,8 +284,17 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             });
         };
 
-        _mdnsService.Start(enableBrowsing: true);
+        try
+        {
+            _mdnsService.Start(enableBrowsing: true);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"mDNS startup non-fatal warning: {ex.Message}");
+        }
+
         RefreshNetworkInfo();
+        _ = ToggleListenerAsync();
     }
 
     public string CurrentTab
@@ -566,9 +635,13 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                 var conn = await _listener.AcceptConnectionAsync();
                 await HandleInboundTransferAsync(conn);
             }
-            catch
+            catch (Exception ex)
             {
-                break;
+                if (!IsListening || _listener == null)
+                {
+                    break;
+                }
+                RunOnUi(() => StatusMessage = $"Inbound connection failed: {ex.Message}. Listening on port {ListeningPort}...");
             }
         }
     }
@@ -585,6 +658,8 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             {
                 RunOnUi(() =>
                 {
+                    IsQrZoomModalVisible = false;
+                    CurrentTab = "Receive";
                     IsTransferActive = true;
                     TransferTitle = "Incoming Connection...";
                     TotalProgress = 0;
@@ -623,10 +698,18 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     private async Task ExecuteSendFilesAsync()
     {
         if (SelectedFiles.Count == 0) return;
+        if (_pairedInvitation == null &&
+            !string.IsNullOrWhiteSpace(PeerHost) &&
+            PeerHost.Trim().StartsWith("glide://", StringComparison.OrdinalIgnoreCase))
+        {
+            PairInputUri = PeerHost.Trim();
+            ExecuteSubmitPairModal();
+        }
+
         if (_pairedInvitation == null)
         {
             StatusMessage =
-                "Authenticated pairing is required. Scan or paste the receiver's current pairing invitation.";
+                "Paste the receiver's pairing invitation link to authenticate transfer.";
             IsPairModalVisible = true;
             return;
         }
@@ -1080,24 +1163,84 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             DateTimeOffset.UtcNow
                 .ToUnixTimeSeconds() + 120;
 
-        var localIps =
-            Dns.GetHostAddresses(
-                    Dns.GetHostName())
-                .Where(ip =>
-                    ip.AddressFamily ==
-                    System.Net.Sockets
-                        .AddressFamily.InterNetwork)
-                .Select(ip => ip.ToString())
+        var preferredLanIps = new List<string>();
+        try
+        {
+            var candidateInterfaces = System.Net.NetworkInformation.NetworkInterface
+                .GetAllNetworkInterfaces()
+                .Where(ni =>
+                    ni.OperationalStatus == System.Net.NetworkInformation.OperationalStatus.Up &&
+                    ni.NetworkInterfaceType != System.Net.NetworkInformation.NetworkInterfaceType.Loopback &&
+                    ni.NetworkInterfaceType != System.Net.NetworkInformation.NetworkInterfaceType.Tunnel &&
+                    !ni.Name.Contains("vEthernet", StringComparison.OrdinalIgnoreCase) &&
+                    !ni.Name.Contains("WSL", StringComparison.OrdinalIgnoreCase) &&
+                    !ni.Description.Contains("Hyper-V", StringComparison.OrdinalIgnoreCase) &&
+                    !ni.Description.Contains("Virtual", StringComparison.OrdinalIgnoreCase) &&
+                    !ni.Description.Contains("VMware", StringComparison.OrdinalIgnoreCase) &&
+                    !ni.Description.Contains("TAP-", StringComparison.OrdinalIgnoreCase))
+                .Select(ni =>
+                {
+                    var props = ni.GetIPProperties();
+                    bool isUsbPeerLink =
+                        ni.Description.Contains("Android", StringComparison.OrdinalIgnoreCase) ||
+                        ni.Description.Contains("RNDIS", StringComparison.OrdinalIgnoreCase) ||
+                        ni.Description.Contains("UsbNcm", StringComparison.OrdinalIgnoreCase);
+                    bool hasGateway = props.GatewayAddresses.Any(g =>
+                        g.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork &&
+                        !IPAddress.Any.Equals(g.Address));
+                    var ipv4s = props.UnicastAddresses
+                        .Where(ua =>
+                            ua.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork &&
+                            !IPAddress.IsLoopback(ua.Address))
+                        .Select(ua => ua.Address.ToString())
+                        .Where(ip => !ip.StartsWith("169.254.", StringComparison.Ordinal))
+                        .ToList();
+                    return new { Interface = ni, IsUsbPeerLink = isUsbPeerLink, HasGateway = hasGateway, Ips = ipv4s };
+                })
+                .Where(x => x.Ips.Count > 0)
+                .OrderByDescending(x => x.IsUsbPeerLink)
+                .ThenByDescending(x => x.HasGateway)
+                .ThenBy(x => x.Interface.NetworkInterfaceType == System.Net.NetworkInformation.NetworkInterfaceType.Wireless80211 ? 0 : 1)
                 .ToList();
 
+            foreach (var item in candidateInterfaces)
+            {
+                foreach (var ip in item.Ips)
+                {
+                    if (!preferredLanIps.Contains(ip, StringComparer.Ordinal))
+                    {
+                        preferredLanIps.Add(ip);
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Fallback to Dns.GetHostAddresses below
+        }
+
+        if (preferredLanIps.Count == 0)
+        {
+            preferredLanIps = Dns.GetHostAddresses(Dns.GetHostName())
+                .Where(ip =>
+                    ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork &&
+                    !IPAddress.IsLoopback(ip))
+                .Select(ip => ip.ToString())
+                .Where(ip => !ip.StartsWith("169.254.", StringComparison.Ordinal))
+                .OrderBy(ip =>
+                    ip.StartsWith("192.168.", StringComparison.Ordinal) ? 0 :
+                    ip.StartsWith("10.", StringComparison.Ordinal) ? 1 : 2)
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+        }
+
         var endpoints =
-            localIps
+            preferredLanIps
+                .Take(2)
                 .Select(ip =>
                     new LanEndpoint(
                         ip,
                         ListeningPort))
-                .Take(
-                    LanInvitation.MaxEndpoints)
                 .ToList();
         if (endpoints.Count == 0)
         {
@@ -1141,14 +1284,22 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
 
     private void ExecuteOpenDownloads()
     {
-        string downloads = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
-        if (Directory.Exists(downloads))
+        string targetFolder = !string.IsNullOrWhiteSpace(ReceiveDirectory)
+            ? ReceiveDirectory
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Glide");
+
+        try
         {
+            Directory.CreateDirectory(targetFolder);
             Process.Start(new ProcessStartInfo
             {
-                FileName = downloads,
+                FileName = targetFolder,
                 UseShellExecute = true
             });
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Could not open folder: {ex.Message}";
         }
     }
 

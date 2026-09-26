@@ -1,4 +1,6 @@
 using System.Net;
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 
@@ -31,8 +33,58 @@ public static class CertificateGenerator
 
         var sanBuilder = new SubjectAlternativeNameBuilder();
         sanBuilder.AddDnsName("localhost");
+        if (!string.IsNullOrWhiteSpace(Environment.MachineName))
+        {
+            sanBuilder.AddDnsName(Environment.MachineName);
+        }
         sanBuilder.AddIpAddress(IPAddress.Loopback);
         sanBuilder.AddIpAddress(IPAddress.IPv6Loopback);
+
+        var addedIps = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            IPAddress.Loopback.ToString(),
+            IPAddress.IPv6Loopback.ToString()
+        };
+
+        try
+        {
+            foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (ni.OperationalStatus != OperationalStatus.Up) continue;
+                foreach (var ua in ni.GetIPProperties().UnicastAddresses)
+                {
+                    if (ua.Address.AddressFamily is AddressFamily.InterNetwork or AddressFamily.InterNetworkV6)
+                    {
+                        var cleanIp = ua.Address.IsIPv6LinkLocal
+                            ? new IPAddress(ua.Address.GetAddressBytes())
+                            : ua.Address;
+                        if (addedIps.Add(cleanIp.ToString()))
+                        {
+                            sanBuilder.AddIpAddress(cleanIp);
+                        }
+                    }
+                }
+            }
+
+            foreach (var hostIp in Dns.GetHostAddresses(Dns.GetHostName()))
+            {
+                if (hostIp.AddressFamily is AddressFamily.InterNetwork or AddressFamily.InterNetworkV6)
+                {
+                    var cleanIp = hostIp.IsIPv6LinkLocal
+                        ? new IPAddress(hostIp.GetAddressBytes())
+                        : hostIp;
+                    if (addedIps.Add(cleanIp.ToString()))
+                    {
+                        sanBuilder.AddIpAddress(cleanIp);
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Non-fatal fallback if interface enumeration fails
+        }
+
         request.CertificateExtensions.Add(sanBuilder.Build());
 
         var notBefore = DateTimeOffset.UtcNow.AddMinutes(-5);

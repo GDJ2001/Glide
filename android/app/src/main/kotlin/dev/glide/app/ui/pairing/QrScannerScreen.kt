@@ -14,6 +14,8 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -134,6 +136,7 @@ fun QrScannerScreen(
         if (hasCameraPermission) {
             // Camera Preview & Viewfinder
             CameraPreviewView(
+                isScanning = uiState is QrScannerUiState.Scanning,
                 onQrDecoded = onQrScanned,
                 onCameraBound = { camera ->
                     activeCamera = camera
@@ -149,9 +152,7 @@ fun QrScannerScreen(
             CameraPermissionRationale(
                 onRequestPermission = { permissionLauncher.launch(Manifest.permission.CAMERA) },
                 onPasteClicked = { showPasteDialog = true },
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(24.dp)
+                modifier = Modifier.fillMaxSize()
             )
         }
 
@@ -275,19 +276,34 @@ fun QrScannerScreen(
 
 @Composable
 private fun CameraPreviewView(
+    isScanning: Boolean,
     onQrDecoded: (String) -> Unit,
     onCameraBound: (Camera) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
-    val frameAnalyzer = remember {
+    val currentOnQrDecoded by androidx.compose.runtime.rememberUpdatedState(onQrDecoded)
+    val currentIsScanning by androidx.compose.runtime.rememberUpdatedState(isScanning)
+
+    lateinit var frameAnalyzer: QrFrameAnalyzer
+    frameAnalyzer = remember {
         QrFrameAnalyzer(
+            minIntervalMs = 100L,
             onQrDecoded = { result ->
-                onQrDecoded(result)
+                if (currentIsScanning) {
+                    currentOnQrDecoded(result)
+                } else {
+                    frameAnalyzer.resetLock()
+                }
             }
         )
+    }
+
+    LaunchedEffect(isScanning) {
+        if (isScanning) {
+            frameAnalyzer.resetLock()
+        }
     }
 
     var activeCameraProvider by remember { mutableStateOf<ProcessCameraProvider?>(null) }
@@ -323,7 +339,17 @@ private fun CameraPreviewView(
                     it.surfaceProvider = previewView.surfaceProvider
                 }
 
+                val resolutionSelector = androidx.camera.core.resolutionselector.ResolutionSelector.Builder()
+                    .setResolutionStrategy(
+                        androidx.camera.core.resolutionselector.ResolutionStrategy(
+                            android.util.Size(1280, 720),
+                            androidx.camera.core.resolutionselector.ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER
+                        )
+                    )
+                    .build()
+
                 val imageAnalysis = ImageAnalysis.Builder()
+                    .setResolutionSelector(resolutionSelector)
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .build()
                     .also {
@@ -341,6 +367,37 @@ private fun CameraPreviewView(
                         imageAnalysis
                     )
                     onCameraBound(camera)
+
+                    // Trigger center autofocus & metering for sharp screen QR recognition
+                    previewView.post {
+                        try {
+                            val point = previewView.meteringPointFactory.createPoint(
+                                previewView.width / 2f,
+                                previewView.height / 2f
+                            )
+                            val action = androidx.camera.core.FocusMeteringAction.Builder(point)
+                                .setAutoCancelDuration(3, java.util.concurrent.TimeUnit.SECONDS)
+                                .build()
+                            camera.cameraControl.startFocusAndMetering(action)
+                        } catch (_: Exception) {}
+                    }
+
+                    previewView.setOnTouchListener { view, motionEvent ->
+                        if (motionEvent.action == android.view.MotionEvent.ACTION_UP) {
+                            try {
+                                val point = previewView.meteringPointFactory.createPoint(
+                                    motionEvent.x,
+                                    motionEvent.y
+                                )
+                                val action = androidx.camera.core.FocusMeteringAction.Builder(point)
+                                    .setAutoCancelDuration(3, java.util.concurrent.TimeUnit.SECONDS)
+                                    .build()
+                                camera.cameraControl.startFocusAndMetering(action)
+                            } catch (_: Exception) {}
+                            view.performClick()
+                        }
+                        true
+                    }
                 } catch (_: Exception) {}
             }, ContextCompat.getMainExecutor(ctx))
 
@@ -352,17 +409,18 @@ private fun CameraPreviewView(
 
 @Composable
 private fun ViewfinderOverlay(modifier: Modifier = Modifier) {
-    Box(
+    androidx.compose.foundation.layout.BoxWithConstraints(
         modifier = modifier,
         contentAlignment = Alignment.Center
     ) {
+        val cutoutSize = (minOf(maxWidth, maxHeight) * 0.52f).coerceIn(136.dp, 240.dp)
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Box(
                 modifier = Modifier
-                    .size(260.dp)
+                    .size(cutoutSize)
                     .border(
                         width = 3.dp,
                         color = MaterialTheme.colorScheme.brandCyanAccent,
@@ -388,21 +446,26 @@ private fun CameraPermissionRationale(
     onPasteClicked: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+    Box(
+        modifier = modifier
+            .verticalScroll(rememberScrollState())
+            .padding(vertical = 64.dp, horizontal = 16.dp),
+        contentAlignment = Alignment.Center
+    ) {
         Card(
             shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             modifier = Modifier.fillMaxWidth(0.92f)
         ) {
             Column(
-                modifier = Modifier.padding(24.dp),
+                modifier = Modifier.padding(20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.CameraAlt,
                     contentDescription = null,
-                    modifier = Modifier.size(48.dp),
+                    modifier = Modifier.size(40.dp),
                     tint = MaterialTheme.colorScheme.primary
                 )
 

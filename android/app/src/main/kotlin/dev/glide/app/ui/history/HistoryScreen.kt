@@ -88,11 +88,11 @@ fun HistoryScreen(
     }
 
     Scaffold(
-        modifier = modifier
-            .fillMaxSize()
-            .safeDrawingPadding(),
+        modifier = modifier.fillMaxSize(),
+        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
+                windowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
                 title = {
                     Text(
                         text = "Transfer history",

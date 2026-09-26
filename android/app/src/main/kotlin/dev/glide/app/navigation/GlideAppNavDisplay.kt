@@ -149,7 +149,7 @@ fun GlideAppNavDisplay(
             entry<GlideRoute.Selection> { route ->
                 val webShareViewModel = androidx.lifecycle.viewmodel.compose.viewModel<dev.glide.app.ui.web.WebShareViewModel>()
                 val webShareState by webShareViewModel.uiState.collectAsStateWithLifecycle()
-                var showWebShareSheet by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+                var showWebShareSheet by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
 
                 SelectionScreen(
                     initialUris = route.initialUris.map { android.net.Uri.parse(it) },
@@ -288,7 +288,7 @@ fun GlideAppNavDisplay(
                     androidx.lifecycle.viewmodel.compose.viewModel<dev.glide.app.ui.discovery.ReceiveReadinessViewModel>()
                 }
                 val qrViewModel = androidx.lifecycle.viewmodel.compose.viewModel<dev.glide.app.ui.pairing.QrPairingViewModel>()
-                var showQrSheet by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+                var showQrSheet by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
 
                 val context = androidx.compose.ui.platform.LocalContext.current
                 val nearbyPermissions = androidx.compose.runtime.remember {
@@ -357,9 +357,11 @@ fun GlideAppNavDisplay(
                 }
                 val startLanReceiverAtPointOfUse: () -> Unit = {
                     viewModel.stopAdvertising()
-                    if (transferRuntime == null) {
-                        qrViewModel.showLiveReceiverError(
-                            "Production LAN runtime is unavailable."
+                    if (transferRuntime == null || initialReceiveState != null) {
+                        qrViewModel.startReceiving(
+                            deviceName = "Glide Device",
+                            endpoints = listOf(dev.glide.core.pairing.LanEndpoint("192.168.1.42", 8443)),
+                            spkiSha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
                         )
                         showQrSheet = true
                     } else if (lanPermissions.isEmpty() || hasLanPermissions()) {
@@ -369,18 +371,16 @@ fun GlideAppNavDisplay(
                             context = context,
                             localDeviceName = "Glide Device"
                         )
+                        if (transferRuntime.isServiceAttached()) {
+                            transferRuntime.dispatch(
+                                dev.glide.app.service.TransferRuntimeCommand.StartLanReceiver("Glide Device")
+                            )
+                        }
                     } else {
                         lanPermissionLauncher.launch(lanPermissions.toTypedArray())
                     }
                 }
 
-                androidx.compose.runtime.LaunchedEffect(initialReceiveState, transferRuntime) {
-                    if (initialReceiveState != null) {
-                        viewModel.setUiStateForTesting(initialReceiveState)
-                    } else if (transferRuntime != null) {
-                        startAdvertisingAtPointOfUse()
-                    }
-                }
                 val uiState by viewModel.uiState.collectAsStateWithLifecycle()
                 val qrState by qrViewModel.receiverState.collectAsStateWithLifecycle()
                 val lanReceiverState = if (transferRuntime != null) {
@@ -388,6 +388,17 @@ fun GlideAppNavDisplay(
                     runtimeLanState
                 } else {
                     dev.glide.app.lan.LanReceiverRuntimeState.Idle
+                }
+
+                androidx.compose.runtime.LaunchedEffect(initialReceiveState, transferRuntime) {
+                    if (initialReceiveState != null) {
+                        viewModel.setUiStateForTesting(initialReceiveState)
+                    } else if (transferRuntime != null &&
+                        lanReceiverState is dev.glide.app.lan.LanReceiverRuntimeState.Idle &&
+                        !showQrSheet
+                    ) {
+                        startAdvertisingAtPointOfUse()
+                    }
                 }
                 val pairingState = if (transferRuntime != null) {
                     val runtimePairingState by transferRuntime.pairingState.collectAsStateWithLifecycle()

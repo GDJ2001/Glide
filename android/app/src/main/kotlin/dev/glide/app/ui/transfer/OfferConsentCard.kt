@@ -173,7 +173,7 @@ private fun ReceiverOfferConsentCard(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "From ${state.peerName.isolateBidi()}",
+                        text = "From ${state.peerName.isolateBidi()} • ${state.itemCount} ${if (state.itemCount == 1) "file" else "files"} (${formatOfferBytes(state.totalBytes)})",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -206,52 +206,6 @@ private fun ReceiverOfferConsentCard(
                 }
             }
 
-            // Peer Device Context Details
-            Surface(
-                shape = MaterialTheme.shapes.medium,
-                color = MaterialTheme.colorScheme.surface,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 10.dp)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = when (state.peerDeviceType) {
-                                DeviceType.Phone -> Icons.Default.PhoneAndroid
-                                DeviceType.Tablet -> Icons.Default.TabletAndroid
-                                DeviceType.Computer -> Icons.Default.Computer
-                                DeviceType.Unknown -> Icons.Default.Devices
-                            },
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Text(
-                            text = state.peerName,
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-
-                    Text(
-                        text = "${state.itemCount} ${if (state.itemCount == 1) "file" else "files"} • ${formatOfferBytes(state.totalBytes)}",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
             // Scrollable Item List (Inspection)
             val itemsToShow = if (state.items.isNotEmpty()) {
                 state.items
@@ -265,13 +219,6 @@ private fun ReceiverOfferConsentCard(
                     )
                 )
             }
-
-            Text(
-                text = "Offered items:",
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
 
             Surface(
                 shape = MaterialTheme.shapes.medium,
@@ -340,39 +287,6 @@ private fun ReceiverOfferConsentCard(
                                 thickness = 0.5.dp
                             )
                         }
-                    }
-                }
-            }
-
-            // Private Destination Note (Verbatim requirement: "Saved in Glide; export to keep outside app")
-            Surface(
-                shape = MaterialTheme.shapes.medium,
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    verticalAlignment = Alignment.Top,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.padding(12.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Lock,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(
-                            text = "Saved in Glide; export to keep outside app",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = "Received files are kept in private app storage. No external app can access them until you explicitly export.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                     }
                 }
             }

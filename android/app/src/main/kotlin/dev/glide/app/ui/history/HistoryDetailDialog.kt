@@ -163,122 +163,68 @@ fun HistoryDetailContent(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Session Status and Summary Badges
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            StatusBadge(outcome = detail.session.outcome)
-
-            val duration = formatDuration(detail.session.startedAtMs, detail.session.endedAtMs)
-            if (duration.isNotEmpty()) {
-                Text(
-                    text = "Duration: $duration",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            Spacer(modifier = Modifier.weight(1f))
-
-            Text(
-                text = formatByteSize(detail.session.totalBytes),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Items list header
-        Text(
-            text = "Files (${detail.items.size})",
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurface
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Scrollable Item List
+        // Scrollable middle body so Landscape (360dp height) never clips files or buttons
         val scrollState = rememberScrollState()
         Column(
             modifier = Modifier
                 .weight(1f, fill = false)
-                .verticalScroll(scrollState),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .verticalScroll(scrollState)
         ) {
-            detail.items.forEach { item ->
-                HistoryItemCard(
-                    item = item,
-                    isReceiver = detail.session.role == DeviceRole.Receiver,
-                    onOpenFile = { onOpenFile(item) },
-                    onExportFile = { onExportFile(item) },
-                    onShareFile = { onShareFile(item) }
+            // Session Status and Summary Badges
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                StatusBadge(outcome = detail.session.outcome)
+
+                val duration = formatDuration(detail.session.startedAtMs, detail.session.endedAtMs)
+                if (duration.isNotEmpty()) {
+                    Text(
+                        text = "Duration: $duration",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Spacer(modifier = Modifier.weight(1f))
+
+                Text(
+                    text = formatByteSize(detail.session.totalBytes),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             }
-        }
 
-        // Feedback banners
-        if (openFileFeedback != null) {
-            Spacer(modifier = Modifier.height(12.dp))
-            Card(
-                shape = RoundedCornerShape(8.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.errorContainer,
-                    contentColor = MaterialTheme.colorScheme.onErrorContainer
-                ),
-                modifier = Modifier.fillMaxWidth()
+            Spacer(modifier = Modifier.height(16.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Items list header
+            Text(
+                text = "Files (${detail.items.size})",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Default.Info, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(text = openFileFeedback, style = MaterialTheme.typography.bodySmall)
+                detail.items.forEach { item ->
+                    HistoryItemCard(
+                        item = item,
+                        isReceiver = detail.session.role == DeviceRole.Receiver,
+                        onOpenFile = { onOpenFile(item) },
+                        onExportFile = { onExportFile(item) },
+                        onShareFile = { onShareFile(item) }
+                    )
                 }
             }
-        }
 
-        when (exportStatus) {
-            is ExportUiStatus.Exporting -> {
-                Spacer(modifier = Modifier.height(12.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Exporting to Downloads...", style = MaterialTheme.typography.bodySmall)
-                }
-            }
-            is ExportUiStatus.Success -> {
-                Spacer(modifier = Modifier.height(12.dp))
-                Card(
-                    shape = RoundedCornerShape(8.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Saved as ${exportStatus.destinationName} in Downloads",
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
-                }
-            }
-            is ExportUiStatus.Failed -> {
+            // Feedback banners
+            if (openFileFeedback != null) {
                 Spacer(modifier = Modifier.height(12.dp))
                 Card(
                     shape = RoundedCornerShape(8.dp),
@@ -292,19 +238,76 @@ fun HistoryDetailContent(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.Warning, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Info, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Export failed: ${exportStatus.message}",
-                            style = MaterialTheme.typography.bodySmall
-                        )
+                        Text(text = openFileFeedback, style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
-            ExportUiStatus.Idle -> { /* Nothing */ }
+
+            when (exportStatus) {
+                is ExportUiStatus.Exporting -> {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Exporting to Downloads...", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                is ExportUiStatus.Success -> {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Card(
+                        shape = RoundedCornerShape(8.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Saved as ${exportStatus.destinationName} in Downloads",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+                }
+                is ExportUiStatus.Failed -> {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Card(
+                        shape = RoundedCornerShape(8.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer,
+                            contentColor = MaterialTheme.colorScheme.onErrorContainer
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Warning, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Export failed: ${exportStatus.message}",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+                }
+                ExportUiStatus.Idle -> { /* Nothing */ }
+            }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
         var showDeleteDialog by remember { mutableStateOf(false) }
 
@@ -455,50 +458,56 @@ fun HistoryItemCard(
                     ) {
                         OutlinedButton(
                             onClick = onOpenFile,
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                             modifier = Modifier
                                 .weight(1f)
-                                .heightIn(min = 48.dp)
+                                .heightIn(min = 42.dp)
                                 .glideHoverHand()
                                 .semantics {
                                     role = Role.Button
                                     contentDescription = "Open ${item.displayName.isolateBidi()}"
                                 }
                         ) {
-                            Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(15.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Open", style = MaterialTheme.typography.labelMedium)
+                            Text("Open", style = MaterialTheme.typography.labelMedium, maxLines = 1, softWrap = false)
                         }
 
                         OutlinedButton(
                             onClick = onShareFile,
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                             modifier = Modifier
                                 .weight(1f)
-                                .heightIn(min = 48.dp)
+                                .heightIn(min = 42.dp)
                                 .glideHoverHand()
                                 .semantics {
                                     role = Role.Button
                                     contentDescription = "Share ${item.displayName.isolateBidi()}"
                                 }
                         ) {
-                            Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(15.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Share", style = MaterialTheme.typography.labelMedium)
+                            Text("Share", style = MaterialTheme.typography.labelMedium, maxLines = 1, softWrap = false)
                         }
 
                         Button(
                             onClick = onExportFile,
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                             modifier = Modifier
                                 .weight(1f)
-                                .heightIn(min = 48.dp)
+                                .heightIn(min = 42.dp)
                                 .glideHoverHand()
                                 .semantics {
                                     role = Role.Button
                                     contentDescription = "Export ${item.displayName.isolateBidi()} to Downloads"
                                 }
                         ) {
-                            Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(15.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Export", style = MaterialTheme.typography.labelMedium)
+                            Text("Export", style = MaterialTheme.typography.labelMedium, maxLines = 1, softWrap = false)
                         }
                     }
                 } else {

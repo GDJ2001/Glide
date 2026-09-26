@@ -71,21 +71,21 @@ fun HomeScreen(
     val verticalSpacing = if (windowSizeClass.isCompactHeight) 12.dp else 24.dp
 
     Box(
-        modifier = modifier.fillMaxSize().safeDrawingPadding(),
+        modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.TopCenter
     ) {
         Column(
             modifier = Modifier
                 .widthIn(max = dev.glide.designsystem.AdaptiveLayoutTokens.MaxContentWidth)
                 .fillMaxSize()
+                .verticalScroll(scrollState)
                 .padding(
                     horizontal = windowSizeClass.pageHorizontalPadding,
                     vertical = if (windowSizeClass.isCompactHeight) 8.dp else 16.dp
-                )
-                .verticalScroll(scrollState),
+                ),
             verticalArrangement = Arrangement.spacedBy(verticalSpacing)
         ) {
-        // App Identity Header with subtle ambient wash (<= 8% opacity) and Settings Action
+        // App Identity Header with Settings Action
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -98,32 +98,22 @@ fun HomeScreen(
                         )
                     )
                 )
-                .padding(vertical = 12.dp, horizontal = 4.dp)
+                .padding(vertical = 8.dp, horizontal = 4.dp)
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .semantics { contentDescription = "Glide: Fast, private, local device sharing" },
+                    .semantics { contentDescription = "Glide" },
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Image(
-                        painter = painterResource(id = logoRes),
-                        contentDescription = "Glide",
-                        modifier = Modifier
-                            .height(40.dp)
-                            .padding(vertical = 4.dp)
-                    )
-                    Text(
-                        text = "Fast, private, local device sharing",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                Image(
+                    painter = painterResource(id = logoRes),
+                    contentDescription = "Glide",
+                    modifier = Modifier
+                        .height(40.dp)
+                        .padding(vertical = 4.dp)
+                )
 
                 IconButton(
                     onClick = onNavigateToSettings,
@@ -172,18 +162,11 @@ fun HomeScreen(
                             strokeWidth = 3.dp,
                             color = MaterialTheme.colorScheme.primary
                         )
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(
-                                text = "Transfer in progress",
-                                style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                            Text(
-                                text = "Session: ${activeSessionId.take(12)}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-                            )
-                        }
+                        Text(
+                            text = "Transfer in progress",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
                     }
                     Button(
                         onClick = { onNavigateToTransfer(activeSessionId) },
@@ -260,46 +243,6 @@ fun HomeScreen(
                     text = "Receive files",
                     style = MaterialTheme.typography.titleMedium
                 )
-            }
-        }
-
-        // Privacy Reassurance Card
-        Card(
-            shape = MaterialTheme.shapes.medium,
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant
-            ),
-            modifier = Modifier
-                .fillMaxWidth()
-                .semantics {
-                    contentDescription = "Privacy reassurance: No cloud, no accounts, direct local Wi-Fi and Bluetooth"
-                }
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Security,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(28.dp)
-                )
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(
-                        text = "Private & direct",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = "No cloud, no accounts, direct local Wi-Fi & Bluetooth. Files transfer straight between your devices.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
             }
         }
 

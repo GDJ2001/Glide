@@ -74,8 +74,10 @@ object QrEncoder {
         foregroundColor: Int = Color.BLACK,
         backgroundColor: Int = Color.WHITE,
         margin: Int = DEFAULT_MARGIN,
-        errorCorrectionLevel: ErrorCorrectionLevel = ErrorCorrectionLevel.M
+        errorCorrectionLevel: ErrorCorrectionLevel = ErrorCorrectionLevel.L
     ): Bitmap {
+        val safeForeground = if ((foregroundColor ushr 24) == 0) Color.BLACK else foregroundColor
+        val safeBackground = if ((backgroundColor ushr 24) == 0) Color.WHITE else backgroundColor
         val bitMatrix = encodeToBitMatrix(content, size, size, margin, errorCorrectionLevel)
         val width = bitMatrix.width
         val height = bitMatrix.height
@@ -84,7 +86,7 @@ object QrEncoder {
         for (y in 0 until height) {
             val offset = y * width
             for (x in 0 until width) {
-                pixels[offset + x] = if (bitMatrix.get(x, y)) foregroundColor else backgroundColor
+                pixels[offset + x] = if (bitMatrix.get(x, y)) safeForeground else safeBackground
             }
         }
 

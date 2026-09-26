@@ -82,6 +82,7 @@
         android:theme="@style/Theme.Glide">
         <activity
             android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|uiMode|density|keyboard|keyboardHidden"
             android:exported="true"
             android:launchMode="singleTask">
             <intent-filter>

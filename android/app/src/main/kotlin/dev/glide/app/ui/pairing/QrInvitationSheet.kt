@@ -156,6 +156,11 @@ fun QrInvitationSheet(
                 }
 
                 is QrReceiverUiState.Ready -> {
+                    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+                    val isCompactHeight = configuration.screenHeightDp < 480
+                    val qrCardSize = if (isCompactHeight) 180.dp else 264.dp
+                    val qrImageSize = if (isCompactHeight) 156.dp else 236.dp
+
                     // High-contrast quiet zone container (always white background for optimal optical scan)
                     Card(
                         shape = RoundedCornerShape(20.dp),
@@ -167,15 +172,17 @@ fun QrInvitationSheet(
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(240.dp)
-                                .padding(16.dp),
+                                .size(qrCardSize)
+                                .padding(if (isCompactHeight) 12.dp else 16.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             if (uiState.qrBitmap != null) {
                                 Image(
                                     bitmap = uiState.qrBitmap.asImageBitmap(),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(208.dp)
+                                    contentDescription = "Pairing QR code",
+                                    filterQuality = androidx.compose.ui.graphics.FilterQuality.None,
+                                    contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+                                    modifier = Modifier.size(qrImageSize)
                                 )
                             } else {
                                 CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
@@ -270,7 +277,7 @@ fun QrInvitationSheet(
                         Button(
                             onClick = {
                                 copyInvitationToClipboard(context, InvitationCodec.encode(uiState.invitation))
-                                copyNotice = "Invitation copied! Sharing text leaks temporary access to your local network."
+                                copyNotice = "Invitation copied"
                             },
                             shape = PrimaryButtonShape,
                             modifier = Modifier
@@ -319,13 +326,6 @@ fun QrInvitationSheet(
                             }
                         }
                     }
-
-                    Text(
-                        text = "Invitations expire after 120 seconds for privacy and network security.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center
-                    )
 
                     Button(
                         onClick = onRefresh,

@@ -158,6 +158,29 @@ class ProductionLanController private constructor(
             return false
         }
 
+        val existing = synchronized(lock) { receiverResources }
+        if (existing != null) {
+            val available = existing.networkScope.networkState.value as? LanNetworkState.Available
+            val port = runCatching { existing.listener.localPort }.getOrDefault(-1)
+            if (available != null && port > 0) {
+                val endpoints = endpointsFor(addresses = available.localAddresses, port = port)
+                if (endpoints.isNotEmpty()) {
+                    val refreshedInvitation = existing.authority.mintInvitation(
+                        endpoints = endpoints,
+                        spkiSha256 = existing.identity.spkiSha256,
+                        deviceName = deviceName.trim().ifEmpty { "Glide Device" },
+                        platform = "android",
+                        networkGeneration = available.generation
+                    )
+                    _receiverState.value = LanReceiverRuntimeState.Ready(
+                        invitation = refreshedInvitation,
+                        endpointsSummary = endpoints.joinToString(", ") { "${it.address}:${it.port}" }
+                    )
+                    return true
+                }
+            }
+        }
+
         stopAll()
         val generation = synchronized(lock) { ++lifecycleGeneration }
         _receiverState.value = LanReceiverRuntimeState.Starting

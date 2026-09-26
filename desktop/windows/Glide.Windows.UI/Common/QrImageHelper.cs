@@ -12,13 +12,13 @@ public static class QrImageHelper
     /// <summary>
     /// Generates a frozen BitmapSource from the provided text for direct XAML Image binding.
     /// </summary>
-    public static ImageSource? GenerateQrImageSource(string text, int pixelScale = 6, int quietZone = 4)
+    public static ImageSource? GenerateQrImageSource(string text, int pixelScale = 10, int quietZone = 4)
     {
         if (string.IsNullOrWhiteSpace(text)) return null;
 
         try
         {
-            var qr = QrCodeGenerator.EncodeText(text, QrErrorCorrectionLevel.Medium);
+            var qr = QrCodeGenerator.EncodeText(text, QrErrorCorrectionLevel.Low);
             int qrSize = qr.Size;
             int totalModules = qrSize + quietZone * 2;
             int imageWidth = totalModules * pixelScale;
@@ -29,7 +29,7 @@ public static class QrImageHelper
             // Fill background with pure white (0xFF, 0xFF, 0xFF, 0xFF) for maximum scanner readability
             Array.Fill(pixels, (byte)0xFF);
 
-            // Draw dark modules
+            // Draw pure pitch-black modules (0x00, 0x00, 0x00, 0xFF) for highest contrast
             for (int r = 0; r < qrSize; r++)
             {
                 for (int c = 0; c < qrSize; c++)
@@ -45,9 +45,9 @@ public static class QrImageHelper
                             for (int x = 0; x < pixelScale; x++)
                             {
                                 int pixelOffset = rowOffset + (startX + x) * 4;
-                                pixels[pixelOffset + 0] = 0x11; // B
-                                pixels[pixelOffset + 1] = 0x16; // G
-                                pixels[pixelOffset + 2] = 0x29; // R
+                                pixels[pixelOffset + 0] = 0x00; // B
+                                pixels[pixelOffset + 1] = 0x00; // G
+                                pixels[pixelOffset + 2] = 0x00; // R
                                 pixels[pixelOffset + 3] = 0xFF; // A
                             }
                         }

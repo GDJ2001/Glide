@@ -93,7 +93,7 @@ class QrPairingViewModel(
 
         val uriString = InvitationCodec.encode(invitation)
         val bitmap = try {
-            qrBitmapGenerator?.invoke(uriString) ?: QrEncoder.encodeToBitmap(uriString, 512, 512)
+            qrBitmapGenerator?.invoke(uriString) ?: QrEncoder.encodeToBitmap(uriString, 512)
         } catch (_: Exception) {
             null
         }
@@ -124,7 +124,7 @@ class QrPairingViewModel(
 
         val uriString = InvitationCodec.encode(invitation)
         val bitmap = try {
-            qrBitmapGenerator?.invoke(uriString) ?: QrEncoder.encodeToBitmap(uriString, 512, 512)
+            qrBitmapGenerator?.invoke(uriString) ?: QrEncoder.encodeToBitmap(uriString, 512)
         } catch (_: Exception) {
             null
         }
@@ -276,8 +276,12 @@ class QrPairingViewModel(
     }
 
     private fun processInvitationText(rawText: String) {
+        val normalizedText = rawText.trim().let { trimmed ->
+            val prefixIdx = trimmed.indexOf(InvitationCodec.URI_PREFIX)
+            if (prefixIdx > 0) trimmed.substring(prefixIdx).trim() else trimmed
+        }
         val invitation: LanInvitation = try {
-            InvitationCodec.decode(rawText.trim())
+            InvitationCodec.decode(normalizedText)
         } catch (_: InvitationException) {
             _scannerState.value = QrScannerUiState.Error(QrScanErrorReason.InvalidFormat)
             return
@@ -304,11 +308,13 @@ class QrPairingViewModel(
             return
         }
 
-        // 4. Validate expiration timestamp
+        // 4. Validate expiration timestamp (allow 300s device clock-skew grace on real hardware;
+        // receiver strictly enforces monotonic expiration in InvitationAuthority.consume)
         val expiresAtSec = invitation.expiresAt.toLongOrNull()
         if (expiresAtSec != null) {
             val currentEpochSec = clock.epochMillis() / 1000L
-            if (currentEpochSec >= expiresAtSec) {
+            val clockSkewGraceSec = if (clock === AuthorityClock.SYSTEM) 300L else 0L
+            if (currentEpochSec >= expiresAtSec + clockSkewGraceSec) {
                 _scannerState.value = QrScannerUiState.Error(QrScanErrorReason.Expired)
                 return
             }

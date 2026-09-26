@@ -89,62 +89,59 @@ fun DiscoveryScreen(
     val haptics = dev.glide.designsystem.GlideTheme.haptics
     val context = LocalContext.current
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .safeDrawingPadding()
-            .padding(horizontal = 20.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp)
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         // Top Navigation Bar
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .semantics { contentDescription = "Discovery navigation bar" },
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(
-                onClick = onBack,
+        item {
+            Row(
                 modifier = Modifier
-                    .size(48.dp)
-                    .semantics {
-                        role = Role.Button
-                        contentDescription = "Back to file selection"
-                    }
+                    .fillMaxWidth()
+                    .semantics { contentDescription = "Discovery navigation bar" },
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurface
+                IconButton(
+                    onClick = onBack,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .semantics {
+                            role = Role.Button
+                            contentDescription = "Back to file selection"
+                        }
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Select recipient",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.semantics { heading() }
                 )
             }
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = "Select recipient",
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.semantics { heading() }
-            )
         }
 
         // Header with subtle ambient wash (<= 8% opacity) and 2.4s low-amplitude tonal breathing indicator
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(MaterialTheme.shapes.medium)
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(
-                            MaterialTheme.colorScheme.brandCyanAccent.copy(alpha = 0.08f),
-                            Color.Transparent
+        item {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(MaterialTheme.shapes.medium)
+                    .background(
+                        Brush.radialGradient(
+                            colors = listOf(
+                                MaterialTheme.colorScheme.brandCyanAccent.copy(alpha = 0.08f),
+                                Color.Transparent
+                            )
                         )
                     )
-                )
-                .padding(vertical = 12.dp, horizontal = 4.dp)
-        ) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                    .padding(vertical = 12.dp, horizontal = 4.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -162,11 +159,6 @@ fun DiscoveryScreen(
                         DiscoveryBreathingIndicator()
                     }
                 }
-                Text(
-                    text = "Open Receive on the other device to share directly.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
         }
 
@@ -174,154 +166,143 @@ fun DiscoveryScreen(
         when (uiState) {
             is DiscoveryUiState.Searching -> {
                 if (uiState.peers.isEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
-                            .padding(24.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(16.dp),
-                            modifier = Modifier.semantics {
-                                contentDescription = "Looking for nearby devices. Waiting for receiving devices to appear."
-                            }
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 24.dp, horizontal = 16.dp),
+                            contentAlignment = Alignment.Center
                         ) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(36.dp),
-                                color = MaterialTheme.colorScheme.primary,
-                                strokeWidth = 3.dp
-                            )
-                            Text(
-                                text = "Looking for nearby devices...",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            OutlinedButton(
-                                onClick = onScanQrClicked,
-                                shape = PrimaryButtonShape,
-                                modifier = Modifier
-                                    .heightIn(min = 48.dp)
-                                    .semantics {
-                                        role = Role.Button
-                                        contentDescription = "Scan QR code or paste invitation"
-                                    }
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(16.dp),
+                                modifier = Modifier.semantics {
+                                    contentDescription = "Looking for nearby devices. Waiting for receiving devices to appear."
+                                }
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.QrCode2,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(20.dp)
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(36.dp),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    strokeWidth = 3.dp
                                 )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Scan QR or paste invite")
+                                OutlinedButton(
+                                    onClick = onScanQrClicked,
+                                    shape = PrimaryButtonShape,
+                                    modifier = Modifier
+                                        .heightIn(min = 48.dp)
+                                        .semantics {
+                                            role = Role.Button
+                                            contentDescription = "Scan QR code or paste invitation"
+                                        }
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.QrCode2,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Scan QR or paste invite")
+                                }
                             }
                         }
                     }
                 } else {
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                        contentPadding = PaddingValues(vertical = 4.dp)
-                    ) {
-                        items(
-                            items = uiState.peers,
-                            key = { it.id.value }
-                        ) { peer ->
-                            DiscoveredPeerCard(
-                                peer = peer,
-                                hasActiveSelection = uiState.selectedPeerId != null,
-                                onClick = {
-                                    if (!peer.isConnecting && peer.isAvailable && !peer.isBusy && uiState.selectedPeerId == null) {
-                                        haptics.performSelection()
-                                        onSelectPeer(peer.id)
-                                    }
+                    items(
+                        items = uiState.peers,
+                        key = { it.id.value }
+                    ) { peer ->
+                        DiscoveredPeerCard(
+                            peer = peer,
+                            hasActiveSelection = uiState.selectedPeerId != null,
+                            onClick = {
+                                if (!peer.isConnecting && peer.isAvailable && !peer.isBusy && uiState.selectedPeerId == null) {
+                                    haptics.performSelection()
+                                    onSelectPeer(peer.id)
                                 }
-                            )
-                        }
+                            }
+                        )
+                    }
 
-                        item {
-                            Spacer(modifier = Modifier.height(4.dp))
-                            ScanQrActionCard(
-                                onClick = onScanQrClicked
-                            )
-                        }
+                    item {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        ScanQrActionCard(
+                            onClick = onScanQrClicked
+                        )
                     }
                 }
             }
 
             is DiscoveryUiState.TimedOut -> {
-                Card(
-                    shape = MaterialTheme.shapes.medium,
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .semantics { contentDescription = "Discovery timed out. No devices found." }
-                ) {
-                    Column(
+                item {
+                    Card(
+                        shape = MaterialTheme.shapes.medium,
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        ),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(24.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
+                            .semantics { contentDescription = "Discovery timed out. No devices found." }
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.SearchOff,
-                            contentDescription = null,
-                            modifier = Modifier.size(48.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = "No devices found",
-                            style = MaterialTheme.typography.titleLarge,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = "Ensure the receiving device has Glide open and 'Receive files' active on the same local network or nearby.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(24.dp),
+                            verticalArrangement = Arrangement.spacedBy(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            OutlinedButton(
-                                onClick = onBack,
-                                shape = PrimaryButtonShape,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .heightIn(min = 48.dp)
-                                    .semantics {
-                                        role = Role.Button
-                                        contentDescription = "Cancel discovery"
-                                    }
+                            Icon(
+                                imageVector = Icons.Default.SearchOff,
+                                contentDescription = null,
+                                modifier = Modifier.size(48.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "No devices found",
+                                style = MaterialTheme.typography.titleLarge,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "Ensure the receiving device has Glide open and 'Receive files' active on the same local network or nearby.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                Text("Cancel")
-                            }
-                            Button(
-                                onClick = onRetry,
-                                shape = PrimaryButtonShape,
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.primary,
-                                    contentColor = MaterialTheme.colorScheme.onPrimary
-                                ),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .heightIn(min = 48.dp)
-                                    .semantics {
-                                        role = Role.Button
-                                        contentDescription = "Retry discovering nearby devices"
-                                    }
-                            ) {
-                                Icon(imageVector = Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Retry")
+                                OutlinedButton(
+                                    onClick = onBack,
+                                    shape = PrimaryButtonShape,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .heightIn(min = 48.dp)
+                                        .semantics {
+                                            role = Role.Button
+                                            contentDescription = "Cancel discovery"
+                                        }
+                                ) {
+                                    Text("Cancel")
+                                }
+                                Button(
+                                    onClick = onRetry,
+                                    shape = PrimaryButtonShape,
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.primary,
+                                        contentColor = MaterialTheme.colorScheme.onPrimary
+                                    ),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .heightIn(min = 48.dp)
+                                        .semantics {
+                                            role = Role.Button
+                                            contentDescription = "Retry discovering nearby devices"
+                                        }
+                                ) {
+                                    Icon(imageVector = Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Retry")
+                                }
                             }
                         }
                     }
@@ -329,29 +310,31 @@ fun DiscoveryScreen(
             }
 
             is DiscoveryUiState.Blocked -> {
-                DiscoveryBlockedCard(
-                    reason = uiState.reason,
-                    onRetry = onRetry,
-                    onOpenSettings = {
-                        val intent = when (uiState.reason) {
-                            is BlockedReason.BluetoothDisabled -> Intent(Settings.ACTION_BLUETOOTH_SETTINGS)
-                            is BlockedReason.WifiDisabled, is BlockedReason.NoLocalNetwork -> Intent(Settings.ACTION_WIFI_SETTINGS)
-                            is BlockedReason.VpnActive -> Intent(Settings.ACTION_VPN_SETTINGS)
-                            else -> Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                                data = android.net.Uri.fromParts("package", context.packageName, null)
+                item {
+                    DiscoveryBlockedCard(
+                        reason = uiState.reason,
+                        onRetry = onRetry,
+                        onOpenSettings = {
+                            val intent = when (uiState.reason) {
+                                is BlockedReason.BluetoothDisabled -> Intent(Settings.ACTION_BLUETOOTH_SETTINGS)
+                                is BlockedReason.WifiDisabled, is BlockedReason.NoLocalNetwork -> Intent(Settings.ACTION_WIFI_SETTINGS)
+                                is BlockedReason.VpnActive -> Intent(Settings.ACTION_VPN_SETTINGS)
+                                else -> Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                    data = android.net.Uri.fromParts("package", context.packageName, null)
+                                }
                             }
-                        }
-                        try {
-                            context.startActivity(intent)
-                        } catch (_: Exception) {
                             try {
-                                context.startActivity(Intent(Settings.ACTION_SETTINGS))
+                                context.startActivity(intent)
                             } catch (_: Exception) {
-                                // Safe fallback
+                                try {
+                                    context.startActivity(Intent(Settings.ACTION_SETTINGS))
+                                } catch (_: Exception) {
+                                    // Safe fallback
+                                }
                             }
                         }
-                    }
-                )
+                    )
+                }
             }
         }
     }
@@ -593,21 +576,12 @@ fun ScanQrActionCard(
                     )
                 }
             }
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                Text(
-                    text = "Scan QR code or paste invite",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = "Connect directly with local network pairing",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+            Text(
+                text = "Scan QR code or paste invite",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f)
+            )
         }
     }
 }

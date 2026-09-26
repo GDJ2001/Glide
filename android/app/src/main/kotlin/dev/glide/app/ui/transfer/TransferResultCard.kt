@@ -218,50 +218,6 @@ private fun CompletedResultCard(
                 }
             }
 
-            // Receiver Storage Guarantee Banner
-            if (isReceiver) {
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surface,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(14.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.Top
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Lock,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier
-                                .size(20.dp)
-                                .padding(top = 2.dp)
-                        )
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(
-                                text = "Saved in Glide • export to keep outside the app",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = "Received files are kept in private app storage. No external app can access them until you explicitly export.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-            } else {
-                Text(
-                    text = "Delivery confirmed by recipient's device.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center
-                )
-            }
-
             // Itemized Verified Items
             if (state.verifiedItems.isNotEmpty()) {
                 Column(
@@ -342,13 +298,15 @@ private fun CompletedResultCard(
                                     }
                                 }
 
-                                if (isReceiver && item.committedFileKey != null) {
+                                if (isReceiver && item.committedFileKey != null && state.verifiedItems.size > 1) {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
                                         OutlinedButton(
                                             onClick = { onOpenItem(item) },
+                                            shape = RoundedCornerShape(10.dp),
+                                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                                             modifier = Modifier
                                                 .weight(1f)
                                                 .heightIn(min = 40.dp)
@@ -360,11 +318,13 @@ private fun CompletedResultCard(
                                         ) {
                                             Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(14.dp))
                                             Spacer(modifier = Modifier.width(4.dp))
-                                            Text("Open", style = MaterialTheme.typography.labelSmall)
+                                            Text("Open", style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
                                         }
 
                                         OutlinedButton(
                                             onClick = { onShareItem(item) },
+                                            shape = RoundedCornerShape(10.dp),
+                                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                                             modifier = Modifier
                                                 .weight(1f)
                                                 .heightIn(min = 40.dp)
@@ -376,11 +336,13 @@ private fun CompletedResultCard(
                                         ) {
                                             Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(14.dp))
                                             Spacer(modifier = Modifier.width(4.dp))
-                                            Text("Share", style = MaterialTheme.typography.labelSmall)
+                                            Text("Share", style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
                                         }
 
                                         Button(
                                             onClick = { onExportItem(item) },
+                                            shape = RoundedCornerShape(10.dp),
+                                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                                             modifier = Modifier
                                                 .weight(1f)
                                                 .heightIn(min = 40.dp)
@@ -392,7 +354,7 @@ private fun CompletedResultCard(
                                         ) {
                                             Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(14.dp))
                                             Spacer(modifier = Modifier.width(4.dp))
-                                            Text("Export", style = MaterialTheme.typography.labelSmall)
+                                            Text("Export", style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
                                         }
                                     }
                                 }
@@ -726,14 +688,6 @@ private fun FailedResultCard(
                     }
                 }
             }
-
-            // Monospace code
-            Text(
-                text = "Code: ${state.code}",
-                style = MaterialTheme.typography.labelSmall,
-                fontFamily = FontFamily.Monospace,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
 
             // Action Buttons
             Column(

@@ -103,18 +103,18 @@ fun TransferScreen(
     val verticalSpacing = if (windowSizeClass.isCompactHeight) 12.dp else 24.dp
 
     Box(
-        modifier = modifier.fillMaxSize().safeDrawingPadding(),
+        modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.TopCenter
     ) {
         Column(
             modifier = Modifier
                 .widthIn(max = dev.glide.designsystem.AdaptiveLayoutTokens.MaxDetailPaneWidth)
                 .fillMaxSize()
+                .verticalScroll(scrollState)
                 .padding(
                     horizontal = windowSizeClass.pageHorizontalPadding,
                     vertical = if (windowSizeClass.isCompactHeight) 8.dp else 16.dp
-                )
-                .verticalScroll(scrollState),
+                ),
             verticalArrangement = Arrangement.spacedBy(verticalSpacing)
         ) {
         // Navigation Header
@@ -143,12 +143,6 @@ fun TransferScreen(
                     style = MaterialTheme.typography.labelLarge
                 )
             }
-
-            Text(
-                text = "Session: ${route.sessionId.take(12)}",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
         }
 
         // 1. Connection & Pairing Verification Surface (Strictly isolated during verification)
@@ -206,11 +200,6 @@ fun TransferScreen(
                             text = "Connecting to ${uiState.peerName}...",
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = "Negotiating transfer protocol capabilities",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }

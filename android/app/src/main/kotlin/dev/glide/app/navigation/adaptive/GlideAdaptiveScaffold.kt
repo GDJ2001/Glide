@@ -77,6 +77,12 @@ fun GlideAdaptiveScaffold(
             onNavigateSettings = { onNavigateTopLevel(GlideRoute.Settings) }
         )
 
+    val movableContent = androidx.compose.runtime.remember(content) {
+        androidx.compose.runtime.movableContentOf { padding: PaddingValues ->
+            content(padding)
+        }
+    }
+
     if (windowSizeClass.isCompactWidth) {
         // Compact Phone: Bottom Navigation Bar on top-level routes, hidden during focused workflows
         Scaffold(
@@ -131,7 +137,7 @@ fun GlideAdaptiveScaffold(
                     .fillMaxSize()
                     .padding(innerPadding)
             ) {
-                content(innerPadding)
+                movableContent(innerPadding)
             }
         }
     } else {
@@ -207,7 +213,7 @@ fun GlideAdaptiveScaffold(
                         .fillMaxSize()
                         .widthIn(max = AdaptiveLayoutTokens.MaxContentWidth)
                 ) {
-                    content(PaddingValues(0.dp))
+                    movableContent(PaddingValues(0.dp))
                 }
             }
         }

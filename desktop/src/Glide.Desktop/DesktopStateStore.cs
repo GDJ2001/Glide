@@ -11,7 +11,8 @@ public sealed record DesktopSettings(
             Path.Combine(
                 Environment.GetFolderPath(
                     Environment.SpecialFolder.UserProfile),
-                "Downloads"),
+                "Downloads",
+                "Glide"),
             42424);
 }
 

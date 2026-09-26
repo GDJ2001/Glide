@@ -127,188 +127,177 @@ fun SelectionScreen(
         }
     }
 
-    Column(
+    LazyColumn(
         modifier = modifier
             .fillMaxSize()
-            .safeDrawingPadding()
-            .padding(horizontal = 20.dp, vertical = 16.dp),
+            .safeDrawingPadding(),
+        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         // Top Navigation Header
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .semantics { contentDescription = "Selection screen navigation header" },
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            OutlinedButton(
-                onClick = {
-                    viewModel.clear()
-                    onBack()
-                },
-                shape = PrimaryButtonShape,
+        item {
+            Row(
                 modifier = Modifier
-                    .heightIn(min = 48.dp)
-                    .semantics {
-                        role = Role.Button
-                        contentDescription = "Navigate back"
-                    }
+                    .fillMaxWidth()
+                    .semantics { contentDescription = "Selection screen navigation header" },
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(text = "Back", style = MaterialTheme.typography.labelLarge)
-            }
-
-            if (uiState is SelectionUiState.BatchReady) {
-                TextButton(
+                OutlinedButton(
                     onClick = {
                         viewModel.clear()
+                        onBack()
                     },
-                    modifier = Modifier.semantics {
-                        role = Role.Button
-                        contentDescription = "Clear all selected files"
-                    }
+                    shape = PrimaryButtonShape,
+                    modifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .semantics {
+                            role = Role.Button
+                            contentDescription = "Navigate back"
+                        }
                 ) {
-                    Text("Clear all", color = MaterialTheme.colorScheme.error)
+                    Text(text = "Back", style = MaterialTheme.typography.labelLarge)
+                }
+
+                if (uiState is SelectionUiState.BatchReady) {
+                    TextButton(
+                        onClick = {
+                            viewModel.clear()
+                        },
+                        modifier = Modifier.semantics {
+                            role = Role.Button
+                            contentDescription = "Clear all selected files"
+                        }
+                    ) {
+                        Text("Clear all", color = MaterialTheme.colorScheme.error)
+                    }
                 }
             }
         }
 
         // Section Title
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
+        item {
             Text(
                 text = "Select files to send",
                 style = MaterialTheme.typography.headlineLarge,
                 color = MaterialTheme.colorScheme.onBackground
-            )
-            Text(
-                text = "Private peer-to-peer transfer without broad storage access",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
 
         // State Content Presentation
         when (val state = uiState) {
             is SelectionUiState.Idle, is SelectionUiState.Cancelled -> {
-                Card(
-                    shape = MaterialTheme.shapes.medium,
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .semantics { contentDescription = "File picker prompt card" }
-                ) {
-                    Column(
+                item {
+                    Card(
+                        shape = MaterialTheme.shapes.medium,
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        ),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(24.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
+                            .semantics { contentDescription = "File picker prompt card" }
                     ) {
-                        Text(
-                            text = if (state is SelectionUiState.Cancelled) {
-                                "Selection cancelled"
-                            } else {
-                                "Choose photos, videos, documents, or any files to transfer privately without broad storage access"
-                            },
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-
-                        Button(
-                            onClick = {
-                                photoPickerLauncher.launch(
-                                    MediaPickerHelper.createVisualMediaRequest()
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(24.dp),
+                            verticalArrangement = Arrangement.spacedBy(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            if (state is SelectionUiState.Cancelled) {
+                                Text(
+                                    text = "Selection cancelled",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                            },
-                            shape = PrimaryButtonShape,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 56.dp)
-                                .semantics {
-                                    role = Role.Button
-                                    contentDescription = "Choose photos and videos from system photo picker"
-                                }
-                        ) {
-                            Text(
-                                text = "Choose photos & videos",
-                                style = MaterialTheme.typography.titleMedium
-                            )
-                        }
+                            }
 
-                        OutlinedButton(
-                            onClick = {
-                                documentPickerLauncher.launch(MediaPickerHelper.getDocumentMimeTypes())
-                            },
-                            shape = PrimaryButtonShape,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 48.dp)
-                                .semantics {
-                                    role = Role.Button
-                                    contentDescription = "Choose files and documents from system picker"
-                                }
-                        ) {
-                            Text(
-                                text = "Choose files & documents",
-                                style = MaterialTheme.typography.labelLarge
-                            )
-                        }
+                            Button(
+                                onClick = {
+                                    photoPickerLauncher.launch(
+                                        MediaPickerHelper.createVisualMediaRequest()
+                                    )
+                                },
+                                shape = PrimaryButtonShape,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 56.dp)
+                                    .semantics {
+                                        role = Role.Button
+                                        contentDescription = "Choose photos and videos from system photo picker"
+                                    }
+                            ) {
+                                Text(
+                                    text = "Choose photos & videos",
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                            }
 
-                        OutlinedButton(
-                            onClick = {
-                                folderPickerLauncher.launch(null)
-                            },
-                            shape = PrimaryButtonShape,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 48.dp)
-                                .semantics {
-                                    role = Role.Button
-                                    contentDescription = "Choose entire folder from system picker"
-                                }
-                        ) {
-                            Text(
-                                text = "Choose folder",
-                                style = MaterialTheme.typography.labelLarge
-                            )
+                            OutlinedButton(
+                                onClick = {
+                                    documentPickerLauncher.launch(MediaPickerHelper.getDocumentMimeTypes())
+                                },
+                                shape = PrimaryButtonShape,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 48.dp)
+                                    .semantics {
+                                        role = Role.Button
+                                        contentDescription = "Choose files and documents from system picker"
+                                    }
+                            ) {
+                                Text(
+                                    text = "Choose files & documents",
+                                    style = MaterialTheme.typography.labelLarge
+                                )
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    folderPickerLauncher.launch(null)
+                                },
+                                shape = PrimaryButtonShape,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 48.dp)
+                                    .semantics {
+                                        role = Role.Button
+                                        contentDescription = "Choose entire folder from system picker"
+                                    }
+                            ) {
+                                Text(
+                                    text = "Choose folder",
+                                    style = MaterialTheme.typography.labelLarge
+                                )
+                            }
                         }
                     }
                 }
             }
 
             is SelectionUiState.Validating -> {
-                Card(
-                    shape = MaterialTheme.shapes.medium,
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .semantics { contentDescription = "Validating selected files metadata" }
-                ) {
-                    Row(
+                item {
+                    Card(
+                        shape = MaterialTheme.shapes.medium,
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        ),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(24.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                            .semantics { contentDescription = "Validating selected files metadata" }
                     ) {
-                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                        Column {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(24.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                             Text(
                                 text = "Checking files (${state.currentCount}/${state.totalCount})...",
                                 style = MaterialTheme.typography.titleMedium,
                                 color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = "Verifying readability, size, and sanitizing names",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
@@ -316,75 +305,62 @@ fun SelectionScreen(
             }
 
             is SelectionUiState.StagingSource -> {
-                Card(
-                    shape = MaterialTheme.shapes.medium,
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .semantics {
-                            contentDescription = "Staging ${state.displayName}: ${formatFileSize(state.bytesStaged)} prepared"
-                        }
-                ) {
-                    Column(
+                item {
+                    Card(
+                        shape = MaterialTheme.shapes.medium,
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        ),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(24.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                            .semantics {
+                                contentDescription = "Staging ${state.displayName}: ${formatFileSize(state.bytesStaged)} prepared"
+                            }
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
-                            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                            Column {
-                                Text(
-                                    text = "Preparing file: ${state.displayName}",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = "Staged: ${formatFileSize(state.bytesStaged)}",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-
-                        if (state.isCloudProvider) {
-                            Surface(
-                                shape = MaterialTheme.shapes.small,
-                                color = MaterialTheme.colorScheme.surfaceVariant,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(
-                                    text = "Downloading from cloud provider before transfer. This ensures your peer receives an exact, verified file offer.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(12.dp)
-                                )
-                            }
-                        }
-
-                        OutlinedButton(
-                            onClick = {
-                                viewModel.cancelStaging()
-                            },
-                            shape = PrimaryButtonShape,
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .heightIn(min = 48.dp)
-                                .semantics {
-                                    role = Role.Button
-                                    contentDescription = "Cancel file staging"
-                                }
+                                .padding(24.dp),
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
-                            Text(
-                                text = "Cancel staging",
-                                color = MaterialTheme.colorScheme.error,
-                                style = MaterialTheme.typography.labelLarge
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                                Column {
+                                    Text(
+                                        text = "Preparing file: ${state.displayName}",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = "Staged: ${formatFileSize(state.bytesStaged)}",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    viewModel.cancelStaging()
+                                },
+                                shape = PrimaryButtonShape,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 48.dp)
+                                    .semantics {
+                                        role = Role.Button
+                                        contentDescription = "Cancel file staging"
+                                    }
+                            ) {
+                                Text(
+                                    text = "Cancel staging",
+                                    color = MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.labelLarge
+                                )
+                            }
                         }
                     }
                 }
@@ -392,261 +368,248 @@ fun SelectionScreen(
 
             is SelectionUiState.BatchReady -> {
                 // Batch Summary Card
-                Card(
-                    shape = MaterialTheme.shapes.medium,
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .semantics {
-                            contentDescription = "Batch summary: ${state.itemCount} files selected, total size ${formatFileSize(state.totalBytes)}"
-                        }
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Batch Summary",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                            Text(
-                                text = "${state.itemCount} / ${ProtocolLimits.MAX_ITEMS_PER_BATCH} max",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                        }
-
-                        Text(
-                            text = "${state.itemCount} ${if (state.itemCount == 1) "file" else "files"} · ${formatFileSize(state.totalBytes)}",
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-
-                        Text(
-                            text = "All-or-nothing transfer: the receiver inspects and accepts the complete batch.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-
-                        if (state.hasUnavailableItems) {
-                            Surface(
-                                shape = MaterialTheme.shapes.small,
-                                color = MaterialTheme.colorScheme.errorContainer,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(
-                                    text = "Some files are unavailable or unreadable. Please remove them before proceeding.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onErrorContainer,
-                                    modifier = Modifier.padding(8.dp)
-                                )
-                            }
-                        }
-
-                        if (state.isLimitExceeded) {
-                            Surface(
-                                shape = MaterialTheme.shapes.small,
-                                color = MaterialTheme.colorScheme.errorContainer,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(
-                                    text = "Batch limit of ${ProtocolLimits.MAX_ITEMS_PER_BATCH} files exceeded. Please remove files to continue.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onErrorContainer,
-                                    modifier = Modifier.padding(8.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // Virtualized Item List with LazyColumn (efficient with 1000 items)
-                LazyColumn(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    contentPadding = PaddingValues(vertical = 4.dp)
-                ) {
-                    items(
-                        items = state.items,
-                        key = { it.handle.value }
-                    ) { item ->
-                        FileItemRow(
-                            item = item,
-                            onRemove = {
-                                viewModel.removeFile(item.id)
-                            }
-                        )
-                    }
-                }
-
-                // Action Bar
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Button(
-                        onClick = {
-                            if (state.canProceed) {
-                                val prepared = viewModel.prepareBatchForTransfer()
-                                if (prepared != null) {
-                                    val (batch, _) = prepared
-                                    if (onProceedToSendBatch != null) {
-                                        onProceedToSendBatch(batch)
-                                    } else {
-                                        val firstHandle = state.validItems.firstOrNull()?.handle
-                                            ?: SourceHandle("glide://batch/${batch.id.value}")
-                                        onProceedToSend(firstHandle)
-                                    }
-                                }
-                            }
-                        },
-                        enabled = state.canProceed,
-                        shape = PrimaryButtonShape,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary
+                item {
+                    Card(
+                        shape = MaterialTheme.shapes.medium,
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer
                         ),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 56.dp)
                             .semantics {
-                                role = Role.Button
-                                contentDescription = "Proceed to send ${state.validItemCount} files"
+                                contentDescription = "Batch summary: ${state.itemCount} files selected, total size ${formatFileSize(state.totalBytes)}"
                             }
                     ) {
-                        Text(
-                            text = if (state.canProceed) {
-                                "Proceed to send (${state.validItemCount})"
-                            } else if (state.hasUnavailableItems) {
-                                "Remove unavailable files to proceed"
-                            } else if (state.isLimitExceeded) {
-                                "Batch exceeds 1,000 file limit"
-                            } else {
-                                "Proceed to send"
-                            },
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                    }
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "${state.itemCount} ${if (state.itemCount == 1) "file" else "files"} · ${formatFileSize(state.totalBytes)}",
+                                    style = MaterialTheme.typography.headlineSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                                Text(
+                                    text = "${state.itemCount} / ${ProtocolLimits.MAX_ITEMS_PER_BATCH}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            }
 
-                    if (onShareViaWeb != null) {
-                        OutlinedButton(
-                            onClick = {
-                                val offered = state.validItems.map { item ->
-                                    dev.glide.transport.lan.web.OfferedWebItem(
-                                        itemId = item.id.value,
-                                        fileName = item.displayName,
-                                        fileSize = item.sizeBytes,
-                                        contentSupplier = {
-                                            context.contentResolver.openInputStream(Uri.parse(item.handle.value))
-                                                ?: java.io.ByteArrayInputStream(ByteArray(0))
-                                        }
+                            if (state.hasUnavailableItems) {
+                                Surface(
+                                    shape = MaterialTheme.shapes.small,
+                                    color = MaterialTheme.colorScheme.errorContainer,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(
+                                        text = "Some files are unavailable or unreadable. Please remove them before proceeding.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onErrorContainer,
+                                        modifier = Modifier.padding(8.dp)
                                     )
                                 }
-                                onShareViaWeb(offered)
+                            }
+
+                            if (state.isLimitExceeded) {
+                                Surface(
+                                    shape = MaterialTheme.shapes.small,
+                                    color = MaterialTheme.colorScheme.errorContainer,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(
+                                        text = "Batch limit of ${ProtocolLimits.MAX_ITEMS_PER_BATCH} files exceeded. Please remove files to continue.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onErrorContainer,
+                                        modifier = Modifier.padding(8.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Virtualized Item List directly inside the screen LazyColumn
+                items(
+                    items = state.items,
+                    key = { it.handle.value }
+                ) { item ->
+                    FileItemRow(
+                        item = item,
+                        onRemove = {
+                            viewModel.removeFile(item.id)
+                        }
+                    )
+                }
+
+                // Action Bar
+                item {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                if (state.canProceed) {
+                                    val prepared = viewModel.prepareBatchForTransfer()
+                                    if (prepared != null) {
+                                        val (batch, _) = prepared
+                                        if (onProceedToSendBatch != null) {
+                                            onProceedToSendBatch(batch)
+                                        } else {
+                                            val firstHandle = state.validItems.firstOrNull()?.handle
+                                                ?: SourceHandle("glide://batch/${batch.id.value}")
+                                            onProceedToSend(firstHandle)
+                                        }
+                                    }
+                                }
                             },
                             enabled = state.canProceed,
                             shape = PrimaryButtonShape,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            ),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .heightIn(min = 48.dp)
+                                .heightIn(min = 56.dp)
                                 .semantics {
                                     role = Role.Button
-                                    contentDescription = "Share ${state.validItemCount} files via Web Browser"
+                                    contentDescription = "Proceed to send ${state.validItemCount} files"
                                 }
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Language,
-                                contentDescription = null,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "Share via Browser",
+                                text = if (state.canProceed) {
+                                    "Proceed to send (${state.validItemCount})"
+                                } else if (state.hasUnavailableItems) {
+                                    "Remove unavailable files to proceed"
+                                } else if (state.isLimitExceeded) {
+                                    "Batch exceeds 1,000 file limit"
+                                } else {
+                                    "Proceed to send"
+                                },
                                 style = MaterialTheme.typography.titleMedium
                             )
                         }
-                    }
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedButton(
-                            onClick = {
-                                photoPickerLauncher.launch(
-                                    MediaPickerHelper.createVisualMediaRequest()
+                        if (onShareViaWeb != null) {
+                            OutlinedButton(
+                                onClick = {
+                                    val offered = state.validItems.map { item ->
+                                        dev.glide.transport.lan.web.OfferedWebItem(
+                                            itemId = item.id.value,
+                                            fileName = item.displayName,
+                                            fileSize = item.sizeBytes,
+                                            contentSupplier = {
+                                                context.contentResolver.openInputStream(Uri.parse(item.handle.value))
+                                                    ?: java.io.ByteArrayInputStream(ByteArray(0))
+                                            }
+                                        )
+                                    }
+                                    onShareViaWeb(offered)
+                                },
+                                enabled = state.canProceed,
+                                shape = PrimaryButtonShape,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 48.dp)
+                                    .semantics {
+                                        role = Role.Button
+                                        contentDescription = "Share ${state.validItemCount} files via Web Browser"
+                                    }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Language,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp)
                                 )
-                            },
-                            shape = PrimaryButtonShape,
-                            modifier = Modifier
-                                .weight(1f)
-                                .heightIn(min = 48.dp)
-                                .semantics {
-                                    role = Role.Button
-                                    contentDescription = "Add photos and videos to batch"
-                                }
-                        ) {
-                            Text(
-                                text = "Add photos",
-                                style = MaterialTheme.typography.labelLarge,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Share via Browser",
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                            }
                         }
 
-                        OutlinedButton(
-                            onClick = {
-                                documentPickerLauncher.launch(MediaPickerHelper.getDocumentMimeTypes())
-                            },
-                            shape = PrimaryButtonShape,
-                            modifier = Modifier
-                                .weight(1f)
-                                .heightIn(min = 48.dp)
-                                .semantics {
-                                    role = Role.Button
-                                    contentDescription = "Add files and documents to batch"
-                                }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Text(
-                                text = "Add files",
-                                style = MaterialTheme.typography.labelLarge,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
+                            OutlinedButton(
+                                onClick = {
+                                    photoPickerLauncher.launch(
+                                        MediaPickerHelper.createVisualMediaRequest()
+                                    )
+                                },
+                                shape = PrimaryButtonShape,
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = 48.dp)
+                                    .semantics {
+                                        role = Role.Button
+                                        contentDescription = "Add photos and videos to batch"
+                                    }
+                            ) {
+                                Text(
+                                    text = "Add photos",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
 
-                        OutlinedButton(
-                            onClick = {
-                                folderPickerLauncher.launch(null)
-                            },
-                            shape = PrimaryButtonShape,
-                            modifier = Modifier
-                                .weight(1f)
-                                .heightIn(min = 48.dp)
-                                .semantics {
-                                    role = Role.Button
-                                    contentDescription = "Add folder to batch"
-                                }
-                        ) {
-                            Text(
-                                text = "Add folder",
-                                style = MaterialTheme.typography.labelLarge,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            OutlinedButton(
+                                onClick = {
+                                    documentPickerLauncher.launch(MediaPickerHelper.getDocumentMimeTypes())
+                                },
+                                shape = PrimaryButtonShape,
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = 48.dp)
+                                    .semantics {
+                                        role = Role.Button
+                                        contentDescription = "Add files and documents to batch"
+                                    }
+                            ) {
+                                Text(
+                                    text = "Add files",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    folderPickerLauncher.launch(null)
+                                },
+                                shape = PrimaryButtonShape,
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = 48.dp)
+                                    .semantics {
+                                        role = Role.Button
+                                        contentDescription = "Add folder to batch"
+                                    }
+                            ) {
+                                Text(
+                                    text = "Add folder",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         }
                     }
                 }
@@ -654,162 +617,170 @@ fun SelectionScreen(
 
             is SelectionUiState.Ready -> {
                 // Backward-compatible single file presentation
-                Card(
-                    shape = MaterialTheme.shapes.medium,
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                item {
                     Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(20.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        Text(
-                            text = state.displayName.isolateBidi(),
-                            style = MaterialTheme.typography.titleLarge,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                        Text(
-                            text = "Size: ${formatFileSize(state.sizeBytes)} (${state.sizeBytes} bytes)",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                        Text(
-                            text = "SHA-256: ${state.digest.value}",
-                            style = MaterialTheme.typography.bodySmall,
-                            fontFamily = FontFamily.Monospace,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Button(
-                    onClick = {
-                        val prepared = viewModel.prepareReadyFileForTransfer()
-                        if (prepared != null) {
-                            val (batch, _) = prepared
-                            if (onProceedToSendBatch != null) {
-                                onProceedToSendBatch(batch)
-                            } else {
-                                onProceedToSend(state.handle)
+                        Card(
+                            shape = MaterialTheme.shapes.medium,
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(20.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Text(
+                                    text = state.displayName.isolateBidi(),
+                                    style = MaterialTheme.typography.titleLarge,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                                Text(
+                                    text = "Size: ${formatFileSize(state.sizeBytes)} (${state.sizeBytes} bytes)",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                                Text(
+                                    text = "SHA-256: ${state.digest.value}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
                             }
                         }
-                    },
-                    shape = PrimaryButtonShape,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 56.dp)
-                ) {
-                    Text("Proceed to send", style = MaterialTheme.typography.titleMedium)
-                }
 
-                if (onShareViaWeb != null) {
-                    OutlinedButton(
-                        onClick = {
-                            val offered = listOf(
-                                dev.glide.transport.lan.web.OfferedWebItem(
-                                    itemId = java.util.UUID.randomUUID().toString(),
-                                    fileName = state.displayName,
-                                    fileSize = state.sizeBytes,
-                                    contentSupplier = {
-                                        context.contentResolver.openInputStream(Uri.parse(state.handle.value))
-                                            ?: java.io.ByteArrayInputStream(ByteArray(0))
+                        Button(
+                            onClick = {
+                                val prepared = viewModel.prepareReadyFileForTransfer()
+                                if (prepared != null) {
+                                    val (batch, _) = prepared
+                                    if (onProceedToSendBatch != null) {
+                                        onProceedToSendBatch(batch)
+                                    } else {
+                                        onProceedToSend(state.handle)
                                     }
+                                }
+                            },
+                            shape = PrimaryButtonShape,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 56.dp)
+                        ) {
+                            Text("Proceed to send", style = MaterialTheme.typography.titleMedium)
+                        }
+
+                        if (onShareViaWeb != null) {
+                            OutlinedButton(
+                                onClick = {
+                                    val offered = listOf(
+                                        dev.glide.transport.lan.web.OfferedWebItem(
+                                            itemId = java.util.UUID.randomUUID().toString(),
+                                            fileName = state.displayName,
+                                            fileSize = state.sizeBytes,
+                                            contentSupplier = {
+                                                context.contentResolver.openInputStream(Uri.parse(state.handle.value))
+                                                    ?: java.io.ByteArrayInputStream(ByteArray(0))
+                                            }
+                                        )
+                                    )
+                                    onShareViaWeb(offered)
+                                },
+                                shape = PrimaryButtonShape,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 48.dp)
+                                    .semantics {
+                                        role = Role.Button
+                                        contentDescription = "Share via Web Browser"
+                                    }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Language,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp)
                                 )
-                            )
-                            onShareViaWeb(offered)
-                        },
-                        shape = PrimaryButtonShape,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 48.dp)
-                            .semantics {
-                                role = Role.Button
-                                contentDescription = "Share via Web Browser"
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Share via Browser",
+                                    style = MaterialTheme.typography.titleMedium
+                                )
                             }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Language,
-                            contentDescription = null,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Share via Browser",
-                            style = MaterialTheme.typography.titleMedium
-                        )
+                        }
                     }
                 }
             }
 
             is SelectionUiState.Error -> {
-                Card(
-                    shape = MaterialTheme.shapes.medium,
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .semantics { contentDescription = "Selection error: ${state.message}" }
-                ) {
-                    Column(
+                item {
+                    Card(
+                        shape = MaterialTheme.shapes.medium,
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer
+                        ),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(20.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                            .semantics { contentDescription = "Selection error: ${state.message}" }
                     ) {
-                        Text(
-                            text = "Selection Error",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onErrorContainer
-                        )
-                        Text(
-                            text = state.message,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onErrorContainer
-                        )
-
-                        Button(
-                            onClick = { documentPickerLauncher.launch(MediaPickerHelper.getDocumentMimeTypes()) },
-                            shape = PrimaryButtonShape,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.error,
-                                contentColor = MaterialTheme.colorScheme.onError
-                            ),
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .heightIn(min = 48.dp)
+                                .padding(20.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            Text(text = "Choose files again")
+                            Text(
+                                text = "Selection Error",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                            Text(
+                                text = state.message,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+
+                            Button(
+                                onClick = { documentPickerLauncher.launch(MediaPickerHelper.getDocumentMimeTypes()) },
+                                shape = PrimaryButtonShape,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.error,
+                                    contentColor = MaterialTheme.colorScheme.onError
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 48.dp)
+                            ) {
+                                Text(text = "Choose files again")
+                            }
                         }
                     }
                 }
             }
-
             is SelectionUiState.Hashing -> {
                 // Backward-compatible hashing progress presentation
-                Card(
-                    shape = MaterialTheme.shapes.medium,
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(24.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                item {
+                    Card(
+                        shape = MaterialTheme.shapes.medium,
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        ),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text(
-                            text = "Checking: ${state.displayName}",
-                            style = MaterialTheme.typography.titleMedium
-                        )
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(24.dp),
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            Text(
+                                text = "Checking: ${state.displayName}",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                        }
                     }
                 }
             }
@@ -876,25 +847,18 @@ private fun FileItemRow(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
-                    Surface(
-                        shape = MaterialTheme.shapes.extraSmall,
-                        color = MaterialTheme.colorScheme.surfaceVariant
-                    ) {
-                        Text(
-                            text = item.mimeType,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
+                    val folderName = item.relativePath
+                        ?.takeIf { it.contains('/') }
+                        ?.substringBeforeLast('/')
+                        ?.takeIf { it.isNotBlank() && !it.equals("Tree", ignoreCase = true) }
 
-                    if (item.relativePath != null) {
+                    if (folderName != null) {
                         Surface(
                             shape = MaterialTheme.shapes.extraSmall,
                             color = MaterialTheme.colorScheme.tertiaryContainer
                         ) {
                             Text(
-                                text = item.relativePath.substringBeforeLast('/', "folder"),
+                                text = folderName,
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onTertiaryContainer,
                                 maxLines = 1,

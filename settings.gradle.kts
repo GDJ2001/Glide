@@ -19,6 +19,9 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "Glide"
+if (settingsDir.name == "android") {
+    rootProject.projectDir = settingsDir.parentFile
+}
 include(":android:app")
 include(":android:core")
 include(":android:data")

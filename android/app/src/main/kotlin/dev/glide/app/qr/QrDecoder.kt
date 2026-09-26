@@ -28,20 +28,48 @@ object QrDecoder {
     private val decodeHints = EnumMap<DecodeHintType, Any>(DecodeHintType::class.java).apply {
         put(DecodeHintType.CHARACTER_SET, "UTF-8")
         put(DecodeHintType.POSSIBLE_FORMATS, listOf(com.google.zxing.BarcodeFormat.QR_CODE))
+        put(DecodeHintType.TRY_HARDER, java.lang.Boolean.TRUE)
+        put(DecodeHintType.ALSO_INVERTED, java.lang.Boolean.TRUE)
     }
 
     /**
      * Decodes a QR code string from an arbitrary [LuminanceSource].
-     * Returns null if no valid QR code is found or if parsing fails.
+     * Uses multi-pass binarization (HybridBinarizer + GlobalHistogramBinarizer + center-ROI crop)
+     * to handle backlit OLED/LCD screens, glare, and uneven room lighting.
      */
     fun decodeLuminance(source: LuminanceSource): String? {
-        return try {
-            val binaryBitmap = BinaryBitmap(HybridBinarizer(source))
-            val result = QRCodeReader().decode(binaryBitmap, decodeHints)
-            result.text
-        } catch (_: Exception) {
-            null
+        val reader = QRCodeReader()
+
+        fun tryDecode(lum: LuminanceSource): String? {
+            try {
+                return reader.decode(BinaryBitmap(HybridBinarizer(lum)), decodeHints).text
+            } catch (_: Exception) {
+                reader.reset()
+            }
+            try {
+                return reader.decode(
+                    BinaryBitmap(com.google.zxing.common.GlobalHistogramBinarizer(lum)),
+                    decodeHints
+                ).text
+            } catch (_: Exception) {
+                reader.reset()
+            }
+            return null
         }
+
+        tryDecode(source)?.let { return it }
+
+        if (source.isCropSupported && source.width >= 160 && source.height >= 160) {
+            val cropSize = (minOf(source.width, source.height) * 0.68f).toInt()
+            val left = (source.width - cropSize) / 2
+            val top = (source.height - cropSize) / 2
+            val cropped = runCatching { source.crop(left, top, cropSize, cropSize) }.getOrNull()
+            if (cropped != null) {
+                tryDecode(cropped)?.let { return it }
+            }
+        }
+
+        return null
     }
 
     /**

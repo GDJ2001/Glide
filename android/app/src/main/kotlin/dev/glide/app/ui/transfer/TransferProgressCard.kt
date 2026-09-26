@@ -389,15 +389,6 @@ private fun IntegrityVerifyingCard(
                 trackColor = MaterialTheme.colorScheme.primaryContainer
             )
 
-            // Plain-language description
-            Text(
-                text = description,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 8.dp)
-            )
-
             // Cancel action
             OutlinedButton(
                 onClick = onCancelTransfer,

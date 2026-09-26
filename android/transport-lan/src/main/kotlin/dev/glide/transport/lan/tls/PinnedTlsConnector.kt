@@ -72,8 +72,26 @@ class PinnedTlsConnector(
         var sslSocket: SSLSocket? = null
 
         try {
-            // 2. Bind raw socket to active network if network scope is present
-            networkScope?.bindSocket(rawSocket)
+            // 2. Bind raw socket to active network if target address belongs to that network's link
+            val state = networkScope?.networkState?.value
+            if (state is LanNetworkState.Available && state.network != null) {
+                val netLinkSubnets = networkScope.context
+                    ?.getSystemService(android.content.Context.CONNECTIVITY_SERVICE)
+                    ?.let { it as? android.net.ConnectivityManager }
+                    ?.getLinkProperties(state.network)
+                    ?.linkAddresses
+                    ?.map { SubnetPrefix(it.address, it.prefixLength) }
+                    ?: emptyList()
+                val isOnManagedNetwork = netLinkSubnets.isEmpty() ||
+                    LanAddressValidator.validateAddress(
+                        address = address,
+                        activeSubnets = netLinkSubnets,
+                        allowLoopbackForTesting = allowLoopbackForTesting
+                    ) is LanAddressValidationResult.Valid
+                if (isOnManagedNetwork) {
+                    networkScope.bindSocket(rawSocket)
+                }
+            }
 
             // 3. Connect raw TCP socket with 5-second timeout
             rawSocket.connect(InetSocketAddress(address, port), connectTimeoutMs)

@@ -357,9 +357,7 @@ class TransferService : Service() {
                 val peer = intent?.getStringExtra(EXTRA_PEER_ID).orEmpty()
                 "nearby-sender:$selection:$peer"
             }
-            ACTION_START_NEARBY_RECEIVER -> {
-                "nearby-receiver:${intent?.getStringExtra(EXTRA_LOCAL_DEVICE_NAME).orEmpty()}"
-            }
+            ACTION_START_NEARBY_RECEIVER -> null
             ACTION_START_LAN_SENDER -> {
                 val selection = intent?.getStringExtra(EXTRA_SELECTION_ID).orEmpty()
                 val encoded = intent?.getStringExtra(EXTRA_LAN_INVITATION)
@@ -368,9 +366,7 @@ class TransferService : Service() {
                 }.orEmpty()
                 "lan-sender:$selection:$invitationId"
             }
-            ACTION_START_LAN_RECEIVER -> {
-                "lan-receiver:${intent?.getStringExtra(EXTRA_LOCAL_DEVICE_NAME).orEmpty()}"
-            }
+            ACTION_START_LAN_RECEIVER -> null
             else -> null
         }
     }

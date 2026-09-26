@@ -87,8 +87,10 @@ fun SettingsScreen(
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
+        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
+                windowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
                 title = {
                     Text(
                         text = "Settings",
@@ -640,41 +642,6 @@ private fun PrivateStorageSection(
             color = MaterialTheme.colorScheme.primary
         )
 
-        // Storage explanation banner
-        Card(
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.secondaryContainer
-            ),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(
-                modifier = Modifier.padding(14.dp),
-                verticalAlignment = Alignment.Top
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Info,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(modifier = Modifier.width(10.dp))
-                Column {
-                    Text(
-                        text = "App-private received library",
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = "Files received via Glide are kept in Glide's private library, not public Downloads. Export files to keep them outside the app. Uninstalling Glide removes these files.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
-                }
-            }
-        }
-
         // Storage usage and action
         Card(
             colors = CardDefaults.cardColors(
@@ -682,101 +649,56 @@ private fun PrivateStorageSection(
             ),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Storage used",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = if (totalFiles == 0) "No received files" else "$totalFiles files · ${formatBytes(totalBytes)}",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    if (activeFiles > 0) {
                         Text(
-                            text = "Storage used",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            text = "($activeFiles files in active transfer)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
                         )
-                        Text(
-                            text = if (totalFiles == 0) "No received files" else "$totalFiles files · ${formatBytes(totalBytes)}",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        if (activeFiles > 0) {
-                            Text(
-                                text = "($activeFiles files in active transfer)",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-
-                    if (isDeleting) {
-                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                    } else {
-                        Button(
-                            onClick = onDeleteAllClick,
-                            enabled = totalFiles > 0,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.error,
-                                contentColor = MaterialTheme.colorScheme.onError
-                            ),
-                            modifier = Modifier.semantics {
-                                contentDescription = "Delete all received files from private storage"
-                            }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.DeleteOutline,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Delete all")
-                        }
                     }
                 }
 
-                Text(
-                    text = "Clearing history in Transfer History removes transfer records only. Deleting files here frees up private storage on this device.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-
-        // Uninstall warning card
-        Card(
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.25f)
-            ),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f)),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(
-                modifier = Modifier.padding(14.dp),
-                verticalAlignment = Alignment.Top
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Warning,
-                    contentDescription = "Uninstall warning",
-                    tint = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(modifier = Modifier.width(10.dp))
-                Column {
-                    Text(
-                        text = "Uninstall storage warning",
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onErrorContainer
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = "Android deletes private app storage upon uninstall. To keep received files permanently across reinstalls or app removals, export files to Downloads before uninstalling Glide.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onErrorContainer
-                    )
+                if (isDeleting) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                } else {
+                    Button(
+                        onClick = onDeleteAllClick,
+                        enabled = totalFiles > 0,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error,
+                            contentColor = MaterialTheme.colorScheme.onError
+                        ),
+                        modifier = Modifier.semantics {
+                            contentDescription = "Delete all received files from private storage"
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.DeleteOutline,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Delete all")
+                    }
                 }
             }
         }
@@ -789,7 +711,7 @@ private fun NearbyPrivacySection(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
-            text = "Nearby & Local Privacy",
+            text = "Diagnostics",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.primary
@@ -805,50 +727,13 @@ private fun NearbyPrivacySection(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Security,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Direct Peer-to-Peer Data Plane",
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Text(
-                            text = "Zero cloud transit · Local Wi-Fi & Bluetooth only",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                Text(
-                    text = "Glide transfers files directly between devices over local Wi-Fi Direct or Bluetooth. No files, content, or metadata ever pass through Google servers or external cloud relays.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                Text(
-                    text = "Google Play services Nearby Connections is used solely for secure local device discovery, radio arbitration, and cryptographic connection handshake.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
                 OutlinedButton(
                     onClick = onViewDiagnosticsClick,
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = 48.dp)
                         .semantics {
-                            contentDescription = "View Nearby diagnostics and privacy disclosures"
+                            contentDescription = "View Nearby diagnostics"
                         }
                 ) {
                     Icon(
@@ -857,7 +742,7 @@ private fun NearbyPrivacySection(
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Nearby diagnostics & disclosures")
+                    Text("Nearby diagnostics")
                 }
             }
         }
@@ -913,18 +798,6 @@ private fun AboutSection(
                     }
                 }
 
-                Text(
-                    text = "A private, zero-cloud peer-to-peer file transfer application for Android. Fast, verified, and direct transfers across local Wi-Fi and Bluetooth.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                Text(
-                    text = "Apache 2.0 License · © 2026 Glide Contributors",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
                 OutlinedButton(
                     onClick = onLicensesClick,
                     modifier = Modifier
@@ -967,22 +840,6 @@ private fun NearbyDiagnosticsDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                Text(
-                    text = "Privacy Architecture",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Text(
-                    text = "• Control Plane: Google Play services Nearby Connections manages local device discovery, BLE advertising, and connection handshakes.\n" +
-                        "• Data Plane: 100% direct high-speed socket between devices (Wi-Fi Direct / Local Hotspot). Payload bytes never transit Google infrastructure.\n" +
-                        "• Verification: SHA-256 end-to-end checksum verification with 4-digit pairing auth codes.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                HorizontalDivider()
-
                 Text(
                     text = "Radio & Service Status",
                     style = MaterialTheme.typography.titleSmall,
@@ -1201,12 +1058,6 @@ private fun TrustedDevicesSection(
                         )
                     }
                 }
-
-                Text(
-                    text = "Remembered devices are enrolled only after cryptographic identity proof and explicit approval. Revoking a device removes its future trusted-session authority.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
 
                 OutlinedButton(
                     onClick = onManageClick,

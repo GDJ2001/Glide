@@ -100,7 +100,6 @@ open class LanNetworkScope(
         val request = NetworkRequest.Builder()
             .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
             .addTransportType(NetworkCapabilities.TRANSPORT_ETHERNET)
-            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
             .build()
 
         val callback = object : ConnectivityManager.NetworkCallback() {
@@ -128,11 +127,64 @@ open class LanNetworkScope(
         }
 
         try {
+            cm.activeNetwork?.let { active ->
+                evaluateNetwork(active)
+            }
+            if (_networkState.value !is LanNetworkState.Available) {
+                evaluateLocalInterfacesFallback()
+            }
             cm.registerNetworkCallback(request, callback)
             networkCallback = callback
             isRegistered = true
         } catch (e: Exception) {
-            _networkState.value = LanNetworkState.NoNetwork
+            evaluateLocalInterfacesFallback()
+        }
+    }
+
+    private fun collectLocalInterfaceSubnets(): Pair<List<InetAddress>, List<SubnetPrefix>> {
+        val addrs = mutableListOf<InetAddress>()
+        val prefixes = mutableListOf<SubnetPrefix>()
+        try {
+            val interfaces = java.net.NetworkInterface.getNetworkInterfaces() ?: return emptyList<InetAddress>() to emptyList()
+            for (ni in interfaces) {
+                if (!ni.isUp || ni.isLoopback) continue
+                val name = ni.name.lowercase()
+                val isEligibleLocalLink =
+                    name.startsWith("wlan") ||
+                    name.startsWith("eth") ||
+                    name.startsWith("rndis") ||
+                    name.startsWith("usb") ||
+                    name.startsWith("ncm") ||
+                    name.startsWith("ap") ||
+                    name.startsWith("swlan") ||
+                    name.startsWith("p2p")
+                if (!isEligibleLocalLink) continue
+                for (ia in ni.interfaceAddresses) {
+                    val addr = ia.address ?: continue
+                    if (addr.isLoopbackAddress || addr.isLinkLocalAddress) continue
+                    val prefixLen = ia.networkPrefixLength.toInt().let {
+                        if (it > 0) it else if (addr is java.net.Inet4Address) 24 else 64
+                    }
+                    addrs.add(addr)
+                    prefixes.add(SubnetPrefix(addr, prefixLen))
+                }
+            }
+        } catch (_: Exception) {}
+        return addrs to prefixes
+    }
+
+    @Synchronized
+    fun evaluateLocalInterfacesFallback() {
+        if (_networkState.value is LanNetworkState.Closed) return
+        val (localAddrs, localSubnets) = collectLocalInterfaceSubnets()
+        if (localSubnets.isNotEmpty()) {
+            currentGeneration++
+            _networkState.value = LanNetworkState.Available(
+                network = null,
+                localAddresses = localAddrs,
+                subnets = localSubnets,
+                generation = currentGeneration
+            )
         }
     }
 
@@ -145,7 +197,7 @@ open class LanNetworkScope(
         if (_networkState.value is LanNetworkState.Closed) return
 
         if (capabilities == null || linkProperties == null) {
-            _networkState.value = LanNetworkState.NoNetwork
+            evaluateLocalInterfacesFallback()
             return
         }
 
@@ -159,11 +211,13 @@ open class LanNetworkScope(
             return
         }
 
-        // Extract subnets and local addresses
-        val subnets = linkProperties.linkAddresses.map {
+        val (extraAddrs, extraSubnets) = collectLocalInterfaceSubnets()
+
+        // Extract subnets and local addresses (merging active network + USB RNDIS / Hotspot local interfaces)
+        val subnets = (linkProperties.linkAddresses.map {
             SubnetPrefix(it.address, it.prefixLength)
-        }
-        val localAddresses = linkProperties.linkAddresses.map { it.address }
+        } + extraSubnets).distinct()
+        val localAddresses = (linkProperties.linkAddresses.map { it.address } + extraAddrs).distinct()
 
         if (subnets.isEmpty()) {
             _networkState.value = LanNetworkState.NoNetwork

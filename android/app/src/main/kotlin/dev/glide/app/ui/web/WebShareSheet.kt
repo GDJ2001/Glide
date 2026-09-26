@@ -150,13 +150,6 @@ fun WebShareSheet(
                 }
             }
 
-            Text(
-                text = "Open this link on any device (iOS, Android, Mac, Linux, PC) connected to the same Wi-Fi to download files without installing Glide.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center
-            )
-
             when (uiState) {
                 is WebShareUiState.Idle, is WebShareUiState.Starting -> {
                     Box(
@@ -183,10 +176,14 @@ fun WebShareSheet(
                 }
 
                 is WebShareUiState.Active -> {
+                    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+                    val isCompactHeight = configuration.screenHeightDp < 480
+                    val qrCardSize = if (isCompactHeight) 180.dp else 240.dp
+
                     // High-contrast QR code card
                     Card(
                         modifier = Modifier
-                            .size(240.dp)
+                            .size(qrCardSize)
                             .padding(4.dp),
                         shape = RoundedCornerShape(16.dp),
                         colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -196,6 +193,8 @@ fun WebShareSheet(
                             Image(
                                 bitmap = uiState.qrBitmap.asImageBitmap(),
                                 contentDescription = "Scan QR code to open web transfer link",
+                                filterQuality = androidx.compose.ui.graphics.FilterQuality.None,
+                                contentScale = androidx.compose.ui.layout.ContentScale.Fit,
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .padding(12.dp)
@@ -257,11 +256,11 @@ fun WebShareSheet(
                         )
                     }
 
-                    // TTL Warning
+                    // TTL Countdown
                     Text(
-                        text = "⚠️ Link expires in ${uiState.secondsRemaining}s if not opened. Transfer stays 100% on your local Wi-Fi.",
+                        text = "Expires in ${uiState.secondsRemaining}s",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center
                     )
 

@@ -74,8 +74,8 @@ class LanTransferTransport(
         }
 
     private val _connectionEvents = MutableSharedFlow<ConnectionEvent>(replay = 1, extraBufferCapacity = 64)
-    private val _controlMessages = MutableSharedFlow<ControlMessage>(extraBufferCapacity = 64)
-    private val _incomingStreams = MutableSharedFlow<IncomingStream>(extraBufferCapacity = 16)
+    private val _controlMessages = MutableSharedFlow<ControlMessage>(replay = 16, extraBufferCapacity = 64)
+    private val _incomingStreams = MutableSharedFlow<IncomingStream>(replay = 16, extraBufferCapacity = 16)
     private val _bulkProgress = MutableSharedFlow<BulkProgress>(extraBufferCapacity = 64)
 
     private val connector = PinnedTlsConnector(
@@ -218,17 +218,46 @@ class LanTransferTransport(
         val invitation = pendingInvitations[peerId]
             ?: throw IllegalStateException("No pending invitation registered for peer: ${peerId.value}")
 
-        val endpoint = invitation.endpoints.firstOrNull()
-            ?: throw IllegalStateException("Invitation contains no valid endpoint")
+        if (invitation.endpoints.isEmpty()) {
+            throw IllegalStateException("Invitation contains no valid endpoint")
+        }
 
-        val inetAddress = InetAddress.getByName(endpoint.address)
+        val activeSubnets = when (val state = networkScope.networkState.value) {
+            is LanNetworkState.Available -> state.subnets
+            else -> emptyList()
+        }
 
-        // 1. Pinned TLS handshake
-        val sslSocket = connector.connect(
-            address = inetAddress,
-            port = endpoint.port,
-            expectedSpkiSha256Hex = invitation.spkiSha256
-        )
+        val orderedEndpoints = invitation.endpoints.sortedBy { ep ->
+            val addr = runCatching { InetAddress.getByName(ep.address) }.getOrNull()
+            val isValidOnLink = addr != null &&
+                dev.glide.transport.lan.network.LanAddressValidator.validateAddress(
+                    address = addr,
+                    activeSubnets = activeSubnets,
+                    allowLoopbackForTesting = allowLoopbackForTesting
+                ) is dev.glide.transport.lan.network.LanAddressValidationResult.Valid
+            if (isValidOnLink) 0 else 1
+        }
+
+        var sslSocket: SSLSocket? = null
+        var lastError: Throwable? = null
+
+        for (endpoint in orderedEndpoints) {
+            try {
+                val inetAddress = InetAddress.getByName(endpoint.address)
+                sslSocket = connector.connect(
+                    address = inetAddress,
+                    port = endpoint.port,
+                    expectedSpkiSha256Hex = invitation.spkiSha256
+                )
+                break
+            } catch (e: Throwable) {
+                lastError = e
+            }
+        }
+
+        if (sslSocket == null) {
+            throw (lastError ?: IOException("Failed to connect to any invitation endpoint"))
+        }
 
         val inputStream = sslSocket.inputStream
         val outputStream = sslSocket.outputStream

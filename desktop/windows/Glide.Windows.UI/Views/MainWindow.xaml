@@ -10,7 +10,7 @@
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource BackgroundBrush}"
         Foreground="{StaticResource TextPrimaryBrush}"
-        Icon="../glide.ico">
+        Icon="pack://application:,,,/glide.ico">
 
     <Window.DataContext>
         <vm:MainViewModel />
@@ -42,9 +42,6 @@
                     <!-- App Title -->
                     <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
                         <TextBlock Text="Glide" FontSize="20" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" VerticalAlignment="Center" />
-                        <Border Margin="8,0,0,0" Background="{StaticResource SurfaceHighBrush}" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
-                            <TextBlock Text="Windows Desktop" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}" />
-                        </Border>
                     </StackPanel>
 
                     <!-- Navigation Tabs -->
@@ -58,8 +55,8 @@
                     </StackPanel>
 
                     <!-- Quick Action: Downloads Folder -->
-                    <Button Grid.Column="2" Style="{StaticResource SecondaryButtonStyle}" Content="📂 Downloads"
-                            Command="{Binding OpenDownloadsCommand}" ToolTip="Open received files in Downloads" />
+                    <Button Grid.Column="2" Style="{StaticResource SecondaryButtonStyle}" Content="📂 Received Files"
+                            Command="{Binding OpenDownloadsCommand}" ToolTip="Open received files folder" />
                 </Grid>
             </Border>
 
@@ -85,16 +82,14 @@
                     </Grid.RowDefinitions>
 
                     <!-- Drag and Drop Target -->
-                    <Border Grid.Row="0" Height="140" Margin="0,0,0,16" Background="{StaticResource SurfaceBrush}"
+                    <Border Grid.Row="0" Height="116" Margin="0,0,0,16" Background="{StaticResource SurfaceBrush}"
                             BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="2" CornerRadius="12"
                             AllowDrop="True" Drop="DropZone_Drop" DragOver="DropZone_DragOver" Cursor="Hand"
                             MouseLeftButtonUp="DropZone_Click">
                         <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-                            <TextBlock Text="📁" FontSize="32" HorizontalAlignment="Center" Margin="0,0,0,8" />
+                            <TextBlock Text="📁" FontSize="28" HorizontalAlignment="Center" Margin="0,0,0,6" />
                             <TextBlock Text="Drag and drop files here, or click to browse" FontSize="15" FontWeight="SemiBold"
                                        Foreground="{StaticResource TextPrimaryBrush}" HorizontalAlignment="Center" />
-                            <TextBlock Text="Supports multiple files, folders, and high-speed streaming" FontSize="12"
-                                       Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center" Margin="0,4,0,0" />
                         </StackPanel>
                     </Border>
 
@@ -156,11 +151,8 @@
                             <!-- Header with Scan & Pair via Link Buttons -->
                             <DockPanel Margin="0,0,0,10">
                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                    <TextBlock Text="🌐 Nearby Glide Peers (mDNS)" FontSize="13" FontWeight="SemiBold"
+                                    <TextBlock Text="🌐 Nearby Peers" FontSize="13" FontWeight="SemiBold"
                                                Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center" />
-                                    <TextBlock Text=" • " Foreground="{StaticResource TextSecondaryBrush}" />
-                                    <TextBlock Text="Automatic local discovery" FontSize="11"
-                                               Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                                     <Button Style="{StaticResource SecondaryButtonStyle}" Content="🔄 Scan" Margin="4,0"
@@ -217,7 +209,7 @@
 
                                 <Button Grid.Column="4" Style="{StaticResource SecondaryButtonStyle}" Content="🌐 Web Share"
                                         Command="{Binding StartWebShareCommand}" Margin="0,0,10,0" Padding="14,8"
-                                        ToolTip="Share selected files with any web browser on local Wi-Fi without installing Glide" />
+                                        ToolTip="Share selected files with any web browser on local Wi-Fi" />
 
                                 <Button Grid.Column="5" Style="{StaticResource PrimaryButtonStyle}" Content="🚀 Send Files"
                                         Command="{Binding SendFilesCommand}" MinWidth="130" />
@@ -240,120 +232,142 @@
                     </Grid.Style>
 
                     <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource CardBorderBrush}"
-                            BorderThickness="1" CornerRadius="12" Padding="24">
-                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="500">
-                            <TextBlock Text="📡" FontSize="48" HorizontalAlignment="Center" Margin="0,0,0,12" />
-                            <TextBlock Text="Receive Files on Local Network" FontSize="20" FontWeight="Bold"
-                                       Foreground="{StaticResource TextPrimaryBrush}" HorizontalAlignment="Center" Margin="0,0,0,8" />
-                            <TextBlock Text="Start the local receiver to accept incoming file transfers from Glide Android or Desktop devices on your Wi-Fi/LAN."
-                                       FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" TextAlignment="Center" TextWrapping="Wrap" Margin="0,0,0,24" />
+                            BorderThickness="1" CornerRadius="12" Padding="20">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
 
-                            <Border Background="{StaticResource SurfaceHighBrush}" CornerRadius="8" Padding="16" Margin="0,0,0,16">
-                                <StackPanel>
-                                    <Grid Margin="0,0,0,8">
-                                        <TextBlock Text="Status:" Foreground="{StaticResource TextSecondaryBrush}" />
-                                        <TextBlock Text="{Binding StatusMessage}" HorizontalAlignment="Right" FontWeight="SemiBold"
-                                                   Foreground="{StaticResource SuccessBrush}" />
-                                    </Grid>
-                                    <Grid Margin="0,0,0,8">
-                                        <TextBlock Text="Listening Port:" Foreground="{StaticResource TextSecondaryBrush}" />
-                                        <TextBlock Text="{Binding ListeningPort}" HorizontalAlignment="Right" FontWeight="SemiBold" />
-                                    </Grid>
-                                    <Grid>
-                                        <TextBlock Text="Local IP(s):" Foreground="{StaticResource TextSecondaryBrush}" />
-                                        <TextBlock Text="{Binding LocalIpText}" HorizontalAlignment="Right" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                    </Grid>
-                                </StackPanel>
-                            </Border>
+                            <!-- Left Column: Status, Settings, Fingerprint, Start/Stop -->
+                            <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto" Margin="0,0,12,0">
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="Receive Files" FontSize="20" FontWeight="Bold"
+                                               Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,14" />
 
-                            <Border Background="{StaticResource SurfaceHighBrush}" CornerRadius="8" Padding="14,12" Margin="0,0,0,16">
-                                <StackPanel>
-                                    <TextBlock Text="Receive Settings" FontSize="12" FontWeight="SemiBold"
-                                               Foreground="{StaticResource AccentBrush}" Margin="0,0,0,8" />
-                                    <Grid Margin="0,0,0,8">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="Folder:" Margin="0,0,8,0" VerticalAlignment="Center"
-                                                   Foreground="{StaticResource TextSecondaryBrush}" />
-                                        <TextBox Grid.Column="1" Style="{StaticResource ModernTextBoxStyle}"
-                                                 Text="{Binding ReceiveDirectory, Mode=OneWay}" IsReadOnly="True"
-                                                 Margin="0,0,8,0" FontSize="11" />
-                                        <Button Grid.Column="2" Style="{StaticResource SecondaryButtonStyle}" Content="Browse…"
-                                                Command="{Binding BrowseReceiveFolderCommand}" Padding="10,4" />
-                                    </Grid>
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="90" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="Preferred listener port"
-                                                   Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
-                                        <TextBlock Grid.Column="1" Text="Port:" Margin="8,0" VerticalAlignment="Center"
-                                                   Foreground="{StaticResource TextSecondaryBrush}" />
-                                        <TextBox Grid.Column="2" Style="{StaticResource ModernTextBoxStyle}"
-                                                 Text="{Binding ListenerPortPreference, UpdateSourceTrigger=PropertyChanged}"
-                                                 HorizontalContentAlignment="Right" />
-                                    </Grid>
-
-                                    <Border Height="1" Background="{StaticResource CardBorderBrush}" Margin="0,12,0,10" />
-
-                                    <TextBlock Text="Persistent Device Identity" FontSize="11" FontWeight="SemiBold"
-                                               Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,5" />
-                                    <TextBlock Text="Compare this fingerprint on the other device before making this Windows PC a trusted device."
-                                               FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap"
-                                               Margin="0,0,0,6" />
-                                    <TextBox Style="{StaticResource ModernTextBoxStyle}"
-                                             Text="{Binding LocalIdentityFingerprint, Mode=OneWay}" IsReadOnly="True"
-                                             FontFamily="Consolas" FontSize="10" TextWrapping="Wrap"
-                                             HorizontalContentAlignment="Center" Margin="0,0,0,6" />
-                                    <TextBlock HorizontalAlignment="Center" FontSize="10"
-                                               Foreground="{StaticResource TextSecondaryBrush}">
-                                        <Run Text="Trusted devices: " />
-                                        <Run Text="{Binding TrustedDeviceCount}" FontWeight="SemiBold" />
-                                    </TextBlock>
-                                </StackPanel>
-                            </Border>
-
-                            <!-- Active Pairing Invitation Link Card -->
-                            <Border Background="{StaticResource SurfaceHighBrush}" CornerRadius="8" Padding="14,12" Margin="0,0,0,20"
-                                    Visibility="{Binding IsListening, Converter={StaticResource BoolToVis}}">
-                                <StackPanel>
-                                    <TextBlock Text="🔗 Active Pairing Invitation Link &amp; QR Code" FontSize="12" FontWeight="SemiBold"
-                                               Foreground="{StaticResource AccentBrush}" Margin="0,0,0,8" />
-
-                                    <!-- Pairing QR Code Image -->
-                                    <Border Background="#FFFFFF" CornerRadius="8" Padding="10" Margin="0,0,0,10" HorizontalAlignment="Center"
-                                            BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1">
-                                        <Image Source="{Binding PairingQrImage}" Width="140" Height="140"
-                                               RenderOptions.BitmapScalingMode="NearestNeighbor" Stretch="Uniform" />
+                                    <Border Background="{StaticResource SurfaceHighBrush}" CornerRadius="8" Padding="14,12" Margin="0,0,0,12">
+                                        <StackPanel>
+                                            <Grid Margin="0,0,0,6">
+                                                <TextBlock Text="Status:" Foreground="{StaticResource TextSecondaryBrush}" />
+                                                <TextBlock Text="{Binding StatusMessage}" HorizontalAlignment="Right" FontWeight="SemiBold"
+                                                           Foreground="{StaticResource SuccessBrush}" TextTrimming="CharacterEllipsis" MaxWidth="280" />
+                                            </Grid>
+                                            <Grid Margin="0,0,0,6">
+                                                <TextBlock Text="Listening Port:" Foreground="{StaticResource TextSecondaryBrush}" />
+                                                <TextBlock Text="{Binding ListeningPort}" HorizontalAlignment="Right" FontWeight="SemiBold" />
+                                            </Grid>
+                                            <Grid>
+                                                <TextBlock Text="Local IP(s):" Foreground="{StaticResource TextSecondaryBrush}" />
+                                                <TextBlock Text="{Binding LocalIpText}" HorizontalAlignment="Right" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" MaxWidth="280" />
+                                            </Grid>
+                                        </StackPanel>
                                     </Border>
 
+                                    <Border Background="{StaticResource SurfaceHighBrush}" CornerRadius="8" Padding="14,12" Margin="0,0,0,14">
+                                        <StackPanel>
+                                            <TextBlock Text="Receive Settings" FontSize="12" FontWeight="SemiBold"
+                                                       Foreground="{StaticResource AccentBrush}" Margin="0,0,0,8" />
+                                            <Grid Margin="0,0,0,8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0" Text="Folder:" Margin="0,0,8,0" VerticalAlignment="Center"
+                                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                                <TextBox Grid.Column="1" Style="{StaticResource ModernTextBoxStyle}"
+                                                         Text="{Binding ReceiveDirectory, Mode=OneWay}" IsReadOnly="True"
+                                                         Margin="0,0,8,0" FontSize="11" />
+                                                <Button Grid.Column="2" Style="{StaticResource SecondaryButtonStyle}" Content="Browse…"
+                                                        Command="{Binding BrowseReceiveFolderCommand}" Padding="10,4" />
+                                            </Grid>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="90" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0" Text="Listener Port"
+                                                           Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                                                <TextBlock Grid.Column="1" Text="Port:" Margin="8,0" VerticalAlignment="Center"
+                                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                                <TextBox Grid.Column="2" Style="{StaticResource ModernTextBoxStyle}"
+                                                         Text="{Binding ListenerPortPreference, UpdateSourceTrigger=PropertyChanged}"
+                                                         HorizontalContentAlignment="Right" />
+                                            </Grid>
+
+                                            <Border Height="1" Background="{StaticResource CardBorderBrush}" Margin="0,10,0,8" />
+
+                                            <TextBlock Text="Device Fingerprint" FontSize="11" FontWeight="SemiBold"
+                                                       Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,4" />
+                                            <TextBox Style="{StaticResource ModernTextBoxStyle}"
+                                                     Text="{Binding LocalIdentityFingerprint, Mode=OneWay}" IsReadOnly="True"
+                                                     FontFamily="Consolas" FontSize="10" TextWrapping="Wrap"
+                                                     HorizontalContentAlignment="Center" Margin="0,0,0,4" />
+                                            <TextBlock HorizontalAlignment="Center" FontSize="10"
+                                                       Foreground="{StaticResource TextSecondaryBrush}">
+                                                <Run Text="Trusted devices: " />
+                                                <Run Text="{Binding TrustedDeviceCount}" FontWeight="SemiBold" />
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Button MinWidth="220" HorizontalAlignment="Left"
+                                            Command="{Binding ToggleListenerCommand}">
+                                        <Button.Style>
+                                            <Style TargetType="Button" BasedOn="{StaticResource PrimaryButtonStyle}">
+                                                <Setter Property="Content" Value="▶ Start Listening" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsListening}" Value="True">
+                                                        <Setter Property="Content" Value="⏹ Stop Listening" />
+                                                        <Setter Property="Background" Value="{StaticResource ErrorBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
+                                    </Button>
+                                </StackPanel>
+                            </ScrollViewer>
+
+                            <!-- Right Column: Large High-Contrast Pairing QR Code Card -->
+                            <Border Grid.Column="1" Width="370" Background="{StaticResource SurfaceHighBrush}"
+                                    CornerRadius="12" Padding="18,14" Margin="8,0,0,0"
+                                    Visibility="{Binding IsListening, Converter={StaticResource BoolToVis}}"
+                                    VerticalAlignment="Center">
+                                <StackPanel HorizontalAlignment="Center">
+                                    <TextBlock Text="🔗 Scan QR Code on Mobile" FontSize="14" FontWeight="Bold"
+                                               Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Center" Margin="0,0,0,10" />
+
+                                    <!-- Large 280x280 Pairing QR Code Image (Click to Enlarge) -->
+                                    <Button Command="{Binding ToggleQrZoomCommand}" Cursor="Hand"
+                                            ToolTip="Click to view extra-large Fullscreen QR code"
+                                            Background="Transparent" BorderThickness="0" Padding="0" Margin="0,0,0,10">
+                                        <Button.Template>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border Background="#FFFFFF" CornerRadius="12" Padding="14" HorizontalAlignment="Center"
+                                                        BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="2">
+                                                    <Image Source="{Binding PairingQrImage}" Width="280" Height="280"
+                                                           RenderOptions.BitmapScalingMode="NearestNeighbor"
+                                                           SnapsToDevicePixels="True" UseLayoutRounding="True" Stretch="Uniform" />
+                                                </Border>
+                                            </ControlTemplate>
+                                        </Button.Template>
+                                    </Button>
+
                                     <TextBox Style="{StaticResource ModernTextBoxStyle}" Text="{Binding ActiveInvitationUri, Mode=OneWay}"
-                                             IsReadOnly="True" FontSize="10" Padding="8,5" Margin="0,0,0,8" />
-                                    <Button Style="{StaticResource SecondaryButtonStyle}" Content="📋 Copy Pairing Link to Clipboard"
-                                             Command="{Binding CopyPairingLinkCommand}" HorizontalAlignment="Center" Padding="16,5" FontSize="12" />
+                                             IsReadOnly="True" FontSize="10" Padding="8,4" Margin="0,0,0,10" Width="330" />
+
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                        <Button Style="{StaticResource SecondaryButtonStyle}" Content="🔍 Enlarge QR"
+                                                Command="{Binding ToggleQrZoomCommand}" Margin="0,0,8,0" Padding="10,5" FontSize="12" />
+                                        <Button Style="{StaticResource SecondaryButtonStyle}" Content="🔄 Refresh QR"
+                                                Command="{Binding RefreshQrCommand}" Margin="0,0,8,0" Padding="10,5" FontSize="12" />
+                                        <Button Style="{StaticResource SecondaryButtonStyle}" Content="📋 Copy Link"
+                                                Command="{Binding CopyPairingLinkCommand}" Padding="10,5" FontSize="12" />
+                                    </StackPanel>
                                 </StackPanel>
                             </Border>
-
-                            <Button MinWidth="200" HorizontalAlignment="Center"
-                                    Command="{Binding ToggleListenerCommand}">
-                                <Button.Style>
-                                    <Style TargetType="Button" BasedOn="{StaticResource PrimaryButtonStyle}">
-                                        <Setter Property="Content" Value="▶ Start Listening" />
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsListening}" Value="True">
-                                                <Setter Property="Content" Value="⏹ Stop Listening" />
-                                                <Setter Property="Background" Value="{StaticResource ErrorBrush}" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Button.Style>
-                            </Button>
-                        </StackPanel>
+                        </Grid>
                     </Border>
                 </Grid>
 
@@ -497,7 +511,7 @@
 
         <!-- Authenticated incoming-offer consent overlay -->
         <Border Background="#CC070B16" Visibility="{Binding IsOfferModalVisible, Converter={StaticResource BoolToVis}}"
-                HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+                HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Panel.ZIndex="100">
             <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource CardBorderBrush}"
                     BorderThickness="1" CornerRadius="16" Padding="28" Width="460" HorizontalAlignment="Center"
                     VerticalAlignment="Center">
@@ -573,10 +587,11 @@
                                FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" TextAlignment="Center" TextWrapping="Wrap" Margin="0,0,0,16" />
 
                     <!-- Web Share QR Code Display -->
-                    <Border Background="#FFFFFF" CornerRadius="10" Padding="12" Margin="0,0,0,16" HorizontalAlignment="Center"
-                            BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1">
-                        <Image Source="{Binding WebShareQrImage}" Width="150" Height="150"
-                               RenderOptions.BitmapScalingMode="NearestNeighbor" Stretch="Uniform" />
+                    <Border Background="#FFFFFF" CornerRadius="12" Padding="14" Margin="0,0,0,16" HorizontalAlignment="Center"
+                            BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="2">
+                        <Image Source="{Binding WebShareQrImage}" Width="260" Height="260"
+                               RenderOptions.BitmapScalingMode="NearestNeighbor"
+                               SnapsToDevicePixels="True" UseLayoutRounding="True" Stretch="Uniform" />
                     </Border>
 
                     <!-- Web Share URL Box -->
@@ -590,13 +605,38 @@
                     <Button Style="{StaticResource SecondaryButtonStyle}" Content="📋 Copy Web Share Link"
                             Command="{Binding CopyWebShareLinkCommand}" HorizontalAlignment="Center" Padding="16,6" Margin="0,0,0,16" />
 
-                    <TextBlock Text="⚠️ Single-use onboarding token expires in 120 seconds if not opened. Transfer stays 100% on your local network."
-                               FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextAlignment="Center" TextWrapping="Wrap" Margin="0,0,0,20" />
-
                     <!-- Stop Button -->
                     <Button Style="{StaticResource PrimaryButtonStyle}" Content="⏹ Stop Web Share"
                             Command="{Binding StopWebShareCommand}" Width="160" HorizontalAlignment="Center" Padding="0,10"
                             Background="{StaticResource ErrorBrush}" />
+                </StackPanel>
+            </Border>
+        </Border>
+
+        <!-- Extra-Large Fullscreen Pairing QR Code Overlay (440x440) -->
+        <Border Background="#E6070B16" Visibility="{Binding IsQrZoomModalVisible, Converter={StaticResource BoolToVis}}"
+                HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+            <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource CardBorderBrush}"
+                    BorderThickness="1" CornerRadius="16" Padding="28" HorizontalAlignment="Center"
+                    VerticalAlignment="Center">
+                <StackPanel HorizontalAlignment="Center">
+                    <TextBlock Text="Scan QR Code with Glide Mobile" FontSize="18" FontWeight="Bold"
+                               Foreground="{StaticResource TextPrimaryBrush}" HorizontalAlignment="Center" Margin="0,0,0,14" />
+
+                    <Border Background="#FFFFFF" CornerRadius="14" Padding="20" Margin="0,0,0,16" HorizontalAlignment="Center">
+                        <Image Source="{Binding PairingQrImage}" Width="440" Height="440"
+                               RenderOptions.BitmapScalingMode="NearestNeighbor"
+                               SnapsToDevicePixels="True" UseLayoutRounding="True" Stretch="Uniform" />
+                    </Border>
+
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                        <Button Style="{StaticResource SecondaryButtonStyle}" Content="🔄 Refresh QR"
+                                Command="{Binding RefreshQrCommand}" Margin="0,0,12,0" Padding="16,8" FontSize="13" />
+                        <Button Style="{StaticResource SecondaryButtonStyle}" Content="📋 Copy Link"
+                                Command="{Binding CopyPairingLinkCommand}" Margin="0,0,12,0" Padding="16,8" FontSize="13" />
+                        <Button Style="{StaticResource PrimaryButtonStyle}" Content="✕ Close"
+                                Command="{Binding ToggleQrZoomCommand}" Padding="20,8" FontSize="13" />
+                    </StackPanel>
                 </StackPanel>
             </Border>
         </Border>
