@@ -45,6 +45,22 @@ public class LanBootstrapCodecTests
     }
 
     [Fact]
+    public void BootstrapMessage_ReceiverRole_CanonicalRoundTrip()
+    {
+        var original = new LanBootstrapMessage(
+            invitationId: ValidInvitationId,
+            token: ValidToken,
+            invitationHash: ValidHash,
+            sessionId: ValidSessionId,
+            role: LanBootstrapMessage.RoleReceiver);
+
+        var decoded = LanBootstrapCodec.DecodeBootstrap(
+            LanBootstrapCodec.EncodeBootstrap(original));
+
+        Assert.Equal(LanBootstrapMessage.RoleReceiver, decoded.Role);
+    }
+
+    [Fact]
     public void BootstrapResultAccepted_CanonicalRoundTrip()
     {
         var result = LanBootstrapResult.Accepted(ValidSessionId);

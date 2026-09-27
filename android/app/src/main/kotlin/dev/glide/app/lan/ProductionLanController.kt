@@ -316,6 +316,7 @@ class ProductionLanController private constructor(
         ownerScope: CoroutineScope,
         invitation: LanInvitation,
         localDeviceName: String,
+        bootstrapRole: String = dev.glide.core.transport.lan.LanBootstrapMessage.ROLE_SENDER,
         onConnected: (LanTransferTransport, PeerDevice) -> Unit,
         onFailure: (String) -> Unit
     ): Boolean {
@@ -346,7 +347,7 @@ class ProductionLanController private constructor(
                 val activeTransport = transportFactory(networkScope, activeTransportScope)
                 transport = activeTransport
                 val peerId = PeerId("lan-${invitation.invitationId}")
-                activeTransport.registerPendingInvitation(peerId, invitation)
+                activeTransport.registerPendingInvitation(peerId, invitation, bootstrapRole)
 
                 lateinit var connectionJob: Job
                 connectionJob = activeTransportScope.launch {
@@ -393,6 +394,26 @@ class ProductionLanController private constructor(
         }
         return true
     }
+
+    /**
+     * Connects to a sender-hosted invitation. The socket initiator is the local receiver;
+     * transfer direction is therefore intentionally independent of connection direction.
+     */
+    @SuppressLint("NewApi")
+    fun startReceiverViaInvitation(
+        ownerScope: CoroutineScope,
+        invitation: LanInvitation,
+        localDeviceName: String,
+        onConnected: (LanTransferTransport, PeerDevice) -> Unit,
+        onFailure: (String) -> Unit
+    ): Boolean = startSender(
+        ownerScope = ownerScope,
+        invitation = invitation,
+        localDeviceName = localDeviceName,
+        bootstrapRole = dev.glide.core.transport.lan.LanBootstrapMessage.ROLE_RECEIVER,
+        onConnected = onConnected,
+        onFailure = onFailure
+    )
 
     @SuppressLint("NewApi")
     fun revokeReceiverInvitation(closeListener: Boolean = true) {

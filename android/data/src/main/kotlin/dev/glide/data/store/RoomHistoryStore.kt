@@ -16,6 +16,9 @@ import dev.glide.data.db.SessionDao
 import dev.glide.data.db.SessionEntity
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
 /**
@@ -124,20 +127,14 @@ class RoomHistoryStore(
     ): List<SessionSummary> = withContext(ioDispatcher) {
         val roleStr = role?.name
         val sessionsWithItems = sessionDao.getSessionsWithItemsPaged(roleStr, limit, offset)
-        sessionsWithItems.map { swi ->
-            SessionSummary(
-                sessionId = SessionId(swi.session.sessionId),
-                batchId = BatchId(swi.session.batchId),
-                role = parseRole(swi.session.role),
-                peerLabel = swi.session.peerLabel,
-                startedAtMs = swi.session.startedAtMs,
-                endedAtMs = swi.session.endedAtMs,
-                outcome = swi.session.outcome,
-                failureCode = swi.session.failureCode,
-                itemCount = swi.items.size,
-                totalBytes = swi.items.sumOf { it.actualBytes ?: it.offeredBytes }
-            )
-        }
+        sessionsWithItems.map(::toSessionSummary)
+    }
+
+    override fun observeSessions(role: DeviceRole?, limit: Int): Flow<List<SessionSummary>> {
+        require(limit > 0) { "limit must be positive" }
+        return sessionDao.observeSessionsWithItems(role?.name, limit)
+            .map { sessions -> sessions.map(::toSessionSummary) }
+            .flowOn(ioDispatcher)
     }
 
     override suspend fun getSessionCount(role: DeviceRole?): Int = withContext(ioDispatcher) {
@@ -185,4 +182,18 @@ class RoomHistoryStore(
     private fun parseRole(role: String): DeviceRole {
         return DeviceRole.entries.firstOrNull { it.name.equals(role, ignoreCase = true) } ?: DeviceRole.Receiver
     }
+
+    private fun toSessionSummary(swi: dev.glide.data.db.SessionWithItems): SessionSummary =
+        SessionSummary(
+            sessionId = SessionId(swi.session.sessionId),
+            batchId = BatchId(swi.session.batchId),
+            role = parseRole(swi.session.role),
+            peerLabel = swi.session.peerLabel,
+            startedAtMs = swi.session.startedAtMs,
+            endedAtMs = swi.session.endedAtMs,
+            outcome = swi.session.outcome,
+            failureCode = swi.session.failureCode,
+            itemCount = swi.items.size,
+            totalBytes = swi.items.sumOf { it.actualBytes ?: it.offeredBytes }
+        )
 }

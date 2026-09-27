@@ -128,7 +128,7 @@ public sealed class DesktopEngineArchitectureTests
     }
 
     [Fact]
-    public void WpfSendFlow_KeepsPrimaryActionVisibleAndContinuesAfterPairing()
+    public void WpfSendFlow_KeepsPrimaryActionVisibleAndStartsPhoneQrPairing()
     {
         string root = ResolveRepositoryRoot();
         string viewModel = File.ReadAllText(
@@ -148,11 +148,12 @@ public sealed class DesktopEngineArchitectureTests
         Assert.True(
             primarySendAction < advancedStart,
             "The primary send action must not be hidden inside the advanced-address expander.");
-        Assert.Contains("_sendAfterPairing = true", viewModel);
+        Assert.Contains("StartHostedSendPairingAsync", viewModel);
+        Assert.Contains("SendHostedAsync", viewModel);
+        Assert.Contains("IsHostedSendQrVisible", viewModel);
         Assert.Contains("ExecuteSendFilesSafelyAsync", viewModel);
-        Assert.Contains("Use a fresh phone invite to send again", viewModel);
-        Assert.Contains("Connect and send", view);
-        Assert.Contains("Receive files > Show QR code > Copy invite", viewModel);
+        Assert.Contains("QR code for receiving selected files", view);
+        Assert.Contains("Scan with Glide on your phone", viewModel);
     }
 
     private static string ResolveRepositoryRoot()

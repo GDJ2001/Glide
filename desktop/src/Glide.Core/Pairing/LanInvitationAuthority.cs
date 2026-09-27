@@ -64,12 +64,20 @@ public sealed class LanInvitationAuthority
         }
     }
 
-    public LanBootstrapResult Consume(LanBootstrapMessage message)
+    public LanBootstrapResult Consume(
+        LanBootstrapMessage message,
+        string expectedRole = LanBootstrapMessage.RoleSender)
     {
         ArgumentNullException.ThrowIfNull(message);
 
         lock (_gate)
         {
+            if (message.Role != expectedRole)
+            {
+                return LanBootstrapResult.Rejected(
+                    LanBootstrapFailureCode.UNSUPPORTED_PROFILE);
+            }
+
             if (_consumedIds.Contains(message.InvitationId))
             {
                 return LanBootstrapResult.Rejected(

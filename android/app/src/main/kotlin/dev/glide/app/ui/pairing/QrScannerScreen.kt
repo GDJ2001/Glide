@@ -107,7 +107,8 @@ fun QrScannerScreen(
     onRetryScan: () -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
-    onCameraUnavailable: () -> Unit = {}
+    onCameraUnavailable: () -> Unit = {},
+    scanPurposeLabel: String = "Scan QR code"
 ) {
     val context = LocalContext.current
     var hasCameraPermission by remember {
@@ -213,7 +214,7 @@ fun QrScannerScreen(
             }
 
             Text(
-                text = "Scan QR code",
+                text = scanPurposeLabel,
                 style = MaterialTheme.typography.titleMedium,
                 color = Color.White,
                 textAlign = TextAlign.Center,

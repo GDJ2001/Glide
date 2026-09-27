@@ -104,6 +104,8 @@ class CrossOemAcceptanceAndSoakTest {
         override suspend fun deleteTerminalSessions(): Int = 0
         override suspend fun getSessionWithItems(sessionId: String): SessionWithItems? = null
         override suspend fun getSessionsWithItemsPaged(role: String?, limit: Int, offset: Int): List<SessionWithItems> = emptyList()
+        override fun observeSessionsWithItems(role: String?, limit: Int) =
+            kotlinx.coroutines.flow.flowOf(emptyList<SessionWithItems>())
     }
 
     private class TestItemDao : ItemDao {

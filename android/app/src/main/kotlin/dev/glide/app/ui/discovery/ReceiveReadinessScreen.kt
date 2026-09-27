@@ -65,7 +65,8 @@ fun ReceiveReadinessScreen(
     onStopReceiving: () -> Unit,
     onRestartReceiving: () -> Unit,
     modifier: Modifier = Modifier,
-    onShowQrCode: (() -> Unit)? = null
+    onShowQrCode: (() -> Unit)? = null,
+    onScanPcQr: (() -> Unit)? = null
 ) {
     val scrollState = rememberScrollState()
     val context = LocalContext.current
@@ -206,6 +207,27 @@ fun ReceiveReadinessScreen(
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = "Show QR code",
+                            style = MaterialTheme.typography.titleSmall
+                        )
+                    }
+                }
+
+                if (onScanPcQr != null) {
+                    OutlinedButton(
+                        onClick = onScanPcQr,
+                        shape = PrimaryButtonShape,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 52.dp)
+                            .semantics {
+                                role = Role.Button
+                                contentDescription = "Scan a QR code displayed by a Windows PC that is sending files"
+                            }
+                    ) {
+                        Icon(imageVector = Icons.Default.QrCode2, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Scan PC QR code",
                             style = MaterialTheme.typography.titleSmall
                         )
                     }

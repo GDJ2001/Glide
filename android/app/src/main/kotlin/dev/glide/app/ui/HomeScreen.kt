@@ -20,7 +20,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -51,6 +50,18 @@ import dev.glide.designsystem.brandCyanAccent
 import dev.glide.designsystem.avoidHinge
 import dev.glide.designsystem.glideHoverHand
 import androidx.compose.foundation.layout.widthIn
+import android.text.format.DateUtils
+import dev.glide.core.domain.DeviceRole
+
+data class RecentActivity(
+    val sessionId: String,
+    val role: DeviceRole,
+    val peerLabel: String,
+    val startedAtMs: Long,
+    val outcome: String?,
+    val itemCount: Int,
+    val totalBytes: Long
+)
 
 @Composable
 fun HomeScreen(
@@ -60,6 +71,8 @@ fun HomeScreen(
     onNavigateToSettings: () -> Unit = {},
     activeSessionId: String? = null,
     onNavigateToTransfer: (String) -> Unit = {},
+    recentActivities: List<RecentActivity> = emptyList(),
+    onOpenRecentActivity: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
@@ -271,32 +284,118 @@ fun HomeScreen(
                 }
             }
 
-            Card(
-                onClick = onNavigateToHistory,
-                shape = MaterialTheme.shapes.medium,
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .semantics {
-                        contentDescription = "Open transfer history"
-                    }
-            ) {
-                Box(
+            if (recentActivities.isEmpty()) {
+                Card(
+                    onClick = onNavigateToHistory,
+                    shape = MaterialTheme.shapes.medium,
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    ),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(24.dp),
-                    contentAlignment = Alignment.Center
+                        .semantics { contentDescription = "Open transfer history" }
                 ) {
-                    Text(
-                        text = "Open history to view sent and received files",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Box(
+                        modifier = Modifier.fillMaxWidth().padding(24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Your completed and interrupted transfers will appear here.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    recentActivities.forEach { activity ->
+                        RecentActivityCard(
+                            activity = activity,
+                            onClick = { onOpenRecentActivity(activity.sessionId) }
+                        )
+                    }
                 }
             }
         }
     }
 }
+}
+
+@Composable
+private fun RecentActivityCard(
+    activity: RecentActivity,
+    onClick: () -> Unit
+) {
+    val isSent = activity.role == DeviceRole.Sender
+    val completed = activity.outcome.equals("completed", ignoreCase = true) ||
+        activity.outcome.equals("success", ignoreCase = true)
+    val cancelled = activity.outcome.equals("cancelled", ignoreCase = true)
+    val statusLabel = when {
+        completed -> "Completed"
+        cancelled -> "Cancelled"
+        activity.outcome.isNullOrBlank() -> "Interrupted"
+        else -> "Failed"
+    }
+    val statusColor = when {
+        completed -> MaterialTheme.colorScheme.primary
+        cancelled -> MaterialTheme.colorScheme.onSurfaceVariant
+        else -> MaterialTheme.colorScheme.error
+    }
+    val whenText = DateUtils.getRelativeTimeSpanString(
+        activity.startedAtMs,
+        System.currentTimeMillis(),
+        DateUtils.MINUTE_IN_MILLIS,
+        DateUtils.FORMAT_ABBREV_RELATIVE
+    ).toString()
+
+    Card(
+        onClick = onClick,
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics {
+                role = Role.Button
+                contentDescription = "$statusLabel ${if (isSent) "sent to" else "received from"} ${activity.peerLabel}. Open transfer details."
+            }
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Icon(
+                imageVector = if (isSent) Icons.AutoMirrored.Filled.Send else Icons.Default.Download,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(22.dp)
+            )
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = if (isSent) "Sent to ${activity.peerLabel}" else "Received from ${activity.peerLabel}",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1
+                )
+                Text(
+                    text = "${activity.itemCount} ${if (activity.itemCount == 1) "item" else "items"} • ${formatTransferSize(activity.totalBytes)} • $whenText",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1
+                )
+            }
+            Text(
+                text = statusLabel,
+                style = MaterialTheme.typography.labelMedium,
+                color = statusColor
+            )
+        }
+    }
+}
+
+private fun formatTransferSize(bytes: Long): String = when {
+    bytes < 1024L -> "$bytes B"
+    bytes < 1024L * 1024L -> "%.1f KB".format(bytes / 1024.0)
+    bytes < 1024L * 1024L * 1024L -> "%.1f MB".format(bytes / (1024.0 * 1024.0))
+    else -> "%.1f GB".format(bytes / (1024.0 * 1024.0 * 1024.0))
 }

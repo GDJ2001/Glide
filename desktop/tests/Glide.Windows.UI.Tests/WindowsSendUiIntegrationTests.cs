@@ -70,45 +70,16 @@ public sealed class WindowsSendUiIntegrationTests
                 window.UpdateLayout();
 
                 Assert.True(viewModel.IsPairModalVisible);
-                Assert.Contains("Receive files", viewModel.StatusMessage);
+                Assert.True(viewModel.IsHostedSendQrVisible);
+                Assert.Contains("Scan the QR code", viewModel.StatusMessage);
 
-                Button connectButton = Descendants(window)
-                    .OfType<Button>()
-                    .Single(button => Equals(button.Content, "Connect and send"));
-                Assert.Equal(Visibility.Visible, connectButton.Visibility);
-                Assert.True(connectButton.ActualWidth > 0);
-                Assert.True(connectButton.ActualHeight > 0);
-
-                string? physicalInvitation =
-                    Environment.GetEnvironmentVariable("GLIDE_PHYSICAL_PAIRING_URI");
-                if (!string.IsNullOrWhiteSpace(physicalInvitation))
-                {
-                    TextBox invitationInput = Descendants(window)
-                        .OfType<TextBox>()
-                        .Single(textBox =>
-                            AutomationProperties.GetName(textBox) ==
-                            "Receiving phone Glide invite");
-                    invitationInput.Text = physicalInvitation;
-                    invitationInput.GetBindingExpression(TextBox.TextProperty)?.UpdateSource();
-
-                    var connectPeer = new ButtonAutomationPeer(connectButton);
-                    var connectProvider = Assert.IsAssignableFrom<IInvokeProvider>(
-                        connectPeer.GetPattern(PatternInterface.Invoke));
-                    connectProvider.Invoke();
-
-                    PumpDispatcherUntil(
-                        () =>
-                            !viewModel.IsTransferActive &&
-                            viewModel.StatusMessage.Contains(
-                                "Transfer complete",
-                                StringComparison.OrdinalIgnoreCase),
-                        TimeSpan.FromSeconds(30));
-
-                    Assert.Contains(
-                        "Transfer complete",
-                        viewModel.StatusMessage,
-                        StringComparison.OrdinalIgnoreCase);
-                }
+                Image qrImage = Descendants(window)
+                    .OfType<Image>()
+                    .Single(image =>
+                        AutomationProperties.GetName(image) ==
+                        "QR code for receiving selected files");
+                Assert.Equal(Visibility.Visible, qrImage.Visibility);
+                Assert.NotNull(qrImage.Source);
             }
             catch (Exception ex)
             {

@@ -42,7 +42,9 @@ data class LanBootstrapMessage(
         require(TOKEN_REGEX.matches(token)) { "token must be exactly 43 base64url characters, got length ${token.length}" }
         require(isValidSha256(invitationHash)) { "invitationHash must be 64 lowercase hex characters, got: '$invitationHash'" }
         require(isValidUuidV4(sessionId)) { "sessionId must be a canonical UUIDv4, got: '$sessionId'" }
-        require(role == ROLE_SENDER) { "role must be '$ROLE_SENDER', got: '$role'" }
+        require(role == ROLE_SENDER || role == ROLE_RECEIVER) {
+            "role must be '$ROLE_SENDER' or '$ROLE_RECEIVER', got: '$role'"
+        }
     }
 
     override fun toString(): String {
@@ -51,6 +53,7 @@ data class LanBootstrapMessage(
 
     companion object {
         const val ROLE_SENDER = "sender"
+        const val ROLE_RECEIVER = "receiver"
         private val TOKEN_REGEX = Regex("^[A-Za-z0-9_-]{43}$")
     }
 }

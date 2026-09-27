@@ -256,6 +256,8 @@ class TransferRuntime private constructor(
                 startNearbySenderPairing(command)
             is TransferRuntimeCommand.StartLanSenderPairing ->
                 startLanSenderPairing(command)
+            is TransferRuntimeCommand.StartLanReceiverPairing ->
+                startLanReceiverPairing(command)
             is TransferRuntimeCommand.StartLanReceiver ->
                 startLanReceiver(command)
             TransferRuntimeCommand.StopLanReceiver ->
@@ -380,6 +382,57 @@ class TransferRuntime private constructor(
                 terminalCallback?.invoke()
             }
         }
+    }
+
+    private fun startLanReceiverPairing(
+        command: TransferRuntimeCommand.StartLanReceiverPairing
+    ): Boolean {
+        val controller = lanController ?: return failPairing(
+            "LAN unavailable",
+            "Production LAN transport is unavailable."
+        )
+        val scope = synchronized(lock) { serviceScope } ?: return failPairing(
+            "Transfer service unavailable",
+            "Foreground transfer service is not attached."
+        )
+
+        discoveryController?.stopDiscovery()
+        discoveryController?.stopAdvertising()
+        clearPairingBinding()
+
+        val peerId = PeerId("lan-${command.invitation.invitationId}")
+        _pairingState.value = PairingUiState.Connecting(
+            peerId = peerId,
+            peerName = command.invitation.name,
+            deviceType = DeviceType.fromDeviceName(command.invitation.name)
+        )
+
+        return controller.startReceiverViaInvitation(
+            ownerScope = scope,
+            invitation = command.invitation,
+            localDeviceName = command.localDeviceName,
+            onConnected = { transport, peer ->
+                _pairingState.value = PairingUiState.Connected(peer)
+                val started = startReceiver(
+                    TransferRuntimeCommand.StartReceiver(
+                        transport = transport,
+                        peerId = peer.id,
+                        peerDisplayName = peer.displayName
+                    )
+                )
+                if (!started) {
+                    failPairing(
+                        "Transfer could not start",
+                        "The receiver session could not start after LAN pairing."
+                    )
+                    terminalCallback?.invoke()
+                }
+            },
+            onFailure = { reason ->
+                failPairing("LAN connection failed", reason)
+                terminalCallback?.invoke()
+            }
+        )
     }
 
     private fun stopLanReceiver(): Boolean {
@@ -1354,6 +1407,11 @@ sealed interface TransferRuntimeCommand {
 
     data class StartLanSenderPairing(
         val selectionId: BatchId? = null,
+        val invitation: LanInvitation,
+        val localDeviceName: String = "Glide Device"
+    ) : TransferRuntimeCommand
+
+    data class StartLanReceiverPairing(
         val invitation: LanInvitation,
         val localDeviceName: String = "Glide Device"
     ) : TransferRuntimeCommand

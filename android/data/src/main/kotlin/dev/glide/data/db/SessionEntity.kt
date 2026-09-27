@@ -11,6 +11,7 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Relation
 import androidx.room.Transaction
+import kotlinx.coroutines.flow.Flow
 
 /**
  * Composite relation containing a [SessionEntity] and its associated [ItemEntity] records.
@@ -145,4 +146,15 @@ interface SessionDao {
         """
     )
     suspend fun getSessionsWithItemsPaged(role: String?, limit: Int, offset: Int): List<SessionWithItems>
+
+    @Transaction
+    @Query(
+        """
+        SELECT * FROM sessions
+        WHERE (:role IS NULL OR role = :role)
+        ORDER BY started_at_ms DESC
+        LIMIT :limit
+        """
+    )
+    fun observeSessionsWithItems(role: String?, limit: Int): Flow<List<SessionWithItems>>
 }

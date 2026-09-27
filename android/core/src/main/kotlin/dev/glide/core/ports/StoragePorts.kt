@@ -12,6 +12,8 @@ import dev.glide.core.domain.TransferFailure
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 
 data class SourceMetadata(
     val name: String,
@@ -102,6 +104,14 @@ interface HistoryStore {
     suspend fun updateItemOutcome(itemId: ItemId, outcome: String, actualBytes: Long? = null, digest: Sha256Digest? = null) {}
     suspend fun getItemsForSession(sessionId: SessionId): List<ItemRecord> = emptyList()
     suspend fun getSessionsPaged(role: DeviceRole? = null, limit: Int = 50, offset: Int = 0): List<SessionSummary> = emptyList()
+    /**
+     * Emits a fresh, bounded history projection whenever persistence changes.  Presentation
+     * layers use this instead of polling so Home and History remain consistent after a
+     * transfer finishes, fails, is cancelled, or is removed.
+     */
+    fun observeSessions(role: DeviceRole? = null, limit: Int = 50): Flow<List<SessionSummary>> = flow {
+        emit(getSessionsPaged(role = role, limit = limit, offset = 0))
+    }
     suspend fun getSessionCount(role: DeviceRole? = null): Int = 0
     suspend fun trimRetention(maxSessions: Int = 10_000, maxAgeMs: Long = 90L * 24 * 60 * 60 * 1000L, nowMs: Long = System.currentTimeMillis()): Int = 0
     suspend fun clearHistory(): Int = 0

@@ -208,37 +208,146 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
         }
     }
 
+    public async Task<DesktopTransferResult> SendHostedAsync(
+        TlsSocketConnection connection,
+        DesktopSendRequest request,
+        IDesktopTransferInteraction interaction,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(interaction);
+
+        if (request.HostedInvitationAuthority == null)
+        {
+            return DesktopTransferResult.Failed(
+                "A hosted pairing authority is required for this transfer.");
+        }
+
+        if (request.Invitation == null || request.Invitation.InvitationHash.Length != 64)
+        {
+            return DesktopTransferResult.Failed(
+                "The displayed pairing code is no longer valid. Refresh it and try again.");
+        }
+
+        if (request.Files.Count == 0 || request.Files.Count > 1_000)
+        {
+            return DesktopTransferResult.Failed("Select between 1 and 1,000 files before pairing.");
+        }
+
+        long totalBytes = 0;
+        foreach (DesktopTransferFile file in request.Files)
+        {
+            if (!File.Exists(file.FilePath))
+            {
+                return DesktopTransferResult.Failed($"File not found: '{file.FilePath}'.");
+            }
+
+            long size = file.SizeBytes;
+            if (size < 0 || size > ProtocolCatalog.MaxItemBytes)
+            {
+                return DesktopTransferResult.Failed(
+                    $"File '{file.Name}' exceeds the protocol item-size limit.");
+            }
+
+            try
+            {
+                totalBytes = checked(totalBytes + size);
+            }
+            catch (OverflowException)
+            {
+                return DesktopTransferResult.Failed(
+                    "Selected files exceed the protocol batch-size limit.");
+            }
+
+            if (totalBytes > ProtocolCatalog.MaxBatchBytes)
+            {
+                return DesktopTransferResult.Failed(
+                    "Selected files exceed the protocol batch-size limit.");
+            }
+        }
+
+        try
+        {
+            return await RunSenderSessionAsync(
+                connection,
+                request,
+                totalBytes,
+                interaction,
+                cancellationToken,
+                request.HostedInvitationAuthority);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return DesktopTransferResult.CancelledByUser("Transfer cancelled.");
+        }
+        catch (Exception ex)
+        {
+            interaction.OnStatus(DesktopTransferDirection.Send, $"Send failed: {ex.Message}");
+            return DesktopTransferResult.Failed($"Send failed: {ex.Message}");
+        }
+    }
+
     private static async Task<DesktopTransferResult> RunSenderSessionAsync(
         TlsSocketConnection connection,
         DesktopSendRequest request,
         long totalBytes,
         IDesktopTransferInteraction interaction,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        LanInvitationAuthority? hostedInvitationAuthority = null)
     {
         await using var channel =
             new LanRecordChannel(connection.SslStream);
         var sequence = new DesktopControlSequence();
-        SessionId sessionId = NewSessionId();
+        SessionId sessionId;
 
         LanInvitation invitation = request.Invitation
             ?? throw new InvalidOperationException(
                 "Authenticated pairing invitation is required.");
 
-        var bootstrap = new LanBootstrapMessage(
-            invitationId: invitation.InvitationId,
-            token: invitation.Token,
-            invitationHash: invitation.InvitationHash,
-            sessionId: sessionId.Value,
-            role: LanBootstrapMessage.RoleSender);
+        LanBootstrapResult bootstrapResult;
+        if (hostedInvitationAuthority == null)
+        {
+            sessionId = NewSessionId();
+            var bootstrap = new LanBootstrapMessage(
+                invitationId: invitation.InvitationId,
+                token: invitation.Token,
+                invitationHash: invitation.InvitationHash,
+                sessionId: sessionId.Value,
+                role: LanBootstrapMessage.RoleSender);
 
-        await channel.WriteBootstrapAsync(
-            bootstrap,
-            cancellationToken);
-
-        LanBootstrapResult bootstrapResult =
-            await DesktopControlSequence.ReadBootstrapResultAsync(
+            await channel.WriteBootstrapAsync(bootstrap, cancellationToken);
+            bootstrapResult = await DesktopControlSequence.ReadBootstrapResultAsync(
                 channel,
                 cancellationToken);
+        }
+        else
+        {
+            LanRecord? firstRecord = await DesktopControlSequence.ReadRecordAsync(
+                channel,
+                cancellationToken);
+            if (firstRecord is not LanRecord.Bootstrap bootstrapRecord)
+            {
+                throw new ProtocolViolationException(
+                    WireErrorCodes.ProtocolOrder,
+                    "Authenticated BOOTSTRAP must be the first LAN record.");
+            }
+
+            LanBootstrapMessage bootstrap = LanBootstrapCodec.DecodeBootstrap(
+                bootstrapRecord.JsonBytes);
+            bootstrapResult = hostedInvitationAuthority.Consume(
+                bootstrap,
+                LanBootstrapMessage.RoleReceiver);
+            await channel.WriteBootstrapResultAsync(bootstrapResult, cancellationToken);
+            if (!bootstrapResult.IsAccepted)
+            {
+                return DesktopTransferResult.RejectedByPeer(
+                    $"Pairing bootstrap rejected: {bootstrapResult.Code}");
+            }
+
+            sessionId = new SessionId(bootstrap.SessionId);
+        }
+
         if (!bootstrapResult.IsAccepted)
         {
             return DesktopTransferResult.RejectedByPeer(
@@ -326,6 +435,18 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
         interaction.OnPeerIdentified(
             DesktopTransferDirection.Send,
             peerName);
+
+        if (hostedInvitationAuthority != null)
+        {
+            interaction.OnStatus(
+                DesktopTransferDirection.Send,
+                $"{peerName} connected. Confirm the receiving device before sending.");
+            if (!await interaction.ConfirmRecipientAsync(peerName, cancellationToken))
+            {
+                return DesktopTransferResult.RejectedByPeer(
+                    "You did not approve the connected receiving device.");
+            }
+        }
 
         if (negotiatedCapabilities.Contains(
                 ProtocolCapabilities.IdentityV1))

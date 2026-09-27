@@ -67,6 +67,17 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
             token => _executor.ReceiveAsync(connection, request, interaction, token),
             cancellationToken);
 
+    public Task<DesktopTransferResult> SendHostedAsync(
+        TlsSocketConnection connection,
+        DesktopSendRequest request,
+        IDesktopTransferInteraction interaction,
+        CancellationToken cancellationToken = default) =>
+        RunAsync(
+            DesktopTransferDirection.Send,
+            "Connecting device",
+            token => _executor.SendHostedAsync(connection, request, interaction, token),
+            cancellationToken);
+
     private async Task<DesktopTransferResult> RunAsync(
         DesktopTransferDirection direction,
         string peerName,

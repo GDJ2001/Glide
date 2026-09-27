@@ -114,13 +114,20 @@ class LanBootstrapCodecTest {
     }
 
     @Test
-    fun testBootstrapMessage_rejectsInvalidRole() {
+    fun testBootstrapMessage_acceptsReceiverRoleForSenderHostedPairing() {
         val json = """{"v":1,"invitationId":"$VALID_INVITATION_ID","token":"$VALID_TOKEN","invitationHash":"$VALID_HASH","sessionId":"$VALID_SESSION_ID","role":"receiver"}"""
+        val decoded = LanBootstrapCodec.decodeBootstrap(json.toByteArray(StandardCharsets.UTF_8))
+        assertEquals(LanBootstrapMessage.ROLE_RECEIVER, decoded.role)
+    }
+
+    @Test
+    fun testBootstrapMessage_rejectsUnknownRole() {
+        val json = """{"v":1,"invitationId":"$VALID_INVITATION_ID","token":"$VALID_TOKEN","invitationHash":"$VALID_HASH","sessionId":"$VALID_SESSION_ID","role":"observer"}"""
         try {
             LanBootstrapCodec.decodeBootstrap(json.toByteArray(StandardCharsets.UTF_8))
-            fail("Expected rejection for role != sender")
+            fail("Expected rejection for unknown role")
         } catch (e: IllegalArgumentException) {
-            assertTrue(e.message?.contains("role must be 'sender'") == true)
+            assertTrue(e.message?.contains("role must be") == true)
         }
     }
 

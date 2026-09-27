@@ -575,6 +575,36 @@
             </Border>
         </Border>
 
+        <!-- Sender-hosted QR confirmation: a scan proves possession of the one-use code;
+             the desktop user still chooses the device before file metadata is offered. -->
+        <Border Background="#CC070B16" Visibility="{Binding IsRecipientConfirmationModalVisible, Converter={StaticResource BoolToVis}}"
+                HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Panel.ZIndex="101">
+            <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource CardBorderBrush}"
+                    BorderThickness="1" CornerRadius="16" Padding="28" Width="460" HorizontalAlignment="Center"
+                    VerticalAlignment="Center">
+                <StackPanel HorizontalAlignment="Stretch">
+                    <TextBlock Text="Confirm receiving device" FontSize="18" FontWeight="Bold"
+                               Foreground="{StaticResource TextPrimaryBrush}" HorizontalAlignment="Center" />
+                    <TextBlock Text="{Binding RecipientConfirmationPeerName}" FontSize="14" FontWeight="SemiBold"
+                               Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Center" Margin="0,10,0,8" />
+                    <TextBlock Text="This device scanned your one-use QR code. Confirm before Glide shows the selected files or begins the transfer."
+                               FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextAlignment="Center"
+                               TextWrapping="Wrap" Margin="0,0,0,22" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="16" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Button Grid.Column="0" Style="{StaticResource SecondaryButtonStyle}" Content="Reject"
+                                Command="{Binding RejectRecipientCommand}" Padding="0,10" />
+                        <Button Grid.Column="2" Style="{StaticResource PrimaryButtonStyle}" Content="Send files"
+                                Command="{Binding AcceptRecipientCommand}" Padding="0,10" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </Border>
+
         <!-- Pair via Link / QR Modal Overlay -->
         <Border Background="#CC070B16" Visibility="{Binding IsPairModalVisible, Converter={StaticResource BoolToVis}}"
                 HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
@@ -588,13 +618,32 @@
                     <TextBlock Text="{Binding PairingSheetInstruction}"
                                FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" TextAlignment="Center" TextWrapping="Wrap" Margin="0,0,0,16" />
 
-                    <TextBox Style="{StaticResource ModernTextBoxStyle}" Text="{Binding PairInputUri, UpdateSourceTrigger=PropertyChanged}"
-                             Height="60" TextWrapping="Wrap" AcceptsReturn="False" Margin="0,0,0,12" Padding="8"
-                             ToolTip="Paste the glide:// invite copied from the receiving phone"
-                             AutomationProperties.Name="Receiving phone Glide invite" />
+                    <StackPanel Visibility="{Binding IsHostedSendQrVisible, Converter={StaticResource BoolToVis}}"
+                                HorizontalAlignment="Center" Margin="0,0,0,16">
+                        <Border Background="#FFFFFF" CornerRadius="12" Padding="14" HorizontalAlignment="Center"
+                                BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="2">
+                            <Image Source="{Binding PairingQrImage}" Width="280" Height="280"
+                                   RenderOptions.BitmapScalingMode="NearestNeighbor"
+                                   SnapsToDevicePixels="True" UseLayoutRounding="True" Stretch="Uniform"
+                                   AutomationProperties.Name="QR code for receiving selected files" />
+                        </Border>
+                        <TextBlock Text="This code expires automatically for your security."
+                                   FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"
+                                   TextAlignment="Center" Margin="0,10,0,0" />
+                        <Button Style="{StaticResource SecondaryButtonStyle}" Content="Refresh QR"
+                                Command="{Binding RefreshQrCommand}" Margin="0,12,0,0" Padding="16,6"
+                                AutomationProperties.Name="Refresh outgoing pairing QR" />
+                    </StackPanel>
 
-                    <Button Style="{StaticResource SecondaryButtonStyle}" Content="Paste invite from phone"
-                            Command="{Binding PastePairingLinkCommand}" Margin="0,0,0,12" Padding="0,8" />
+                    <StackPanel Visibility="{Binding IsManualPairingEntryVisible, Converter={StaticResource BoolToVis}}">
+                        <TextBox Style="{StaticResource ModernTextBoxStyle}" Text="{Binding PairInputUri, UpdateSourceTrigger=PropertyChanged}"
+                                 Height="60" TextWrapping="Wrap" AcceptsReturn="False" Margin="0,0,0,12" Padding="8"
+                                 ToolTip="Paste a Glide invite from the receiving device"
+                                 AutomationProperties.Name="Receiving device Glide invite" />
+
+                        <Button Style="{StaticResource SecondaryButtonStyle}" Content="Paste invite"
+                                Command="{Binding PastePairingLinkCommand}" Margin="0,0,0,12" Padding="0,8" />
+                    </StackPanel>
 
                     <!-- Actions -->
                     <Grid>
@@ -606,7 +655,8 @@
                         <Button Grid.Column="0" Style="{StaticResource SecondaryButtonStyle}" Content="Cancel"
                                 Command="{Binding CancelPairModalCommand}" Padding="0,10" />
                         <Button Grid.Column="2" Style="{StaticResource PrimaryButtonStyle}" Content="Connect and send"
-                                Command="{Binding SubmitPairModalCommand}" Padding="0,10" />
+                                Command="{Binding SubmitPairModalCommand}" Padding="0,10"
+                                Visibility="{Binding IsManualPairingEntryVisible, Converter={StaticResource BoolToVis}}" />
                     </Grid>
                 </StackPanel>
             </Border>

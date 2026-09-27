@@ -214,6 +214,9 @@ class LifecycleMatrixTest {
             limit: Int,
             offset: Int
         ): List<SessionWithItems> = emptyList()
+
+        override fun observeSessionsWithItems(role: String?, limit: Int) =
+            kotlinx.coroutines.flow.flowOf(emptyList<SessionWithItems>())
     }
 
     private class TestItemDao : ItemDao {

@@ -33,6 +33,10 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     private string _incomingOfferSummary = "";
     private TaskCompletionSource<bool>? _offerConfirmationTcs;
 
+    private bool _isRecipientConfirmationModalVisible;
+    private string _recipientConfirmationPeerName = "";
+    private TaskCompletionSource<bool>? _recipientConfirmationTcs;
+
     private bool _isTrustEnrollmentModalVisible;
     private string _trustEnrollmentPeerName = "";
     private string _trustEnrollmentFingerprint = "";
@@ -65,6 +69,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     private string _activeInvitationUri = "";
     private LanInvitation? _activeInvitation;
     private LanInvitation? _pairedInvitation;
+    private DesktopSendRequest? _hostedSendRequest;
     private DiscoveredPeerViewModel? _selectedPeer;
     private bool _sendAfterPairing;
     private string _pairingStatusText = "Choose a nearby device to start.";
@@ -125,6 +130,8 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     public RelayCommand ToggleListenerCommand { get; }
     public RelayCommand AcceptOfferCommand { get; }
     public RelayCommand RejectOfferCommand { get; }
+    public RelayCommand AcceptRecipientCommand { get; }
+    public RelayCommand RejectRecipientCommand { get; }
     public RelayCommand AcceptTrustEnrollmentCommand { get; }
     public RelayCommand RejectTrustEnrollmentCommand { get; }
     public RelayCommand BrowseReceiveFolderCommand { get; }
@@ -197,6 +204,8 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         ToggleListenerCommand = new RelayCommand(async () => await ToggleListenerAsync());
         AcceptOfferCommand = new RelayCommand(() => _offerConfirmationTcs?.TrySetResult(true));
         RejectOfferCommand = new RelayCommand(() => _offerConfirmationTcs?.TrySetResult(false));
+        AcceptRecipientCommand = new RelayCommand(() => _recipientConfirmationTcs?.TrySetResult(true));
+        RejectRecipientCommand = new RelayCommand(() => _recipientConfirmationTcs?.TrySetResult(false));
         AcceptTrustEnrollmentCommand = new RelayCommand(() => _trustEnrollmentTcs?.TrySetResult(true));
         RejectTrustEnrollmentCommand = new RelayCommand(() => _trustEnrollmentTcs?.TrySetResult(false));
         BrowseReceiveFolderCommand = new RelayCommand(ExecuteBrowseReceiveFolder);
@@ -209,9 +218,19 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         ShowPairModalCommand = new RelayCommand(ShowPairingSheet);
         CancelPairModalCommand = new RelayCommand(() =>
         {
+            bool wasShowingOutgoingQr = _hostedSendRequest != null;
+            _hostedSendRequest = null;
             _sendAfterPairing = false;
             IsPairModalVisible = false;
             PairInputUri = "";
+            if (wasShowingOutgoingQr && IsListening && _listener != null)
+            {
+                _invitationAuthority.RevokeActive();
+                RefreshReceiverInvitation();
+            }
+            OnPropertyChanged(nameof(IsHostedSendQrVisible));
+            OnPropertyChanged(nameof(PairingSheetTitle));
+            OnPropertyChanged(nameof(PairingSheetInstruction));
             StatusMessage = SelectedFiles.Count > 0
                 ? "Send paused. Your selected files are still ready."
                 : "Pairing cancelled.";
@@ -285,6 +304,14 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             {
                 _invitationAuthority.RevokeActive();
                 RefreshReceiverInvitation();
+                if (_hostedSendRequest != null && _activeInvitation != null)
+                {
+                    _hostedSendRequest = _hostedSendRequest with
+                    {
+                        Invitation = _activeInvitation,
+                        HostedInvitationAuthority = _invitationAuthority
+                    };
+                }
                 StatusMessage = "Pairing QR code refreshed.";
             }
         });
@@ -490,6 +517,18 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         set => SetProperty(ref _pairInputUri, value);
     }
 
+    public bool IsRecipientConfirmationModalVisible
+    {
+        get => _isRecipientConfirmationModalVisible;
+        set => SetProperty(ref _isRecipientConfirmationModalVisible, value);
+    }
+
+    public string RecipientConfirmationPeerName
+    {
+        get => _recipientConfirmationPeerName;
+        set => SetProperty(ref _recipientConfirmationPeerName, value);
+    }
+
     public string PairingStatusText
     {
         get => _pairingStatusText;
@@ -497,12 +536,20 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     }
 
     public string PairingSheetTitle => _selectedPeer is null
-        ? "Connect to the receiving phone"
+        ? IsHostedSendQrVisible
+            ? "Scan with Glide on your phone"
+            : "Connect to the receiving device"
         : $"Pair with {_selectedPeer.DeviceName}";
 
     public string PairingSheetInstruction => _selectedPeer is null
-        ? "On the phone, open Glide > Receive files > Show QR code > Copy invite. Bring that Glide invite to this PC, paste it below, and confirm. Both devices must be on the same local network."
+        ? IsHostedSendQrVisible
+            ? "On the phone, choose Receive files, then Scan PC QR code. Glide will ask the phone to approve the selected files before anything is sent."
+            : "On the receiving device, show its Glide QR code and paste the invite below. Both devices must be on the same local network."
         : $"On {_selectedPeer.DeviceName}, open Receive files > Show QR code > Copy invite. Paste that invite below. Glide checks that it belongs to the nearby device you selected.";
+
+    public bool IsHostedSendQrVisible => _hostedSendRequest != null && PairingQrImage != null;
+
+    public bool IsManualPairingEntryVisible => !IsHostedSendQrVisible;
 
     public string SendActionText => _pairedInvitation is null
         ? "Choose phone and send"
@@ -807,7 +854,8 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             {
                 if (IsListening &&
                     _listener != null &&
-                    !IsTransferActive)
+                    !IsTransferActive &&
+                    _hostedSendRequest == null)
                 {
                     _invitationAuthority.RevokeActive();
                     RefreshReceiverInvitation();
@@ -848,26 +896,41 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
 
             try
             {
+                DesktopSendRequest? hostedRequest = _hostedSendRequest;
                 RunOnUi(() =>
                 {
                     IsQrZoomModalVisible = false;
-                    CurrentTab = "Receive";
+                    CurrentTab = hostedRequest == null ? "Receive" : "Send";
                     IsTransferActive = true;
-                    TransferTitle = "Incoming Connection...";
+                    TransferTitle = hostedRequest == null
+                        ? "Incoming connection..."
+                        : "Phone connected. Preparing transfer...";
                     TotalProgress = 0;
                     _transferStopwatch.Restart();
                 });
 
-                var result = await _transferRuntime.ReceiveAsync(
-                    conn,
-                    new DesktopReceiveRequest(
-                        new QuarantineStagingStore(
-                            destinationRoot: ReceiveDirectory),
-                        _invitationAuthority,
-                        LocalDeviceName: Environment.MachineName,
-                        TrustManager: _trustManager),
-                    this,
-                    cancellationToken);
+                DesktopTransferResult result;
+                if (hostedRequest != null)
+                {
+                    result = await _transferRuntime.SendHostedAsync(
+                        conn,
+                        hostedRequest with { HostedInvitationAuthority = _invitationAuthority },
+                        this,
+                        cancellationToken);
+                }
+                else
+                {
+                    result = await _transferRuntime.ReceiveAsync(
+                        conn,
+                        new DesktopReceiveRequest(
+                            new QuarantineStagingStore(
+                                destinationRoot: ReceiveDirectory),
+                            _invitationAuthority,
+                            LocalDeviceName: Environment.MachineName,
+                            TrustManager: _trustManager),
+                        this,
+                        cancellationToken);
+                }
 
                 RunOnUi(() => StatusMessage = result.Message);
             }
@@ -878,6 +941,12 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                     _transferStopwatch.Stop();
                     IsTransferActive = false;
                     IsOfferModalVisible = false;
+                    _hostedSendRequest = null;
+                    IsPairModalVisible = false;
+                    OnPropertyChanged(nameof(IsHostedSendQrVisible));
+                    OnPropertyChanged(nameof(IsManualPairingEntryVisible));
+                    OnPropertyChanged(nameof(PairingSheetTitle));
+                    OnPropertyChanged(nameof(PairingSheetInstruction));
                     if (IsListening && _listener != null)
                     {
                         RefreshReceiverInvitation();
@@ -900,11 +969,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
 
         if (_pairedInvitation == null)
         {
-            _sendAfterPairing = true;
-            StatusMessage = _selectedPeer is null
-                ? "On the phone, open Receive files, show its QR code, and copy the invite. Paste it here to continue."
-                : $"On {_selectedPeer.DeviceName}, show its receive QR code and copy the invite. Paste it here to continue.";
-            ShowPairingSheet();
+            await StartHostedSendPairingAsync();
             return;
         }
 
@@ -970,6 +1035,54 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         }
     }
 
+    private async Task StartHostedSendPairingAsync()
+    {
+        if (!IsListening || _listener == null)
+        {
+            await ToggleListenerAsync();
+        }
+
+        if (!IsListening || _listener == null)
+        {
+            StatusMessage = "Glide could not start local receiving. Check the network and try again.";
+            return;
+        }
+
+        var files = SelectedFiles
+            .Select(item => new DesktopTransferFile(item.FilePath, item.Name))
+            .ToList();
+        if (files.Count == 0)
+        {
+            StatusMessage = "Select at least one file before showing a QR code.";
+            return;
+        }
+
+        _invitationAuthority.RevokeActive();
+        RefreshReceiverInvitation();
+        if (_activeInvitation == null)
+        {
+            StatusMessage = "Glide could not create a pairing QR code. Try again.";
+            return;
+        }
+
+        _hostedSendRequest = new DesktopSendRequest(
+            Host: string.Empty,
+            Port: 0,
+            Files: files,
+            Invitation: _activeInvitation,
+            LocalDeviceName: Environment.MachineName,
+            TrustManager: _trustManager,
+            HostedInvitationAuthority: _invitationAuthority);
+        _sendAfterPairing = false;
+        PairInputUri = string.Empty;
+        IsPairModalVisible = true;
+        OnPropertyChanged(nameof(IsHostedSendQrVisible));
+        OnPropertyChanged(nameof(IsManualPairingEntryVisible));
+        OnPropertyChanged(nameof(PairingSheetTitle));
+        OnPropertyChanged(nameof(PairingSheetInstruction));
+        StatusMessage = "Scan the QR code with Glide on the receiving phone.";
+    }
+
     public async Task<bool> ConfirmOfferAsync(
         DesktopOffer offer,
         CancellationToken cancellationToken)
@@ -1007,6 +1120,37 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                 }
 
                 IsOfferModalVisible = false;
+            });
+        }
+    }
+
+    public async Task<bool> ConfirmRecipientAsync(
+        string peerName,
+        CancellationToken cancellationToken)
+    {
+        var confirmation = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        RunOnUi(() =>
+        {
+            _recipientConfirmationTcs?.TrySetResult(false);
+            _recipientConfirmationTcs = confirmation;
+            RecipientConfirmationPeerName = peerName;
+            IsRecipientConfirmationModalVisible = true;
+        });
+
+        try
+        {
+            return await confirmation.Task.WaitAsync(cancellationToken);
+        }
+        finally
+        {
+            RunOnUi(() =>
+            {
+                if (ReferenceEquals(_recipientConfirmationTcs, confirmation))
+                {
+                    _recipientConfirmationTcs = null;
+                }
+                IsRecipientConfirmationModalVisible = false;
             });
         }
     }

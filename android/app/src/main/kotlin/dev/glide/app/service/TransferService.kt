@@ -134,6 +134,26 @@ class TransferService : Service() {
                 }
             }
 
+            ACTION_START_LAN_RECEIVER_PAIRING -> {
+                startForegroundWithNotification()
+                startNotificationUpdates()
+                val encodedInvitation = intent?.getStringExtra(EXTRA_LAN_INVITATION)
+                val localDeviceName =
+                    intent?.getStringExtra(EXTRA_LOCAL_DEVICE_NAME) ?: "Glide Device"
+                val invitation = encodedInvitation?.let {
+                    runCatching { InvitationCodec.decode(it) }.getOrNull()
+                }
+                val started = invitation != null && runtime().dispatch(
+                    TransferRuntimeCommand.StartLanReceiverPairing(
+                        invitation = invitation,
+                        localDeviceName = localDeviceName
+                    )
+                )
+                if (!started) {
+                    handleTerminalTeardown()
+                }
+            }
+
             ACTION_START_LAN_RECEIVER -> {
                 startForegroundWithNotification()
                 startNotificationUpdates()
@@ -367,6 +387,13 @@ class TransferService : Service() {
                 "lan-sender:$selection:$invitationId"
             }
             ACTION_START_LAN_RECEIVER -> null
+            ACTION_START_LAN_RECEIVER_PAIRING -> {
+                val encoded = intent?.getStringExtra(EXTRA_LAN_INVITATION)
+                val invitationId = encoded?.let {
+                    runCatching { InvitationCodec.decode(it).invitationId }.getOrNull()
+                }.orEmpty()
+                "lan-receiver:$invitationId"
+            }
             else -> null
         }
     }
@@ -397,6 +424,8 @@ class TransferService : Service() {
             "dev.glide.app.action.START_LAN_SENDER"
         const val ACTION_START_LAN_RECEIVER =
             "dev.glide.app.action.START_LAN_RECEIVER"
+        const val ACTION_START_LAN_RECEIVER_PAIRING =
+            "dev.glide.app.action.START_LAN_RECEIVER_PAIRING"
         const val ACTION_STOP_LAN_RECEIVER =
             "dev.glide.app.action.STOP_LAN_RECEIVER"
         const val ACTION_STOP = "dev.glide.app.action.STOP_TRANSFER"
@@ -495,6 +524,23 @@ class TransferService : Service() {
         ) {
             val intent = Intent(context, TransferService::class.java).apply {
                 action = ACTION_START_LAN_RECEIVER
+                putExtra(EXTRA_LOCAL_DEVICE_NAME, localDeviceName)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
+
+        fun startLanReceiverPairing(
+            context: Context,
+            invitation: LanInvitation,
+            localDeviceName: String = "Glide Device"
+        ) {
+            val intent = Intent(context, TransferService::class.java).apply {
+                action = ACTION_START_LAN_RECEIVER_PAIRING
+                putExtra(EXTRA_LAN_INVITATION, InvitationCodec.encode(invitation))
                 putExtra(EXTRA_LOCAL_DEVICE_NAME, localDeviceName)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

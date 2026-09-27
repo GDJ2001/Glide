@@ -120,6 +120,19 @@ fun GlideAppNavDisplay(
 
         entryProvider = entryProvider {
             entry<GlideRoute.Home> {
+                val context = androidx.compose.ui.platform.LocalContext.current
+                val historyStore = androidx.compose.runtime.remember(customHistoryStore, context) {
+                    customHistoryStore ?: run {
+                        val database = dev.glide.app.di.DatabaseModule.provideGlideDatabase(context)
+                        dev.glide.data.store.RoomHistoryStore(
+                            sessionDao = database.sessionDao(),
+                            itemDao = database.itemDao(),
+                            receivedFileDao = database.receivedFileDao()
+                        )
+                    }
+                }
+                val recentSessions by historyStore.observeSessions(limit = 5)
+                    .collectAsStateWithLifecycle(initialValue = emptyList())
                 val activeSessionId = if (transferRuntime != null) {
                     val isSessionActive by transferRuntime.isSessionActive.collectAsStateWithLifecycle()
                     val currentActiveSessionId by transferRuntime.activeSessionId.collectAsStateWithLifecycle()
@@ -143,6 +156,20 @@ fun GlideAppNavDisplay(
                     activeSessionId = activeSessionId,
                     onNavigateToTransfer = { sid ->
                         backStack.add(GlideRoute.Transfer(sid))
+                    },
+                    recentActivities = recentSessions.map { session ->
+                        dev.glide.app.ui.RecentActivity(
+                            sessionId = session.sessionId.value,
+                            role = session.role,
+                            peerLabel = session.peerLabel,
+                            startedAtMs = session.startedAtMs,
+                            outcome = session.outcome,
+                            itemCount = session.itemCount,
+                            totalBytes = session.totalBytes
+                        )
+                    },
+                    onOpenRecentActivity = { sessionId ->
+                        backStack.add(GlideRoute.History(initialSessionId = sessionId))
                     }
                 )
             }
@@ -471,7 +498,15 @@ fun GlideAppNavDisplay(
                         }
                     },
                     onRestartReceiving = startAdvertisingAtPointOfUse,
-                    onShowQrCode = startLanReceiverAtPointOfUse
+                    onShowQrCode = startLanReceiverAtPointOfUse,
+                    onScanPcQr = {
+                        viewModel.stopAdvertising()
+                        backStack.add(
+                            GlideRoute.QrScanner(
+                                purpose = QrScanPurpose.RECEIVE_FROM_SENDER
+                            )
+                        )
+                    }
                 )
 
                 if (showQrSheet) {
@@ -678,13 +713,32 @@ fun GlideAppNavDisplay(
                         viewModel.onConnectionBlocked("Glide could not start pairing. Return home and try again.")
                     }
                 }
+                val startLanReceiver: (dev.glide.core.pairing.LanInvitation) -> Unit = { invitation ->
+                    if (transferRuntime != null) {
+                        dev.glide.app.service.TransferService.startLanReceiverPairing(
+                            context = context,
+                            invitation = invitation
+                        )
+                        backStack.add(
+                            GlideRoute.Transfer(
+                                sessionId = "receive-lan-${invitation.invitationId}"
+                            )
+                        )
+                    } else {
+                        viewModel.onConnectionBlocked("Glide could not start receiving. Return home and try again.")
+                    }
+                }
                 val lanPermissionLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.RequestMultiplePermissions()
                 ) {
                     val invitation = pendingInvitation
                     pendingInvitation = null
                     if (hasLanPermissions() && invitation != null) {
-                        startLanSender(invitation)
+                        if (route.purpose == QrScanPurpose.RECEIVE_FROM_SENDER) {
+                            startLanReceiver(invitation)
+                        } else {
+                            startLanSender(invitation)
+                        }
                     } else if (invitation != null) {
                         viewModel.onConnectionBlocked("Local network permission is needed to connect. Allow it in Settings, then try again.")
                     }
@@ -699,7 +753,11 @@ fun GlideAppNavDisplay(
                         when (event) {
                             is dev.glide.app.ui.pairing.QrPairingEvent.ConnectConfirmed -> {
                                 if (lanPermissions.isEmpty() || hasLanPermissions()) {
-                                    startLanSender(event.invitation)
+                                    if (route.purpose == QrScanPurpose.RECEIVE_FROM_SENDER) {
+                                        startLanReceiver(event.invitation)
+                                    } else {
+                                        startLanSender(event.invitation)
+                                    }
                                 } else {
                                     pendingInvitation = event.invitation
                                     lanPermissionLauncher.launch(lanPermissions.toTypedArray())
@@ -733,6 +791,11 @@ fun GlideAppNavDisplay(
                         if (backStack.size > 1) {
                             backStack.removeAt(backStack.lastIndex)
                         }
+                    },
+                    scanPurposeLabel = if (route.purpose == QrScanPurpose.RECEIVE_FROM_SENDER) {
+                        "Scan PC QR to receive"
+                    } else {
+                        "Scan receiving device QR"
                     }
                 )
             }

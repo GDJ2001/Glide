@@ -87,7 +87,12 @@ class LanTransferTransport(
     private var authority: InvitationAuthority? = null
     private val streamBridge = LanStreamBridge()
 
-    private val pendingInvitations = ConcurrentHashMap<PeerId, LanInvitation>()
+    private data class PendingInvitation(
+        val invitation: LanInvitation,
+        val bootstrapRole: String
+    )
+
+    private val pendingInvitations = ConcurrentHashMap<PeerId, PendingInvitation>()
     private val activeConnections = ConcurrentHashMap<PeerId, ActiveConnection>()
     private val markedReadyStreams = Collections.synchronizedSet(mutableSetOf<BulkRef>())
 
@@ -101,8 +106,16 @@ class LanTransferTransport(
         val channelContext: AuthenticatedChannelContext
     )
 
-    fun registerPendingInvitation(peerId: PeerId, invitation: LanInvitation) {
-        pendingInvitations[peerId] = invitation
+    fun registerPendingInvitation(
+        peerId: PeerId,
+        invitation: LanInvitation,
+        bootstrapRole: String = LanBootstrapMessage.ROLE_SENDER
+    ) {
+        require(
+            bootstrapRole == LanBootstrapMessage.ROLE_SENDER ||
+                bootstrapRole == LanBootstrapMessage.ROLE_RECEIVER
+        ) { "Unsupported LAN bootstrap role: $bootstrapRole" }
+        pendingInvitations[peerId] = PendingInvitation(invitation, bootstrapRole)
     }
 
     fun attachServerListener(lanListener: LanListener, invitationAuthority: InvitationAuthority) {
@@ -215,8 +228,9 @@ class LanTransferTransport(
     }
 
     override suspend fun initiateConnection(peerId: PeerId, localDeviceName: String) {
-        val invitation = pendingInvitations[peerId]
+        val pendingInvitation = pendingInvitations[peerId]
             ?: throw IllegalStateException("No pending invitation registered for peer: ${peerId.value}")
+        val invitation = pendingInvitation.invitation
 
         if (invitation.endpoints.isEmpty()) {
             throw IllegalStateException("Invitation contains no valid endpoint")
@@ -271,7 +285,7 @@ class LanTransferTransport(
             token = invitation.token,
             invitationHash = invitation.invitationHash,
             sessionId = senderSessionId,
-            role = LanBootstrapMessage.ROLE_SENDER
+            role = pendingInvitation.bootstrapRole
         )
         val bootstrapBytes = LanBootstrapCodec.encodeBootstrap(bootstrap)
         writer.writeBootstrap(bootstrapBytes)

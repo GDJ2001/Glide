@@ -25,6 +25,7 @@ public enum LanBootstrapFailureCode
 public sealed record LanBootstrapMessage
 {
     public const string RoleSender = "sender";
+    public const string RoleReceiver = "receiver";
     private static readonly Regex TokenRegex = new(@"^[A-Za-z0-9_-]{43}$", RegexOptions.Compiled);
 
     public int V { get; init; } = 1;
@@ -59,9 +60,9 @@ public sealed record LanBootstrapMessage
         {
             throw new ArgumentException($"sessionId must be a canonical UUIDv4, got: '{sessionId}'", nameof(sessionId));
         }
-        if (role != RoleSender)
+        if (role != RoleSender && role != RoleReceiver)
         {
-            throw new ArgumentException($"role must be '{RoleSender}', got: '{role}'", nameof(role));
+            throw new ArgumentException($"role must be '{RoleSender}' or '{RoleReceiver}', got: '{role}'", nameof(role));
         }
 
         V = v;
