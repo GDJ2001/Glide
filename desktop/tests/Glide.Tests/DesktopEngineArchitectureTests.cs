@@ -156,6 +156,39 @@ public sealed class DesktopEngineArchitectureTests
         Assert.Contains("Scan with Glide on your phone", viewModel);
     }
 
+    [Fact]
+    public void WpfHostedSend_LeavesNoIdentityPromptBehindTheQrSheet()
+    {
+        string root = ResolveRepositoryRoot();
+        string viewModel = File.ReadAllText(
+            Path.Combine(root, "desktop", "windows", "Glide.Windows.UI", "ViewModels", "MainViewModel.cs"));
+        string view = File.ReadAllText(
+            Path.Combine(root, "desktop", "windows", "Glide.Windows.UI", "Views", "MainWindow.xaml"));
+
+        Assert.Contains("IsPairModalVisible = false", viewModel);
+        Assert.Contains("Confirm the device, then choose whether to remember it", viewModel);
+        Assert.Contains("IsTrustEnrollmentModalVisible, Converter={StaticResource BoolToVis}", view);
+        Assert.Contains("Panel.ZIndex=\"102\"", view);
+        Assert.Contains("IsRecipientConfirmationModalVisible, Converter={StaticResource BoolToVis}", view);
+        Assert.Contains("Panel.ZIndex=\"103\"", view);
+    }
+
+    [Fact]
+    public void SenderHostedQr_BindsPersistentIdentityToTheTlsServerCertificate()
+    {
+        string root = ResolveRepositoryRoot();
+        string engine = File.ReadAllText(
+            Path.Combine(root, "desktop", "src", "Glide.Desktop", "DesktopTransferEngine.cs"));
+        string authenticator = File.ReadAllText(
+            Path.Combine(root, "desktop", "src", "Glide.Desktop", "DesktopTrustedSessionAuthenticator.cs"));
+
+        Assert.Contains("localEndpointHostsTls:", engine);
+        Assert.Contains("hostedInvitationAuthority != null", engine);
+        Assert.Contains("localEndpointHostsTls", authenticator);
+        Assert.Contains("? connection.LocalSpkiSha256", authenticator);
+        Assert.Contains(": connection.RemoteSpkiSha256", authenticator);
+    }
+
     private static string ResolveRepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

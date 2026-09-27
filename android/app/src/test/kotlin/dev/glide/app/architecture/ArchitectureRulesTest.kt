@@ -22,7 +22,7 @@ class ArchitectureRulesTest {
     private val projectRoot: File by lazy {
         var current: File? = File(".").canonicalFile
         while (current != null) {
-            if (File(current, "gradle/libs.versions.toml").exists()) {
+            if (File(current, "android/app/src/main/AndroidManifest.xml").exists()) {
                 return@lazy current
             }
             current = current.parentFile

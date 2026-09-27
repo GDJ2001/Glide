@@ -18,7 +18,10 @@ class ForegroundMvpPrivacyAuditTest {
     private val projectRoot: File by lazy {
         var current: File? = File(".").canonicalFile
         while (current != null) {
-            if (File(current, "gradle/libs.versions.toml").exists()) {
+            // Gradle executes this module's tests from <repo>/android.  The
+            // repository-level audit intentionally needs the parent that owns
+            // android/app, not the first nested Gradle project it encounters.
+            if (File(current, "android/app/src/main/AndroidManifest.xml").exists()) {
                 return@lazy current
             }
             current = current.parentFile

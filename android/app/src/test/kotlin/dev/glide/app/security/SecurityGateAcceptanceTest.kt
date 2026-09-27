@@ -57,7 +57,7 @@ class SecurityGateAcceptanceTest {
 
     private val projectRoot: File = run {
         var current: File? = File(".").canonicalFile
-        while (current != null && !File(current, "settings.gradle.kts").exists()) {
+        while (current != null && !File(current, "android/app/src/main/AndroidManifest.xml").exists()) {
             current = current.parentFile
         }
         current ?: File(".").canonicalFile

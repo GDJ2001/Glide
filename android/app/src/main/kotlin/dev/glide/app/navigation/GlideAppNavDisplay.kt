@@ -157,7 +157,9 @@ fun GlideAppNavDisplay(
                     onNavigateToTransfer = { sid ->
                         backStack.add(GlideRoute.Transfer(sid))
                     },
-                    recentActivities = recentSessions.map { session ->
+                    recentActivities = recentSessions
+                        .filter { it.outcome != null }
+                        .map { session ->
                         dev.glide.app.ui.RecentActivity(
                             sessionId = session.sessionId.value,
                             role = session.role,

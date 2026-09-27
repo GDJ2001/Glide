@@ -617,6 +617,38 @@ public sealed class DesktopTransferEngineTests : IDisposable
             replay.Code);
     }
 
+    [Fact]
+    public void InvitationAuthority_HostedSend_AcceptsOnlyReceiverBootstrap()
+    {
+        using var listener = new TlsSocketListener(0);
+        var authority = new LanInvitationAuthority();
+        var invitation = authority.Publish(CreateInvitation(listener));
+        string sessionId = Guid.NewGuid().ToString("D").ToLowerInvariant();
+
+        var wrongRole = new LanBootstrapMessage(
+            invitation.InvitationId,
+            invitation.Token,
+            invitation.InvitationHash,
+            sessionId,
+            LanBootstrapMessage.RoleSender);
+
+        var rejected = authority.Consume(wrongRole, LanBootstrapMessage.RoleReceiver);
+
+        Assert.False(rejected.IsAccepted);
+        Assert.Equal(LanBootstrapFailureCode.UNSUPPORTED_PROFILE.ToString(), rejected.Code);
+        Assert.NotNull(authority.ActiveInvitation);
+
+        var receiver = new LanBootstrapMessage(
+            invitation.InvitationId,
+            invitation.Token,
+            invitation.InvitationHash,
+            sessionId,
+            LanBootstrapMessage.RoleReceiver);
+
+        Assert.True(authority.Consume(receiver, LanBootstrapMessage.RoleReceiver).IsAccepted);
+        Assert.Null(authority.ActiveInvitation);
+    }
+
     private static LanInvitation CreateInvitation(
         TlsSocketListener listener)
     {

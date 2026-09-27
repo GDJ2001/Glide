@@ -30,6 +30,7 @@ import dev.glide.transport.lan.network.LanNetworkState
 import dev.glide.transport.lan.pairing.InvitationAuthority
 import dev.glide.transport.lan.tls.LanListener
 import dev.glide.transport.lan.tls.PinnedTlsConnector
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -426,7 +427,13 @@ class LanTransferTransport(
                 }
             }
         } catch (e: Exception) {
-            safeLogE("LanTransferTransport", "readLoop terminated for $peerId: ${e.message}", e)
+            // A completed or cancelled session deliberately closes its socket during
+            // cleanup. Do not turn that expected lifecycle event into a scary error
+            // record that can be mistaken for an encrypted-channel failure.
+            val expectedClose = socket.isClosed || e is CancellationException
+            if (!expectedClose) {
+                safeLogE("LanTransferTransport", "readLoop terminated for $peerId: ${e.message}", e)
+            }
             disconnect(peerId)
         }
     }

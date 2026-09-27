@@ -1135,6 +1135,12 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             _recipientConfirmationTcs?.TrySetResult(false);
             _recipientConfirmationTcs = confirmation;
             RecipientConfirmationPeerName = peerName;
+            // The pairing sheet must not cover the next identity-enrolment
+            // prompt. Leaving it open made a successful QR connection look
+            // like an automatic cancellation: identity verification waited
+            // for a confirmation that the user could not see.
+            IsPairModalVisible = false;
+            StatusMessage = $"{peerName} connected. Confirm the device, then choose whether to remember it.";
             IsRecipientConfirmationModalVisible = true;
         });
 

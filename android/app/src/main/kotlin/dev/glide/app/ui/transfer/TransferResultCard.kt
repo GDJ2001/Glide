@@ -53,6 +53,22 @@ import dev.glide.designsystem.warningContainer
 import dev.glide.designsystem.isolateBidi
 
 /**
+ * Converts internal transfer failure codes into the recovery text that is safe to show in UI.
+ * Transport details, TLS state and raw peer disconnect messages stay in diagnostics only.
+ */
+internal fun transferFailureRecoveryMessage(code: String): String = when (code) {
+    "PEER_LOST", "TRANSFER_INTERRUPTED" ->
+        "The connection ended before Glide could finish. Keep both devices open, then scan a new code and try again."
+    "AUTHENTICATION_MISMATCH", "AUTHENTICATION_FAILED" ->
+        "Glide could not verify this device. Scan a new code from the other device and try again."
+    "TIMEOUT" ->
+        "The connection took too long. Check that both devices are on the same local network, then try again."
+    "USER_REJECTED", "CONNECTION_REJECTED" ->
+        "The transfer was declined on the other device."
+    else -> "Glide could not complete this transfer. Try again from a new connection."
+}
+
+/**
  * Polished composable for all terminal transfer result states:
  * Completed (receiver & sender), Interrupted (partial completion with retry), Failed, and Cancelled.
  * Conforms strictly to GLIDE_DESIGN_SYSTEM.md and GLIDE_USER_FLOWS.md.
@@ -559,6 +575,11 @@ private fun FailedResultCard(
     modifier: Modifier = Modifier
 ) {
     val headline = if (state.isInterrupted) "Transfer interrupted" else "Transfer failed"
+    // Transfer failures can originate from TLS, protocol framing, or a peer closing a
+    // socket. Those implementation details do not help someone recover and must never
+    // become part of the normal transfer UI. Keep the internal code for diagnostics while
+    // showing a short, actionable explanation here.
+    val recoveryMessage = transferFailureRecoveryMessage(state.code)
     val containerColor = if (state.canRetry) {
         MaterialTheme.colorScheme.surfaceVariant
     } else {
@@ -577,7 +598,7 @@ private fun FailedResultCard(
         modifier = modifier
             .fillMaxWidth()
             .semantics {
-                contentDescription = "$headline: ${state.message}."
+                contentDescription = "$headline: $recoveryMessage."
             }
     ) {
         Column(
@@ -614,7 +635,7 @@ private fun FailedResultCard(
 
             // Message
             Text(
-                text = state.message,
+                text = recoveryMessage,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center

@@ -499,7 +499,7 @@
         <!-- Persistent identity trust enrollment overlay -->
         <Border Background="#CC070B16"
                 Visibility="{Binding IsTrustEnrollmentModalVisible, Converter={StaticResource BoolToVis}}"
-                HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+                HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Panel.ZIndex="102">
             <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource CardBorderBrush}"
                     BorderThickness="1" CornerRadius="16" Padding="28" Width="520" HorizontalAlignment="Center"
                     VerticalAlignment="Center">
@@ -578,7 +578,7 @@
         <!-- Sender-hosted QR confirmation: a scan proves possession of the one-use code;
              the desktop user still chooses the device before file metadata is offered. -->
         <Border Background="#CC070B16" Visibility="{Binding IsRecipientConfirmationModalVisible, Converter={StaticResource BoolToVis}}"
-                HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Panel.ZIndex="101">
+                HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Panel.ZIndex="103">
             <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource CardBorderBrush}"
                     BorderThickness="1" CornerRadius="16" Padding="28" Width="460" HorizontalAlignment="Center"
                     VerticalAlignment="Center">
@@ -607,7 +607,7 @@
 
         <!-- Pair via Link / QR Modal Overlay -->
         <Border Background="#CC070B16" Visibility="{Binding IsPairModalVisible, Converter={StaticResource BoolToVis}}"
-                HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+                HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Panel.ZIndex="101">
             <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource CardBorderBrush}"
                     BorderThickness="1" CornerRadius="16" Padding="28" Width="480" HorizontalAlignment="Center"
                     VerticalAlignment="Center">

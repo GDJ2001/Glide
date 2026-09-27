@@ -30,11 +30,22 @@ internal static class DesktopTrustedSessionAuthenticator
         DesktopPersistentTrustManager trustManager,
         string? expectedPeerFingerprintHex,
         IDesktopTransferInteraction interaction,
+        bool localEndpointHostsTls,
         CancellationToken cancellationToken)
     {
         RequireIdentityCapability(negotiatedCapabilities);
         string channelBinding =
-            RequireChannelBinding(connection.RemoteSpkiSha256);
+            // The identity transcript is always bound to the TLS *server*
+            // certificate. Historically senders always initiated the socket,
+            // so the remote certificate was the server certificate. Sender-
+            // hosted QR pairing reverses only connection establishment: the
+            // sender is now the TLS server and the phone is the client.
+            // Binding that path to RemoteSpkiSha256 makes each endpoint sign a
+            // different transcript and forces a safe-but-confusing disconnect.
+            RequireChannelBinding(
+                localEndpointHostsTls
+                    ? connection.LocalSpkiSha256
+                    : connection.RemoteSpkiSha256);
         string localFingerprint =
             trustManager.LocalFingerprintHex();
         RequireExpectedPeerIsEnrolled(

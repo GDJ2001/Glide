@@ -214,4 +214,16 @@ class TransferActiveResultAcceptanceTest {
         assertTrue(failed.isReceiptUnconfirmed)
         assertTrue(failed.canRetry)
     }
+
+    @Test
+    fun peerDisconnect_usesRecoveryGuidanceInsteadOfTransportDetails() {
+        val message = transferFailureRecoveryMessage("PEER_LOST")
+
+        assertEquals(
+            "The connection ended before Glide could finish. Keep both devices open, then scan a new code and try again.",
+            message
+        )
+        assertFalse(message.contains("peer", ignoreCase = true))
+        assertFalse(message.contains("encrypt", ignoreCase = true))
+    }
 }

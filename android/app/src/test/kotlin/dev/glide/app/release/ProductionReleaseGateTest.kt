@@ -16,9 +16,12 @@ import java.security.MessageDigest
  */
 class ProductionReleaseGateTest {
 
-    private val expectedAabHash = "728d919b76b444f72795f63422eaf5bf312de50b80215c64a804baf1b13d1d52"
-    private val expectedApkHash = "cf771dbaf068e7656b2c848300c7679d3e7309a1fc081a2edbc9da56eba6f21c"
-    private val expectedMapHash = "9f108d84e77df3700b4944abd15cb2bd6fe439bf6cae01c7ea14c80d4aa9d6e4"
+    // Historical values recorded in PRODUCTION_RC_APPROVAL.md.  This test
+    // checks record consistency when its archived binaries are materialized;
+    // it is not evidence that the current working tree is release-ready.
+    private val expectedAabHash = "a2d12fb51e3fa293e9190849abae9ed72fb906dff05a2a18eb069ef1a5d941c2"
+    private val expectedApkHash = "22d5db96b773c370a90c7fdf65f2b779e52437ecf4a2ccff94037b83d1489493"
+    private val expectedMapHash = "e4c1de9006da57630b4c79773ae456d582cc14a8f9db5751db5edca631491cfd"
 
     private fun resolveProjectRoot(): File {
         var current: File? = File(System.getProperty("user.dir") ?: ".").canonicalFile

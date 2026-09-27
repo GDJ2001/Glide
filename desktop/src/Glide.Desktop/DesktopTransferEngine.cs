@@ -470,7 +470,9 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                         trustManager,
                         request.ExpectedPeerFingerprintHex,
                         interaction,
-                        cancellationToken);
+                        localEndpointHostsTls:
+                            hostedInvitationAuthority != null,
+                        cancellationToken: cancellationToken);
 
             interaction.OnStatus(
                 DesktopTransferDirection.Send,
