@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
@@ -386,10 +388,10 @@ fun SelectionScreen(
                                 .padding(16.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Row(
+                            FlowRow(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 Text(
                                     text = "${state.itemCount} ${if (state.itemCount == 1) "file" else "files"} · ${formatFileSize(state.totalBytes)}",
@@ -429,6 +431,20 @@ fun SelectionScreen(
                                         text = "Batch limit of ${ProtocolLimits.MAX_ITEMS_PER_BATCH} files exceeded. Please remove files to continue.",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onErrorContainer,
+                                        modifier = Modifier.padding(8.dp)
+                                    )
+                                }
+                            }
+                            if (state.isTotalBytesExceeded) {
+                                Surface(
+                                    shape = MaterialTheme.shapes.small,
+                                    color = MaterialTheme.colorScheme.errorContainer,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(
+                                        text = "This batch exceeds ${formatFileSize(ProtocolLimits.MAX_BATCH_BYTES)}. Remove files or send smaller batches.",
+                                        color = MaterialTheme.colorScheme.onErrorContainer,
+                                        style = MaterialTheme.typography.bodySmall,
                                         modifier = Modifier.padding(8.dp)
                                     )
                                 }
@@ -493,6 +509,8 @@ fun SelectionScreen(
                                     "Remove unavailable files to proceed"
                                 } else if (state.isLimitExceeded) {
                                     "Batch exceeds 1,000 file limit"
+                                } else if (state.isTotalBytesExceeded) {
+                                    "Remove files to reduce batch size"
                                 } else {
                                     "Proceed to send"
                                 },
@@ -539,9 +557,10 @@ fun SelectionScreen(
                             }
                         }
 
-                        Row(
+                        FlowRow(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             OutlinedButton(
                                 onClick = {
@@ -552,7 +571,7 @@ fun SelectionScreen(
                                 shape = PrimaryButtonShape,
                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                                 modifier = Modifier
-                                    .weight(1f)
+                                    .widthIn(min = 104.dp)
                                     .heightIn(min = 48.dp)
                                     .semantics {
                                         role = Role.Button
@@ -574,7 +593,7 @@ fun SelectionScreen(
                                 shape = PrimaryButtonShape,
                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                                 modifier = Modifier
-                                    .weight(1f)
+                                    .widthIn(min = 104.dp)
                                     .heightIn(min = 48.dp)
                                     .semantics {
                                         role = Role.Button
@@ -596,7 +615,7 @@ fun SelectionScreen(
                                 shape = PrimaryButtonShape,
                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                                 modifier = Modifier
-                                    .weight(1f)
+                                    .widthIn(min = 104.dp)
                                     .heightIn(min = 48.dp)
                                     .semantics {
                                         role = Role.Button

@@ -1,13 +1,14 @@
 package dev.glide.app.navigation.adaptive
 
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
@@ -28,6 +29,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -56,6 +58,20 @@ fun GlideAdaptiveScaffold(
     modifier: Modifier = Modifier,
     content: @Composable (PaddingValues) -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val activity = androidx.compose.runtime.remember(context) {
+        generateSequence(context) { (it as? android.content.ContextWrapper)?.baseContext }
+            .filterIsInstance<android.app.Activity>().firstOrNull()
+    }
+    val useDarkBarIcons = !dev.glide.designsystem.LocalGlideDarkTheme.current && currentRoute !is GlideRoute.QrScanner
+    androidx.compose.runtime.SideEffect {
+        activity?.let {
+            androidx.core.view.WindowCompat.getInsetsController(it.window, it.window.decorView).apply {
+                isAppearanceLightStatusBars = useDarkBarIcons
+                isAppearanceLightNavigationBars = useDarkBarIcons
+            }
+        }
+    }
     val postureInfo = LocalDevicePosture.current
     val isHome = currentRoute is GlideRoute.Home ||
             currentRoute is GlideRoute.Selection ||
@@ -83,7 +99,12 @@ fun GlideAdaptiveScaffold(
         }
     }
 
-    if (windowSizeClass.isCompactWidth) {
+    if (currentRoute is GlideRoute.QrScanner) {
+        // Let the scanner own its safe insets and draw behind transparent system bars.
+        Box(modifier = scaffoldModifier.background(Color.Black)) {
+            movableContent(PaddingValues(0.dp))
+        }
+    } else if (windowSizeClass.isCompactWidth) {
         // Compact Phone: Bottom Navigation Bar on top-level routes, hidden during focused workflows
         Scaffold(
             modifier = scaffoldModifier,
@@ -136,13 +157,14 @@ fun GlideAdaptiveScaffold(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
+                    .consumeWindowInsets(innerPadding)
             ) {
                 movableContent(innerPadding)
             }
         }
     } else {
         // Medium & Expanded: Navigation Rail on the start side
-        val isDark = isSystemInDarkTheme()
+        val isDark = dev.glide.designsystem.LocalGlideDarkTheme.current
         val logoRes = if (isDark) R.drawable.ic_glide_logo_inverse else R.drawable.ic_glide_logo_color
 
         Row(

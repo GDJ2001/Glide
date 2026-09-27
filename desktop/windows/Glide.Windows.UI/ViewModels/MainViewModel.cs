@@ -65,6 +65,9 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     private string _activeInvitationUri = "";
     private LanInvitation? _activeInvitation;
     private LanInvitation? _pairedInvitation;
+    private DiscoveredPeerViewModel? _selectedPeer;
+    private bool _sendAfterPairing;
+    private string _pairingStatusText = "Choose a nearby device to start.";
     private readonly LanInvitationAuthority _invitationAuthority = new();
 
     private GlideWebGateway? _webGateway;
@@ -130,6 +133,8 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     public RelayCommand ShowPairModalCommand { get; }
     public RelayCommand CancelPairModalCommand { get; }
     public RelayCommand SubmitPairModalCommand { get; }
+    public RelayCommand PastePairingLinkCommand { get; }
+    public RelayCommand ClearPairingCommand { get; }
     public RelayCommand SelectPeerCommand { get; }
     public RelayCommand RefreshPeersCommand { get; }
     public RelayCommand RefreshQrCommand { get; }
@@ -187,7 +192,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         });
         ClearFilesCommand = new RelayCommand(() => SelectedFiles.Clear());
         SendFilesCommand = new RelayCommand(
-            async () => await ExecuteSendFilesAsync(),
+            () => _ = ExecuteSendFilesSafelyAsync(),
             () => !IsTransferActive && SelectedFiles.Count > 0);
         ToggleListenerCommand = new RelayCommand(async () => await ToggleListenerAsync());
         AcceptOfferCommand = new RelayCommand(() => _offerConfirmationTcs?.TrySetResult(true));
@@ -201,18 +206,65 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             _activeTransferCts?.Cancel();
         });
         OpenDownloadsCommand = new RelayCommand(ExecuteOpenDownloads);
-        ShowPairModalCommand = new RelayCommand(() => IsPairModalVisible = true);
-        CancelPairModalCommand = new RelayCommand(() => { IsPairModalVisible = false; PairInputUri = ""; });
+        ShowPairModalCommand = new RelayCommand(ShowPairingSheet);
+        CancelPairModalCommand = new RelayCommand(() =>
+        {
+            _sendAfterPairing = false;
+            IsPairModalVisible = false;
+            PairInputUri = "";
+            StatusMessage = SelectedFiles.Count > 0
+                ? "Send paused. Your selected files are still ready."
+                : "Pairing cancelled.";
+        });
         SubmitPairModalCommand = new RelayCommand(ExecuteSubmitPairModal);
+        PastePairingLinkCommand = new RelayCommand(() =>
+        {
+            if (TryReadPairingLinkFromClipboard(out string invitationUri))
+            {
+                PairInputUri = invitationUri;
+                ExecuteSubmitPairModal();
+            }
+            else
+            {
+                StatusMessage = "Copy a Glide pairing code first, then choose Paste code.";
+            }
+        });
+        ClearPairingCommand = new RelayCommand(() =>
+        {
+            _pairedInvitation = null;
+            _selectedPeer = null;
+            _sendAfterPairing = false;
+            PairingStatusText = "Choose a nearby device to start.";
+            OnPropertyChanged(nameof(PairingSheetTitle));
+            OnPropertyChanged(nameof(PairingSheetInstruction));
+            OnPropertyChanged(nameof(SendActionText));
+            StatusMessage = "Pairing cleared. Choose a nearby device when you are ready.";
+            CommandManager.InvalidateRequerySuggested();
+        });
         SelectPeerCommand = new RelayCommand(param =>
         {
             if (param is DiscoveredPeerViewModel peer)
             {
+                _selectedPeer = peer;
+                OnPropertyChanged(nameof(PairingSheetTitle));
+                OnPropertyChanged(nameof(PairingSheetInstruction));
                 PeerHost = peer.Host;
                 PeerPort = peer.Port;
-                StatusMessage =
-                    $"Selected {peer.DeviceName} ({peer.Host}:{peer.Port}). " +
-                    "Paste or pair that device's invitation link to send.";
+                _pairedInvitation = null;
+                PairingStatusText = $"{peer.DeviceName} selected. Confirm its secure pairing code.";
+                OnPropertyChanged(nameof(SendActionText));
+
+                if (TryReadPairingLinkFromClipboard(out string invitationUri) &&
+                    TryApplyPairingInvitation(invitationUri, showErrors: false))
+                {
+                    StatusMessage = $"Paired with {peer.DeviceName} using the copied secure code.";
+                }
+                else
+                {
+                    StatusMessage = $"{peer.DeviceName} selected. Scan its QR code or paste its Glide code to continue.";
+                    ShowPairingSheet();
+                }
+                CommandManager.InvalidateRequerySuggested();
             }
         });
         RefreshPeersCommand = new RelayCommand(() =>
@@ -265,7 +317,11 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             }
         });
 
-        SelectedFiles.CollectionChanged += (_, _) => CommandManager.InvalidateRequerySuggested();
+        SelectedFiles.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(SelectedFilesSummary));
+            CommandManager.InvalidateRequerySuggested();
+        };
 
         _mdnsService.PeerDiscovered += peer =>
         {
@@ -434,6 +490,31 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         set => SetProperty(ref _pairInputUri, value);
     }
 
+    public string PairingStatusText
+    {
+        get => _pairingStatusText;
+        private set => SetProperty(ref _pairingStatusText, value);
+    }
+
+    public string PairingSheetTitle => _selectedPeer is null
+        ? "Connect to the receiving phone"
+        : $"Pair with {_selectedPeer.DeviceName}";
+
+    public string PairingSheetInstruction => _selectedPeer is null
+        ? "On the phone, open Glide > Receive files > Show QR code > Copy invite. Bring that Glide invite to this PC, paste it below, and confirm. Both devices must be on the same local network."
+        : $"On {_selectedPeer.DeviceName}, open Receive files > Show QR code > Copy invite. Paste that invite below. Glide checks that it belongs to the nearby device you selected.";
+
+    public string SendActionText => _pairedInvitation is null
+        ? "Choose phone and send"
+        : $"Send to {_pairedInvitation.Name}";
+
+    public string SelectedFilesSummary => SelectedFiles.Count switch
+    {
+        0 => "Add files above to begin.",
+        1 => "1 file ready to send.",
+        _ => $"{SelectedFiles.Count} files ready to send."
+    };
+
     public string ActiveInvitationUri
     {
         get => _activeInvitationUri;
@@ -503,6 +584,12 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         {
             StatusMessage = $"Added {selection.Files.Count} item(s). Skipped {selection.Skipped.Count}: {selection.Skipped[0].Reason}";
         }
+        else if (selection.Files.Count > 0)
+        {
+            StatusMessage = _pairedInvitation is null
+                ? $"{SelectedFiles.Count} item(s) ready. Choose a phone and send."
+                : $"{SelectedFiles.Count} item(s) ready to send to {_pairedInvitation.Name}.";
+        }
         CommandManager.InvalidateRequerySuggested();
     }
 
@@ -535,34 +622,125 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         }
     }
 
-    private void ExecuteSubmitPairModal()
+    private void ShowPairingSheet()
     {
-        if (string.IsNullOrWhiteSpace(PairInputUri)) return;
+        if (string.IsNullOrWhiteSpace(PairInputUri) &&
+            TryReadPairingLinkFromClipboard(out string invitationUri))
+        {
+            PairInputUri = invitationUri;
+        }
 
+        IsPairModalVisible = true;
+    }
+
+    private static bool TryReadPairingLinkFromClipboard(out string invitationUri)
+    {
+        invitationUri = string.Empty;
         try
         {
-            var invitation = InvitationCodec.Decode(PairInputUri.Trim());
-            if (invitation.IsExpired())
+            if (!Clipboard.ContainsText())
             {
-                MessageBox.Show("This pairing invitation has expired. Please ask the receiver to generate a new pairing link.", "Pairing Expired", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
+                return false;
             }
 
-            var targetEndpoint = invitation.Endpoints.FirstOrDefault();
-            if (targetEndpoint != null)
+            string candidate = Clipboard.GetText().Trim();
+            if (!candidate.StartsWith("glide://pair/", StringComparison.OrdinalIgnoreCase))
             {
-                PeerHost = targetEndpoint.Address;
-                PeerPort = targetEndpoint.Port;
-                _pairedInvitation = invitation;
-                StatusMessage = $"Paired with {invitation.Name} ({targetEndpoint.Address}:{targetEndpoint.Port}) via invitation";
-                IsPairModalVisible = false;
-                PairInputUri = "";
-                CommandManager.InvalidateRequerySuggested();
+                return false;
             }
+
+            // Decode now so opening the sheet never turns an arbitrary clipboard value into a
+            // pairing attempt. Detailed errors remain available when the user submits manually.
+            _ = InvitationCodec.Decode(candidate);
+            invitationUri = candidate;
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private void ExecuteSubmitPairModal()
+    {
+        if (string.IsNullOrWhiteSpace(PairInputUri))
+        {
+            StatusMessage = "Scan a Glide QR code or paste a pairing code to continue.";
+            return;
+        }
+
+        if (TryApplyPairingInvitation(PairInputUri.Trim(), showErrors: true))
+        {
+            IsPairModalVisible = false;
+            PairInputUri = "";
+            CommandManager.InvalidateRequerySuggested();
+
+            bool continueSending = _sendAfterPairing && SelectedFiles.Count > 0;
+            _sendAfterPairing = false;
+            if (continueSending)
+            {
+                _ = ExecuteSendFilesSafelyAsync();
+            }
+        }
+    }
+
+    private bool TryApplyPairingInvitation(string invitationUri, bool showErrors)
+    {
+        try
+        {
+            LanInvitation invitation = InvitationCodec.Decode(invitationUri);
+            if (invitation.IsExpired())
+            {
+                if (showErrors)
+                {
+                    MessageBox.Show(
+                        "This pairing code has expired. Ask the receiving device to show a fresh QR code.",
+                        "Pairing code expired",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                }
+                return false;
+            }
+
+            if (_selectedPeer is not null &&
+                !string.Equals(invitation.Presence, _selectedPeer.PresenceId, StringComparison.Ordinal))
+            {
+                if (showErrors)
+                {
+                    MessageBox.Show(
+                        $"This pairing code does not belong to {_selectedPeer.DeviceName}. Select the device that displayed this code, or use its current QR code.",
+                        "Different device selected",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                }
+                return false;
+            }
+
+            LanEndpoint? targetEndpoint = invitation.Endpoints.FirstOrDefault();
+            if (targetEndpoint is null)
+            {
+                throw new InvalidDataException("The pairing code did not include a reachable device address.");
+            }
+
+            PeerHost = targetEndpoint.Address;
+            PeerPort = targetEndpoint.Port;
+            _pairedInvitation = invitation;
+            PairingStatusText = $"Paired with {invitation.Name}. Ready to send.";
+            OnPropertyChanged(nameof(SendActionText));
+            StatusMessage = $"Paired with {invitation.Name}. Ready to send.";
+            return true;
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Invalid pairing invitation link:\n\n{ex.Message}", "Pairing Failed", MessageBoxButton.OK, MessageBoxImage.Warning);
+            if (showErrors)
+            {
+                MessageBox.Show(
+                    $"That pairing code could not be used:\n\n{ex.Message}",
+                    "Pairing failed",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
+            return false;
         }
     }
 
@@ -722,9 +900,11 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
 
         if (_pairedInvitation == null)
         {
-            StatusMessage =
-                "Paste the receiver's pairing invitation link to authenticate transfer.";
-            IsPairModalVisible = true;
+            _sendAfterPairing = true;
+            StatusMessage = _selectedPeer is null
+                ? "On the phone, open Receive files, show its QR code, and copy the invite. Paste it here to continue."
+                : $"On {_selectedPeer.DeviceName}, show its receive QR code and copy the invite. Paste it here to continue.";
+            ShowPairingSheet();
             return;
         }
 
@@ -761,6 +941,32 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             _transferStopwatch.Stop();
             IsTransferActive = false;
             IsOfferModalVisible = false;
+            // LAN invitations are short-lived bearer credentials and are consumed by a
+            // connection attempt. Never present a stale invitation as ready for another send.
+            _pairedInvitation = null;
+            PairingStatusText = "Transfer session finished. Use a fresh phone invite to send again.";
+            OnPropertyChanged(nameof(SendActionText));
+        }
+    }
+
+    private async Task ExecuteSendFilesSafelyAsync()
+    {
+        try
+        {
+            await ExecuteSendFilesAsync();
+        }
+        catch (OperationCanceledException)
+        {
+            StatusMessage = "Transfer cancelled. Your selected files remain in the queue.";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Send failed: {ex.Message}";
+            MessageBox.Show(
+                $"Glide could not send the selected files.\n\n{ex.Message}",
+                "Send failed",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
         }
     }
 

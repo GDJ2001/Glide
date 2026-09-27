@@ -10,6 +10,7 @@ public sealed class DiscoveredPeerViewModel : ViewModelBase
     public string DeviceName => Peer.DeviceName;
     public string Host => Peer.Host;
     public int Port => Peer.Port;
+    public string PresenceId => Peer.PresenceId;
     public string DeviceType => Peer.DeviceType;
     public string EndpointText => $"{Peer.Host}:{Peer.Port}";
     public string DeviceIcon => Peer.DeviceType.ToLowerInvariant() switch
@@ -19,7 +20,7 @@ public sealed class DiscoveredPeerViewModel : ViewModelBase
         _ => "💻"
     };
 
-    public string CapabilitiesText => "Pairing required • Glide LAN";
+    public string CapabilitiesText => "Ready for secure pairing";
 
     public DiscoveredPeerViewModel(DiscoveredPeer peer)
     {

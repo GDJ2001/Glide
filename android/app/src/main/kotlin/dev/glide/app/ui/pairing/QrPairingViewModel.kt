@@ -355,7 +355,15 @@ class QrPairingViewModel(
     }
 
     fun onCameraUnavailable() {
-        _scannerState.value = QrScannerUiState.Error(QrScanErrorReason.CameraUnavailable)
+        if (_scannerState.value is QrScannerUiState.Scanning || _scannerState.value is QrScannerUiState.Idle) {
+            _scannerState.value = QrScannerUiState.Error(QrScanErrorReason.CameraUnavailable)
+        }
+    }
+
+    fun onConnectionBlocked(message: String) {
+        if (_scannerState.value is QrScannerUiState.Connecting) {
+            _scannerState.value = QrScannerUiState.Error(QrScanErrorReason.Custom(message))
+        }
     }
 
     fun setScannerStateForTesting(state: QrScannerUiState) {

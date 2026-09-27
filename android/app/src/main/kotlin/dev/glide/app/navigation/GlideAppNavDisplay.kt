@@ -674,6 +674,8 @@ fun GlideAppNavDisplay(
                                 batchId = route.batchId
                             )
                         )
+                    } else {
+                        viewModel.onConnectionBlocked("Glide could not start pairing. Return home and try again.")
                     }
                 }
                 val lanPermissionLauncher = rememberLauncherForActivityResult(
@@ -683,6 +685,8 @@ fun GlideAppNavDisplay(
                     pendingInvitation = null
                     if (hasLanPermissions() && invitation != null) {
                         startLanSender(invitation)
+                    } else if (invitation != null) {
+                        viewModel.onConnectionBlocked("Local network permission is needed to connect. Allow it in Settings, then try again.")
                     }
                 }
 
@@ -708,6 +712,7 @@ fun GlideAppNavDisplay(
 
                 dev.glide.app.ui.pairing.QrScannerScreen(
                     uiState = scannerState,
+                    onCameraUnavailable = viewModel::onCameraUnavailable,
                     onQrScanned = { rawText ->
                         viewModel.onQrCodeScanned(rawText)
                     },

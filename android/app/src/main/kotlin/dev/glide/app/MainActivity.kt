@@ -613,6 +613,12 @@ class MainActivity : ComponentActivity() {
                 debugDiscoveryState = dev.glide.app.ui.discovery.DiscoveryUiState.TimedOut()
                 GlideRoute.Discovery() to null
             }
+            isDebuggable && debugState == "receive_blocked" -> {
+                debugReceiveState = dev.glide.app.ui.discovery.ReceiveReadinessUiState.Blocked(
+                    dev.glide.app.ui.discovery.BlockedReason.BluetoothDisabled
+                )
+                GlideRoute.ReceiveReadiness to null
+            }
             isDebuggable && debugState == "receive_readiness" -> {
                 debugReceiveState = dev.glide.app.ui.discovery.ReceiveReadinessUiState.Advertising(
                     localDeviceName = "Pixel 10 Pro",

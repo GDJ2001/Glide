@@ -8,7 +8,11 @@ import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.platform.LocalContext
+
+/** Active app theme, including a user override independent of the system theme. */
+val LocalGlideDarkTheme = compositionLocalOf { false }
 
 /**
  * Glide Design System theme composable.
@@ -40,6 +44,7 @@ fun GlideTheme(
     val semanticColors = if (darkTheme) GlideDarkSemanticColors else GlideLightSemanticColors
 
     CompositionLocalProvider(
+        LocalGlideDarkTheme provides darkTheme,
         LocalGlideSemanticColors provides semanticColors,
         LocalGlideSpacing provides GlideSpacing(),
         LocalReducedMotion provides reducedMotion,

@@ -48,6 +48,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
@@ -67,6 +68,7 @@ fun ReceiveReadinessScreen(
     onShowQrCode: (() -> Unit)? = null
 ) {
     val scrollState = rememberScrollState()
+    val context = LocalContext.current
 
     Column(
         modifier = modifier
@@ -313,7 +315,7 @@ fun ReceiveReadinessScreen(
                 DiscoveryBlockedCard(
                     reason = uiState.reason,
                     onRetry = onRestartReceiving,
-                    onOpenSettings = onStopReceiving
+                    onOpenSettings = { openConnectivitySettings(context, uiState.reason) }
                 )
             }
 

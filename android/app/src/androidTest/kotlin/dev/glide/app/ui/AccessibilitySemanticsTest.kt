@@ -3,6 +3,8 @@ package dev.glide.app.ui
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onFirst
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.glide.app.MainActivity
 import org.junit.Rule
@@ -42,11 +44,9 @@ class AccessibilitySemanticsTest {
     }
 
     @Test
-    fun privacyCard_hasAccessibleDescription() {
+    fun brandHeader_hasAccessibleDescription() {
         composeTestRule.waitForIdle()
 
-        composeTestRule.onNodeWithContentDescription(
-            "Privacy reassurance: No cloud, no accounts, direct local Wi-Fi and Bluetooth"
-        ).assertIsDisplayed()
+        composeTestRule.onAllNodesWithContentDescription("Glide").onFirst().assertIsDisplayed()
     }
 }

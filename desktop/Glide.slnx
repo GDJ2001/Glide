@@ -10,5 +10,6 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Glide.Tests/Glide.Tests.csproj" />
+    <Project Path="tests/Glide.Windows.UI.Tests/Glide.Windows.UI.Tests.csproj" />
   </Folder>
 </Solution>

@@ -1,7 +1,5 @@
 package dev.glide.app.ui.discovery
 
-import android.content.Intent
-import android.provider.Settings
 import androidx.compose.animation.core.EaseInOutCubic
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -149,7 +147,11 @@ fun DiscoveryScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Searching for nearby devices...",
+                        text = when (uiState) {
+                            is DiscoveryUiState.Searching -> "Searching for nearby devices..."
+                            is DiscoveryUiState.TimedOut -> "Search finished"
+                            is DiscoveryUiState.Blocked -> "Discovery paused"
+                        },
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.weight(1f)
@@ -314,25 +316,7 @@ fun DiscoveryScreen(
                     DiscoveryBlockedCard(
                         reason = uiState.reason,
                         onRetry = onRetry,
-                        onOpenSettings = {
-                            val intent = when (uiState.reason) {
-                                is BlockedReason.BluetoothDisabled -> Intent(Settings.ACTION_BLUETOOTH_SETTINGS)
-                                is BlockedReason.WifiDisabled, is BlockedReason.NoLocalNetwork -> Intent(Settings.ACTION_WIFI_SETTINGS)
-                                is BlockedReason.VpnActive -> Intent(Settings.ACTION_VPN_SETTINGS)
-                                else -> Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                                    data = android.net.Uri.fromParts("package", context.packageName, null)
-                                }
-                            }
-                            try {
-                                context.startActivity(intent)
-                            } catch (_: Exception) {
-                                try {
-                                    context.startActivity(Intent(Settings.ACTION_SETTINGS))
-                                } catch (_: Exception) {
-                                    // Safe fallback
-                                }
-                            }
-                        }
+                        onOpenSettings = { openConnectivitySettings(context, uiState.reason) }
                     )
                 }
             }

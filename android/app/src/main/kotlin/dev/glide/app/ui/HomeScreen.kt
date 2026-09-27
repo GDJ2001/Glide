@@ -2,7 +2,6 @@ package dev.glide.app.ui
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -64,7 +63,7 @@ fun HomeScreen(
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
-    val isDark = isSystemInDarkTheme()
+    val isDark = dev.glide.designsystem.LocalGlideDarkTheme.current
     val logoRes = if (isDark) R.drawable.ic_glide_logo_inverse else R.drawable.ic_glide_logo_color
     val windowSizeClass = dev.glide.designsystem.LocalWindowSizeClass.current
     val postureInfo = dev.glide.designsystem.LocalDevicePosture.current
@@ -273,6 +272,7 @@ fun HomeScreen(
             }
 
             Card(
+                onClick = onNavigateToHistory,
                 shape = MaterialTheme.shapes.medium,
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant
@@ -280,7 +280,7 @@ fun HomeScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .semantics {
-                        contentDescription = "Recent activity card: No recent transfers"
+                        contentDescription = "Open transfer history"
                     }
             ) {
                 Box(
@@ -290,7 +290,7 @@ fun HomeScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "No recent transfers",
+                        text = "Open history to view sent and received files",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

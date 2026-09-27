@@ -5,6 +5,38 @@ namespace Glide.Tests;
 
 public class QrCodeGeneratorTests
 {
+    [Theory]
+    [InlineData(20, QrErrorCorrectionLevel.Low)]
+    [InlineData(650, QrErrorCorrectionLevel.Low)]
+    [InlineData(1000, QrErrorCorrectionLevel.Low)]
+    [InlineData(650, QrErrorCorrectionLevel.Medium)]
+    [InlineData(650, QrErrorCorrectionLevel.Quartile)]
+    [InlineData(650, QrErrorCorrectionLevel.High)]
+    public void EncodeText_PhoneDecoderReadsExactPayload(int length, QrErrorCorrectionLevel level)
+    {
+        // Synthetic invitation-sized data; never persist real pairing tokens in tests.
+        string payload = "glide://pair/v1#" + new string('a', length);
+        var qr = QrCodeGenerator.EncodeText(payload, level);
+        const int border = 4;
+        const int scale = 4;
+        int width = (qr.Size + border * 2) * scale;
+        var pixels = new byte[width * width];
+        Array.Fill(pixels, (byte)255);
+        for (int row = 0; row < qr.Size; row++)
+            for (int col = 0; col < qr.Size; col++)
+                if (qr.GetModule(row, col))
+                    for (int y = 0; y < scale; y++)
+                        for (int x = 0; x < scale; x++)
+                            pixels[((row + border) * scale + y) * width + (col + border) * scale + x] = 0;
+
+        // Independent ZXing decoder, the same QR algorithm used by the Android app.
+        var result = new ZXing.BarcodeReaderGeneric().Decode(
+            pixels, width, width, ZXing.RGBLuminanceSource.BitmapFormat.Gray8);
+        Assert.NotNull(result);
+        Assert.Equal(payload, result.Text);
+        Assert.InRange(qr.MaskPattern, 0, 7);
+    }
+
     [Fact]
     public void EncodeText_ShortString_GeneratesValidVersion1Matrix()
     {

@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -179,33 +180,33 @@ private fun ReceiverOfferConsentCard(
                     )
                 }
 
-                // Expiry countdown pill
-                Surface(
-                    shape = CircleShape,
-                    color = if (isExpiringSoon) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceVariant,
-                    modifier = Modifier.alpha(if (isExpiringSoon) breathingAlpha else 1.0f)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.HourglassBottom,
-                            contentDescription = null,
-                            tint = if (isExpiringSoon) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Text(
-                            text = "${state.secondsRemaining}s",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = if (isExpiringSoon) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
             }
 
+            // Keep expiry visible without narrowing the offer title at large font scales.
+            Surface(
+                shape = CircleShape,
+                color = if (isExpiringSoon) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceVariant,
+                modifier = Modifier.alpha(if (isExpiringSoon) breathingAlpha else 1.0f)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.HourglassBottom,
+                        contentDescription = null,
+                        tint = if (isExpiringSoon) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Text(
+                        text = "${state.secondsRemaining}s",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (isExpiringSoon) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
             // Scrollable Item List (Inspection)
             val itemsToShow = if (state.items.isNotEmpty()) {
                 state.items
@@ -246,11 +247,12 @@ private fun ReceiverOfferConsentCard(
                             Surface(
                                 shape = RoundedCornerShape(6.dp),
                                 color = MaterialTheme.colorScheme.primaryContainer,
-                                modifier = Modifier.size(36.dp)
+                                modifier = Modifier.widthIn(min = 36.dp).heightIn(min = 36.dp)
                             ) {
-                                Box(contentAlignment = Alignment.Center) {
+                                Box(modifier = Modifier.padding(6.dp), contentAlignment = Alignment.Center) {
                                     Text(
                                         text = mimeBadgeLabel(item.mimeType, item.name),
+                                        maxLines = 1,
                                         style = MaterialTheme.typography.labelSmall.copy(
                                             fontFamily = FontFamily.Monospace,
                                             fontWeight = FontWeight.Bold,

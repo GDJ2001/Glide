@@ -162,6 +162,7 @@ private fun ActiveTransferringCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(
+                    modifier = Modifier.weight(1f),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
@@ -226,10 +227,10 @@ private fun ActiveTransferringCard(
             )
 
             // Byte progress row
-            Row(
+            androidx.compose.foundation.layout.FlowRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
                     text = "${TransferFormatting.formatBytes(state.transferredBytes)} / ${TransferFormatting.formatBytes(state.totalBytes)}",

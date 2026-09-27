@@ -127,6 +127,34 @@ public sealed class DesktopEngineArchitectureTests
         Assert.Contains("Glide.Desktop", wpfProject);
     }
 
+    [Fact]
+    public void WpfSendFlow_KeepsPrimaryActionVisibleAndContinuesAfterPairing()
+    {
+        string root = ResolveRepositoryRoot();
+        string viewModel = File.ReadAllText(
+            Path.Combine(root, "desktop", "windows", "Glide.Windows.UI", "ViewModels", "MainViewModel.cs"));
+        string view = File.ReadAllText(
+            Path.Combine(root, "desktop", "windows", "Glide.Windows.UI", "Views", "MainWindow.xaml"));
+
+        int advancedStart = view.IndexOf(
+            "<Expander Header=\"Advanced: enter an address manually\"",
+            StringComparison.Ordinal);
+        int primarySendAction = view.IndexOf(
+            "Content=\"{Binding SendActionText}\"",
+            StringComparison.Ordinal);
+
+        Assert.True(primarySendAction >= 0, "The normal Send view must expose a primary send action.");
+        Assert.True(advancedStart >= 0, "The manual-address fallback should remain available.");
+        Assert.True(
+            primarySendAction < advancedStart,
+            "The primary send action must not be hidden inside the advanced-address expander.");
+        Assert.Contains("_sendAfterPairing = true", viewModel);
+        Assert.Contains("ExecuteSendFilesSafelyAsync", viewModel);
+        Assert.Contains("Use a fresh phone invite to send again", viewModel);
+        Assert.Contains("Connect and send", view);
+        Assert.Contains("Receive files > Show QR code > Copy invite", viewModel);
+    }
+
     private static string ResolveRepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

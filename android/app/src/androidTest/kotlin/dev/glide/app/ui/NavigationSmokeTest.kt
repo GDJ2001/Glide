@@ -30,7 +30,7 @@ class NavigationSmokeTest {
         composeTestRule.waitForIdle()
         composeTestRule.onNodeWithText("Send files").assertIsDisplayed()
         composeTestRule.onNodeWithText("Receive files").assertIsDisplayed()
-        composeTestRule.onNodeWithText("Fast, private, local device sharing").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Recent activity").assertIsDisplayed()
     }
 
     @Test

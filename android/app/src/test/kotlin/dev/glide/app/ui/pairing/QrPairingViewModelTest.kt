@@ -352,4 +352,33 @@ class QrPairingViewModelTest {
         viewModel.retryScan()
         assertTrue(viewModel.scannerState.value is QrScannerUiState.Scanning)
     }
+
+    @Test
+    fun cameraFailure_doesNotReplacePastedInvitationConsent() = runTest(testDispatcher) {
+        val invitation = authority.mintInvitation(testEndpoints, testSpki, "Receiver Device", ttlSeconds = 120)
+        viewModel.onInvitationPasted(InvitationCodec.encode(invitation))
+        viewModel.onCameraUnavailable()
+        assertTrue(viewModel.scannerState.value is QrScannerUiState.ConfirmationRequired)
+    }
+
+    @Test
+    fun deniedConnectionPermission_exitsConnecting_andCanRetry() = runTest(testDispatcher) {
+        val invitation = authority.mintInvitation(testEndpoints, testSpki, "Receiver Device", ttlSeconds = 120)
+        viewModel.onInvitationPasted(InvitationCodec.encode(invitation))
+        viewModel.confirmConnection()
+        viewModel.onConnectionBlocked("Local network permission is needed.")
+        assertEquals(
+            QrScanErrorReason.Custom("Local network permission is needed."),
+            (viewModel.scannerState.value as QrScannerUiState.Error).reason
+        )
+        viewModel.retryScan()
+        assertTrue(viewModel.scannerState.value is QrScannerUiState.Scanning)
+    }
+
+    @Test
+    fun staleConnectionFailure_doesNotReplaceNewScan() = runTest(testDispatcher) {
+        viewModel.startScanning()
+        viewModel.onConnectionBlocked("Stale failure")
+        assertTrue(viewModel.scannerState.value is QrScannerUiState.Scanning)
+    }
 }

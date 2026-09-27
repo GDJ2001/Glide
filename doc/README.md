@@ -41,6 +41,7 @@ The hardening review baseline is `ea2e811a7f2d8aaddc552e894fe04782cd08a499`. HAR
 
 - [Android permissions](android/PERMISSION_MATRIX.md)
 - [Android storage/background execution](android/STORAGE_AND_BACKGROUND.md)
+- [Android UI review, fixes and Pixel screenshots — 27 September 2026](android/ANDROID_UI_REVIEW_2026-09-27.md)
 - [Design system](design/GLIDE_DESIGN_SYSTEM.md)
 - [User flows](design/GLIDE_USER_FLOWS.md)
 - [Release plan](release/GLIDE_RELEASE_PLAN.md)

@@ -6,6 +6,7 @@ Windows 10, ARM64, remote transfer, and new Linux work are outside this release.
 
 - [Completion ledger](WINDOWS_COMPLETION_LEDGER.md) — task status, implementation evidence, and the next safe work.
 - [Release gates](WINDOWS_RELEASE_GATES.md) — automated, physical-device, security, accessibility, installer, and update qualification.
+- [PC-to-Android send-flow repair](PC_TO_ANDROID_SEND_FIX_2026-09-27.md) — visible send action, guided receiver pairing, and physical transfer/hash evidence.
 
 Status labels have a strict meaning: `IMPLEMENTED` means source exists and has named evidence;
 `VERIFIED` means its required automated/manual check ran; `BLOCKED` means an external prerequisite

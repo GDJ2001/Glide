@@ -1,14 +1,54 @@
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Interop;
+using Glide.Windows.UI.Services;
 using Glide.Windows.UI.ViewModels;
 
 namespace Glide.Windows.UI.Views;
 
 public partial class MainWindow : Window
 {
+    private HwndSource? _windowSource;
+
     public MainWindow()
     {
         InitializeComponent();
+    }
+
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        _windowSource = HwndSource.FromHwnd(new WindowInteropHelper(this).Handle);
+        _windowSource?.AddHook(WindowMessage);
+        WindowsTitleBar.Apply(this);
+    }
+
+    protected override void OnPropertyChanged(DependencyPropertyChangedEventArgs e)
+    {
+        base.OnPropertyChanged(e);
+        if (e.Property == BackgroundProperty || e.Property == ForegroundProperty)
+            WindowsTitleBar.Apply(this);
+    }
+
+    protected override void OnActivated(EventArgs e)
+    {
+        base.OnActivated(e);
+        WindowsTitleBar.Apply(this);
+    }
+
+    private IntPtr WindowMessage(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        // Reapply after Windows updates non-client theme/high-contrast settings.
+        if (message is 0x001A or 0x031A) // WM_SETTINGCHANGE / WM_THEMECHANGED
+            Dispatcher.BeginInvoke(() => WindowsTitleBar.Apply(this));
+        return IntPtr.Zero;
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        _windowSource?.RemoveHook(WindowMessage);
+        _windowSource = null;
+        base.OnClosed(e);
     }
 
     private void DropZone_DragOver(object sender, DragEventArgs e)

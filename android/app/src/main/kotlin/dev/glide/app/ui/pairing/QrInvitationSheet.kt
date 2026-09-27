@@ -111,7 +111,7 @@ fun QrInvitationSheet(
                     text = "Receive via QR code",
                     style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.semantics { heading() }
+                    modifier = Modifier.weight(1f).semantics { heading() }
                 )
                 IconButton(
                     onClick = onDismiss,

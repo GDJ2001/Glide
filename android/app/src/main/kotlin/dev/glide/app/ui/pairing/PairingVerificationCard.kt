@@ -205,6 +205,7 @@ fun PairingVerificationCard(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Row(
+                                modifier = Modifier.weight(1f),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
@@ -262,6 +263,7 @@ fun PairingVerificationCard(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
+                                .fillMaxWidth()
                                 .padding(vertical = 4.dp)
                                 .semantics {
                                     contentDescription = "Verification code: $digitsSpoken. Compare with code on ${state.peerName.isolateBidi()}."
@@ -273,10 +275,11 @@ fun PairingVerificationCard(
                                     color = MaterialTheme.colorScheme.primaryContainer,
                                     border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)),
                                     modifier = Modifier
-                                        .size(width = 46.dp, height = 58.dp)
+                                        .weight(1f)
+                                        .heightIn(min = 58.dp)
                                         .clearAndSetSemantics { }
                                 ) {
-                                    Box(contentAlignment = Alignment.Center) {
+                                    Box(modifier = Modifier.padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
                                         Text(
                                             text = digit,
                                             style = MaterialTheme.typography.headlineMedium.copy(

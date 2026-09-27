@@ -42,6 +42,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -55,15 +56,17 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -75,6 +78,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import dev.glide.app.qr.QrDecoder
 import dev.glide.app.qr.QrFrameAnalyzer
 import dev.glide.core.pairing.LanInvitation
@@ -90,7 +95,7 @@ import java.util.concurrent.Executors
  * - Camera is strictly optional; "Paste invitation" provides an identical validation path.
  * - Single-decode latching prevents duplicate frame triggers.
  * - Explicit confirmation required before connecting to scanned/pasted peer.
- * - Camera resources are deterministically unbound on stop/dispose.
+ * - CameraX owns pause/resume; resources are unbound when leaving the scanner.
  */
 @Composable
 fun QrScannerScreen(
@@ -101,7 +106,8 @@ fun QrScannerScreen(
     onCancelConfirmation: () -> Unit,
     onRetryScan: () -> Unit,
     onClose: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onCameraUnavailable: () -> Unit = {}
 ) {
     val context = LocalContext.current
     var hasCameraPermission by remember {
@@ -113,6 +119,26 @@ fun QrScannerScreen(
     var torchEnabled by remember { mutableStateOf(false) }
     var hasFlashlight by remember { mutableStateOf(false) }
     var activeCamera by remember { mutableStateOf<Camera?>(null) }
+    var cameraAttempt by remember { mutableIntStateOf(0) }
+    var headerHeight by remember { mutableIntStateOf(0) }
+    var footerHeight by remember { mutableIntStateOf(0) }
+    val density = LocalDensity.current
+    val controlsPadding = with(density) {
+        androidx.compose.foundation.layout.PaddingValues(
+            top = if (headerHeight > 0) headerHeight.toDp() else 80.dp,
+            bottom = if (footerHeight > 0) footerHeight.toDp() else 100.dp
+        )
+    }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(context, lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                hasCameraPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -135,24 +161,27 @@ fun QrScannerScreen(
     ) {
         if (hasCameraPermission) {
             // Camera Preview & Viewfinder
-            CameraPreviewView(
-                isScanning = uiState is QrScannerUiState.Scanning,
-                onQrDecoded = onQrScanned,
-                onCameraBound = { camera ->
-                    activeCamera = camera
-                    hasFlashlight = camera.cameraInfo.hasFlashUnit()
-                },
-                modifier = Modifier.fillMaxSize()
-            )
+            key(cameraAttempt) {
+                CameraPreviewView(
+                    isScanning = uiState is QrScannerUiState.Scanning,
+                    onQrDecoded = onQrScanned,
+                    onCameraUnavailable = onCameraUnavailable,
+                    onCameraBound = { camera ->
+                        activeCamera = camera
+                        hasFlashlight = camera.cameraInfo.hasFlashUnit()
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
 
             // Viewfinder Overlay Cutout
-            ViewfinderOverlay(modifier = Modifier.fillMaxSize())
+            ViewfinderOverlay(modifier = Modifier.fillMaxSize().padding(controlsPadding))
         } else {
             // Camera Permission Educational Fallback Card
             CameraPermissionRationale(
                 onRequestPermission = { permissionLauncher.launch(Manifest.permission.CAMERA) },
                 onPasteClicked = { showPasteDialog = true },
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize().padding(controlsPadding)
             )
         }
 
@@ -160,6 +189,7 @@ fun QrScannerScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .onSizeChanged { headerHeight = it.height }
                 .padding(16.dp)
                 .align(Alignment.TopCenter),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -186,7 +216,8 @@ fun QrScannerScreen(
                 text = "Scan QR code",
                 style = MaterialTheme.typography.titleMedium,
                 color = Color.White,
-                modifier = Modifier.semantics { heading() }
+                textAlign = TextAlign.Center,
+                modifier = Modifier.weight(1f).padding(horizontal = 8.dp).semantics { heading() }
             )
 
             if (hasCameraPermission && hasFlashlight) {
@@ -215,6 +246,7 @@ fun QrScannerScreen(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
+                .onSizeChanged { footerHeight = it.height }
                 .align(Alignment.BottomCenter)
                 .padding(24.dp),
             contentAlignment = Alignment.Center
@@ -253,12 +285,32 @@ fun QrScannerScreen(
         if (uiState is QrScannerUiState.Error) {
             ScanErrorDialog(
                 reason = uiState.reason,
-                onRetry = onRetryScan,
+                onRetry = {
+                    cameraAttempt++
+                    onRetryScan()
+                },
                 onPasteClicked = {
                     onRetryScan()
                     showPasteDialog = true
                 }
             )
+        }
+
+        if (uiState is QrScannerUiState.Connecting) {
+            Surface(
+                modifier = Modifier.align(Alignment.Center).padding(24.dp),
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.surface
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    CircularProgressIndicator()
+                    Text("Connecting to ${uiState.invitation.name.isolateBidi()}")
+                }
+            }
         }
 
         // Paste Invitation Dialog
@@ -279,22 +331,29 @@ private fun CameraPreviewView(
     isScanning: Boolean,
     onQrDecoded: (String) -> Unit,
     onCameraBound: (Camera) -> Unit,
+    onCameraUnavailable: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
+    val context = LocalContext.current
+    val mainExecutor = remember(context) { ContextCompat.getMainExecutor(context) }
+    val disposed = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
     val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
     val currentOnQrDecoded by androidx.compose.runtime.rememberUpdatedState(onQrDecoded)
     val currentIsScanning by androidx.compose.runtime.rememberUpdatedState(isScanning)
+    val currentOnCameraUnavailable by androidx.compose.runtime.rememberUpdatedState(onCameraUnavailable)
 
     lateinit var frameAnalyzer: QrFrameAnalyzer
     frameAnalyzer = remember {
         QrFrameAnalyzer(
             minIntervalMs = 100L,
             onQrDecoded = { result ->
-                if (currentIsScanning) {
-                    currentOnQrDecoded(result)
-                } else {
-                    frameAnalyzer.resetLock()
+                mainExecutor.execute {
+                    if (!disposed.get() && currentIsScanning) {
+                        currentOnQrDecoded(result)
+                    } else {
+                        frameAnalyzer.resetLock()
+                    }
                 }
             }
         )
@@ -308,17 +367,9 @@ private fun CameraPreviewView(
 
     var activeCameraProvider by remember { mutableStateOf<ProcessCameraProvider?>(null) }
 
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) {
-                try {
-                    activeCameraProvider?.unbindAll()
-                } catch (_: Throwable) {}
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
+    DisposableEffect(Unit) {
         onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
+            disposed.set(true)
             try {
                 activeCameraProvider?.unbindAll()
             } catch (_: Throwable) {}
@@ -332,33 +383,34 @@ private fun CameraPreviewView(
             val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
 
             cameraProviderFuture.addListener({
-                val cameraProvider = cameraProviderFuture.get()
-                activeCameraProvider = cameraProvider
+                if (disposed.get()) return@addListener
+                try {
+                    val cameraProvider = cameraProviderFuture.get()
+                    activeCameraProvider = cameraProvider
 
-                val preview = Preview.Builder().build().also {
-                    it.surfaceProvider = previewView.surfaceProvider
-                }
-
-                val resolutionSelector = androidx.camera.core.resolutionselector.ResolutionSelector.Builder()
-                    .setResolutionStrategy(
-                        androidx.camera.core.resolutionselector.ResolutionStrategy(
-                            android.util.Size(1280, 720),
-                            androidx.camera.core.resolutionselector.ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER
-                        )
-                    )
-                    .build()
-
-                val imageAnalysis = ImageAnalysis.Builder()
-                    .setResolutionSelector(resolutionSelector)
-                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                    .build()
-                    .also {
-                        it.setAnalyzer(cameraExecutor, frameAnalyzer)
+                    val preview = Preview.Builder().build().also {
+                        it.surfaceProvider = previewView.surfaceProvider
                     }
 
-                val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+                    val resolutionSelector = androidx.camera.core.resolutionselector.ResolutionSelector.Builder()
+                        .setResolutionStrategy(
+                            androidx.camera.core.resolutionselector.ResolutionStrategy(
+                                android.util.Size(1280, 720),
+                                androidx.camera.core.resolutionselector.ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER
+                            )
+                        )
+                        .build()
 
-                try {
+                    val imageAnalysis = ImageAnalysis.Builder()
+                        .setResolutionSelector(resolutionSelector)
+                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                        .build()
+                        .also {
+                            it.setAnalyzer(cameraExecutor, frameAnalyzer)
+                        }
+
+                    val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+
                     cameraProvider.unbindAll()
                     val camera = cameraProvider.bindToLifecycle(
                         lifecycleOwner,
@@ -398,7 +450,9 @@ private fun CameraPreviewView(
                         }
                         true
                     }
-                } catch (_: Exception) {}
+                } catch (_: Exception) {
+                    if (!disposed.get() && currentIsScanning) currentOnCameraUnavailable()
+                }
             }, ContextCompat.getMainExecutor(ctx))
 
             previewView
@@ -413,7 +467,8 @@ private fun ViewfinderOverlay(modifier: Modifier = Modifier) {
         modifier = modifier,
         contentAlignment = Alignment.Center
     ) {
-        val cutoutSize = (minOf(maxWidth, maxHeight) * 0.52f).coerceIn(136.dp, 240.dp)
+        val compactHeight = maxHeight < 220.dp
+        val cutoutSize = (minOf(maxWidth, maxHeight) * if (compactHeight) 0.85f else 0.52f).coerceAtMost(240.dp)
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -428,10 +483,11 @@ private fun ViewfinderOverlay(modifier: Modifier = Modifier) {
                     )
             )
 
-            Text(
+            if (!compactHeight) Text(
                 text = "Align QR code within frame",
                 style = MaterialTheme.typography.bodyMedium,
                 color = Color.White.copy(alpha = 0.85f),
+                textAlign = TextAlign.Center,
                 modifier = Modifier
                     .background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
                     .padding(horizontal = 12.dp, vertical = 6.dp)
@@ -449,7 +505,7 @@ private fun CameraPermissionRationale(
     Box(
         modifier = modifier
             .verticalScroll(rememberScrollState())
-            .padding(vertical = 64.dp, horizontal = 16.dp),
+            .padding(16.dp),
         contentAlignment = Alignment.Center
     ) {
         Card(
@@ -597,7 +653,7 @@ private fun ScanErrorDialog(
         },
         confirmButton = {
             Button(
-                onClick = onRetry,
+                onClick = if (reason is QrScanErrorReason.CameraUnavailable) onPasteClicked else onRetry,
                 shape = PrimaryButtonShape,
                 modifier = Modifier.heightIn(min = 48.dp)
             ) {
@@ -607,7 +663,7 @@ private fun ScanErrorDialog(
         dismissButton = {
             if (error.secondaryActionLabel != null) {
                 TextButton(
-                    onClick = onPasteClicked,
+                    onClick = if (reason is QrScanErrorReason.CameraUnavailable) onRetry else onPasteClicked,
                     modifier = Modifier.heightIn(min = 48.dp)
                 ) {
                     Text(error.secondaryActionLabel)

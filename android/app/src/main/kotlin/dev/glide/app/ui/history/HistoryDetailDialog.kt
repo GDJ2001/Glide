@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -171,10 +173,10 @@ fun HistoryDetailContent(
                 .verticalScroll(scrollState)
         ) {
             // Session Status and Summary Badges
-            Row(
+            FlowRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 StatusBadge(outcome = detail.session.outcome)
 
@@ -186,8 +188,6 @@ fun HistoryDetailContent(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-
-                Spacer(modifier = Modifier.weight(1f))
 
                 Text(
                     text = formatByteSize(detail.session.totalBytes),
@@ -312,10 +312,10 @@ fun HistoryDetailContent(
         var showDeleteDialog by remember { mutableStateOf(false) }
 
         // Action CTA row
-        Row(
+        FlowRow(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             TextButton(
                 onClick = { showDeleteDialog = true },
@@ -452,17 +452,18 @@ fun HistoryItemCard(
             if (isReceiver && item.outcome == "Verified") {
                 Spacer(modifier = Modifier.height(10.dp))
                 if (item.isFileAvailable) {
-                    Row(
+                    FlowRow(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         OutlinedButton(
                             onClick = onOpenFile,
                             shape = RoundedCornerShape(10.dp),
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                             modifier = Modifier
-                                .weight(1f)
-                                .heightIn(min = 42.dp)
+                                .widthIn(min = 88.dp)
+                                .heightIn(min = 48.dp)
                                 .glideHoverHand()
                                 .semantics {
                                     role = Role.Button
@@ -479,8 +480,8 @@ fun HistoryItemCard(
                             shape = RoundedCornerShape(10.dp),
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                             modifier = Modifier
-                                .weight(1f)
-                                .heightIn(min = 42.dp)
+                                .widthIn(min = 88.dp)
+                                .heightIn(min = 48.dp)
                                 .glideHoverHand()
                                 .semantics {
                                     role = Role.Button
@@ -497,8 +498,8 @@ fun HistoryItemCard(
                             shape = RoundedCornerShape(10.dp),
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                             modifier = Modifier
-                                .weight(1f)
-                                .heightIn(min = 42.dp)
+                                .widthIn(min = 88.dp)
+                                .heightIn(min = 48.dp)
                                 .glideHoverHand()
                                 .semantics {
                                     role = Role.Button

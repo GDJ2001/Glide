@@ -1,0 +1,6 @@
+Date checked: 2026-09-27
+Git HEAD: 44ba2b998703b438b6043c06ea0134537970920d (working tree has uncommitted UI and previous Windows changes)
+Android application: dev.glide.app.debug
+Emulator: Pixel_10 / emulator-5554 / API 37
+app-debug.apk SHA256: CB21410D5F9407F03DF09F65DE900E03735CE716AD071B66F2DA4F187F8112CD
+app-debug-androidTest.apk SHA256: F43A7CFAA077B5B003305D9E48FBCA567BEA7E38E130B8EBE5ED107D45624822

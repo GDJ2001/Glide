@@ -1,18 +1,29 @@
 # Windows completion ledger
 
-Last reviewed: 2026-09-26. This ledger starts from the current checkout, not prior completion
+Last reviewed: 2026-09-27. This ledger starts from the current checkout, not prior completion
 claims. A task moves to `VERIFIED` only with its named evidence in
 [release gates](WINDOWS_RELEASE_GATES.md). The count below is deliberately **not 28/28**.
 
 ## Current evidence
+
+Latest installed candidate: [native title-bar theme evidence](TITLE_BAR_THEME_2026-09-27.md).
+It includes the QR repair below and supersedes that repair's installer hash.
+
+Latest targeted repair: [QR recognition evidence, 2026-09-27](QR_PAIRING_FIX_2026-09-27.md).
+The replacement encoder passed independent Android-compatible decoding and **305/305**
+desktop tests. The rebuilt unsigned installer was installed locally and the executable
+hash matched its published payload. Physical QR recognition and complete transfer
+remain separate gates. The hashes/test counts below describe the earlier baseline.
 
 - `dotnet build desktop/Glide.slnx -c Release --nologo` passed with zero warnings and errors.
 - `dotnet test desktop/Glide.slnx -c Release --no-build --nologo` passed: **297/297**.
 - The self-contained portable archive build passed at
   `build/distributions/windows/glide-windows-win-x64.zip` using `package-windows.ps1 -SkipInstaller`
   with SHA-256 `20EB88DB61CB1EA57B01254E5867BC00D6A00B96732EF549C6C13F73446B22E4`.
-- NSIS 3.12+ was not available on the development machine, so no installer binary has been compiled
-  or exercised.
+- NSIS 3.12 compiled the unsigned installer at
+  `build/distributions/windows/Glide-Setup-0.1.0-win-x64.exe`; `setup.exe` is a hard-link alias.
+  SHA-256: `4A5ED85C4A3B9886B04608F41D84EE020F6300689F5F5D49A33D6E3D4F7327FE`.
+  Installation, upgrade, repair, uninstall, and signing are still unverified.
 - No physical Windows↔Windows or Windows↔Android journey has been verified for this checkout.
 
 ## Task ledger
@@ -35,7 +46,7 @@ claims. A task moves to `VERIFIED` only with its named evidence in
 | WIN-014 | IN PROGRESS | Branded WPF shell exists. | Keyboard, Narrator, high-contrast, DPI, dark/light, and adaptive-window qualification. |
 | WIN-015 | IN PROGRESS | File/URI activation works through the single-instance handoff. | Tray, notifications, taskbar progress, Explorer integration tests. |
 | WIN-016 | NOT STARTED | Settings/about/privacy/licenses are incomplete as feature areas. | Functional settings and redacted diagnostic export. |
-| WIN-017 | IMPLEMENTED | Maintained `desktop/windows/installer/Glide.nsi` replaced generated installer logic. | Compile with NSIS and execute clean-install qualification. |
+| WIN-017 | IMPLEMENTED | Maintained `desktop/windows/installer/Glide.nsi` replaced generated installer logic; NSIS 3.12 compiled the unsigned 0.1.0 setup binary. | Execute clean-install qualification with the signed candidate. |
 | WIN-018 | IN PROGRESS | Re-running NSIS setup is the documented repair path; per-user upgrade overwrites owned payload. | Old-version migration and repair matrix. |
 | WIN-019 | IMPLEMENTED | Uninstall invokes `Uninstall.exe`; no app-side recursive install-directory deletion. NSIS deletes known owned resources only. | Clean-uninstall test proving adjacent and received files survive. |
 | WIN-020 | IMPLEMENTED | `GlideUpdateCoordinator` uses strict Ed25519 verification and refuses unconfigured/non-HTTPS feeds. | Signed feed/download tests using the real public release infrastructure. |

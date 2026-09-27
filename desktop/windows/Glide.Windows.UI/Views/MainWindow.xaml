@@ -8,9 +8,9 @@
         Title="Glide" Height="680" Width="920"
         MinWidth="820" MinHeight="560"
         WindowStartupLocation="CenterScreen"
-        Background="{StaticResource BackgroundBrush}"
-        Foreground="{StaticResource TextPrimaryBrush}"
-        Icon="pack://application:,,,/glide.ico">
+        Background="{DynamicResource BackgroundBrush}"
+        Foreground="{DynamicResource TextPrimaryBrush}"
+        Icon="pack://application:,,,/Glide;component/glide.ico">
 
     <Window.DataContext>
         <vm:MainViewModel />
@@ -148,16 +148,16 @@
                     <Border Grid.Row="2" Margin="0,16,0,0" Background="{StaticResource SurfaceBrush}"
                             BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="12" Padding="16,12">
                         <StackPanel>
-                            <!-- Header with Scan & Pair via Link Buttons -->
+                            <!-- Nearby pairing is the normal flow; manual addresses remain a fallback. -->
                             <DockPanel Margin="0,0,0,10">
                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                    <TextBlock Text="🌐 Nearby Peers" FontSize="13" FontWeight="SemiBold"
+                                    <TextBlock Text="Nearby devices" FontSize="13" FontWeight="SemiBold"
                                                Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center" />
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                                     <Button Style="{StaticResource SecondaryButtonStyle}" Content="🔄 Scan" Margin="4,0"
                                             Command="{Binding RefreshPeersCommand}" Padding="8,3" FontSize="11" />
-                                    <Button Style="{StaticResource SecondaryButtonStyle}" Content="🔗 Pair via Link" Margin="4,0"
+                                    <Button Style="{StaticResource SecondaryButtonStyle}" Content="Use pairing code" Margin="4,0"
                                             Command="{Binding ShowPairModalCommand}" Padding="8,3" FontSize="11" />
                                 </StackPanel>
                             </DockPanel>
@@ -186,8 +186,41 @@
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
 
-                            <!-- Manual IP/Port Entry & Send Button -->
-                            <Grid Margin="0,4,0,0">
+                            <Border Background="{StaticResource SurfaceHighBrush}" CornerRadius="8" Padding="10" Margin="0,0,0,8">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding PairingStatusText}" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource TextPrimaryBrush}" />
+                                        <TextBlock Text="Nearby discovery finds the device. Its short-lived QR or copied code securely confirms it."
+                                                   FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <Button Grid.Column="1" Style="{StaticResource SecondaryButtonStyle}" Content="Paste code"
+                                            Command="{Binding PastePairingLinkCommand}" Padding="10,5" Margin="10,0,0,0" />
+                                </Grid>
+                            </Border>
+
+                            <!-- Primary send action belongs to the normal workflow and must always be visible. -->
+                            <Grid Margin="0,2,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{Binding SelectedFilesSummary}"
+                                           Foreground="{StaticResource TextSecondaryBrush}" FontSize="12"
+                                           VerticalAlignment="Center" />
+                                <Button Grid.Column="1" Style="{StaticResource PrimaryButtonStyle}"
+                                        Content="{Binding SendActionText}" Command="{Binding SendFilesCommand}"
+                                        MinWidth="190" Padding="18,10"
+                                        AutomationProperties.Name="Send selected files to phone" />
+                            </Grid>
+
+                            <!-- Advanced fallback; it is intentionally not the primary pairing path. -->
+                            <Expander Header="Advanced: enter an address manually" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0">
+                            <Grid Margin="0,8,0,0">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
@@ -213,9 +246,8 @@
                                         Visibility="Collapsed"
                                         ToolTip="Share selected files with any web browser on local Wi-Fi" />
 
-                                <Button Grid.Column="5" Style="{StaticResource PrimaryButtonStyle}" Content="🚀 Send Files"
-                                        Command="{Binding SendFilesCommand}" MinWidth="130" />
                             </Grid>
+                            </Expander>
                         </StackPanel>
                     </Border>
                 </Grid>
@@ -550,14 +582,19 @@
                     BorderThickness="1" CornerRadius="16" Padding="28" Width="480" HorizontalAlignment="Center"
                     VerticalAlignment="Center">
                 <StackPanel HorizontalAlignment="Center" MaxWidth="440">
-                    <TextBlock Text="🔗" FontSize="36" HorizontalAlignment="Center" Margin="0,0,0,8" />
-                    <TextBlock Text="Pair with Device via Link" FontSize="17" FontWeight="Bold"
+                    <TextBlock Text="📱" FontSize="36" HorizontalAlignment="Center" Margin="0,0,0,8" />
+                    <TextBlock Text="{Binding PairingSheetTitle}" FontSize="17" FontWeight="Bold"
                                Foreground="{StaticResource TextPrimaryBrush}" HorizontalAlignment="Center" Margin="0,0,0,8" />
-                    <TextBlock Text="Paste the Glide pairing invitation link (glide://pair/v1#...) or scanned QR payload from your mobile or desktop peer:"
+                    <TextBlock Text="{Binding PairingSheetInstruction}"
                                FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" TextAlignment="Center" TextWrapping="Wrap" Margin="0,0,0,16" />
 
                     <TextBox Style="{StaticResource ModernTextBoxStyle}" Text="{Binding PairInputUri, UpdateSourceTrigger=PropertyChanged}"
-                             Height="60" TextWrapping="Wrap" AcceptsReturn="False" Margin="0,0,0,20" Padding="8" />
+                             Height="60" TextWrapping="Wrap" AcceptsReturn="False" Margin="0,0,0,12" Padding="8"
+                             ToolTip="Paste the glide:// invite copied from the receiving phone"
+                             AutomationProperties.Name="Receiving phone Glide invite" />
+
+                    <Button Style="{StaticResource SecondaryButtonStyle}" Content="Paste invite from phone"
+                            Command="{Binding PastePairingLinkCommand}" Margin="0,0,0,12" Padding="0,8" />
 
                     <!-- Actions -->
                     <Grid>
@@ -568,7 +605,7 @@
                         </Grid.ColumnDefinitions>
                         <Button Grid.Column="0" Style="{StaticResource SecondaryButtonStyle}" Content="Cancel"
                                 Command="{Binding CancelPairModalCommand}" Padding="0,10" />
-                        <Button Grid.Column="2" Style="{StaticResource PrimaryButtonStyle}" Content="Pair Device"
+                        <Button Grid.Column="2" Style="{StaticResource PrimaryButtonStyle}" Content="Connect and send"
                                 Command="{Binding SubmitPairModalCommand}" Padding="0,10" />
                     </Grid>
                 </StackPanel>
