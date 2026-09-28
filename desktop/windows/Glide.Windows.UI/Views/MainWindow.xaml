@@ -32,7 +32,7 @@
                             <Path Data="M6,14 L12,8 L16,12 L22,6 L22,11 L16,17 L12,13 L6,19 Z" Fill="White" Stretch="Uniform" Margin="5" />
                         </Border>
                         <StackPanel>
-                            <Image Source="/Glide;component/Assets/glide-wordmark-indigo-512.png" Width="62" Height="21" Stretch="Uniform" HorizontalAlignment="Left" />
+                            <TextBlock Text="Glide" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
                             <TextBlock Text="Local sharing" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
                         </StackPanel>
                     </StackPanel>
@@ -70,23 +70,24 @@
             </Grid.RowDefinitions>
 
             <Grid>
-                <StackPanel>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Margin="0,0,12,0">
                     <TextBlock Text="{Binding CurrentTab}" FontSize="26" FontWeight="SemiBold" />
                     <TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0" TextTrimming="CharacterEllipsis" />
                 </StackPanel>
-                <Button Style="{StaticResource SecondaryButtonStyle}" Command="{Binding OpenDownloadsCommand}" HorizontalAlignment="Right" AutomationProperties.Name="Open received files folder">
+                <Button Grid.Column="1" Style="{StaticResource SecondaryButtonStyle}" Command="{Binding OpenDownloadsCommand}" HorizontalAlignment="Right" AutomationProperties.Name="Open received files folder">
                     <StackPanel Orientation="Horizontal"><Path Data="M4,3 H15 L20,8 V21 H4 Z M15,3 V8 H20" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.5" Width="16" Height="16" Margin="0,0,8,0" /><TextBlock Text="Received files" /></StackPanel>
                 </Button>
             </Grid>
 
             <Grid Grid.Row="1" Margin="0,28,0,0">
                 <!-- Send -->
-                <ScrollViewer VerticalScrollBarVisibility="Auto" Visibility="{Binding IsSendSelected, Converter={StaticResource BoolToVis}}">
+                <ScrollViewer x:Name="SendPage" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Visibility="{Binding IsSendSelected, Converter={StaticResource BoolToVis}}">
                     <StackPanel>
                         <TextBlock Text="Send files" FontSize="20" FontWeight="SemiBold" />
                         <TextBlock Text="Choose files, then pick a nearby device or connect your phone with a one-time QR code." Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,20" TextWrapping="Wrap" />
 
-                        <Border Style="{StaticResource CardStyle}" BorderBrush="{DynamicResource PrimaryBrush}" BorderThickness="1" AllowDrop="True" Drop="DropZone_Drop" DragOver="DropZone_DragOver">
+                        <Border x:Name="SendDropZone" Style="{StaticResource CardStyle}" BorderBrush="{DynamicResource PrimaryBrush}" BorderThickness="1" AllowDrop="True" Drop="DropZone_Drop" DragOver="DropZone_DragOver">
                             <StackPanel HorizontalAlignment="Center" Margin="0,12">
                                 <Path Data="M5,7 H10 L12,9 H19 V20 H5 Z M12,5 V15 M8,11 L12,15 L16,11" Stroke="{DynamicResource PrimaryBrush}" StrokeThickness="1.8" Width="36" Height="30" HorizontalAlignment="Center" />
                                 <TextBlock Text="Drop files or folders here" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,10,0,4" />
@@ -108,7 +109,7 @@
                                     </StackPanel>
                                     <Button Style="{StaticResource SecondaryButtonStyle}" Content="Clear list" Command="{Binding ClearFilesCommand}" HorizontalAlignment="Right" />
                                 </Grid>
-                                <ListBox Grid.Row="1" ItemsSource="{Binding SelectedFiles}" BorderThickness="0" Background="Transparent" Margin="0,16,0,0" MaxHeight="220" ScrollViewer.CanContentScroll="True" VirtualizingPanel.IsVirtualizing="True">
+                                <ListBox Grid.Row="1" ItemsSource="{Binding SelectedFiles}" BorderThickness="0" Background="Transparent" Margin="0,16,0,0" MaxHeight="220" HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.CanContentScroll="True" VirtualizingPanel.IsVirtualizing="True">
                                     <ListBox.ItemTemplate>
                                         <DataTemplate>
                                             <Grid Margin="0,4">
@@ -145,16 +146,16 @@
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
                                     <Border Background="{DynamicResource SurfaceRaisedBrush}" CornerRadius="8" Padding="12" Margin="0,6,0,0">
-                                        <Grid>
+                                        <StackPanel>
                                             <StackPanel>
                                                 <TextBlock Text="{Binding PairingStatusText}" FontWeight="SemiBold" />
-                                                <TextBlock Text="Not seeing your device? Refresh discovery or use a one-time pairing code." Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" Margin="0,3,0,0" />
+                                                <TextBlock Text="Not seeing your device? Refresh discovery or use a one-time pairing code." Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" Margin="0,3,0,0" TextWrapping="Wrap" />
                                             </StackPanel>
-                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Margin="0,12,0,0">
                                                 <Button Style="{StaticResource SecondaryButtonStyle}" Content="Refresh" Command="{Binding RefreshPeersCommand}" Margin="0,0,8,0" />
                                                 <Button Style="{StaticResource SecondaryButtonStyle}" Content="Use pairing code" Command="{Binding ShowPairModalCommand}" />
                                             </StackPanel>
-                                        </Grid>
+                                        </StackPanel>
                                     </Border>
                                 </StackPanel>
                             </Grid>
@@ -164,19 +165,18 @@
                 </ScrollViewer>
 
                 <!-- Receive -->
-                <ScrollViewer VerticalScrollBarVisibility="Auto" Visibility="{Binding IsReceiveSelected, Converter={StaticResource BoolToVis}}">
+                <ScrollViewer x:Name="ReceivePage" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Visibility="{Binding IsReceiveSelected, Converter={StaticResource BoolToVis}}">
                     <StackPanel>
                         <TextBlock Text="Receive files" FontSize="20" FontWeight="SemiBold" />
                         <TextBlock Text="Make this PC available to nearby Glide devices. You approve each incoming transfer." Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,20" />
                         <Border Style="{StaticResource CardStyle}">
-                            <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <StackPanel>
                                 <StackPanel>
                                     <TextBlock Text="{Binding ReceiveStatusTitle}" FontSize="18" FontWeight="SemiBold" />
                                     <TextBlock Text="Nearby devices can scan your one-time QR code. You will still review every offer." Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,0" TextWrapping="Wrap" />
                                 </StackPanel>
-                                <Button Grid.Column="1" Style="{StaticResource PrimaryButtonStyle}" Content="{Binding ReceiveActionText}" Command="{Binding ToggleListenerCommand}" VerticalAlignment="Center" />
-                            </Grid>
+                                <Button x:Name="ReceiveControlButton" Style="{StaticResource PrimaryButtonStyle}" Content="{Binding ReceiveActionText}" Command="{Binding ToggleListenerCommand}" HorizontalAlignment="Left" Margin="0,14,0,0" />
+                            </StackPanel>
                         </Border>
                         <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0">
                             <StackPanel>
@@ -208,14 +208,17 @@
                 </ScrollViewer>
 
                 <!-- Activity -->
-                <ScrollViewer VerticalScrollBarVisibility="Auto" Visibility="{Binding IsActivitySelected, Converter={StaticResource BoolToVis}}">
+                <ScrollViewer x:Name="ActivityPage" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Visibility="{Binding IsActivitySelected, Converter={StaticResource BoolToVis}}">
                     <StackPanel>
                         <TextBlock Text="Transfer activity" FontSize="20" FontWeight="SemiBold" />
                         <TextBlock Text="Current transfers and verified file history." Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,20" />
                         <Border Style="{StaticResource CardStyle}">
                             <StackPanel>
                                 <TextBlock Text="Current transfer" FontWeight="SemiBold" />
-                                <Grid Margin="0,12,0,0">
+                                <TextBlock Text="No transfer in progress." Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,8,0,0">
+                                    <TextBlock.Style><Style TargetType="TextBlock"><Style.Triggers><DataTrigger Binding="{Binding IsTransferActive}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger></Style.Triggers></Style></TextBlock.Style>
+                                </TextBlock>
+                                <Grid Margin="0,12,0,0" Visibility="{Binding IsTransferActive, Converter={StaticResource BoolToVis}}">
                                     <StackPanel>
                                         <TextBlock Text="{Binding TransferTitle}" FontWeight="SemiBold" />
                                         <TextBlock Text="{Binding CurrentFileName}" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" Margin="0,3,0,0" />
@@ -226,26 +229,26 @@
                                         <Button Style="{StaticResource SecondaryButtonStyle}" Content="Cancel" Command="{Binding CancelTransferCommand}" IsEnabled="{Binding IsTransferActive}" />
                                     </StackPanel>
                                 </Grid>
-                                <ProgressBar Style="{StaticResource ModernProgressBarStyle}" Value="{Binding TotalProgress}" Margin="0,14,0,0" />
+                                <ProgressBar Style="{StaticResource ModernProgressBarStyle}" Value="{Binding TotalProgress}" Margin="0,14,0,0" Visibility="{Binding IsTransferActive, Converter={StaticResource BoolToVis}}" />
                             </StackPanel>
                         </Border>
                         <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0">
                             <Grid>
                                 <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-                                <Grid>
-                                    <StackPanel><TextBlock Text="Verified history" FontWeight="SemiBold" /><TextBlock Text="Only completed, verified items are kept here." FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,3,0,0" /></StackPanel>
-                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                                        <TextBox Style="{StaticResource ModernTextBoxStyle}" Width="190" Text="{Binding ActivitySearchText, UpdateSourceTrigger=PropertyChanged}" ToolTip="Search activity" AutomationProperties.Name="Search transfer activity" />
-                                        <ComboBox Width="100" Margin="8,0,0,0" ItemsSource="{Binding ActivityFilterOptions}" SelectedItem="{Binding ActivityFilter}" />
+                                <StackPanel>
+                                    <StackPanel><TextBlock Text="Verified history" FontWeight="SemiBold" /><TextBlock Text="Only completed, verified items are kept here." FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,3,0,0" TextWrapping="Wrap" /></StackPanel>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Margin="0,12,0,0">
+                                        <StackPanel><TextBlock Text="Search history" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" Margin="0,0,0,4" /><TextBox Style="{StaticResource ModernTextBoxStyle}" Width="190" Text="{Binding ActivitySearchText, UpdateSourceTrigger=PropertyChanged}" ToolTip="Search history" AutomationProperties.Name="Search transfer activity" /></StackPanel>
+                                        <StackPanel Margin="8,0,0,0"><TextBlock Text="Show" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" Margin="0,0,0,4" /><ComboBox Width="100" ItemsSource="{Binding ActivityFilterOptions}" SelectedItem="{Binding ActivityFilter}" AutomationProperties.Name="Filter transfer direction" /></StackPanel>
                                     </StackPanel>
-                                </Grid>
-                                <ListBox Grid.Row="1" ItemsSource="{Binding ActivityItems}" BorderThickness="0" Background="Transparent" Margin="0,16,0,0" MaxHeight="320" ScrollViewer.CanContentScroll="True" VirtualizingPanel.IsVirtualizing="True">
+                                </StackPanel>
+                                <ListBox x:Name="ActivityHistoryList" Grid.Row="1" ItemsSource="{Binding ActivityItems}" BorderThickness="0" Background="Transparent" Margin="0,16,0,0" MaxHeight="320" HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.CanContentScroll="True" VirtualizingPanel.IsVirtualizing="True">
                                     <ListBox.ItemTemplate>
                                         <DataTemplate>
                                             <Grid Margin="0,7">
                                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                                <StackPanel><TextBlock Text="{Binding ItemName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" /><TextBlock Text="{Binding Direction}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" /></StackPanel>
-                                                <StackPanel Grid.Column="1" Margin="18,0"><TextBlock Text="{Binding FormattedSize}" HorizontalAlignment="Right" /><TextBlock Text="{Binding FormattedTime}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" /></StackPanel>
+                                                <StackPanel><TextBlock Text="{Binding ItemName}" Foreground="{DynamicResource TextPrimaryBrush}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" /><TextBlock Text="{Binding Direction}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" /></StackPanel>
+                                                <StackPanel Grid.Column="1" Margin="18,0"><TextBlock Text="{Binding FormattedSize}" Foreground="{DynamicResource TextPrimaryBrush}" HorizontalAlignment="Right" /><TextBlock Text="{Binding FormattedTime}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" /></StackPanel>
                                                 <Button Grid.Column="2" Style="{StaticResource SecondaryButtonStyle}" Content="Open folder" Command="{Binding DataContext.OpenHistoryItemCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" VerticalAlignment="Center" />
                                             </Grid>
                                         </DataTemplate>
@@ -257,12 +260,12 @@
                 </ScrollViewer>
 
                 <!-- Settings -->
-                <ScrollViewer VerticalScrollBarVisibility="Auto" Visibility="{Binding IsSettingsSelected, Converter={StaticResource BoolToVis}}">
+                <ScrollViewer x:Name="SettingsPage" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Visibility="{Binding IsSettingsSelected, Converter={StaticResource BoolToVis}}">
                     <StackPanel>
                         <TextBlock Text="Settings" FontSize="20" FontWeight="SemiBold" />
                         <TextBlock Text="Control how Glide appears and receives files." Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,20" />
                         <Border Style="{StaticResource CardStyle}">
-                            <StackPanel><TextBlock Text="Appearance" FontWeight="SemiBold" /><TextBlock Text="Match Windows by default, or choose a theme for Glide." Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="0,4,0,12" /><ComboBox ItemsSource="{Binding AppearanceOptions}" SelectedItem="{Binding AppearanceMode}" Width="180" /></StackPanel>
+                            <StackPanel><TextBlock Text="Appearance" FontWeight="SemiBold" /><TextBlock Text="Match Windows by default, or choose a theme for Glide." Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="0,4,0,12" /><ComboBox ItemsSource="{Binding AppearanceOptions}" SelectedItem="{Binding AppearanceMode}" Width="180" HorizontalAlignment="Left" AutomationProperties.Name="Appearance theme" /></StackPanel>
                         </Border>
                         <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0">
                             <StackPanel><TextBlock Text="Receiving" FontWeight="SemiBold" /><TextBlock Text="Folder and connection details are kept here so sending stays simple." Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="0,4,0,12" />

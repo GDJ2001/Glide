@@ -17,9 +17,28 @@ public partial class MainWindow : Window
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
+        FitInitialWindowToWorkArea();
         _windowSource = HwndSource.FromHwnd(new WindowInteropHelper(this).Handle);
         _windowSource?.AddHook(WindowMessage);
         WindowsTitleBar.Apply(this);
+    }
+
+    private void FitInitialWindowToWorkArea()
+    {
+        // SystemParameters.WorkArea is in device pixels; Window dimensions use DIPs.
+        var toDip = PresentationSource.FromVisual(this)?.CompositionTarget?.TransformFromDevice;
+        if (toDip is null)
+            return;
+
+        Rect workArea = SystemParameters.WorkArea;
+        Point topLeft = toDip.Value.Transform(workArea.TopLeft);
+        Point bottomRight = toDip.Value.Transform(workArea.BottomRight);
+        double availableWidth = bottomRight.X - topLeft.X;
+        double availableHeight = bottomRight.Y - topLeft.Y;
+        Width = Math.Min(Width, Math.Max(MinWidth, availableWidth - 24));
+        Height = Math.Min(Height, Math.Max(MinHeight, availableHeight - 24));
+        Left = topLeft.X + Math.Max(0, (availableWidth - Width) / 2);
+        Top = topLeft.Y + Math.Max(0, (availableHeight - Height) / 2);
     }
 
     protected override void OnPropertyChanged(DependencyPropertyChangedEventArgs e)

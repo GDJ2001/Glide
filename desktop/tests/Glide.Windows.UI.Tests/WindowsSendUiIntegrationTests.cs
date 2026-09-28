@@ -51,6 +51,33 @@ public sealed class WindowsSendUiIntegrationTests
                     Assert.True(navigationButton.ActualWidth > 0);
                     Assert.True(navigationButton.ActualHeight > 0);
                 }
+                window.Width = 820;
+                window.Height = 560;
+                foreach (string tab in new[] { "Send", "Receive", "Activity", "Settings" })
+                {
+                    viewModel.CurrentTab = tab;
+                    window.UpdateLayout();
+                    var page = Assert.IsType<ScrollViewer>(window.FindName($"{tab}Page"));
+                    Assert.Equal(Visibility.Visible, page.Visibility);
+                    Assert.True(page.ViewportWidth > 0);
+                    Assert.Equal(0, page.ScrollableWidth);
+                }
+                viewModel.CurrentTab = "Send";
+                window.UpdateLayout();
+                var dropZone = Assert.IsType<Border>(window.FindName("SendDropZone"));
+                var sendPage = Assert.IsType<ScrollViewer>(window.FindName("SendPage"));
+                Assert.True(dropZone.ActualWidth <= sendPage.ViewportWidth + 1);
+                viewModel.CurrentTab = "Receive";
+                window.UpdateLayout();
+                var receiveButton = Assert.IsType<Button>(window.FindName("ReceiveControlButton"));
+                var receivePage = Assert.IsType<ScrollViewer>(window.FindName("ReceivePage"));
+                Assert.True(receiveButton.ActualWidth <= receivePage.ViewportWidth);
+                viewModel.CurrentTab = "Activity";
+                window.UpdateLayout();
+                var historyList = Assert.IsType<ListBox>(window.FindName("ActivityHistoryList"));
+                var activityPage = Assert.IsType<ScrollViewer>(window.FindName("ActivityPage"));
+                Assert.True(historyList.ActualWidth <= activityPage.ViewportWidth + 1);
+                viewModel.CurrentTab = "Send";
                 viewModel.AddDroppedFiles([testFile]);
                 window.Dispatcher.Invoke(
                     () => { },
