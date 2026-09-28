@@ -5,728 +5,321 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:Glide.Windows.UI.ViewModels"
         mc:Ignorable="d"
-        Title="Glide" Height="680" Width="920"
-        MinWidth="820" MinHeight="560"
-        WindowStartupLocation="CenterScreen"
-        Background="{DynamicResource BackgroundBrush}"
-        Foreground="{DynamicResource TextPrimaryBrush}"
-        Icon="pack://application:,,,/Glide;component/glide.ico">
-
+        Title="Glide" Height="720" Width="1040" MinWidth="820" MinHeight="560"
+        WindowStartupLocation="CenterScreen" Icon="pack://application:,,,/Glide;component/glide.ico"
+        Background="{DynamicResource AppBackgroundBrush}" Foreground="{DynamicResource TextPrimaryBrush}">
     <Window.DataContext>
         <vm:MainViewModel />
     </Window.DataContext>
 
-    <Window.Resources>
-        <BooleanToVisibilityConverter x:Key="BoolToVis" />
-    </Window.Resources>
+    <Grid KeyboardNavigation.TabNavigation="Cycle">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="212" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
 
-    <Grid>
-        <!-- Main Layout -->
-        <Grid Margin="24">
+        <Border Grid.Column="0" Background="{DynamicResource SidebarBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,1,0" Padding="16,20">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="8,0,0,28">
+                        <Border Width="28" Height="28" Background="{DynamicResource PrimaryBrush}" CornerRadius="8" Margin="0,0,10,0">
+                            <Path Data="M6,14 L12,8 L16,12 L22,6 L22,11 L16,17 L12,13 L6,19 Z" Fill="White" Stretch="Uniform" Margin="5" />
+                        </Border>
+                        <StackPanel>
+                            <Image Source="/Glide;component/Assets/glide-wordmark-indigo-512.png" Width="62" Height="21" Stretch="Uniform" HorizontalAlignment="Left" />
+                            <TextBlock Text="Local sharing" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <RadioButton Style="{StaticResource NavButtonStyle}" GroupName="Navigation" IsChecked="{Binding IsSendSelected, Mode=OneWay}" Command="{Binding SwitchTabCommand}" CommandParameter="Send" AutomationProperties.Name="Send files">
+                        <StackPanel Orientation="Horizontal"><Path Data="M3,3 L21,12 L3,21 L6,13 L3,3 M6,13 L15,12" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" StrokeThickness="1.8" Width="18" Height="18" Margin="0,0,12,0" /><TextBlock Text="Send" VerticalAlignment="Center" /></StackPanel>
+                    </RadioButton>
+                    <RadioButton Style="{StaticResource NavButtonStyle}" GroupName="Navigation" IsChecked="{Binding IsReceiveSelected, Mode=OneWay}" Command="{Binding SwitchTabCommand}" CommandParameter="Receive" AutomationProperties.Name="Receive files">
+                        <StackPanel Orientation="Horizontal"><Path Data="M12,3 V17 M7,12 L12,17 L17,12 M4,21 H20" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" StrokeThickness="1.8" Width="18" Height="18" Margin="0,0,12,0" /><TextBlock Text="Receive" VerticalAlignment="Center" /></StackPanel>
+                    </RadioButton>
+                    <RadioButton Style="{StaticResource NavButtonStyle}" GroupName="Navigation" IsChecked="{Binding IsActivitySelected, Mode=OneWay}" Command="{Binding SwitchTabCommand}" CommandParameter="Activity" AutomationProperties.Name="Transfer activity">
+                        <StackPanel Orientation="Horizontal"><Path Data="M4,20 V12 M10,20 V4 M16,20 V9 M22,20 V2" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" StrokeThickness="1.8" Width="18" Height="18" Margin="0,0,12,0" /><TextBlock Text="Activity" VerticalAlignment="Center" /></StackPanel>
+                    </RadioButton>
+                </StackPanel>
+
+                <StackPanel Grid.Row="2">
+                    <Border Background="{DynamicResource SurfaceRaisedBrush}" CornerRadius="8" Padding="12" Margin="0,0,0,12">
+                        <StackPanel>
+                            <TextBlock Text="Sharing is local" FontWeight="SemiBold" FontSize="12" />
+                            <TextBlock Text="Files stay on your network. You approve every new connection." TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0" />
+                        </StackPanel>
+                    </Border>
+                    <RadioButton Style="{StaticResource NavButtonStyle}" GroupName="Navigation" IsChecked="{Binding IsSettingsSelected, Mode=OneWay}" Command="{Binding SwitchTabCommand}" CommandParameter="Settings" AutomationProperties.Name="Settings">
+                        <StackPanel Orientation="Horizontal"><Path Data="M12,8 A4,4 0 1 0 12,16 A4,4 0 1 0 12,8 M12,2 V5 M12,19 V22 M2,12 H5 M19,12 H22 M4.9,4.9 L7,7 M17,17 L19.1,19.1 M19.1,4.9 L17,7 M7,17 L4.9,19.1" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" StrokeThickness="1.7" Width="18" Height="18" Margin="0,0,12,0" /><TextBlock Text="Settings" VerticalAlignment="Center" /></StackPanel>
+                    </RadioButton>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Column="1" Margin="32,28,32,24">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <!-- 1. Header & Navigation -->
-            <Border Grid.Row="0" Margin="0,0,0,20" Background="{StaticResource SurfaceBrush}"
-                    BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="12" Padding="16,12">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-
-                    <!-- App Title -->
-                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="Glide" FontSize="20" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" VerticalAlignment="Center" />
-                    </StackPanel>
-
-                    <!-- Navigation Tabs -->
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
-                        <Button Style="{StaticResource SecondaryButtonStyle}" Margin="4,0" Content="Send"
-                                Command="{Binding SwitchTabCommand}" CommandParameter="Send" Width="90" />
-                        <Button Style="{StaticResource SecondaryButtonStyle}" Margin="4,0" Content="Receive"
-                                Command="{Binding SwitchTabCommand}" CommandParameter="Receive" Width="90" />
-                        <Button Style="{StaticResource SecondaryButtonStyle}" Margin="4,0" Content="History"
-                                Command="{Binding SwitchTabCommand}" CommandParameter="History" Width="90" />
-                    </StackPanel>
-
-                    <!-- Quick Action: Downloads Folder -->
-                    <Button Grid.Column="2" Style="{StaticResource SecondaryButtonStyle}" Content="📂 Received Files"
-                            Command="{Binding OpenDownloadsCommand}" ToolTip="Open received files folder" />
-                </Grid>
-            </Border>
-
-            <!-- 2. Main Content Tabs -->
-            <Grid Grid.Row="1">
-                <!-- SEND VIEW -->
-                <Grid x:Name="SendView">
-                    <Grid.Style>
-                        <Style TargetType="Grid">
-                            <Setter Property="Visibility" Value="Collapsed" />
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding CurrentTab}" Value="Send">
-                                    <Setter Property="Visibility" Value="Visible" />
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </Grid.Style>
-
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-
-                    <!-- Drag and Drop Target -->
-                    <Border Grid.Row="0" Height="116" Margin="0,0,0,16" Background="{StaticResource SurfaceBrush}"
-                            BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="2" CornerRadius="12"
-                            AllowDrop="True" Drop="DropZone_Drop" DragOver="DropZone_DragOver" Cursor="Hand"
-                            MouseLeftButtonUp="DropZone_Click">
-                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-                            <TextBlock Text="📁" FontSize="28" HorizontalAlignment="Center" Margin="0,0,0,6" />
-                            <TextBlock Text="Drag and drop files here, or click to browse" FontSize="15" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextPrimaryBrush}" HorizontalAlignment="Center" />
-                        </StackPanel>
-                    </Border>
-
-                    <!-- Selected Files List -->
-                    <Border Grid.Row="1" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource CardBorderBrush}"
-                            BorderThickness="1" CornerRadius="12" Padding="16">
-                        <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="*" />
-                            </Grid.RowDefinitions>
-
-                            <DockPanel Grid.Row="0" Margin="0,0,0,10">
-                                <TextBlock Text="Queued Files" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center" />
-                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                                    <Button Style="{StaticResource SecondaryButtonStyle}" Content="Clear List" Margin="4,0"
-                                            Command="{Binding ClearFilesCommand}" Padding="8,4" />
-                                    <Button Style="{StaticResource SecondaryButtonStyle}" Content="+ Add Files" Margin="4,0"
-                                            Command="{Binding AddFilesCommand}" Padding="8,4" />
-                                </StackPanel>
-                            </DockPanel>
-
-                            <ListBox Grid.Row="1" ItemsSource="{Binding SelectedFiles}" Background="Transparent"
-                                     BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                                <ListBox.ItemTemplate>
-                                    <DataTemplate>
-                                        <Border Background="{StaticResource SurfaceHighBrush}" CornerRadius="8"
-                                                Padding="12,8" Margin="0,4">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0" Text="{Binding Name}" FontWeight="Medium"
-                                                           Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                                                <TextBlock Grid.Column="1" Text="{Binding FormattedSize}" Margin="16,0"
-                                                           Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
-                                                <Border Grid.Column="2" Background="{StaticResource PrimaryContainerBrush}"
-                                                        CornerRadius="4" Padding="6,2" Margin="0,0,12,0" VerticalAlignment="Center">
-                                                    <TextBlock Text="{Binding Status}" FontSize="11" Foreground="{StaticResource TextPrimaryBrush}" />
-                                                </Border>
-                                                <Button Grid.Column="3" Style="{StaticResource SecondaryButtonStyle}" Content="✕"
-                                                        Command="{Binding DataContext.RemoveFileCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
-                                                        CommandParameter="{Binding}" Padding="6,2" FontSize="11" />
-                                            </Grid>
-                                        </Border>
-                                    </DataTemplate>
-                                </ListBox.ItemTemplate>
-                            </ListBox>
-                        </Grid>
-                    </Border>
-
-                    <!-- Discovered Peers & Target Bar -->
-                    <Border Grid.Row="2" Margin="0,16,0,0" Background="{StaticResource SurfaceBrush}"
-                            BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="12" Padding="16,12">
-                        <StackPanel>
-                            <!-- Nearby pairing is the normal flow; manual addresses remain a fallback. -->
-                            <DockPanel Margin="0,0,0,10">
-                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                    <TextBlock Text="Nearby devices" FontSize="13" FontWeight="SemiBold"
-                                               Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center" />
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                                    <Button Style="{StaticResource SecondaryButtonStyle}" Content="🔄 Scan" Margin="4,0"
-                                            Command="{Binding RefreshPeersCommand}" Padding="8,3" FontSize="11" />
-                                    <Button Style="{StaticResource SecondaryButtonStyle}" Content="Use pairing code" Margin="4,0"
-                                            Command="{Binding ShowPairModalCommand}" Padding="8,3" FontSize="11" />
-                                </StackPanel>
-                            </DockPanel>
-
-                            <!-- Discovered peers horizontal list -->
-                            <ItemsControl ItemsSource="{Binding DiscoveredPeers}" Margin="0,0,0,8">
-                                <ItemsControl.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                        <WrapPanel Orientation="Horizontal" />
-                                    </ItemsPanelTemplate>
-                                </ItemsControl.ItemsPanel>
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Button Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8" Padding="10,6"
-                                                Command="{Binding DataContext.SelectPeerCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                CommandParameter="{Binding}">
-                                            <StackPanel Orientation="Horizontal">
-                                                <TextBlock Text="{Binding DeviceIcon}" FontSize="14" Margin="0,0,6,0" VerticalAlignment="Center" />
-                                                <StackPanel VerticalAlignment="Center">
-                                                    <TextBlock Text="{Binding DeviceName}" FontWeight="SemiBold" FontSize="12" Foreground="{StaticResource TextPrimaryBrush}" />
-                                                    <TextBlock Text="{Binding EndpointText}" FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" />
-                                                </StackPanel>
-                                            </StackPanel>
-                                        </Button>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-
-                            <Border Background="{StaticResource SurfaceHighBrush}" CornerRadius="8" Padding="10" Margin="0,0,0,8">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <StackPanel>
-                                        <TextBlock Text="{Binding PairingStatusText}" FontWeight="SemiBold"
-                                                   Foreground="{StaticResource TextPrimaryBrush}" />
-                                        <TextBlock Text="Nearby discovery finds the device. Its short-lived QR or copied code securely confirms it."
-                                                   FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
-                                    </StackPanel>
-                                    <Button Grid.Column="1" Style="{StaticResource SecondaryButtonStyle}" Content="Paste code"
-                                            Command="{Binding PastePairingLinkCommand}" Padding="10,5" Margin="10,0,0,0" />
-                                </Grid>
-                            </Border>
-
-                            <!-- Primary send action belongs to the normal workflow and must always be visible. -->
-                            <Grid Margin="0,2,0,8">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="{Binding SelectedFilesSummary}"
-                                           Foreground="{StaticResource TextSecondaryBrush}" FontSize="12"
-                                           VerticalAlignment="Center" />
-                                <Button Grid.Column="1" Style="{StaticResource PrimaryButtonStyle}"
-                                        Content="{Binding SendActionText}" Command="{Binding SendFilesCommand}"
-                                        MinWidth="190" Padding="18,10"
-                                        AutomationProperties.Name="Send selected files to phone" />
-                            </Grid>
-
-                            <!-- Advanced fallback; it is intentionally not the primary pairing path. -->
-                            <Expander Header="Advanced: enter an address manually" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0">
-                            <Grid Margin="0,8,0,0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="90" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-
-                                <TextBlock Grid.Column="0" Text="Target IP:" VerticalAlignment="Center" Margin="0,0,10,0"
-                                           FontWeight="Medium" Foreground="{StaticResource TextSecondaryBrush}" />
-                                <TextBox Grid.Column="1" Style="{StaticResource ModernTextBoxStyle}" Text="{Binding PeerHost, UpdateSourceTrigger=PropertyChanged}"
-                                         Margin="0,0,10,0" VerticalAlignment="Center" />
-
-                                <TextBlock Grid.Column="2" Text="Port:" VerticalAlignment="Center" Margin="0,0,8,0"
-                                           FontWeight="Medium" Foreground="{StaticResource TextSecondaryBrush}" />
-                                <TextBox Grid.Column="3" Style="{StaticResource ModernTextBoxStyle}" Text="{Binding PeerPort, UpdateSourceTrigger=PropertyChanged}"
-                                         Margin="0,0,14,0" VerticalAlignment="Center" />
-
-                                <!-- Browser sharing is intentionally deferred from the Windows native release. -->
-                                <Button Grid.Column="4" Style="{StaticResource SecondaryButtonStyle}" Content="🌐 Web Share"
-                                        Command="{Binding StartWebShareCommand}" Margin="0,0,10,0" Padding="14,8"
-                                        Visibility="Collapsed"
-                                        ToolTip="Share selected files with any web browser on local Wi-Fi" />
-
-                            </Grid>
-                            </Expander>
-                        </StackPanel>
-                    </Border>
-                </Grid>
-
-                <!-- RECEIVE VIEW -->
-                <Grid x:Name="ReceiveView">
-                    <Grid.Style>
-                        <Style TargetType="Grid">
-                            <Setter Property="Visibility" Value="Collapsed" />
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding CurrentTab}" Value="Receive">
-                                    <Setter Property="Visibility" Value="Visible" />
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </Grid.Style>
-
-                    <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource CardBorderBrush}"
-                            BorderThickness="1" CornerRadius="12" Padding="20">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-
-                            <!-- Left Column: Status, Settings, Fingerprint, Start/Stop -->
-                            <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto" Margin="0,0,12,0">
-                                <StackPanel VerticalAlignment="Center">
-                                    <TextBlock Text="Receive Files" FontSize="20" FontWeight="Bold"
-                                               Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,14" />
-
-                                    <Border Background="{StaticResource SurfaceHighBrush}" CornerRadius="8" Padding="14,12" Margin="0,0,0,12">
-                                        <StackPanel>
-                                            <Grid Margin="0,0,0,6">
-                                                <TextBlock Text="Status:" Foreground="{StaticResource TextSecondaryBrush}" />
-                                                <TextBlock Text="{Binding StatusMessage}" HorizontalAlignment="Right" FontWeight="SemiBold"
-                                                           Foreground="{StaticResource SuccessBrush}" TextTrimming="CharacterEllipsis" MaxWidth="280" />
-                                            </Grid>
-                                            <Grid Margin="0,0,0,6">
-                                                <TextBlock Text="Listening Port:" Foreground="{StaticResource TextSecondaryBrush}" />
-                                                <TextBlock Text="{Binding ListeningPort}" HorizontalAlignment="Right" FontWeight="SemiBold" />
-                                            </Grid>
-                                            <Grid>
-                                                <TextBlock Text="Local IP(s):" Foreground="{StaticResource TextSecondaryBrush}" />
-                                                <TextBlock Text="{Binding LocalIpText}" HorizontalAlignment="Right" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" MaxWidth="280" />
-                                            </Grid>
-                                        </StackPanel>
-                                    </Border>
-
-                                    <Border Background="{StaticResource SurfaceHighBrush}" CornerRadius="8" Padding="14,12" Margin="0,0,0,14">
-                                        <StackPanel>
-                                            <TextBlock Text="Receive Settings" FontSize="12" FontWeight="SemiBold"
-                                                       Foreground="{StaticResource AccentBrush}" Margin="0,0,0,8" />
-                                            <Grid Margin="0,0,0,8">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="Auto" />
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0" Text="Folder:" Margin="0,0,8,0" VerticalAlignment="Center"
-                                                           Foreground="{StaticResource TextSecondaryBrush}" />
-                                                <TextBox Grid.Column="1" Style="{StaticResource ModernTextBoxStyle}"
-                                                         Text="{Binding ReceiveDirectory, Mode=OneWay}" IsReadOnly="True"
-                                                         Margin="0,0,8,0" FontSize="11" />
-                                                <Button Grid.Column="2" Style="{StaticResource SecondaryButtonStyle}" Content="Browse…"
-                                                        Command="{Binding BrowseReceiveFolderCommand}" Padding="10,4" />
-                                            </Grid>
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                    <ColumnDefinition Width="90" />
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0" Text="Listener Port"
-                                                           Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
-                                                <TextBlock Grid.Column="1" Text="Port:" Margin="8,0" VerticalAlignment="Center"
-                                                           Foreground="{StaticResource TextSecondaryBrush}" />
-                                                <TextBox Grid.Column="2" Style="{StaticResource ModernTextBoxStyle}"
-                                                         Text="{Binding ListenerPortPreference, UpdateSourceTrigger=PropertyChanged}"
-                                                         HorizontalContentAlignment="Right" />
-                                            </Grid>
-
-                                            <Border Height="1" Background="{StaticResource CardBorderBrush}" Margin="0,10,0,8" />
-
-                                            <TextBlock Text="Device Fingerprint" FontSize="11" FontWeight="SemiBold"
-                                                       Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,4" />
-                                            <TextBox Style="{StaticResource ModernTextBoxStyle}"
-                                                     Text="{Binding LocalIdentityFingerprint, Mode=OneWay}" IsReadOnly="True"
-                                                     FontFamily="Consolas" FontSize="10" TextWrapping="Wrap"
-                                                     HorizontalContentAlignment="Center" Margin="0,0,0,4" />
-                                            <TextBlock HorizontalAlignment="Center" FontSize="10"
-                                                       Foreground="{StaticResource TextSecondaryBrush}">
-                                                <Run Text="Trusted devices: " />
-                                                <Run Text="{Binding TrustedDeviceCount}" FontWeight="SemiBold" />
-                                            </TextBlock>
-                                        </StackPanel>
-                                    </Border>
-
-                                    <Button MinWidth="220" HorizontalAlignment="Left"
-                                            Command="{Binding ToggleListenerCommand}">
-                                        <Button.Style>
-                                            <Style TargetType="Button" BasedOn="{StaticResource PrimaryButtonStyle}">
-                                                <Setter Property="Content" Value="▶ Start Listening" />
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsListening}" Value="True">
-                                                        <Setter Property="Content" Value="⏹ Stop Listening" />
-                                                        <Setter Property="Background" Value="{StaticResource ErrorBrush}" />
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </Button.Style>
-                                    </Button>
-                                </StackPanel>
-                            </ScrollViewer>
-
-                            <!-- Right Column: Large High-Contrast Pairing QR Code Card -->
-                            <Border Grid.Column="1" Width="370" Background="{StaticResource SurfaceHighBrush}"
-                                    CornerRadius="12" Padding="18,14" Margin="8,0,0,0"
-                                    Visibility="{Binding IsListening, Converter={StaticResource BoolToVis}}"
-                                    VerticalAlignment="Center">
-                                <StackPanel HorizontalAlignment="Center">
-                                    <TextBlock Text="🔗 Scan QR Code on Mobile" FontSize="14" FontWeight="Bold"
-                                               Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Center" Margin="0,0,0,10" />
-
-                                    <!-- Large 280x280 Pairing QR Code Image (Click to Enlarge) -->
-                                    <Button Command="{Binding ToggleQrZoomCommand}" Cursor="Hand"
-                                            ToolTip="Click to view extra-large Fullscreen QR code"
-                                            Background="Transparent" BorderThickness="0" Padding="0" Margin="0,0,0,10">
-                                        <Button.Template>
-                                            <ControlTemplate TargetType="Button">
-                                                <Border Background="#FFFFFF" CornerRadius="12" Padding="14" HorizontalAlignment="Center"
-                                                        BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="2">
-                                                    <Image Source="{Binding PairingQrImage}" Width="280" Height="280"
-                                                           RenderOptions.BitmapScalingMode="NearestNeighbor"
-                                                           SnapsToDevicePixels="True" UseLayoutRounding="True" Stretch="Uniform" />
-                                                </Border>
-                                            </ControlTemplate>
-                                        </Button.Template>
-                                    </Button>
-
-                                    <TextBox Style="{StaticResource ModernTextBoxStyle}" Text="{Binding ActiveInvitationUri, Mode=OneWay}"
-                                             IsReadOnly="True" FontSize="10" Padding="8,4" Margin="0,0,0,10" Width="330" />
-
-                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                        <Button Style="{StaticResource SecondaryButtonStyle}" Content="🔍 Enlarge QR"
-                                                Command="{Binding ToggleQrZoomCommand}" Margin="0,0,8,0" Padding="10,5" FontSize="12" />
-                                        <Button Style="{StaticResource SecondaryButtonStyle}" Content="🔄 Refresh QR"
-                                                Command="{Binding RefreshQrCommand}" Margin="0,0,8,0" Padding="10,5" FontSize="12" />
-                                        <Button Style="{StaticResource SecondaryButtonStyle}" Content="📋 Copy Link"
-                                                Command="{Binding CopyPairingLinkCommand}" Padding="10,5" FontSize="12" />
-                                    </StackPanel>
-                                </StackPanel>
-                            </Border>
-                        </Grid>
-                    </Border>
-                </Grid>
-
-                <!-- HISTORY VIEW -->
-                <Grid x:Name="HistoryView">
-                    <Grid.Style>
-                        <Style TargetType="Grid">
-                            <Setter Property="Visibility" Value="Collapsed" />
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding CurrentTab}" Value="History">
-                                    <Setter Property="Visibility" Value="Visible" />
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </Grid.Style>
-
-                    <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource CardBorderBrush}"
-                            BorderThickness="1" CornerRadius="12" Padding="16">
-                        <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="*" />
-                            </Grid.RowDefinitions>
-
-                            <TextBlock Grid.Row="0" Text="Transfer History" FontSize="16" FontWeight="Bold"
-                                       Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,12" />
-
-                            <ListBox Grid.Row="1" ItemsSource="{Binding HistoryItems}" Background="Transparent"
-                                     BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                                <ListBox.ItemTemplate>
-                                    <DataTemplate>
-                                        <Border Background="{StaticResource SurfaceHighBrush}" CornerRadius="8" Padding="14,10" Margin="0,4">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="Auto" />
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                </Grid.ColumnDefinitions>
-
-                                                <TextBlock Grid.Column="0" Text="{Binding Direction}" FontWeight="Bold"
-                                                           Foreground="{StaticResource AccentBrush}" Margin="0,0,12,0" VerticalAlignment="Center" />
-                                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                                    <TextBlock Text="{Binding ItemName}" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" />
-                                                    <TextBlock Text="{Binding PeerName}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
-                                                </StackPanel>
-                                                <TextBlock Grid.Column="2" Text="{Binding FormattedSize}" Margin="16,0"
-                                                           Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
-                                                <TextBlock Grid.Column="3" Text="{Binding FormattedTime}" Margin="16,0"
-                                                           Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
-                                                <Border Grid.Column="4" Background="{StaticResource SuccessBrush}" Opacity="0.9"
-                                                        CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
-                                                    <TextBlock Text="Verified" FontSize="11" FontWeight="Bold" Foreground="#0D1121" />
-                                                </Border>
-                                            </Grid>
-                                        </Border>
-                                    </DataTemplate>
-                                </ListBox.ItemTemplate>
-                            </ListBox>
-                        </Grid>
-                    </Border>
-                </Grid>
+            <Grid>
+                <StackPanel>
+                    <TextBlock Text="{Binding CurrentTab}" FontSize="26" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+                <Button Style="{StaticResource SecondaryButtonStyle}" Command="{Binding OpenDownloadsCommand}" HorizontalAlignment="Right" AutomationProperties.Name="Open received files folder">
+                    <StackPanel Orientation="Horizontal"><Path Data="M4,3 H15 L20,8 V21 H4 Z M15,3 V8 H20" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.5" Width="16" Height="16" Margin="0,0,8,0" /><TextBlock Text="Received files" /></StackPanel>
+                </Button>
             </Grid>
 
-            <!-- 3. Active Transfer Monitoring Bottom Bar -->
-            <Border Grid.Row="2" Margin="0,16,0,0" Background="{StaticResource SurfaceBrush}"
-                    BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="12" Padding="16,12"
-                    Visibility="{Binding IsTransferActive, Converter={StaticResource BoolToVis}}">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
+            <Grid Grid.Row="1" Margin="0,28,0,0">
+                <!-- Send -->
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Visibility="{Binding IsSendSelected, Converter={StaticResource BoolToVis}}">
+                    <StackPanel>
+                        <TextBlock Text="Send files" FontSize="20" FontWeight="SemiBold" />
+                        <TextBlock Text="Choose files, then pick a nearby device or connect your phone with a one-time QR code." Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,20" TextWrapping="Wrap" />
 
-                    <Grid Grid.Row="0" Margin="0,0,0,8">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="{Binding TransferTitle}" FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}" />
-                            <TextBlock Text=" • " Foreground="{StaticResource TextSecondaryBrush}" />
-                            <TextBlock Text="{Binding CurrentFileName}" Foreground="{StaticResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" />
-                        </StackPanel>
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                            <TextBlock Text="{Binding TransferredBytesText}" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,12,0" />
-                            <TextBlock Text="{Binding TransferRateText}" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" Margin="0,0,16,0" />
-                            <Button Style="{StaticResource SecondaryButtonStyle}" Content="Cancel" Padding="8,2"
-                                    Command="{Binding CancelTransferCommand}" Foreground="{StaticResource ErrorBrush}" />
-                        </StackPanel>
-                    </Grid>
+                        <Border Style="{StaticResource CardStyle}" BorderBrush="{DynamicResource PrimaryBrush}" BorderThickness="1" AllowDrop="True" Drop="DropZone_Drop" DragOver="DropZone_DragOver">
+                            <StackPanel HorizontalAlignment="Center" Margin="0,12">
+                                <Path Data="M5,7 H10 L12,9 H19 V20 H5 Z M12,5 V15 M8,11 L12,15 L16,11" Stroke="{DynamicResource PrimaryBrush}" StrokeThickness="1.8" Width="36" Height="30" HorizontalAlignment="Center" />
+                                <TextBlock Text="Drop files or folders here" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,10,0,4" />
+                                <TextBlock Text="Or choose what to share from your computer" Foreground="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Center" />
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,16,0,0">
+                                    <Button Style="{StaticResource PrimaryButtonStyle}" Command="{Binding AddFilesCommand}" Content="Add files" Margin="0,0,8,0" AutomationProperties.Name="Add files to send" />
+                                    <Button Style="{StaticResource SecondaryButtonStyle}" Command="{Binding AddFolderCommand}" Content="Add folder" AutomationProperties.Name="Add folder to send" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
 
-                    <ProgressBar Grid.Row="1" Style="{StaticResource ModernProgressBarStyle}" Value="{Binding TotalProgress}" />
-                </Grid>
+                        <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0">
+                            <Grid>
+                                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                                <Grid>
+                                    <StackPanel>
+                                        <TextBlock Text="Ready to send" FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding SelectedFilesSummary}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="0,3,0,0" />
+                                    </StackPanel>
+                                    <Button Style="{StaticResource SecondaryButtonStyle}" Content="Clear list" Command="{Binding ClearFilesCommand}" HorizontalAlignment="Right" />
+                                </Grid>
+                                <ListBox Grid.Row="1" ItemsSource="{Binding SelectedFiles}" BorderThickness="0" Background="Transparent" Margin="0,16,0,0" MaxHeight="220" ScrollViewer.CanContentScroll="True" VirtualizingPanel.IsVirtualizing="True">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,4">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Text="{Binding Status}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" />
+                                                </StackPanel>
+                                                <TextBlock Grid.Column="1" Text="{Binding FormattedSize}" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="16,0" />
+                                                <Button Grid.Column="2" Style="{StaticResource SecondaryButtonStyle}" Content="Remove" Command="{Binding DataContext.RemoveFileCommand, RelativeSource={RelativeSource AncestorType=ListBox}}" CommandParameter="{Binding}" VerticalAlignment="Center" Padding="10,4" MinHeight="32" AutomationProperties.Name="Remove queued file" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </Grid>
+                        </Border>
+
+                        <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0">
+                            <Grid>
+                                <StackPanel>
+                                    <TextBlock Text="Choose a device" FontWeight="SemiBold" />
+                                    <TextBlock Text="Nearby devices are found on your network. Select one to securely pair before transfer." Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="0,4,0,14" TextWrapping="Wrap" />
+                                    <ItemsControl ItemsSource="{Binding DiscoveredPeers}">
+                                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Button Style="{StaticResource SecondaryButtonStyle}" Command="{Binding DataContext.SelectPeerCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" Margin="0,0,8,8" MinWidth="170">
+                                                    <StackPanel>
+                                                        <TextBlock Text="{Binding DeviceName}" FontWeight="SemiBold" />
+                                                        <TextBlock Text="{Binding CapabilitiesText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" />
+                                                    </StackPanel>
+                                                </Button>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <Border Background="{DynamicResource SurfaceRaisedBrush}" CornerRadius="8" Padding="12" Margin="0,6,0,0">
+                                        <Grid>
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding PairingStatusText}" FontWeight="SemiBold" />
+                                                <TextBlock Text="Not seeing your device? Refresh discovery or use a one-time pairing code." Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" Margin="0,3,0,0" />
+                                            </StackPanel>
+                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                                <Button Style="{StaticResource SecondaryButtonStyle}" Content="Refresh" Command="{Binding RefreshPeersCommand}" Margin="0,0,8,0" />
+                                                <Button Style="{StaticResource SecondaryButtonStyle}" Content="Use pairing code" Command="{Binding ShowPairModalCommand}" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                        <Button Style="{StaticResource PrimaryButtonStyle}" Content="{Binding SendActionText}" Command="{Binding SendFilesCommand}" HorizontalAlignment="Right" Margin="0,18,0,8" AutomationProperties.Name="Send selected files to phone" />
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- Receive -->
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Visibility="{Binding IsReceiveSelected, Converter={StaticResource BoolToVis}}">
+                    <StackPanel>
+                        <TextBlock Text="Receive files" FontSize="20" FontWeight="SemiBold" />
+                        <TextBlock Text="Make this PC available to nearby Glide devices. You approve each incoming transfer." Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,20" />
+                        <Border Style="{StaticResource CardStyle}">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="{Binding ReceiveStatusTitle}" FontSize="18" FontWeight="SemiBold" />
+                                    <TextBlock Text="Nearby devices can scan your one-time QR code. You will still review every offer." Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,0" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <Button Grid.Column="1" Style="{StaticResource PrimaryButtonStyle}" Content="{Binding ReceiveActionText}" Command="{Binding ToggleListenerCommand}" VerticalAlignment="Center" />
+                            </Grid>
+                        </Border>
+                        <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0">
+                            <StackPanel>
+                                <TextBlock Text="Connect a phone" FontWeight="SemiBold" />
+                                <TextBlock Text="Open Glide on the phone, choose Send files, then scan this code." Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="0,4,0,14" />
+                                <StackPanel Orientation="Horizontal">
+                                    <Border Background="White" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="10">
+                                        <Image Source="{Binding PairingQrImage}" Width="180" Height="180" Stretch="Uniform" RenderOptions.BitmapScalingMode="NearestNeighbor" AutomationProperties.Name="QR code for receiving files" />
+                                    </Border>
+                                    <StackPanel Margin="20,4,0,0" VerticalAlignment="Center">
+                                        <Button Style="{StaticResource PrimaryButtonStyle}" Content="Show larger code" Command="{Binding ToggleQrZoomCommand}" Margin="0,0,0,8" />
+                                        <Button Style="{StaticResource SecondaryButtonStyle}" Content="Copy pairing link" Command="{Binding CopyPairingLinkCommand}" Margin="0,0,0,8" />
+                                        <Button Style="{StaticResource SecondaryButtonStyle}" Content="Refresh code" Command="{Binding RefreshQrCommand}" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0">
+                            <StackPanel>
+                                <TextBlock Text="Save received files to" FontWeight="SemiBold" />
+                                <Grid Margin="0,10,0,0">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <TextBox Style="{StaticResource ModernTextBoxStyle}" Text="{Binding ReceiveDirectory}" IsReadOnly="True" AutomationProperties.Name="Receive folder" />
+                                    <Button Grid.Column="1" Style="{StaticResource SecondaryButtonStyle}" Content="Change folder" Command="{Binding BrowseReceiveFolderCommand}" Margin="8,0,0,0" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- Activity -->
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Visibility="{Binding IsActivitySelected, Converter={StaticResource BoolToVis}}">
+                    <StackPanel>
+                        <TextBlock Text="Transfer activity" FontSize="20" FontWeight="SemiBold" />
+                        <TextBlock Text="Current transfers and verified file history." Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,20" />
+                        <Border Style="{StaticResource CardStyle}">
+                            <StackPanel>
+                                <TextBlock Text="Current transfer" FontWeight="SemiBold" />
+                                <Grid Margin="0,12,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding TransferTitle}" FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding CurrentFileName}" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" Margin="0,3,0,0" />
+                                    </StackPanel>
+                                    <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
+                                        <TextBlock Text="{Binding TransferredBytesText}" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,14,0" />
+                                        <TextBlock Text="{Binding TransferRateText}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,14,0" />
+                                        <Button Style="{StaticResource SecondaryButtonStyle}" Content="Cancel" Command="{Binding CancelTransferCommand}" IsEnabled="{Binding IsTransferActive}" />
+                                    </StackPanel>
+                                </Grid>
+                                <ProgressBar Style="{StaticResource ModernProgressBarStyle}" Value="{Binding TotalProgress}" Margin="0,14,0,0" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0">
+                            <Grid>
+                                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                                <Grid>
+                                    <StackPanel><TextBlock Text="Verified history" FontWeight="SemiBold" /><TextBlock Text="Only completed, verified items are kept here." FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,3,0,0" /></StackPanel>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <TextBox Style="{StaticResource ModernTextBoxStyle}" Width="190" Text="{Binding ActivitySearchText, UpdateSourceTrigger=PropertyChanged}" ToolTip="Search activity" AutomationProperties.Name="Search transfer activity" />
+                                        <ComboBox Width="100" Margin="8,0,0,0" ItemsSource="{Binding ActivityFilterOptions}" SelectedItem="{Binding ActivityFilter}" />
+                                    </StackPanel>
+                                </Grid>
+                                <ListBox Grid.Row="1" ItemsSource="{Binding ActivityItems}" BorderThickness="0" Background="Transparent" Margin="0,16,0,0" MaxHeight="320" ScrollViewer.CanContentScroll="True" VirtualizingPanel.IsVirtualizing="True">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,7">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                                <StackPanel><TextBlock Text="{Binding ItemName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" /><TextBlock Text="{Binding Direction}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" /></StackPanel>
+                                                <StackPanel Grid.Column="1" Margin="18,0"><TextBlock Text="{Binding FormattedSize}" HorizontalAlignment="Right" /><TextBlock Text="{Binding FormattedTime}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" /></StackPanel>
+                                                <Button Grid.Column="2" Style="{StaticResource SecondaryButtonStyle}" Content="Open folder" Command="{Binding DataContext.OpenHistoryItemCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" VerticalAlignment="Center" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </Grid>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- Settings -->
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Visibility="{Binding IsSettingsSelected, Converter={StaticResource BoolToVis}}">
+                    <StackPanel>
+                        <TextBlock Text="Settings" FontSize="20" FontWeight="SemiBold" />
+                        <TextBlock Text="Control how Glide appears and receives files." Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,20" />
+                        <Border Style="{StaticResource CardStyle}">
+                            <StackPanel><TextBlock Text="Appearance" FontWeight="SemiBold" /><TextBlock Text="Match Windows by default, or choose a theme for Glide." Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="0,4,0,12" /><ComboBox ItemsSource="{Binding AppearanceOptions}" SelectedItem="{Binding AppearanceMode}" Width="180" /></StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0">
+                            <StackPanel><TextBlock Text="Receiving" FontWeight="SemiBold" /><TextBlock Text="Folder and connection details are kept here so sending stays simple." Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="0,4,0,12" />
+                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBox Style="{StaticResource ModernTextBoxStyle}" Text="{Binding ReceiveDirectory}" IsReadOnly="True" /><Button Grid.Column="1" Style="{StaticResource SecondaryButtonStyle}" Content="Change folder" Command="{Binding BrowseReceiveFolderCommand}" Margin="8,0,0,0" /></Grid>
+                                <Expander Header="Advanced connection details" Margin="0,16,0,0"><StackPanel Margin="0,10,0,0"><TextBlock Text="{Binding LocalIpText, StringFormat=Local address: {0}}" Foreground="{DynamicResource TextSecondaryBrush}" /><TextBlock Text="{Binding ListeningPort, StringFormat=Listening port: {0}}" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,5,0,0" /><TextBlock Text="{Binding LocalIdentityFingerprint, StringFormat=Device fingerprint: {0}}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,5,0,0" /></StackPanel></Expander>
+                                <Expander Header="Advanced: enter an address manually" Margin="0,12,0,0"><StackPanel Margin="0,10,0,0"><TextBlock Text="Use this only when discovery is unavailable. Glide still verifies the invitation before transfer." Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" TextWrapping="Wrap" /><Grid Margin="0,10,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="90" /></Grid.ColumnDefinitions><TextBox Style="{StaticResource ModernTextBoxStyle}" Text="{Binding PeerHost, UpdateSourceTrigger=PropertyChanged}" ToolTip="Target host" /><TextBox Grid.Column="1" Style="{StaticResource ModernTextBoxStyle}" Text="{Binding PeerPort, UpdateSourceTrigger=PropertyChanged}" Margin="8,0,0,0" ToolTip="Target port" /></Grid><Button Style="{StaticResource SecondaryButtonStyle}" Content="Use address for selected files" Command="{Binding SendFilesCommand}" HorizontalAlignment="Left" Margin="0,10,0,0" /></StackPanel></Expander>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0">
+                            <StackPanel><TextBlock Text="Trusted devices" FontWeight="SemiBold" /><TextBlock Text="{Binding TrustedDeviceCount, StringFormat={}{0} device(s) trusted for future authenticated sessions.}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="0,4,0,12" />
+                                <ItemsControl ItemsSource="{Binding TrustedDevices}"><ItemsControl.ItemTemplate><DataTemplate><Grid Margin="0,5"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><StackPanel><TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" /><TextBlock Text="{Binding FingerprintShort}" Foreground="{DynamicResource TextSecondaryBrush}" FontFamily="Consolas" FontSize="11" /><TextBlock Text="{Binding LastSeenText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" /></StackPanel><Button Grid.Column="1" Style="{StaticResource SecondaryButtonStyle}" Content="Remove" Command="{Binding DataContext.RevokeTrustedDeviceCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" VerticalAlignment="Center" /></Grid></DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+
+            <Border Grid.Row="2" Margin="0,16,0,0" Background="{DynamicResource SurfaceRaisedBrush}" CornerRadius="8" Padding="12" Visibility="{Binding IsTransferActive, Converter={StaticResource BoolToVis}}">
+                <Grid><TextBlock Text="{Binding TransferTitle}" FontWeight="SemiBold" /><TextBlock HorizontalAlignment="Right" Text="{Binding TransferredBytesText}" Foreground="{DynamicResource TextSecondaryBrush}" /></Grid>
             </Border>
         </Grid>
 
-        <!-- Persistent identity trust enrollment overlay -->
-        <Border Background="#CC070B16"
-                Visibility="{Binding IsTrustEnrollmentModalVisible, Converter={StaticResource BoolToVis}}"
-                HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Panel.ZIndex="102">
-            <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource CardBorderBrush}"
-                    BorderThickness="1" CornerRadius="16" Padding="28" Width="520" HorizontalAlignment="Center"
-                    VerticalAlignment="Center">
-                <StackPanel HorizontalAlignment="Stretch">
-                    <TextBlock Text="🔐" FontSize="36" HorizontalAlignment="Center" Margin="0,0,0,8" />
-                    <TextBlock Text="Trust This Device?" FontSize="18" FontWeight="Bold"
-                               Foreground="{StaticResource TextPrimaryBrush}" HorizontalAlignment="Center" />
-                    <TextBlock Text="{Binding TrustEnrollmentPeerName}" FontSize="14" FontWeight="SemiBold"
-                               Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Center" Margin="0,6,0,10" />
+        <!-- Receiving consent -->
+        <Border Grid.ColumnSpan="2" Background="#99000000" Visibility="{Binding IsOfferModalVisible, Converter={StaticResource BoolToVis}}" Panel.ZIndex="10">
+            <Border Style="{StaticResource CardStyle}" Width="470" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="28" KeyboardNavigation.TabNavigation="Cycle">
+                <StackPanel><TextBlock Text="Incoming transfer" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center" /><TextBlock Text="{Binding IncomingOfferPeer}" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,10,0,4" /><TextBlock Text="{Binding IncomingOfferSummary}" TextAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" /><TextBlock Text="Review the sender and file summary. Accepted files are written to your selected receive folder." TextAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,12,0,20" /><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="12" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><Button Grid.Column="0" Style="{StaticResource SecondaryButtonStyle}" Content="Decline" Command="{Binding RejectOfferCommand}" /><Button Grid.Column="2" Style="{StaticResource PrimaryButtonStyle}" Content="Accept transfer" Command="{Binding AcceptOfferCommand}" /></Grid></StackPanel>
+            </Border>
+        </Border>
 
-                    <TextBlock Text="Glide has cryptographically verified this persistent device identity for the current authenticated LAN session."
-                               FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextAlignment="Center"
-                               TextWrapping="Wrap" Margin="0,0,0,10" />
-                    <TextBlock Text="Before trusting it for future sessions, compare the full fingerprint below with the fingerprint shown on the other device."
-                               FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextAlignment="Center"
-                               TextWrapping="Wrap" Margin="0,0,0,12" />
+        <!-- Trust consent -->
+        <Border Grid.ColumnSpan="2" Background="#99000000" Visibility="{Binding IsTrustEnrollmentModalVisible, Converter={StaticResource BoolToVis}}" Panel.ZIndex="102">
+            <Border Style="{StaticResource CardStyle}" Width="510" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="28" KeyboardNavigation.TabNavigation="Cycle">
+                <StackPanel><TextBlock Text="Trust this device?" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center" /><TextBlock Text="{Binding TrustEnrollmentPeerName}" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,10,0,8" /><TextBlock Text="Glide verified this device for the current session. Compare the full fingerprint before letting Glide recognise it in future sessions." TextAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" /><Border Background="{DynamicResource SurfaceRaisedBrush}" CornerRadius="8" Padding="12" Margin="0,16"><TextBlock Text="{Binding TrustEnrollmentFingerprint}" FontFamily="Consolas" TextAlignment="Center" TextWrapping="Wrap" /></Border><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="12" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><Button Grid.Column="0" Style="{StaticResource SecondaryButtonStyle}" Content="Not Now" Command="{Binding RejectTrustEnrollmentCommand}" /><Button Grid.Column="2" Style="{StaticResource PrimaryButtonStyle}" Content="Trust Device" Command="{Binding AcceptTrustEnrollmentCommand}" /></Grid></StackPanel>
+            </Border>
+        </Border>
 
-                    <Border Background="{StaticResource SurfaceHighBrush}" BorderBrush="{StaticResource CardBorderBrush}"
-                            BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,12">
-                        <TextBlock Text="{Binding TrustEnrollmentFingerprint}" FontFamily="Consolas" FontSize="12"
-                                   FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"
-                                   TextAlignment="Center" TextWrapping="Wrap" />
-                    </Border>
+        <!-- Recipient confirmation -->
+        <Border Grid.ColumnSpan="2" Background="#99000000" Visibility="{Binding IsRecipientConfirmationModalVisible, Converter={StaticResource BoolToVis}}" Panel.ZIndex="103">
+            <Border Style="{StaticResource CardStyle}" Width="460" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="28" KeyboardNavigation.TabNavigation="Cycle">
+                <StackPanel><TextBlock Text="Confirm receiving device" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center" /><TextBlock Text="{Binding RecipientConfirmationPeerName}" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,10,0,8" /><TextBlock Text="This device scanned your one-time code. Confirm it before Glide reveals the selected files or starts transfer." TextAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,0,0,20" /><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="12" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><Button Grid.Column="0" Style="{StaticResource SecondaryButtonStyle}" Content="Reject" Command="{Binding RejectRecipientCommand}" /><Button Grid.Column="2" Style="{StaticResource PrimaryButtonStyle}" Content="Send files" Command="{Binding AcceptRecipientCommand}" /></Grid></StackPanel>
+            </Border>
+        </Border>
 
-                    <TextBlock Text="Choosing “Not Now” does not block this one-use paired transfer. It only prevents persistent trust from being saved."
-                               FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" TextAlignment="Center"
-                               TextWrapping="Wrap" Margin="0,0,0,20" />
-
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="16" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <Button Grid.Column="0" Style="{StaticResource SecondaryButtonStyle}" Content="Not Now"
-                                Command="{Binding RejectTrustEnrollmentCommand}" Padding="0,10" />
-                        <Button Grid.Column="2" Style="{StaticResource PrimaryButtonStyle}" Content="Trust Device"
-                                Command="{Binding AcceptTrustEnrollmentCommand}" Padding="0,10" />
-                    </Grid>
+        <!-- Pairing -->
+        <Border Grid.ColumnSpan="2" Background="#99000000" Visibility="{Binding IsPairModalVisible, Converter={StaticResource BoolToVis}}" Panel.ZIndex="13">
+            <Border Style="{StaticResource CardStyle}" Width="500" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="28" KeyboardNavigation.TabNavigation="Cycle">
+                <StackPanel><TextBlock Text="{Binding PairingSheetTitle}" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center" /><TextBlock Text="{Binding PairingSheetInstruction}" Foreground="{DynamicResource TextSecondaryBrush}" TextAlignment="Center" TextWrapping="Wrap" Margin="0,10,0,18" />
+                    <StackPanel Visibility="{Binding IsHostedSendQrVisible, Converter={StaticResource BoolToVis}}" HorizontalAlignment="Center"><Border Background="White" CornerRadius="10" Padding="12"><Image Source="{Binding PairingQrImage}" Width="260" Height="260" Stretch="Uniform" RenderOptions.BitmapScalingMode="NearestNeighbor" AutomationProperties.Name="QR code for receiving selected files" /></Border><TextBlock Text="This code expires automatically for your security." Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" HorizontalAlignment="Center" Margin="0,10,0,0" /><Button Style="{StaticResource SecondaryButtonStyle}" Content="Refresh code" Command="{Binding RefreshQrCommand}" Margin="0,12,0,0" /></StackPanel>
+                    <StackPanel Visibility="{Binding IsManualPairingEntryVisible, Converter={StaticResource BoolToVis}}"><TextBox Style="{StaticResource ModernTextBoxStyle}" Text="{Binding PairInputUri, UpdateSourceTrigger=PropertyChanged}" TextWrapping="Wrap" MinHeight="64" ToolTip="Paste a Glide invite from the receiving device" AutomationProperties.Name="Receiving device Glide invite" /><Button Style="{StaticResource SecondaryButtonStyle}" Content="Paste pairing link" Command="{Binding PastePairingLinkCommand}" Margin="0,10,0,0" /></StackPanel>
+                    <Grid Margin="0,20,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="12" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><Button Grid.Column="0" Style="{StaticResource SecondaryButtonStyle}" Content="Cancel" Command="{Binding CancelPairModalCommand}" /><Button Grid.Column="2" Style="{StaticResource PrimaryButtonStyle}" Content="Connect and send" Command="{Binding SubmitPairModalCommand}" Visibility="{Binding IsManualPairingEntryVisible, Converter={StaticResource BoolToVis}}" /></Grid>
                 </StackPanel>
             </Border>
         </Border>
 
-        <!-- Authenticated incoming-offer consent overlay -->
-        <Border Background="#CC070B16" Visibility="{Binding IsOfferModalVisible, Converter={StaticResource BoolToVis}}"
-                HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Panel.ZIndex="100">
-            <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource CardBorderBrush}"
-                    BorderThickness="1" CornerRadius="16" Padding="28" Width="460" HorizontalAlignment="Center"
-                    VerticalAlignment="Center">
-                <StackPanel HorizontalAlignment="Stretch">
-                    <TextBlock Text="📥" FontSize="36" HorizontalAlignment="Center" Margin="0,0,0,8" />
-                    <TextBlock Text="Incoming Transfer" FontSize="18" FontWeight="Bold"
-                               Foreground="{StaticResource TextPrimaryBrush}" HorizontalAlignment="Center" />
-                    <TextBlock Text="{Binding IncomingOfferPeer}" FontSize="14" FontWeight="SemiBold"
-                               Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Center" Margin="0,6,0,4" />
-                    <TextBlock Text="{Binding IncomingOfferSummary}" FontSize="13"
-                               Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center" Margin="0,0,0,8" />
-                    <TextBlock Text="Accepting will allow this authenticated one-use peer to write the offered files into your configured receive folder."
-                               FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextAlignment="Center"
-                               TextWrapping="Wrap" Margin="0,0,0,22" />
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="16" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <Button Grid.Column="0" Style="{StaticResource SecondaryButtonStyle}" Content="Reject"
-                                Command="{Binding RejectOfferCommand}" Padding="0,10" />
-                        <Button Grid.Column="2" Style="{StaticResource PrimaryButtonStyle}" Content="Accept Transfer"
-                                Command="{Binding AcceptOfferCommand}" Padding="0,10" />
-                    </Grid>
-                </StackPanel>
-            </Border>
-        </Border>
-
-        <!-- Sender-hosted QR confirmation: a scan proves possession of the one-use code;
-             the desktop user still chooses the device before file metadata is offered. -->
-        <Border Background="#CC070B16" Visibility="{Binding IsRecipientConfirmationModalVisible, Converter={StaticResource BoolToVis}}"
-                HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Panel.ZIndex="103">
-            <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource CardBorderBrush}"
-                    BorderThickness="1" CornerRadius="16" Padding="28" Width="460" HorizontalAlignment="Center"
-                    VerticalAlignment="Center">
-                <StackPanel HorizontalAlignment="Stretch">
-                    <TextBlock Text="Confirm receiving device" FontSize="18" FontWeight="Bold"
-                               Foreground="{StaticResource TextPrimaryBrush}" HorizontalAlignment="Center" />
-                    <TextBlock Text="{Binding RecipientConfirmationPeerName}" FontSize="14" FontWeight="SemiBold"
-                               Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Center" Margin="0,10,0,8" />
-                    <TextBlock Text="This device scanned your one-use QR code. Confirm before Glide shows the selected files or begins the transfer."
-                               FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextAlignment="Center"
-                               TextWrapping="Wrap" Margin="0,0,0,22" />
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="16" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <Button Grid.Column="0" Style="{StaticResource SecondaryButtonStyle}" Content="Reject"
-                                Command="{Binding RejectRecipientCommand}" Padding="0,10" />
-                        <Button Grid.Column="2" Style="{StaticResource PrimaryButtonStyle}" Content="Send files"
-                                Command="{Binding AcceptRecipientCommand}" Padding="0,10" />
-                    </Grid>
-                </StackPanel>
-            </Border>
-        </Border>
-
-        <!-- Pair via Link / QR Modal Overlay -->
-        <Border Background="#CC070B16" Visibility="{Binding IsPairModalVisible, Converter={StaticResource BoolToVis}}"
-                HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Panel.ZIndex="101">
-            <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource CardBorderBrush}"
-                    BorderThickness="1" CornerRadius="16" Padding="28" Width="480" HorizontalAlignment="Center"
-                    VerticalAlignment="Center">
-                <StackPanel HorizontalAlignment="Center" MaxWidth="440">
-                    <TextBlock Text="📱" FontSize="36" HorizontalAlignment="Center" Margin="0,0,0,8" />
-                    <TextBlock Text="{Binding PairingSheetTitle}" FontSize="17" FontWeight="Bold"
-                               Foreground="{StaticResource TextPrimaryBrush}" HorizontalAlignment="Center" Margin="0,0,0,8" />
-                    <TextBlock Text="{Binding PairingSheetInstruction}"
-                               FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" TextAlignment="Center" TextWrapping="Wrap" Margin="0,0,0,16" />
-
-                    <StackPanel Visibility="{Binding IsHostedSendQrVisible, Converter={StaticResource BoolToVis}}"
-                                HorizontalAlignment="Center" Margin="0,0,0,16">
-                        <Border Background="#FFFFFF" CornerRadius="12" Padding="14" HorizontalAlignment="Center"
-                                BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="2">
-                            <Image Source="{Binding PairingQrImage}" Width="280" Height="280"
-                                   RenderOptions.BitmapScalingMode="NearestNeighbor"
-                                   SnapsToDevicePixels="True" UseLayoutRounding="True" Stretch="Uniform"
-                                   AutomationProperties.Name="QR code for receiving selected files" />
-                        </Border>
-                        <TextBlock Text="This code expires automatically for your security."
-                                   FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"
-                                   TextAlignment="Center" Margin="0,10,0,0" />
-                        <Button Style="{StaticResource SecondaryButtonStyle}" Content="Refresh QR"
-                                Command="{Binding RefreshQrCommand}" Margin="0,12,0,0" Padding="16,6"
-                                AutomationProperties.Name="Refresh outgoing pairing QR" />
-                    </StackPanel>
-
-                    <StackPanel Visibility="{Binding IsManualPairingEntryVisible, Converter={StaticResource BoolToVis}}">
-                        <TextBox Style="{StaticResource ModernTextBoxStyle}" Text="{Binding PairInputUri, UpdateSourceTrigger=PropertyChanged}"
-                                 Height="60" TextWrapping="Wrap" AcceptsReturn="False" Margin="0,0,0,12" Padding="8"
-                                 ToolTip="Paste a Glide invite from the receiving device"
-                                 AutomationProperties.Name="Receiving device Glide invite" />
-
-                        <Button Style="{StaticResource SecondaryButtonStyle}" Content="Paste invite"
-                                Command="{Binding PastePairingLinkCommand}" Margin="0,0,0,12" Padding="0,8" />
-                    </StackPanel>
-
-                    <!-- Actions -->
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="16" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <Button Grid.Column="0" Style="{StaticResource SecondaryButtonStyle}" Content="Cancel"
-                                Command="{Binding CancelPairModalCommand}" Padding="0,10" />
-                        <Button Grid.Column="2" Style="{StaticResource PrimaryButtonStyle}" Content="Connect and send"
-                                Command="{Binding SubmitPairModalCommand}" Padding="0,10"
-                                Visibility="{Binding IsManualPairingEntryVisible, Converter={StaticResource BoolToVis}}" />
-                    </Grid>
-                </StackPanel>
-            </Border>
-        </Border>
-
-        <!-- Web Share Active Modal Overlay -->
-        <Border Background="#CC070B16" Visibility="Collapsed"
-                HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
-            <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource CardBorderBrush}"
-                    BorderThickness="1" CornerRadius="16" Padding="28" Width="520" HorizontalAlignment="Center"
-                    VerticalAlignment="Center">
-                <StackPanel HorizontalAlignment="Center" MaxWidth="480">
-                    <TextBlock Text="🌐" FontSize="36" HorizontalAlignment="Center" Margin="0,0,0,8" />
-                    <TextBlock Text="Web Browser Transfer Active" FontSize="18" FontWeight="Bold"
-                               Foreground="{StaticResource TextPrimaryBrush}" HorizontalAlignment="Center" Margin="0,0,0,6" />
-                    <TextBlock Text="Open this single-use link on any browser (iOS, Android, macOS, Linux, ChromeOS) connected to the same Wi-Fi network to download or upload files:"
-                               FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" TextAlignment="Center" TextWrapping="Wrap" Margin="0,0,0,16" />
-
-                    <!-- Web Share QR Code Display -->
-                    <Border Background="#FFFFFF" CornerRadius="12" Padding="14" Margin="0,0,0,16" HorizontalAlignment="Center"
-                            BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="2">
-                        <Image Source="{Binding WebShareQrImage}" Width="260" Height="260"
-                               RenderOptions.BitmapScalingMode="NearestNeighbor"
-                               SnapsToDevicePixels="True" UseLayoutRounding="True" Stretch="Uniform" />
-                    </Border>
-
-                    <!-- Web Share URL Box -->
-                    <Border Background="{StaticResource SurfaceHighBrush}" BorderBrush="{StaticResource CardBorderBrush}"
-                            BorderThickness="1" CornerRadius="8" Padding="12,10" Margin="0,0,0,12">
-                        <TextBox Style="{StaticResource ModernTextBoxStyle}" Text="{Binding WebShareUrl, Mode=OneWay}"
-                                 IsReadOnly="True" FontSize="11" Background="Transparent" BorderThickness="0"
-                                 TextWrapping="Wrap" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" />
-                    </Border>
-
-                    <Button Style="{StaticResource SecondaryButtonStyle}" Content="📋 Copy Web Share Link"
-                            Command="{Binding CopyWebShareLinkCommand}" HorizontalAlignment="Center" Padding="16,6" Margin="0,0,0,16" />
-
-                    <!-- Stop Button -->
-                    <Button Style="{StaticResource PrimaryButtonStyle}" Content="⏹ Stop Web Share"
-                            Command="{Binding StopWebShareCommand}" Width="160" HorizontalAlignment="Center" Padding="0,10"
-                            Background="{StaticResource ErrorBrush}" />
-                </StackPanel>
-            </Border>
-        </Border>
-
-        <!-- Extra-Large Fullscreen Pairing QR Code Overlay (440x440) -->
-        <Border Background="#E6070B16" Visibility="{Binding IsQrZoomModalVisible, Converter={StaticResource BoolToVis}}"
-                HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
-            <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource CardBorderBrush}"
-                    BorderThickness="1" CornerRadius="16" Padding="28" HorizontalAlignment="Center"
-                    VerticalAlignment="Center">
-                <StackPanel HorizontalAlignment="Center">
-                    <TextBlock Text="Scan QR Code with Glide Mobile" FontSize="18" FontWeight="Bold"
-                               Foreground="{StaticResource TextPrimaryBrush}" HorizontalAlignment="Center" Margin="0,0,0,14" />
-
-                    <Border Background="#FFFFFF" CornerRadius="14" Padding="20" Margin="0,0,0,16" HorizontalAlignment="Center">
-                        <Image Source="{Binding PairingQrImage}" Width="440" Height="440"
-                               RenderOptions.BitmapScalingMode="NearestNeighbor"
-                               SnapsToDevicePixels="True" UseLayoutRounding="True" Stretch="Uniform" />
-                    </Border>
-
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                        <Button Style="{StaticResource SecondaryButtonStyle}" Content="🔄 Refresh QR"
-                                Command="{Binding RefreshQrCommand}" Margin="0,0,12,0" Padding="16,8" FontSize="13" />
-                        <Button Style="{StaticResource SecondaryButtonStyle}" Content="📋 Copy Link"
-                                Command="{Binding CopyPairingLinkCommand}" Margin="0,0,12,0" Padding="16,8" FontSize="13" />
-                        <Button Style="{StaticResource PrimaryButtonStyle}" Content="✕ Close"
-                                Command="{Binding ToggleQrZoomCommand}" Padding="20,8" FontSize="13" />
-                    </StackPanel>
-                </StackPanel>
+        <Border Grid.ColumnSpan="2" Background="#CC000000" Visibility="{Binding IsQrZoomModalVisible, Converter={StaticResource BoolToVis}}" Panel.ZIndex="14">
+            <Border Style="{StaticResource CardStyle}" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="28" KeyboardNavigation.TabNavigation="Cycle">
+                <StackPanel><TextBlock Text="Scan with Glide Mobile" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,16" /><Border Background="White" CornerRadius="12" Padding="16"><Image Source="{Binding PairingQrImage}" Width="400" Height="400" Stretch="Uniform" RenderOptions.BitmapScalingMode="NearestNeighbor" /></Border><StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,18,0,0"><Button Style="{StaticResource SecondaryButtonStyle}" Content="Refresh" Command="{Binding RefreshQrCommand}" Margin="0,0,8,0" /><Button Style="{StaticResource SecondaryButtonStyle}" Content="Copy link" Command="{Binding CopyPairingLinkCommand}" Margin="0,0,8,0" /><Button Style="{StaticResource PrimaryButtonStyle}" Content="Close" Command="{Binding ToggleQrZoomCommand}" /></StackPanel></StackPanel>
             </Border>
         </Border>
     </Grid>

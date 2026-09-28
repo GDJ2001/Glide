@@ -1,5 +1,4 @@
 using System.Windows;
-using System.Windows.Input;
 using System.Windows.Interop;
 using Glide.Windows.UI.Services;
 using Glide.Windows.UI.ViewModels;
@@ -76,11 +75,4 @@ public partial class MainWindow : Window
         }
     }
 
-    private void DropZone_Click(object sender, MouseButtonEventArgs e)
-    {
-        if (DataContext is MainViewModel vm)
-        {
-            vm.AddFilesCommand.Execute(null);
-        }
-    }
 }

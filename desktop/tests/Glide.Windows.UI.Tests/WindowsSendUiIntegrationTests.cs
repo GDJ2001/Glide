@@ -43,6 +43,14 @@ public sealed class WindowsSendUiIntegrationTests
                 window.UpdateLayout();
 
                 var viewModel = Assert.IsType<MainViewModel>(window.DataContext);
+                string[] destinations = ["Send files", "Receive files", "Transfer activity", "Settings"];
+                foreach (string destination in destinations)
+                {
+                    RadioButton navigationButton = Descendants(window).OfType<RadioButton>()
+                        .Single(candidate => AutomationProperties.GetName(candidate) == destination);
+                    Assert.True(navigationButton.ActualWidth > 0);
+                    Assert.True(navigationButton.ActualHeight > 0);
+                }
                 viewModel.AddDroppedFiles([testFile]);
                 window.Dispatcher.Invoke(
                     () => { },

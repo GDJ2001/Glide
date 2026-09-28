@@ -1,9 +1,11 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Security.Cryptography;
 using System.Windows;
+using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using Glide.Core.Pairing;
@@ -21,6 +23,10 @@ namespace Glide.Windows.UI.ViewModels;
 public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
 {
     private string _currentTab = "Send";
+    private readonly WindowsUiPreferencesStore _uiPreferences = new();
+    private string _appearanceMode = "System";
+    private string _activitySearchText = "";
+    private string _activityFilter = "All";
     private string _peerHost = "127.0.0.1";
     private int _peerPort = LanDiscoveryConstants.DefaultPort;
     private bool _isListening;
@@ -121,9 +127,14 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
 
     public ObservableCollection<TransferItemViewModel> SelectedFiles { get; } = [];
     public ObservableCollection<HistoryItemViewModel> HistoryItems { get; } = [];
+    public ObservableCollection<TrustedDeviceViewModel> TrustedDevices { get; } = [];
+    public ICollectionView ActivityItems { get; }
+    public IReadOnlyList<string> AppearanceOptions { get; } = ["System", "Light", "Dark"];
+    public IReadOnlyList<string> ActivityFilterOptions { get; } = ["All", "Sent", "Received"];
 
     public RelayCommand SwitchTabCommand { get; }
     public RelayCommand AddFilesCommand { get; }
+    public RelayCommand AddFolderCommand { get; }
     public RelayCommand RemoveFileCommand { get; }
     public RelayCommand ClearFilesCommand { get; }
     public RelayCommand SendFilesCommand { get; }
@@ -137,6 +148,8 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     public RelayCommand BrowseReceiveFolderCommand { get; }
     public RelayCommand CancelTransferCommand { get; }
     public RelayCommand OpenDownloadsCommand { get; }
+    public RelayCommand OpenHistoryItemCommand { get; }
+    public RelayCommand RevokeTrustedDeviceCommand { get; }
     public RelayCommand ShowPairModalCommand { get; }
     public RelayCommand CancelPairModalCommand { get; }
     public RelayCommand SubmitPairModalCommand { get; }
@@ -153,6 +166,8 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
 
     public MainViewModel()
     {
+        _appearanceMode = _uiPreferences.Load().AppearanceMode;
+        ApplyAppearance();
         try
         {
             DesktopPersistentState persisted = _stateStore.Load();
@@ -190,9 +205,13 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         }
 
         InitializePersistentTrust();
+        RefreshTrustedDevices();
+        ActivityItems = CollectionViewSource.GetDefaultView(HistoryItems);
+        ActivityItems.Filter = FilterActivity;
 
         SwitchTabCommand = new RelayCommand(param => CurrentTab = param?.ToString() ?? "Send");
         AddFilesCommand = new RelayCommand(ExecuteAddFiles);
+        AddFolderCommand = new RelayCommand(ExecuteAddFolder);
         RemoveFileCommand = new RelayCommand(param =>
         {
             if (param is TransferItemViewModel item) SelectedFiles.Remove(item);
@@ -215,6 +234,8 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             _activeTransferCts?.Cancel();
         });
         OpenDownloadsCommand = new RelayCommand(ExecuteOpenDownloads);
+        OpenHistoryItemCommand = new RelayCommand(ExecuteOpenHistoryItem);
+        RevokeTrustedDeviceCommand = new RelayCommand(ExecuteRevokeTrustedDevice);
         ShowPairModalCommand = new RelayCommand(ShowPairingSheet);
         CancelPairModalCommand = new RelayCommand(() =>
         {
@@ -350,6 +371,14 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             CommandManager.InvalidateRequerySuggested();
         };
 
+        PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName is nameof(ActivitySearchText) or nameof(ActivityFilter))
+            {
+                ActivityItems.Refresh();
+            }
+        };
+
         _mdnsService.PeerDiscovered += peer =>
         {
             Application.Current?.Dispatcher?.Invoke(() =>
@@ -389,7 +418,46 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     public string CurrentTab
     {
         get => _currentTab;
-        set => SetProperty(ref _currentTab, value);
+        set
+        {
+            if (SetProperty(ref _currentTab, value))
+            {
+                OnPropertyChanged(nameof(IsSendSelected));
+                OnPropertyChanged(nameof(IsReceiveSelected));
+                OnPropertyChanged(nameof(IsActivitySelected));
+                OnPropertyChanged(nameof(IsSettingsSelected));
+            }
+        }
+    }
+
+    public bool IsSendSelected => CurrentTab == "Send";
+    public bool IsReceiveSelected => CurrentTab == "Receive";
+    public bool IsActivitySelected => CurrentTab == "Activity";
+    public bool IsSettingsSelected => CurrentTab == "Settings";
+
+    public string AppearanceMode
+    {
+        get => _appearanceMode;
+        set
+        {
+            if (SetProperty(ref _appearanceMode, value))
+            {
+                _uiPreferences.Save(new WindowsUiPreferences(value));
+                ApplyAppearance();
+            }
+        }
+    }
+
+    public string ActivitySearchText
+    {
+        get => _activitySearchText;
+        set => SetProperty(ref _activitySearchText, value);
+    }
+
+    public string ActivityFilter
+    {
+        get => _activityFilter;
+        set => SetProperty(ref _activityFilter, value);
     }
 
     public string PeerHost
@@ -407,8 +475,18 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     public bool IsListening
     {
         get => _isListening;
-        set => SetProperty(ref _isListening, value);
+        set
+        {
+            if (SetProperty(ref _isListening, value))
+            {
+                OnPropertyChanged(nameof(ReceiveStatusTitle));
+                OnPropertyChanged(nameof(ReceiveActionText));
+            }
+        }
     }
+
+    public string ReceiveStatusTitle => IsListening ? "Ready to receive" : "Receiving is off";
+    public string ReceiveActionText => IsListening ? "Stop receiving" : "Start receiving";
 
     public int ListeningPort
     {
@@ -705,6 +783,19 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         catch
         {
             return false;
+        }
+    }
+
+    private void ExecuteAddFolder()
+    {
+        var dialog = new OpenFolderDialog
+        {
+            Title = "Select a folder to send with Glide"
+        };
+
+        if (dialog.ShowDialog() == true)
+        {
+            AddDroppedFiles([dialog.FolderName]);
         }
     }
 
@@ -1398,12 +1489,174 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                     fingerprint;
                 TrustedDeviceCount =
                     count;
+                RefreshTrustedDevices();
             });
         }
         catch (Exception ex)
         {
             Debug.WriteLine(
                 $"Failed to refresh persistent trust summary: {ex.Message}");
+        }
+    }
+
+    private void RefreshTrustedDevices()
+    {
+        DesktopPersistentTrustManager? manager = _trustManager;
+        if (manager == null)
+        {
+            return;
+        }
+
+        try
+        {
+            IReadOnlyList<DesktopTrustedPeer> peers = manager.GetTrustedPeers();
+            RunOnUi(() =>
+            {
+                TrustedDevices.Clear();
+                foreach (DesktopTrustedPeer peer in peers.OrderBy(peer => peer.DisplayName))
+                {
+                    TrustedDevices.Add(new TrustedDeviceViewModel(peer));
+                }
+
+                TrustedDeviceCount = TrustedDevices.Count;
+            });
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Failed to read trusted devices: {ex.Message}");
+        }
+    }
+
+    private void ExecuteRevokeTrustedDevice(object? parameter)
+    {
+        if (parameter is not TrustedDeviceViewModel device || _trustManager == null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (_trustManager.RevokePeer(device.FingerprintHex))
+            {
+                StatusMessage = $"Removed {device.DisplayName} from trusted devices.";
+                RefreshTrustedDevices();
+            }
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Could not remove trusted device: {ex.Message}";
+        }
+    }
+
+    private bool FilterActivity(object item)
+    {
+        if (item is not HistoryItemViewModel entry)
+        {
+            return false;
+        }
+
+        bool matchesDirection = ActivityFilter == "All" || entry.Direction == ActivityFilter;
+        if (!matchesDirection)
+        {
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(ActivitySearchText))
+        {
+            return true;
+        }
+
+        return entry.ItemName.Contains(ActivitySearchText, StringComparison.OrdinalIgnoreCase) ||
+            entry.PeerName.Contains(ActivitySearchText, StringComparison.OrdinalIgnoreCase) ||
+            entry.TargetPath.Contains(ActivitySearchText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void ApplyAppearance()
+    {
+        if (SystemParameters.HighContrast)
+        {
+            SetBrush("AppBackgroundBrush", SystemColors.WindowColor);
+            SetBrush("SidebarBrush", SystemColors.WindowColor);
+            SetBrush("SurfaceBrush", SystemColors.WindowColor);
+            SetBrush("SurfaceRaisedBrush", SystemColors.ControlColor);
+            SetBrush("SurfaceSelectedBrush", SystemColors.HighlightColor);
+            SetBrush("PrimaryBrush", SystemColors.HighlightColor);
+            SetBrush("PrimaryHoverBrush", SystemColors.HighlightColor);
+            SetBrush("TextPrimaryBrush", SystemColors.WindowTextColor);
+            SetBrush("TextSecondaryBrush", SystemColors.WindowTextColor);
+            SetBrush("BorderBrush", SystemColors.WindowTextColor);
+            SetBrush("FocusBrush", SystemColors.HighlightColor);
+            return;
+        }
+
+        bool dark = AppearanceMode == "Dark" ||
+            (AppearanceMode == "System" && IsSystemDark());
+        if (dark)
+        {
+            SetBrush("AppBackgroundBrush", ColorFrom("0F172A"));
+            SetBrush("SidebarBrush", ColorFrom("111C31"));
+            SetBrush("SurfaceBrush", ColorFrom("16233A"));
+            SetBrush("SurfaceRaisedBrush", ColorFrom("1D2D47"));
+            SetBrush("SurfaceSelectedBrush", ColorFrom("173B7D"));
+            SetBrush("PrimaryBrush", ColorFrom("6D98FF"));
+            SetBrush("PrimaryHoverBrush", ColorFrom("8AADFF"));
+            SetBrush("TextPrimaryBrush", ColorFrom("F3F7FF"));
+            SetBrush("TextSecondaryBrush", ColorFrom("B7C3D8"));
+            SetBrush("BorderBrush", ColorFrom("2A3B57"));
+            SetBrush("SuccessBrush", ColorFrom("63D7A8"));
+            SetBrush("SuccessSurfaceBrush", ColorFrom("123B32"));
+            SetBrush("WarningBrush", ColorFrom("FFD184"));
+            SetBrush("WarningSurfaceBrush", ColorFrom("493315"));
+            SetBrush("ErrorBrush", ColorFrom("FF9EAA"));
+            SetBrush("ErrorSurfaceBrush", ColorFrom("4D202A"));
+            SetBrush("FocusBrush", ColorFrom("9EBAFF"));
+        }
+        else
+        {
+            SetBrush("AppBackgroundBrush", ColorFrom("F6F8FC"));
+            SetBrush("SidebarBrush", Colors.White);
+            SetBrush("SurfaceBrush", Colors.White);
+            SetBrush("SurfaceRaisedBrush", ColorFrom("F1F5FB"));
+            SetBrush("SurfaceSelectedBrush", ColorFrom("E8F0FF"));
+            SetBrush("PrimaryBrush", ColorFrom("2457E6"));
+            SetBrush("PrimaryHoverBrush", ColorFrom("1D46BF"));
+            SetBrush("TextPrimaryBrush", ColorFrom("14213D"));
+            SetBrush("TextSecondaryBrush", ColorFrom("55627A"));
+            SetBrush("BorderBrush", ColorFrom("DCE4F2"));
+            SetBrush("SuccessBrush", ColorFrom("087E5B"));
+            SetBrush("SuccessSurfaceBrush", ColorFrom("E7F7F0"));
+            SetBrush("WarningBrush", ColorFrom("A15C00"));
+            SetBrush("WarningSurfaceBrush", ColorFrom("FFF4DE"));
+            SetBrush("ErrorBrush", ColorFrom("C42B3A"));
+            SetBrush("ErrorSurfaceBrush", ColorFrom("FDECEE"));
+            SetBrush("FocusBrush", ColorFrom("2457E6"));
+        }
+    }
+
+    private static bool IsSystemDark()
+    {
+        try
+        {
+            object? value = Microsoft.Win32.Registry.GetValue(
+                @"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
+                "AppsUseLightTheme",
+                1);
+            return value is int setting && setting == 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static Color ColorFrom(string hex) =>
+        (Color)ColorConverter.ConvertFromString($"#{hex}");
+
+    private static void SetBrush(string key, Color color)
+    {
+        if (Application.Current is not null)
+        {
+            Application.Current.Resources[key] = new SolidColorBrush(color);
         }
     }
 
@@ -1666,6 +1919,33 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                 FileName = targetFolder,
                 UseShellExecute = true
             });
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Could not open folder: {ex.Message}";
+        }
+    }
+
+    private void ExecuteOpenHistoryItem(object? parameter)
+    {
+        if (parameter is not HistoryItemViewModel entry)
+        {
+            return;
+        }
+
+        string target = entry.Direction == "Received" && !string.IsNullOrWhiteSpace(entry.TargetPath)
+            ? Path.GetDirectoryName(entry.TargetPath) ?? ReceiveDirectory
+            : ReceiveDirectory;
+
+        try
+        {
+            if (!Directory.Exists(target))
+            {
+                StatusMessage = "That folder is no longer available.";
+                return;
+            }
+
+            Process.Start(new ProcessStartInfo { FileName = target, UseShellExecute = true });
         }
         catch (Exception ex)
         {

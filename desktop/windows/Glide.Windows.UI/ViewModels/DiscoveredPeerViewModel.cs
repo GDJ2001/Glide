@@ -13,13 +13,6 @@ public sealed class DiscoveredPeerViewModel : ViewModelBase
     public string PresenceId => Peer.PresenceId;
     public string DeviceType => Peer.DeviceType;
     public string EndpointText => $"{Peer.Host}:{Peer.Port}";
-    public string DeviceIcon => Peer.DeviceType.ToLowerInvariant() switch
-    {
-        "mobile" or "phone" => "📱",
-        "tablet" => "📱",
-        _ => "💻"
-    };
-
     public string CapabilitiesText => "Ready for secure pairing";
 
     public DiscoveredPeerViewModel(DiscoveredPeer peer)

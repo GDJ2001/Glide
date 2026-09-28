@@ -24,6 +24,7 @@
 
   <ItemGroup>
     <Resource Include="glide.ico" />
+    <Resource Include="..\..\..\assets\wordmarks\glide-wordmark-indigo-512.png" Link="Assets\glide-wordmark-indigo-512.png" />
     <AssemblyMetadata Include="GlideUpdateFeedUrl" Value="$(GlideUpdateFeedUrl)" />
     <AssemblyMetadata Include="GlideUpdatePublicKey" Value="$(GlideUpdatePublicKey)" />
   </ItemGroup>
