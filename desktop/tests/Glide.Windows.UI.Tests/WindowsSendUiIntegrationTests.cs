@@ -33,6 +33,15 @@ public sealed class WindowsSendUiIntegrationTests
 
                 application = new Glide.Windows.UI.App();
                 application.InitializeComponent();
+                foreach (string icon in new[]
+                {
+                    "IconSend", "IconReceive", "IconActivity", "IconSettings",
+                    "IconFolderOpen", "IconDocumentAdd", "IconFolderAdd",
+                    "IconPhone", "IconLaptop", "IconRefresh"
+                })
+                {
+                    Assert.IsAssignableFrom<Geometry>(application.FindResource(icon));
+                }
                 window = new MainWindow
                 {
                     ShowActivated = false,
@@ -72,6 +81,21 @@ public sealed class WindowsSendUiIntegrationTests
                 var receiveButton = Assert.IsType<Button>(window.FindName("ReceiveControlButton"));
                 var receivePage = Assert.IsType<ScrollViewer>(window.FindName("ReceivePage"));
                 Assert.True(receiveButton.ActualWidth <= receivePage.ViewportWidth);
+                Button showQr = Assert.IsType<Button>(window.FindName("ReceiveShowQrButton"));
+                Button copyLink = Assert.IsType<Button>(window.FindName("ReceiveCopyLinkButton"));
+                Button refreshQr = Assert.IsType<Button>(window.FindName("ReceiveRefreshQrButton"));
+                Assert.Equal(showQr.ActualWidth, copyLink.ActualWidth);
+                Assert.Equal(showQr.ActualWidth, refreshQr.ActualWidth);
+                Assert.Equal(showQr.TranslatePoint(new Point(), window).X,
+                    copyLink.TranslatePoint(new Point(), window).X, 1);
+                Assert.Equal(showQr.TranslatePoint(new Point(), window).X,
+                    refreshQr.TranslatePoint(new Point(), window).X, 1);
+                viewModel.TrustedDeviceCount = 0;
+                Assert.StartsWith("No trusted devices", viewModel.TrustedDevicesSummary);
+                viewModel.TrustedDeviceCount = 1;
+                Assert.StartsWith("1 device trusted", viewModel.TrustedDevicesSummary);
+                viewModel.TrustedDeviceCount = 3;
+                Assert.StartsWith("3 devices trusted", viewModel.TrustedDevicesSummary);
                 viewModel.CurrentTab = "Activity";
                 window.UpdateLayout();
                 var historyList = Assert.IsType<ListBox>(window.FindName("ActivityHistoryList"));

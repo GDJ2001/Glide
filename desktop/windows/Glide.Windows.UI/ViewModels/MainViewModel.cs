@@ -31,7 +31,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     private int _peerPort = LanDiscoveryConstants.DefaultPort;
     private bool _isListening;
     private int _listeningPort;
-    private string _statusMessage = "Ready";
+    private string _statusMessage = "Ready to share nearby.";
     private string _localIpText = "";
 
     private bool _isOfferModalVisible;
@@ -216,7 +216,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         {
             if (param is TransferItemViewModel item) SelectedFiles.Remove(item);
         });
-        ClearFilesCommand = new RelayCommand(() => SelectedFiles.Clear());
+        ClearFilesCommand = new RelayCommand(() => SelectedFiles.Clear(), () => SelectedFiles.Count > 0);
         SendFilesCommand = new RelayCommand(
             () => _ = ExecuteSendFilesSafelyAsync(),
             () => !IsTransferActive && SelectedFiles.Count > 0);
@@ -551,8 +551,21 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     public int TrustedDeviceCount
     {
         get => _trustedDeviceCount;
-        set => SetProperty(ref _trustedDeviceCount, value);
+        set
+        {
+            if (SetProperty(ref _trustedDeviceCount, value))
+            {
+                OnPropertyChanged(nameof(TrustedDevicesSummary));
+            }
+        }
     }
+
+    public string TrustedDevicesSummary => TrustedDeviceCount switch
+    {
+        0 => "No trusted devices yet. You can approve one after connecting.",
+        1 => "1 device trusted for future connections.",
+        _ => $"{TrustedDeviceCount} devices trusted for future connections."
+    };
 
     public string ReceiveDirectory
     {
@@ -896,7 +909,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             _listener?.Dispose();
             _listener = null;
             IsListening = false;
-            StatusMessage = "Listener stopped";
+            StatusMessage = "Receiving is off. Turn it on in Receive when you are ready.";
             return;
         }
 
@@ -917,7 +930,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         _invitationRotationCts =
             new CancellationTokenSource();
 
-        StatusMessage = $"Listening on port {ListeningPort}";
+        StatusMessage = "Ready to share on this network.";
         _ = Task.Run(
             async () =>
                 await RunInvitationRotationLoopAsync(
@@ -950,8 +963,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                 {
                     _invitationAuthority.RevokeActive();
                     RefreshReceiverInvitation();
-                    StatusMessage =
-                        "Pairing invitation rotated.";
+                    StatusMessage = "Ready to share on this network.";
                 }
             });
         }

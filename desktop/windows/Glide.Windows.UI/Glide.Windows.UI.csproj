@@ -24,7 +24,8 @@
 
   <ItemGroup>
     <Resource Include="glide.ico" />
-    <Resource Include="..\..\..\assets\wordmarks\glide-wordmark-indigo-512.png" Link="Assets\glide-wordmark-indigo-512.png" />
+    <Resource Include="..\..\..\assets\icons\blue\glide-symbol-blue-96.png" Link="Assets\glide-symbol-blue-96.png" />
+    <Resource Include="Resources\FLUENT_ICONS_LICENSE.txt" />
     <AssemblyMetadata Include="GlideUpdateFeedUrl" Value="$(GlideUpdateFeedUrl)" />
     <AssemblyMetadata Include="GlideUpdatePublicKey" Value="$(GlideUpdatePublicKey)" />
   </ItemGroup>

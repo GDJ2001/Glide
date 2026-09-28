@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:Glide.Windows.UI.ViewModels"
         mc:Ignorable="d"
-        Title="Glide" Height="720" Width="1040" MinWidth="820" MinHeight="560"
+        Title="Glide — Local sharing" Height="720" Width="1040" MinWidth="820" MinHeight="560"
         WindowStartupLocation="CenterScreen" Icon="pack://application:,,,/Glide;component/glide.ico"
         Background="{DynamicResource AppBackgroundBrush}" Foreground="{DynamicResource TextPrimaryBrush}">
     <Window.DataContext>
@@ -28,23 +28,21 @@
 
                 <StackPanel>
                     <StackPanel Orientation="Horizontal" Margin="8,0,0,28">
-                        <Border Width="28" Height="28" Background="{DynamicResource PrimaryBrush}" CornerRadius="8" Margin="0,0,10,0">
-                            <Path Data="M6,14 L12,8 L16,12 L22,6 L22,11 L16,17 L12,13 L6,19 Z" Fill="White" Stretch="Uniform" Margin="5" />
-                        </Border>
+                        <Image Source="/Glide;component/Assets/glide-symbol-blue-96.png" Width="30" Height="30" Stretch="Uniform" Margin="0,0,10,0" />
                         <StackPanel>
-                            <TextBlock Text="Glide" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                            <TextBlock Text="Glide" FontSize="18" FontWeight="Bold" Foreground="{DynamicResource TextPrimaryBrush}" />
                             <TextBlock Text="Local sharing" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
                         </StackPanel>
                     </StackPanel>
 
                     <RadioButton Style="{StaticResource NavButtonStyle}" GroupName="Navigation" IsChecked="{Binding IsSendSelected, Mode=OneWay}" Command="{Binding SwitchTabCommand}" CommandParameter="Send" AutomationProperties.Name="Send files">
-                        <StackPanel Orientation="Horizontal"><Path Data="M3,3 L21,12 L3,21 L6,13 L3,3 M6,13 L15,12" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" StrokeThickness="1.8" Width="18" Height="18" Margin="0,0,12,0" /><TextBlock Text="Send" VerticalAlignment="Center" /></StackPanel>
+                        <StackPanel Orientation="Horizontal"><Path Data="{StaticResource IconSend}" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" Stretch="Uniform" Width="20" Height="20" Margin="0,0,12,0" /><TextBlock Text="Send" VerticalAlignment="Center" /></StackPanel>
                     </RadioButton>
                     <RadioButton Style="{StaticResource NavButtonStyle}" GroupName="Navigation" IsChecked="{Binding IsReceiveSelected, Mode=OneWay}" Command="{Binding SwitchTabCommand}" CommandParameter="Receive" AutomationProperties.Name="Receive files">
-                        <StackPanel Orientation="Horizontal"><Path Data="M12,3 V17 M7,12 L12,17 L17,12 M4,21 H20" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" StrokeThickness="1.8" Width="18" Height="18" Margin="0,0,12,0" /><TextBlock Text="Receive" VerticalAlignment="Center" /></StackPanel>
+                        <StackPanel Orientation="Horizontal"><Path Data="{StaticResource IconReceive}" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" Stretch="Uniform" Width="20" Height="20" Margin="0,0,12,0" /><TextBlock Text="Receive" VerticalAlignment="Center" /></StackPanel>
                     </RadioButton>
                     <RadioButton Style="{StaticResource NavButtonStyle}" GroupName="Navigation" IsChecked="{Binding IsActivitySelected, Mode=OneWay}" Command="{Binding SwitchTabCommand}" CommandParameter="Activity" AutomationProperties.Name="Transfer activity">
-                        <StackPanel Orientation="Horizontal"><Path Data="M4,20 V12 M10,20 V4 M16,20 V9 M22,20 V2" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" StrokeThickness="1.8" Width="18" Height="18" Margin="0,0,12,0" /><TextBlock Text="Activity" VerticalAlignment="Center" /></StackPanel>
+                        <StackPanel Orientation="Horizontal"><Path Data="{StaticResource IconActivity}" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" Stretch="Uniform" Width="20" Height="20" Margin="0,0,12,0" /><TextBlock Text="Activity" VerticalAlignment="Center" /></StackPanel>
                     </RadioButton>
                 </StackPanel>
 
@@ -56,7 +54,7 @@
                         </StackPanel>
                     </Border>
                     <RadioButton Style="{StaticResource NavButtonStyle}" GroupName="Navigation" IsChecked="{Binding IsSettingsSelected, Mode=OneWay}" Command="{Binding SwitchTabCommand}" CommandParameter="Settings" AutomationProperties.Name="Settings">
-                        <StackPanel Orientation="Horizontal"><Path Data="M12,8 A4,4 0 1 0 12,16 A4,4 0 1 0 12,8 M12,2 V5 M12,19 V22 M2,12 H5 M19,12 H22 M4.9,4.9 L7,7 M17,17 L19.1,19.1 M19.1,4.9 L17,7 M7,17 L4.9,19.1" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" StrokeThickness="1.7" Width="18" Height="18" Margin="0,0,12,0" /><TextBlock Text="Settings" VerticalAlignment="Center" /></StackPanel>
+                        <StackPanel Orientation="Horizontal"><Path Data="{StaticResource IconSettings}" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" Stretch="Uniform" Width="20" Height="20" Margin="0,0,12,0" /><TextBlock Text="Settings" VerticalAlignment="Center" /></StackPanel>
                     </RadioButton>
                 </StackPanel>
             </Grid>
@@ -76,7 +74,7 @@
                     <TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0" TextTrimming="CharacterEllipsis" />
                 </StackPanel>
                 <Button Grid.Column="1" Style="{StaticResource SecondaryButtonStyle}" Command="{Binding OpenDownloadsCommand}" HorizontalAlignment="Right" AutomationProperties.Name="Open received files folder">
-                    <StackPanel Orientation="Horizontal"><Path Data="M4,3 H15 L20,8 V21 H4 Z M15,3 V8 H20" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.5" Width="16" Height="16" Margin="0,0,8,0" /><TextBlock Text="Received files" /></StackPanel>
+                    <StackPanel Orientation="Horizontal"><Path Data="{StaticResource IconFolderOpen}" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Stretch="Uniform" Width="18" Height="18" Margin="0,0,8,0" /><TextBlock Text="Received files" /></StackPanel>
                 </Button>
             </Grid>
 
@@ -84,17 +82,16 @@
                 <!-- Send -->
                 <ScrollViewer x:Name="SendPage" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Visibility="{Binding IsSendSelected, Converter={StaticResource BoolToVis}}">
                     <StackPanel>
-                        <TextBlock Text="Send files" FontSize="20" FontWeight="SemiBold" />
-                        <TextBlock Text="Choose files, then pick a nearby device or connect your phone with a one-time QR code." Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,20" TextWrapping="Wrap" />
+                        <TextBlock Text="Choose files, then pick a nearby device or connect your phone with a one-time QR code." Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,20" TextWrapping="Wrap" />
 
                         <Border x:Name="SendDropZone" Style="{StaticResource CardStyle}" BorderBrush="{DynamicResource PrimaryBrush}" BorderThickness="1" AllowDrop="True" Drop="DropZone_Drop" DragOver="DropZone_DragOver">
-                            <StackPanel HorizontalAlignment="Center" Margin="0,12">
-                                <Path Data="M5,7 H10 L12,9 H19 V20 H5 Z M12,5 V15 M8,11 L12,15 L16,11" Stroke="{DynamicResource PrimaryBrush}" StrokeThickness="1.8" Width="36" Height="30" HorizontalAlignment="Center" />
+                            <StackPanel HorizontalAlignment="Center" Margin="0,8">
+                                <Path Data="{StaticResource IconDocumentAdd}" Fill="{DynamicResource PrimaryBrush}" Stretch="Uniform" Width="32" Height="32" HorizontalAlignment="Center" />
                                 <TextBlock Text="Drop files or folders here" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,10,0,4" />
                                 <TextBlock Text="Or choose what to share from your computer" Foreground="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Center" />
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,16,0,0">
-                                    <Button Style="{StaticResource PrimaryButtonStyle}" Command="{Binding AddFilesCommand}" Content="Add files" Margin="0,0,8,0" AutomationProperties.Name="Add files to send" />
-                                    <Button Style="{StaticResource SecondaryButtonStyle}" Command="{Binding AddFolderCommand}" Content="Add folder" AutomationProperties.Name="Add folder to send" />
+                                    <Button Style="{StaticResource PrimaryButtonStyle}" Command="{Binding AddFilesCommand}" Margin="0,0,8,0" MinWidth="116" AutomationProperties.Name="Add files to send"><StackPanel Orientation="Horizontal"><Path Data="{StaticResource IconDocumentAdd}" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Width="18" Height="18" Stretch="Uniform" Margin="0,0,8,0" /><TextBlock Text="Add files" VerticalAlignment="Center" /></StackPanel></Button>
+                                    <Button Style="{StaticResource SecondaryButtonStyle}" Command="{Binding AddFolderCommand}" MinWidth="116" AutomationProperties.Name="Add folder to send"><StackPanel Orientation="Horizontal"><Path Data="{StaticResource IconFolderAdd}" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Width="18" Height="18" Stretch="Uniform" Margin="0,0,8,0" /><TextBlock Text="Add folder" VerticalAlignment="Center" /></StackPanel></Button>
                                 </StackPanel>
                             </StackPanel>
                         </Border>
@@ -103,23 +100,24 @@
                             <Grid>
                                 <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
                                 <Grid>
-                                    <StackPanel>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <StackPanel Margin="0,0,12,0">
                                         <TextBlock Text="Ready to send" FontWeight="SemiBold" />
-                                        <TextBlock Text="{Binding SelectedFilesSummary}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="0,3,0,0" />
+                                        <TextBlock Text="{Binding SelectedFilesSummary}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="0,3,0,0" TextWrapping="Wrap" />
                                     </StackPanel>
-                                    <Button Style="{StaticResource SecondaryButtonStyle}" Content="Clear list" Command="{Binding ClearFilesCommand}" HorizontalAlignment="Right" />
+                                    <Button Grid.Column="1" Style="{StaticResource SecondaryButtonStyle}" Content="Clear list" Command="{Binding ClearFilesCommand}" HorizontalAlignment="Right" />
                                 </Grid>
                                 <ListBox Grid.Row="1" ItemsSource="{Binding SelectedFiles}" BorderThickness="0" Background="Transparent" Margin="0,16,0,0" MaxHeight="220" HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.CanContentScroll="True" VirtualizingPanel.IsVirtualizing="True">
                                     <ListBox.ItemTemplate>
                                         <DataTemplate>
                                             <Grid Margin="0,4">
-                                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="100" /><ColumnDefinition Width="80" /></Grid.ColumnDefinitions>
                                                 <StackPanel>
                                                     <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                                                     <TextBlock Text="{Binding Status}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" />
                                                 </StackPanel>
-                                                <TextBlock Grid.Column="1" Text="{Binding FormattedSize}" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="16,0" />
-                                                <Button Grid.Column="2" Style="{StaticResource SecondaryButtonStyle}" Content="Remove" Command="{Binding DataContext.RemoveFileCommand, RelativeSource={RelativeSource AncestorType=ListBox}}" CommandParameter="{Binding}" VerticalAlignment="Center" Padding="10,4" MinHeight="32" AutomationProperties.Name="Remove queued file" />
+                                                <TextBlock Grid.Column="1" Text="{Binding FormattedSize}" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="8,0" />
+                                                <Button Grid.Column="2" Style="{StaticResource SecondaryButtonStyle}" Content="Remove" Command="{Binding DataContext.RemoveFileCommand, RelativeSource={RelativeSource AncestorType=ListBox}}" CommandParameter="{Binding}" VerticalAlignment="Center" Width="76" Padding="10,4" MinHeight="32" AutomationProperties.Name="Remove queued file" />
                                             </Grid>
                                         </DataTemplate>
                                     </ListBox.ItemTemplate>
@@ -136,10 +134,15 @@
                                         <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
-                                                <Button Style="{StaticResource SecondaryButtonStyle}" Command="{Binding DataContext.SelectPeerCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" Margin="0,0,8,8" MinWidth="170">
-                                                    <StackPanel>
-                                                        <TextBlock Text="{Binding DeviceName}" FontWeight="SemiBold" />
-                                                        <TextBlock Text="{Binding CapabilitiesText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" />
+                                                <Button Style="{StaticResource SecondaryButtonStyle}" Command="{Binding DataContext.SelectPeerCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" Margin="0,0,8,8" MinWidth="190">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <Path Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Width="22" Height="22" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,10,0">
+                                                            <Path.Style><Style TargetType="Path"><Setter Property="Data" Value="{StaticResource IconLaptop}" /><Style.Triggers><DataTrigger Binding="{Binding DeviceType}" Value="mobile"><Setter Property="Data" Value="{StaticResource IconPhone}" /></DataTrigger><DataTrigger Binding="{Binding DeviceType}" Value="phone"><Setter Property="Data" Value="{StaticResource IconPhone}" /></DataTrigger><DataTrigger Binding="{Binding DeviceType}" Value="tablet"><Setter Property="Data" Value="{StaticResource IconPhone}" /></DataTrigger></Style.Triggers></Style></Path.Style>
+                                                        </Path>
+                                                        <StackPanel>
+                                                            <TextBlock Text="{Binding DeviceName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" MaxWidth="180" />
+                                                            <TextBlock Text="{Binding CapabilitiesText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" />
+                                                        </StackPanel>
                                                     </StackPanel>
                                                 </Button>
                                             </DataTemplate>
@@ -152,7 +155,7 @@
                                                 <TextBlock Text="Not seeing your device? Refresh discovery or use a one-time pairing code." Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" Margin="0,3,0,0" TextWrapping="Wrap" />
                                             </StackPanel>
                                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Margin="0,12,0,0">
-                                                <Button Style="{StaticResource SecondaryButtonStyle}" Content="Refresh" Command="{Binding RefreshPeersCommand}" Margin="0,0,8,0" />
+                                                <Button Style="{StaticResource SecondaryButtonStyle}" Command="{Binding RefreshPeersCommand}" Margin="0,0,8,0"><StackPanel Orientation="Horizontal"><Path Data="{StaticResource IconRefresh}" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Width="16" Height="16" Stretch="Uniform" Margin="0,0,7,0" /><TextBlock Text="Refresh" /></StackPanel></Button>
                                                 <Button Style="{StaticResource SecondaryButtonStyle}" Content="Use pairing code" Command="{Binding ShowPairModalCommand}" />
                                             </StackPanel>
                                         </StackPanel>
@@ -167,8 +170,7 @@
                 <!-- Receive -->
                 <ScrollViewer x:Name="ReceivePage" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Visibility="{Binding IsReceiveSelected, Converter={StaticResource BoolToVis}}">
                     <StackPanel>
-                        <TextBlock Text="Receive files" FontSize="20" FontWeight="SemiBold" />
-                        <TextBlock Text="Make this PC available to nearby Glide devices. You approve each incoming transfer." Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,20" />
+                        <TextBlock Text="Make this PC available to nearby Glide devices. You approve each incoming transfer." Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,20" TextWrapping="Wrap" />
                         <Border Style="{StaticResource CardStyle}">
                             <StackPanel>
                                 <StackPanel>
@@ -187,9 +189,9 @@
                                         <Image Source="{Binding PairingQrImage}" Width="180" Height="180" Stretch="Uniform" RenderOptions.BitmapScalingMode="NearestNeighbor" AutomationProperties.Name="QR code for receiving files" />
                                     </Border>
                                     <StackPanel Margin="20,4,0,0" VerticalAlignment="Center">
-                                        <Button Style="{StaticResource PrimaryButtonStyle}" Content="Show larger code" Command="{Binding ToggleQrZoomCommand}" Margin="0,0,0,8" />
-                                        <Button Style="{StaticResource SecondaryButtonStyle}" Content="Copy pairing link" Command="{Binding CopyPairingLinkCommand}" Margin="0,0,0,8" />
-                                        <Button Style="{StaticResource SecondaryButtonStyle}" Content="Refresh code" Command="{Binding RefreshQrCommand}" />
+                                        <Button x:Name="ReceiveShowQrButton" Style="{StaticResource PrimaryButtonStyle}" Content="Show larger code" Command="{Binding ToggleQrZoomCommand}" Width="192" HorizontalAlignment="Left" Margin="0,0,0,8" />
+                                        <Button x:Name="ReceiveCopyLinkButton" Style="{StaticResource SecondaryButtonStyle}" Content="Copy pairing link" Command="{Binding CopyPairingLinkCommand}" Width="192" HorizontalAlignment="Left" Margin="0,0,0,8" />
+                                        <Button x:Name="ReceiveRefreshQrButton" Style="{StaticResource SecondaryButtonStyle}" Content="Refresh code" Command="{Binding RefreshQrCommand}" Width="192" HorizontalAlignment="Left" />
                                     </StackPanel>
                                 </StackPanel>
                             </StackPanel>
@@ -210,8 +212,7 @@
                 <!-- Activity -->
                 <ScrollViewer x:Name="ActivityPage" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Visibility="{Binding IsActivitySelected, Converter={StaticResource BoolToVis}}">
                     <StackPanel>
-                        <TextBlock Text="Transfer activity" FontSize="20" FontWeight="SemiBold" />
-                        <TextBlock Text="Current transfers and verified file history." Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,20" />
+                        <TextBlock Text="Current transfers and verified file history." Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,20" />
                         <Border Style="{StaticResource CardStyle}">
                             <StackPanel>
                                 <TextBlock Text="Current transfer" FontWeight="SemiBold" />
@@ -246,10 +247,10 @@
                                     <ListBox.ItemTemplate>
                                         <DataTemplate>
                                             <Grid Margin="0,7">
-                                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="116" /><ColumnDefinition Width="116" /></Grid.ColumnDefinitions>
                                                 <StackPanel><TextBlock Text="{Binding ItemName}" Foreground="{DynamicResource TextPrimaryBrush}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" /><TextBlock Text="{Binding Direction}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" /></StackPanel>
-                                                <StackPanel Grid.Column="1" Margin="18,0"><TextBlock Text="{Binding FormattedSize}" Foreground="{DynamicResource TextPrimaryBrush}" HorizontalAlignment="Right" /><TextBlock Text="{Binding FormattedTime}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" /></StackPanel>
-                                                <Button Grid.Column="2" Style="{StaticResource SecondaryButtonStyle}" Content="Open folder" Command="{Binding DataContext.OpenHistoryItemCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" VerticalAlignment="Center" />
+                                                <StackPanel Grid.Column="1" Margin="6,0"><TextBlock Text="{Binding FormattedSize}" Foreground="{DynamicResource TextPrimaryBrush}" HorizontalAlignment="Right" /><TextBlock Text="{Binding FormattedTime}" Foreground="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Right" FontSize="11" /></StackPanel>
+                                                <Button Grid.Column="2" Style="{StaticResource SecondaryButtonStyle}" Content="Open folder" Command="{Binding DataContext.OpenHistoryItemCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" Width="110" HorizontalAlignment="Right" VerticalAlignment="Center" />
                                             </Grid>
                                         </DataTemplate>
                                     </ListBox.ItemTemplate>
@@ -262,8 +263,7 @@
                 <!-- Settings -->
                 <ScrollViewer x:Name="SettingsPage" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Visibility="{Binding IsSettingsSelected, Converter={StaticResource BoolToVis}}">
                     <StackPanel>
-                        <TextBlock Text="Settings" FontSize="20" FontWeight="SemiBold" />
-                        <TextBlock Text="Control how Glide appears and receives files." Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,20" />
+                        <TextBlock Text="Control how Glide appears and receives files." Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,20" />
                         <Border Style="{StaticResource CardStyle}">
                             <StackPanel><TextBlock Text="Appearance" FontWeight="SemiBold" /><TextBlock Text="Match Windows by default, or choose a theme for Glide." Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="0,4,0,12" /><ComboBox ItemsSource="{Binding AppearanceOptions}" SelectedItem="{Binding AppearanceMode}" Width="180" HorizontalAlignment="Left" AutomationProperties.Name="Appearance theme" /></StackPanel>
                         </Border>
@@ -275,7 +275,7 @@
                             </StackPanel>
                         </Border>
                         <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0">
-                            <StackPanel><TextBlock Text="Trusted devices" FontWeight="SemiBold" /><TextBlock Text="{Binding TrustedDeviceCount, StringFormat={}{0} device(s) trusted for future authenticated sessions.}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="0,4,0,12" />
+                            <StackPanel><TextBlock Text="Trusted devices" FontWeight="SemiBold" /><TextBlock Text="{Binding TrustedDevicesSummary}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="0,4,0,12" />
                                 <ItemsControl ItemsSource="{Binding TrustedDevices}"><ItemsControl.ItemTemplate><DataTemplate><Grid Margin="0,5"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><StackPanel><TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" /><TextBlock Text="{Binding FingerprintShort}" Foreground="{DynamicResource TextSecondaryBrush}" FontFamily="Consolas" FontSize="11" /><TextBlock Text="{Binding LastSeenText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" /></StackPanel><Button Grid.Column="1" Style="{StaticResource SecondaryButtonStyle}" Content="Remove" Command="{Binding DataContext.RevokeTrustedDeviceCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" VerticalAlignment="Center" /></Grid></DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
                             </StackPanel>
                         </Border>
