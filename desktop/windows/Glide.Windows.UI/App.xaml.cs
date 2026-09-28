@@ -109,8 +109,11 @@ public partial class App : Application
 
         ActivateArguments(mainWindow, e.Args);
 
-        _singleInstance.Start(arguments => Dispatcher.InvokeAsync(
-            () => ActivateArguments(mainWindow, arguments)).Task);
+        _singleInstance.Start(arguments => Dispatcher.InvokeAsync(() =>
+        {
+            ActivateArguments(mainWindow, arguments);
+            BringToFront(mainWindow);
+        }).Task);
 
         mainWindow.Show();
 
@@ -157,16 +160,21 @@ public partial class App : Application
         {
             vm.AddDroppedFiles(filesToQueue.ToArray());
             vm.CurrentTab = "Send";
-            if (!mainWindow.IsVisible)
-            {
-                mainWindow.Show();
-            }
-            if (mainWindow.WindowState == WindowState.Minimized)
-            {
-                mainWindow.WindowState = WindowState.Normal;
-            }
-            mainWindow.Activate();
+            BringToFront(mainWindow);
         }
+    }
+
+    private static void BringToFront(MainWindow mainWindow)
+    {
+        if (!mainWindow.IsVisible)
+        {
+            mainWindow.Show();
+        }
+        if (mainWindow.WindowState == WindowState.Minimized)
+        {
+            mainWindow.WindowState = WindowState.Normal;
+        }
+        mainWindow.Activate();
     }
 
     private static void RunSelfUninstall(bool silent)
