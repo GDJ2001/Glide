@@ -350,13 +350,35 @@
                         <ItemsControl ItemsSource="{Binding TrustedDevices}">
                             <ItemsControl.ItemTemplate><DataTemplate>
                                 <Button Style="{StaticResource SecondaryButtonStyle}" Command="{Binding DataContext.SelectTrustedDeviceCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" HorizontalContentAlignment="Stretch" Margin="0,0,0,8" AutomationProperties.Name="Select saved device">
-                                    <Grid Width="390"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><StackPanel><TextBlock Text="{Binding DisplayName}" Foreground="{DynamicResource TextPrimaryBrush}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip="{Binding DisplayName}" /><TextBlock Text="{Binding LastSeenText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" /></StackPanel><TextBlock Grid.Column="1" Text="Select" Foreground="{DynamicResource PrimaryBrush}" VerticalAlignment="Center" /></Grid>
+                                    <Grid Width="390"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><StackPanel><TextBlock Text="{Binding DisplayName}" Foreground="{DynamicResource TextPrimaryBrush}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip="{Binding DisplayName}" /><TextBlock Text="{Binding LastSeenText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" /></StackPanel><TextBlock Grid.Column="1" Text="Connect" Foreground="{DynamicResource PrimaryBrush}" VerticalAlignment="Center" /></Grid>
                                 </Button>
                             </DataTemplate></ItemsControl.ItemTemplate>
                         </ItemsControl>
                     </ScrollViewer>
                     <TextBlock Text="A fresh invitation is required for each send. Glide checks the saved identity before transfer." Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,16" />
                     <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><Button Grid.Column="0" Style="{StaticResource SecondaryButtonStyle}" Content="Pair a new device" Command="{Binding ShowPairModalCommand}" HorizontalAlignment="Left" /><Button x:Name="CloseTrustedDevicePickerButton" Grid.Column="1" Style="{StaticResource SecondaryButtonStyle}" Content="Close" Command="{Binding CloseTrustedDevicePickerCommand}" /></Grid>
+                </StackPanel>
+            </Border>
+        </Border>
+
+        <!-- Connect a saved identity with a fresh one-use invitation. -->
+        <Border Grid.ColumnSpan="2" Background="#99000000" Visibility="{Binding IsSavedDeviceConnectVisible, Converter={StaticResource BoolToVis}}" Panel.ZIndex="12" IsVisibleChanged="SavedDeviceConnect_IsVisibleChanged">
+            <Border Style="{StaticResource CardStyle}" Width="500" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="28" KeyboardNavigation.TabNavigation="Cycle">
+                <StackPanel>
+                    <TextBlock Text="{Binding SelectedTrustedDeviceName, StringFormat='Connect to {0}'}" FontSize="20" FontWeight="SemiBold" />
+                    <TextBlock Text="On the receiving device, open Glide Receive and copy its current pairing link. Glide will verify that it is the saved device before sending." Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,8,0,16" />
+                    <TextBox x:Name="SavedDeviceInvitationInput" Style="{StaticResource ModernTextBoxStyle}" Text="{Binding PairInputUri, UpdateSourceTrigger=PropertyChanged}" TextWrapping="Wrap" MinHeight="56" AutomationProperties.Name="Current pairing link from saved device" />
+                    <TextBlock Text="{Binding PairingStatusText}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,8,0,0" AutomationProperties.LiveSetting="Polite" />
+                    <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+                        <Button Style="{StaticResource SecondaryButtonStyle}" Content="Paste link" Command="{Binding PastePairingLinkCommand}" Margin="0,0,8,0" />
+                        <Button Style="{StaticResource PrimaryButtonStyle}" Content="Connect and send" Command="{Binding ConnectSavedDeviceCommand}" />
+                    </StackPanel>
+                    <TextBlock Text="Or show a QR code for a phone running Glide to scan." Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,18,0,8" />
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <Button Style="{StaticResource SecondaryButtonStyle}" Content="Show QR code" Command="{Binding ShowSavedDeviceQrCommand}" HorizontalAlignment="Left" />
+                        <Button x:Name="CloseSavedDeviceConnectButton" Grid.Column="1" Style="{StaticResource SecondaryButtonStyle}" Content="Cancel" Command="{Binding CloseSavedDeviceConnectCommand}" />
+                    </Grid>
                 </StackPanel>
             </Border>
         </Border>

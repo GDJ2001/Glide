@@ -11,6 +11,7 @@ public partial class MainWindow : Window
 {
     private HwndSource? _windowSource;
     private IInputElement? _focusBeforeTrustedPicker;
+    private IInputElement? _focusBeforeSavedDeviceConnect;
     private bool _fileCardWasPopulated;
 
     public MainWindow()
@@ -122,6 +123,20 @@ public partial class MainWindow : Window
         else if (_focusBeforeTrustedPicker is { } previous)
         {
             _focusBeforeTrustedPicker = null;
+            Dispatcher.BeginInvoke(() => Keyboard.Focus(previous), DispatcherPriority.Input);
+        }
+    }
+
+    private void SavedDeviceConnect_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (e.NewValue is true)
+        {
+            _focusBeforeSavedDeviceConnect = Keyboard.FocusedElement;
+            Dispatcher.BeginInvoke(() => SavedDeviceInvitationInput.Focus(), DispatcherPriority.Input);
+        }
+        else if (_focusBeforeSavedDeviceConnect is { } previous)
+        {
+            _focusBeforeSavedDeviceConnect = null;
             Dispatcher.BeginInvoke(() => Keyboard.Focus(previous), DispatcherPriority.Input);
         }
     }

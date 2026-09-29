@@ -9,6 +9,7 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using Glide.Windows.UI.ViewModels;
 using Glide.Windows.UI.Views;
+using Glide.Core.Security;
 
 namespace Glide.Windows.UI.Tests;
 
@@ -221,12 +222,31 @@ public sealed class WindowsSendUiIntegrationTests
                 trusted.Command.Execute(trusted.CommandParameter);
                 Assert.True(viewModel.IsTrustedDevicePickerVisible);
                 Assert.Equal(Visibility.Collapsed, sendButton.Visibility);
-                viewModel.CloseTrustedDevicePickerCommand.Execute(null);
+                var savedDevice = new TrustedDeviceViewModel(
+                    new DesktopTrustedPeer(new string('a', 64), "00", "Saved test device", 1, 1));
+                viewModel.SelectTrustedDeviceCommand.Execute(savedDevice);
+                window.UpdateLayout();
+                Assert.Equal("Send", viewModel.CurrentTab);
+                Assert.False(viewModel.IsTrustedDevicePickerVisible);
+                Assert.True(viewModel.IsSavedDeviceConnectVisible);
+                Assert.Equal(Visibility.Visible,
+                    Assert.IsType<TextBox>(window.FindName("SavedDeviceInvitationInput")).Visibility);
+                Assert.False(viewModel.IsSendActionVisible);
+                viewModel.ConnectSavedDeviceCommand.Execute(null);
+                Assert.True(viewModel.IsSavedDeviceConnectVisible);
+                Assert.Contains("current pairing link", viewModel.PairingStatusText);
+                viewModel.CloseSavedDeviceConnectCommand.Execute(null);
+                Assert.False(viewModel.IsSavedDeviceConnectVisible);
                 viewModel.PairInputUri = viewModel.ActiveInvitationUri;
                 viewModel.SubmitPairModalCommand.Execute(null);
                 window.UpdateLayout();
+                Assert.True(viewModel.IsSendActionVisible);
+                Assert.Equal(Visibility.Visible, sendButton.Visibility);
+                viewModel.SelectTrustedDeviceCommand.Execute(savedDevice);
                 Assert.False(viewModel.IsSendActionVisible);
-                Assert.Equal(Visibility.Collapsed, sendButton.Visibility);
+                Assert.True(viewModel.IsSavedDeviceConnectVisible);
+                viewModel.ClearPairingCommand.Execute(null);
+                Assert.False(viewModel.IsSendActionVisible);
                 sendPage.ScrollToVerticalOffset(50);
                 window.UpdateLayout();
                 viewModel.ClearFilesCommand.Execute(null);

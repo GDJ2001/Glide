@@ -86,6 +86,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     private SendMethodChoice _sendMethod;
     private PairDirectionChoice _pairDirection = PairDirectionChoice.UseInvitation;
     private bool _isTrustedDevicePickerVisible;
+    private bool _isSavedDeviceConnectVisible;
     private string _pairingStatusText = "Paste a current invitation, or choose a nearby device below.";
     private readonly LanInvitationAuthority _invitationAuthority = new();
 
@@ -168,6 +169,9 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     public RelayCommand ShowTrustedDevicePickerCommand { get; }
     public RelayCommand CloseTrustedDevicePickerCommand { get; }
     public RelayCommand SelectTrustedDeviceCommand { get; }
+    public RelayCommand ConnectSavedDeviceCommand { get; }
+    public RelayCommand CloseSavedDeviceConnectCommand { get; }
+    public RelayCommand ShowSavedDeviceQrCommand { get; }
     public RelayCommand ShowQuickShareQrCommand { get; }
     public RelayCommand SelectPairDirectionCommand { get; }
     public RelayCommand RefreshPeersCommand { get; }
@@ -308,6 +312,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             _pairedInvitation = null;
             _selectedPeer = null;
             _selectedTrustedDevice = null;
+            IsSavedDeviceConnectVisible = false;
             PairingStatusText = "Paste a current invitation, or choose a nearby device below.";
             OnPropertyChanged(nameof(PairingSheetTitle));
             OnPropertyChanged(nameof(PairingSheetInstruction));
@@ -356,14 +361,37 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         {
             if (param is not TrustedDeviceViewModel device) return;
             SelectSendMethod(SendMethodChoice.Trusted);
+            // Choosing a saved identity must never reuse another device's one-use invitation.
+            _pairedInvitation = null;
+            _selectedPeer = null;
             _selectedTrustedDevice = device;
             IsTrustedDevicePickerVisible = false;
-            PairingStatusText = $"{device.DisplayName} selected. Paste a fresh invite from that device.";
+            PairInputUri = string.Empty;
+            PairingStatusText = $"Get a current pairing link from {device.DisplayName} to connect securely.";
             StatusMessage = PairingStatusText;
             NotifySendState();
-            SelectPairDirection(PairDirectionChoice.UseInvitation);
-            CurrentTab = "Pair devices";
+            OnPropertyChanged(nameof(SelectedTrustedDeviceName));
+            OnPropertyChanged(nameof(PairingSheetTitle));
+            OnPropertyChanged(nameof(PairingSheetInstruction));
+            IsSavedDeviceConnectVisible = true;
         });
+        ConnectSavedDeviceCommand = new RelayCommand(() =>
+        {
+            if (_selectedTrustedDevice is null || SelectedFiles.Count == 0 || IsTransferActive)
+                return;
+            if (string.IsNullOrWhiteSpace(PairInputUri))
+            {
+                PairingStatusText = "Paste the current pairing link shown in Receive on the selected device.";
+                return;
+            }
+            if (!TryApplyPairingInvitation(PairInputUri.Trim(), showErrors: true))
+                return;
+            IsSavedDeviceConnectVisible = false;
+            PairInputUri = string.Empty;
+            _ = ExecuteSendFilesSafelyAsync();
+        });
+        CloseSavedDeviceConnectCommand = new RelayCommand(() => IsSavedDeviceConnectVisible = false);
+        ShowSavedDeviceQrCommand = new RelayCommand(() => _ = StartSavedDeviceQrSafelyAsync());
         SelectPeerCommand = new RelayCommand(param =>
         {
             if (param is DiscoveredPeerViewModel peer)
@@ -564,6 +592,14 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         set => SetProperty(ref _isTrustedDevicePickerVisible, value);
     }
 
+    public bool IsSavedDeviceConnectVisible
+    {
+        get => _isSavedDeviceConnectVisible;
+        set => SetProperty(ref _isSavedDeviceConnectVisible, value);
+    }
+
+    public string SelectedTrustedDeviceName => _selectedTrustedDevice?.DisplayName ?? "saved device";
+
     public string AppearanceMode
     {
         get => _appearanceMode;
@@ -758,13 +794,17 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
 
     public string PairingSheetTitle => _selectedPeer is null
         ? IsHostedSendQrVisible
-            ? "Scan with Glide on your phone"
+            ? _selectedTrustedDevice is null
+                ? "Scan with Glide on your phone"
+                : $"Connect {SelectedTrustedDeviceName}"
             : "Connect to the receiving device"
         : $"Pair with {_selectedPeer.DeviceName}";
 
     public string PairingSheetInstruction => _selectedPeer is null
         ? IsHostedSendQrVisible
-            ? "On the phone, choose Receive files, then Scan PC QR code. Glide will ask the phone to approve the selected files before anything is sent."
+            ? _selectedTrustedDevice is null
+                ? "On the phone, choose Receive files, then Scan PC QR code. Glide will ask the phone to approve the selected files before anything is sent."
+                : $"On {SelectedTrustedDeviceName}, scan this code in Glide. Its saved identity must match before files are sent."
             : "On the receiving device, show its Glide QR code and paste the invite below. Both devices must be on the same local network."
         : $"On {_selectedPeer.DeviceName}, open Receive files > Show QR code > Copy invite. Paste that invite below. Glide checks that it belongs to the nearby device you selected.";
 
@@ -869,6 +909,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         _pairedInvitation = null;
         _selectedPeer = null;
         _selectedTrustedDevice = null;
+        IsSavedDeviceConnectVisible = false;
         PairInputUri = string.Empty;
         PairingStatusText = "Paste a current invitation, or choose a nearby device below.";
         NotifySendState();
@@ -888,6 +929,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         _pairedInvitation = null;
         _selectedPeer = null;
         _selectedTrustedDevice = null;
+        IsSavedDeviceConnectVisible = false;
         PairInputUri = string.Empty;
         PairingStatusText = "Paste a current invitation, or choose a nearby device below.";
         NotifySendState();
@@ -919,6 +961,22 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         catch (Exception ex)
         {
             StatusMessage = $"Could not show the QR code: {ex.Message}";
+        }
+    }
+
+    private async Task StartSavedDeviceQrSafelyAsync()
+    {
+        if (_selectedTrustedDevice is null || SelectedFiles.Count == 0 || IsTransferActive)
+            return;
+        try
+        {
+            await StartHostedSendPairingAsync();
+            if (IsPairModalVisible)
+                IsSavedDeviceConnectVisible = false;
+        }
+        catch (Exception ex)
+        {
+            PairingStatusText = $"Could not show the QR code: {ex.Message}";
         }
     }
 
@@ -1354,13 +1412,16 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             Invitation: _activeInvitation,
             LocalDeviceName: Environment.MachineName,
             TrustManager: _trustManager,
+            ExpectedPeerFingerprintHex: _selectedTrustedDevice?.FingerprintHex,
             HostedInvitationAuthority: _invitationAuthority);
         PairInputUri = string.Empty;
         IsPairModalVisible = true;
         OnPropertyChanged(nameof(IsHostedSendQrVisible));
         OnPropertyChanged(nameof(PairingSheetTitle));
         OnPropertyChanged(nameof(PairingSheetInstruction));
-        StatusMessage = "Scan the QR code with Glide on the receiving phone.";
+        StatusMessage = _selectedTrustedDevice is null
+            ? "Scan the QR code with Glide on the receiving phone."
+            : $"Waiting for {SelectedTrustedDeviceName} to scan the QR code.";
     }
 
     public async Task<bool> ConfirmOfferAsync(
