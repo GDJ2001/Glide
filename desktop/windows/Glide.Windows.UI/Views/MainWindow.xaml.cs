@@ -11,6 +11,7 @@ public partial class MainWindow : Window
 {
     private HwndSource? _windowSource;
     private IInputElement? _focusBeforeTrustedPicker;
+    private bool _fileCardWasPopulated;
 
     public MainWindow()
     {
@@ -83,6 +84,20 @@ public partial class MainWindow : Window
             e.Effects = DragDropEffects.None;
         }
         e.Handled = true;
+    }
+
+    private void SendDropZone_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        bool isPopulated = DataContext is MainViewModel { HasSelectedFiles: true };
+        if (_fileCardWasPopulated && !isPopulated)
+        {
+            Dispatcher.BeginInvoke(() =>
+            {
+                SendPage.ScrollToTop();
+                EmptyAddFilesButton.Focus();
+            }, DispatcherPriority.Loaded);
+        }
+        _fileCardWasPopulated = isPopulated;
     }
 
     private void DropZone_Drop(object sender, DragEventArgs e)

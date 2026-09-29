@@ -75,8 +75,14 @@ public sealed class WindowsSendUiIntegrationTests
                 viewModel.CurrentTab = "Send";
                 window.UpdateLayout();
                 var dropZone = Assert.IsType<Border>(window.FindName("SendDropZone"));
+                var emptyFileState = Assert.IsType<StackPanel>(window.FindName("EmptyFileState"));
+                var selectedFileState = Assert.IsType<Grid>(window.FindName("SelectedFileState"));
                 var sendPage = Assert.IsType<ScrollViewer>(window.FindName("SendPage"));
                 Assert.True(dropZone.ActualWidth <= sendPage.ViewportWidth + 1);
+                Assert.True(dropZone.AllowDrop);
+                Assert.Equal(Visibility.Visible, emptyFileState.Visibility);
+                Assert.Equal(Visibility.Collapsed, selectedFileState.Visibility);
+                double emptyCardHeight = dropZone.ActualHeight;
                 viewModel.CurrentTab = "Receive";
                 window.UpdateLayout();
                 var receiveButton = Assert.IsType<Button>(window.FindName("ReceiveControlButton"));
@@ -107,7 +113,18 @@ public sealed class WindowsSendUiIntegrationTests
                 window.Dispatcher.Invoke(
                     () => { },
                     DispatcherPriority.Background);
-
+                window.UpdateLayout();
+                Assert.Equal(Visibility.Collapsed, emptyFileState.Visibility);
+                Assert.Equal(Visibility.Visible, selectedFileState.Visibility);
+                Assert.True(dropZone.ActualHeight < emptyCardHeight);
+                Assert.Contains("1 file", viewModel.SelectedFilesSummary);
+                Assert.Contains("B", viewModel.SelectedFilesSummary);
+                var selectedFilesList = Assert.IsType<ListBox>(window.FindName("SelectedFilesList"));
+                Assert.Single(selectedFilesList.Items);
+                Assert.Contains(Descendants(selectedFileState).OfType<Button>(),
+                    button => AutomationProperties.GetName(button) == "Add more files to send");
+                Assert.Contains(Descendants(selectedFileState).OfType<Button>(),
+                    button => AutomationProperties.GetName(button) == "Add another folder to send");
                 var sendButton = Assert.IsType<Button>(window.FindName("SendChosenDeviceButton"));
                 Assert.Equal(Visibility.Collapsed, sendButton.Visibility);
                 Assert.False(viewModel.IsSendActionVisible);
@@ -180,6 +197,23 @@ public sealed class WindowsSendUiIntegrationTests
                 window.UpdateLayout();
                 Assert.False(viewModel.IsSendActionVisible);
                 Assert.Equal(Visibility.Collapsed, sendButton.Visibility);
+                sendPage.ScrollToVerticalOffset(50);
+                window.UpdateLayout();
+                viewModel.ClearFilesCommand.Execute(null);
+                window.Dispatcher.Invoke(
+                    () => { },
+                    DispatcherPriority.Background);
+                window.UpdateLayout();
+                Assert.Equal(Visibility.Visible, emptyFileState.Visibility);
+                Assert.Equal(Visibility.Collapsed, selectedFileState.Visibility);
+                Assert.Equal(SendMethodChoice.None, viewModel.SendMethod);
+                Assert.Equal("Add files or a folder to get started.", viewModel.StatusMessage);
+                Assert.Equal(0, sendPage.VerticalOffset);
+                viewModel.AddDroppedFiles([testFile]);
+                viewModel.RemoveFileCommand.Execute(Assert.Single(viewModel.SelectedFiles));
+                window.UpdateLayout();
+                Assert.Equal(Visibility.Visible, emptyFileState.Visibility);
+                Assert.Equal(Visibility.Collapsed, selectedFileState.Visibility);
             }
             catch (Exception ex)
             {

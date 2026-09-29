@@ -85,46 +85,66 @@
                 <!-- Send -->
                 <ScrollViewer x:Name="SendPage" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Visibility="{Binding IsSendSelected, Converter={StaticResource BoolToVis}}">
                     <StackPanel>
-                        <TextBlock Text="Choose files, then pick a nearby device or connect your phone with a one-time QR code." Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,20" TextWrapping="Wrap" />
-
-                        <Border x:Name="SendDropZone" Style="{StaticResource CardStyle}" BorderBrush="{DynamicResource PrimaryBrush}" BorderThickness="1" AllowDrop="True" Drop="DropZone_Drop" DragOver="DropZone_DragOver">
-                            <StackPanel HorizontalAlignment="Center" Margin="0,8">
-                                <Path Data="{StaticResource IconDocumentAdd}" Fill="{DynamicResource PrimaryBrush}" Stretch="Uniform" Width="32" Height="32" HorizontalAlignment="Center" />
-                                <TextBlock Text="Drop files or folders here" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,10,0,4" />
-                                <TextBlock Text="Or choose what to share from your computer" Foreground="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Center" />
-                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,16,0,0">
-                                    <Button Style="{StaticResource PrimaryButtonStyle}" Command="{Binding AddFilesCommand}" Margin="0,0,8,0" MinWidth="116" AutomationProperties.Name="Add files to send"><StackPanel Orientation="Horizontal"><Path Data="{StaticResource IconDocumentAdd}" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Width="18" Height="18" Stretch="Uniform" Margin="0,0,8,0" /><TextBlock Text="Add files" VerticalAlignment="Center" /></StackPanel></Button>
-                                    <Button Style="{StaticResource SecondaryButtonStyle}" Command="{Binding AddFolderCommand}" MinWidth="116" AutomationProperties.Name="Add folder to send"><StackPanel Orientation="Horizontal"><Path Data="{StaticResource IconFolderAdd}" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Width="18" Height="18" Stretch="Uniform" Margin="0,0,8,0" /><TextBlock Text="Add folder" VerticalAlignment="Center" /></StackPanel></Button>
-                                </StackPanel>
-                            </StackPanel>
-                        </Border>
-
-                        <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0">
+                        <Border x:Name="SendDropZone" AllowDrop="True" Drop="DropZone_Drop" DragOver="DropZone_DragOver" SizeChanged="SendDropZone_SizeChanged" AutomationProperties.Name="Files to send drop area">
+                            <Border.Style>
+                                <Style TargetType="Border" BasedOn="{StaticResource CardStyle}">
+                                    <Setter Property="BorderBrush" Value="{DynamicResource PrimaryBrush}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding HasSelectedFiles}" Value="True">
+                                            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
                             <Grid>
-                                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-                                <Grid>
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                    <StackPanel Margin="0,0,12,0">
-                                        <TextBlock Text="Ready to send" FontWeight="SemiBold" />
-                                        <TextBlock Text="{Binding SelectedFilesSummary}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="0,3,0,0" TextWrapping="Wrap" />
+                                <StackPanel x:Name="EmptyFileState" HorizontalAlignment="Center" Margin="0,8">
+                                    <StackPanel.Style>
+                                        <Style TargetType="StackPanel">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding HasSelectedFiles}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </StackPanel.Style>
+                                    <Path Data="{StaticResource IconDocumentAdd}" Fill="{DynamicResource PrimaryBrush}" Stretch="Uniform" Width="32" Height="32" HorizontalAlignment="Center" />
+                                    <TextBlock Text="Drop files or folders here" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,10,0,4" />
+                                    <TextBlock Text="Or choose what to share from your computer" Foreground="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Center" />
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,16,0,0">
+                                        <Button x:Name="EmptyAddFilesButton" Style="{StaticResource PrimaryButtonStyle}" Command="{Binding AddFilesCommand}" Margin="0,0,8,0" MinWidth="116" AutomationProperties.Name="Add files to send"><StackPanel Orientation="Horizontal"><Path Data="{StaticResource IconDocumentAdd}" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Width="18" Height="18" Stretch="Uniform" Margin="0,0,8,0" /><TextBlock Text="Add files" VerticalAlignment="Center" /></StackPanel></Button>
+                                        <Button Style="{StaticResource SecondaryButtonStyle}" Command="{Binding AddFolderCommand}" MinWidth="116" AutomationProperties.Name="Add folder to send"><StackPanel Orientation="Horizontal"><Path Data="{StaticResource IconFolderAdd}" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Width="18" Height="18" Stretch="Uniform" Margin="0,0,8,0" /><TextBlock Text="Add folder" VerticalAlignment="Center" /></StackPanel></Button>
                                     </StackPanel>
-                                    <Button Grid.Column="1" Style="{StaticResource SecondaryButtonStyle}" Content="Clear list" Command="{Binding ClearFilesCommand}" HorizontalAlignment="Right" />
+                                </StackPanel>
+
+                                <Grid x:Name="SelectedFileState" Visibility="{Binding HasSelectedFiles, Converter={StaticResource BoolToVis}}">
+                                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                        <StackPanel Margin="0,0,12,0" VerticalAlignment="Center">
+                                            <TextBlock Text="Files to send" FontWeight="SemiBold" FontSize="16" />
+                                            <TextBlock Text="{Binding SelectedFilesSummary}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="0,3,0,0" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Button Style="{StaticResource SecondaryButtonStyle}" Content="Add files" Command="{Binding AddFilesCommand}" AutomationProperties.Name="Add more files to send" Margin="0,0,8,0" />
+                                            <Button Style="{StaticResource SecondaryButtonStyle}" Content="Add folder" Command="{Binding AddFolderCommand}" AutomationProperties.Name="Add another folder to send" Margin="0,0,8,0" />
+                                            <Button Style="{StaticResource SecondaryButtonStyle}" Content="Clear list" Command="{Binding ClearFilesCommand}" AutomationProperties.Name="Clear selected files" />
+                                        </StackPanel>
+                                    </Grid>
+                                    <ListBox x:Name="SelectedFilesList" Grid.Row="1" ItemsSource="{Binding SelectedFiles}" BorderThickness="0" Background="Transparent" Margin="0,12,0,0" MaxHeight="220" HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.CanContentScroll="True" VirtualizingPanel.IsVirtualizing="True">
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="0,4">
+                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="100" /><ColumnDefinition Width="80" /></Grid.ColumnDefinitions>
+                                                    <StackPanel>
+                                                        <TextBlock Text="{Binding Name}" Foreground="{DynamicResource TextPrimaryBrush}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}" />
+                                                        <TextBlock Text="{Binding Status}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" />
+                                                    </StackPanel>
+                                                    <TextBlock Grid.Column="1" Text="{Binding FormattedSize}" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="8,0" />
+                                                    <Button Grid.Column="2" Style="{StaticResource SecondaryButtonStyle}" Content="Remove" Command="{Binding DataContext.RemoveFileCommand, RelativeSource={RelativeSource AncestorType=ListBox}}" CommandParameter="{Binding}" VerticalAlignment="Center" Width="76" Padding="10,4" MinHeight="32" AutomationProperties.Name="Remove queued file" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                    <TextBlock Grid.Row="2" Text="Drop more files or folders anywhere in this card." Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" Margin="0,8,0,0" />
                                 </Grid>
-                                <ListBox Grid.Row="1" ItemsSource="{Binding SelectedFiles}" BorderThickness="0" Background="Transparent" Margin="0,16,0,0" MaxHeight="220" HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.CanContentScroll="True" VirtualizingPanel.IsVirtualizing="True">
-                                    <ListBox.ItemTemplate>
-                                        <DataTemplate>
-                                            <Grid Margin="0,4">
-                                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="100" /><ColumnDefinition Width="80" /></Grid.ColumnDefinitions>
-                                                <StackPanel>
-                                                    <TextBlock Text="{Binding Name}" Foreground="{DynamicResource TextPrimaryBrush}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}" />
-                                                    <TextBlock Text="{Binding Status}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" />
-                                                </StackPanel>
-                                                <TextBlock Grid.Column="1" Text="{Binding FormattedSize}" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="8,0" />
-                                                <Button Grid.Column="2" Style="{StaticResource SecondaryButtonStyle}" Content="Remove" Command="{Binding DataContext.RemoveFileCommand, RelativeSource={RelativeSource AncestorType=ListBox}}" CommandParameter="{Binding}" VerticalAlignment="Center" Width="76" Padding="10,4" MinHeight="32" AutomationProperties.Name="Remove queued file" />
-                                            </Grid>
-                                        </DataTemplate>
-                                    </ListBox.ItemTemplate>
-                                </ListBox>
                             </Grid>
                         </Border>
 

@@ -225,9 +225,25 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         AddFolderCommand = new RelayCommand(ExecuteAddFolder);
         RemoveFileCommand = new RelayCommand(param =>
         {
-            if (param is TransferItemViewModel item) SelectedFiles.Remove(item);
+            if (param is not TransferItemViewModel item || !SelectedFiles.Remove(item)) return;
+            if (SelectedFiles.Count == 0)
+            {
+                ResetSendSelection();
+                if (!IsTransferActive) StatusMessage = "Add files or a folder to get started.";
+            }
+            else if (!IsTransferActive)
+            {
+                StatusMessage = SelectedFiles.Count == 1
+                    ? "1 file ready. Choose how to send it."
+                    : $"{SelectedFiles.Count} files ready. Choose how to send them.";
+            }
         });
-        ClearFilesCommand = new RelayCommand(() => SelectedFiles.Clear(), () => SelectedFiles.Count > 0);
+        ClearFilesCommand = new RelayCommand(() =>
+        {
+            SelectedFiles.Clear();
+            ResetSendSelection();
+            if (!IsTransferActive) StatusMessage = "Add files or a folder to get started.";
+        }, () => SelectedFiles.Count > 0);
         SendFilesCommand = new RelayCommand(
             () => _ = ExecuteSendFilesSafelyAsync(),
             () => IsSendActionVisible);
@@ -749,8 +765,8 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     public string SelectedFilesSummary => SelectedFiles.Count switch
     {
         0 => "Add files above to begin.",
-        1 => "1 file ready to send.",
-        _ => $"{SelectedFiles.Count} files ready to send."
+        1 => $"1 file · {TransferItemViewModel.FormatSize(SelectedFiles[0].SizeBytes)}",
+        _ => $"{SelectedFiles.Count} files · {TransferItemViewModel.FormatSize(SelectedFiles.Sum(item => item.SizeBytes))}"
     };
 
     public string ActiveInvitationUri
@@ -836,6 +852,17 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         if (_sendMethod == method) return;
 
         _sendMethod = method;
+        _pairedInvitation = null;
+        _selectedPeer = null;
+        _selectedTrustedDevice = null;
+        PairInputUri = string.Empty;
+        PairingStatusText = "Choose a device to continue.";
+        NotifySendState();
+    }
+
+    private void ResetSendSelection()
+    {
+        _sendMethod = SendMethodChoice.None;
         _pairedInvitation = null;
         _selectedPeer = null;
         _selectedTrustedDevice = null;
