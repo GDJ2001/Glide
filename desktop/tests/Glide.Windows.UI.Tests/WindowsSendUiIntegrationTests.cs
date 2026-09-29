@@ -15,7 +15,7 @@ namespace Glide.Windows.UI.Tests;
 public sealed class WindowsSendUiIntegrationTests
 {
     [Fact]
-    public void SelectingAFileAndClickingPrimarySend_OpensPhonePairingWorkflow()
+    public void ChoosingOneSendMethod_ControlsPairingAndSendVisibility()
     {
         Exception? failure = null;
         var completed = new ManualResetEventSlim();
@@ -52,7 +52,7 @@ public sealed class WindowsSendUiIntegrationTests
                 window.UpdateLayout();
 
                 var viewModel = Assert.IsType<MainViewModel>(window.DataContext);
-                string[] destinations = ["Send files", "Receive files", "Transfer activity", "Settings"];
+                string[] destinations = ["Send files", "Receive files", "Transfer activity", "Pair devices", "Settings"];
                 foreach (string destination in destinations)
                 {
                     RadioButton navigationButton = Descendants(window).OfType<RadioButton>()
@@ -62,11 +62,12 @@ public sealed class WindowsSendUiIntegrationTests
                 }
                 window.Width = 820;
                 window.Height = 560;
-                foreach (string tab in new[] { "Send", "Receive", "Activity", "Settings" })
+                foreach (string tab in new[] { "Send", "Receive", "Activity", "Pair devices", "Settings" })
                 {
                     viewModel.CurrentTab = tab;
                     window.UpdateLayout();
-                    var page = Assert.IsType<ScrollViewer>(window.FindName($"{tab}Page"));
+                    string pageName = tab == "Pair devices" ? "PairDevicesPage" : $"{tab}Page";
+                    var page = Assert.IsType<ScrollViewer>(window.FindName(pageName));
                     Assert.Equal(Visibility.Visible, page.Visibility);
                     Assert.True(page.ViewportWidth > 0);
                     Assert.Equal(0, page.ScrollableWidth);
@@ -107,29 +108,38 @@ public sealed class WindowsSendUiIntegrationTests
                     () => { },
                     DispatcherPriority.Background);
 
-                Button sendButton = Descendants(window)
-                    .OfType<Button>()
-                    .Single(button =>
-                        AutomationProperties.GetName(button) ==
-                        "Send selected files to phone");
+                var sendButton = Assert.IsType<Button>(window.FindName("SendChosenDeviceButton"));
+                Assert.Equal(Visibility.Collapsed, sendButton.Visibility);
+                Assert.False(viewModel.IsSendActionVisible);
 
-                Assert.Equal(Visibility.Visible, sendButton.Visibility);
-                Assert.True(sendButton.ActualWidth > 0);
-                Assert.True(sendButton.ActualHeight > 0);
-                Assert.True(sendButton.IsEnabled);
-                Assert.Equal("Choose phone and send", sendButton.Content);
+                TextBlock fileName = Descendants(window).OfType<TextBlock>()
+                    .Single(text => text.Text == Path.GetFileName(testFile));
+                string originalAppearance = viewModel.AppearanceMode;
+                try
+                {
+                    viewModel.AppearanceMode = "Dark";
+                    window.UpdateLayout();
+                    Color foreground = Assert.IsType<SolidColorBrush>(fileName.Foreground).Color;
+                    Color surface = Assert.IsType<SolidColorBrush>(application.Resources["SurfaceBrush"]).Color;
+                    Assert.True(foreground.R > 200 && foreground.G > 200 && foreground.B > 200);
+                    Assert.True(surface.R < 80 && surface.G < 80 && surface.B < 80);
+                }
+                finally
+                {
+                    viewModel.AppearanceMode = originalAppearance;
+                }
 
-                var peer = new ButtonAutomationPeer(sendButton);
-                var invokeProvider = Assert.IsAssignableFrom<IInvokeProvider>(
-                    peer.GetPattern(PatternInterface.Invoke));
-                invokeProvider.Invoke();
-                window.Dispatcher.Invoke(
-                    () => { },
-                    DispatcherPriority.Background);
+                RadioButton quickQr = Descendants(window).OfType<RadioButton>()
+                    .Single(button => AutomationProperties.GetName(button) == "Quick share with QR code");
+                Assert.True(quickQr.IsEnabled);
+                quickQr.Command.Execute(quickQr.CommandParameter);
+                PumpDispatcherUntil(() => viewModel.IsPairModalVisible, TimeSpan.FromSeconds(5));
                 window.UpdateLayout();
 
+                Assert.Equal(SendMethodChoice.QuickQr, viewModel.SendMethod);
                 Assert.True(viewModel.IsPairModalVisible);
                 Assert.True(viewModel.IsHostedSendQrVisible);
+                Assert.Equal(Visibility.Collapsed, sendButton.Visibility);
                 Assert.Contains("Scan the QR code", viewModel.StatusMessage);
 
                 Image qrImage = Descendants(window)
@@ -139,6 +149,37 @@ public sealed class WindowsSendUiIntegrationTests
                         "QR code for receiving selected files");
                 Assert.Equal(Visibility.Visible, qrImage.Visibility);
                 Assert.NotNull(qrImage.Source);
+
+                viewModel.CancelPairModalCommand.Execute(null);
+                RadioButton nearby = Descendants(window).OfType<RadioButton>()
+                    .Single(button => AutomationProperties.GetName(button) == "Nearby device");
+                nearby.Command.Execute(nearby.CommandParameter);
+                window.UpdateLayout();
+                Assert.Equal(SendMethodChoice.Nearby, viewModel.SendMethod);
+                Assert.Equal("Pair devices", viewModel.CurrentTab);
+                Assert.False(viewModel.IsSendActionVisible);
+
+                viewModel.PairInputUri = viewModel.ActiveInvitationUri;
+                viewModel.SubmitPairModalCommand.Execute(null);
+                window.UpdateLayout();
+                Assert.Equal("Send", viewModel.CurrentTab);
+                Assert.True(viewModel.IsSendActionVisible);
+                Assert.Equal(Visibility.Visible, sendButton.Visibility);
+                viewModel.ClearPairingCommand.Execute(null);
+                Assert.False(viewModel.IsSendActionVisible);
+
+                viewModel.CurrentTab = "Send";
+                RadioButton trusted = Descendants(window).OfType<RadioButton>()
+                    .Single(button => AutomationProperties.GetName(button) == "Saved device");
+                trusted.Command.Execute(trusted.CommandParameter);
+                Assert.True(viewModel.IsTrustedDevicePickerVisible);
+                Assert.Equal(Visibility.Collapsed, sendButton.Visibility);
+                viewModel.CloseTrustedDevicePickerCommand.Execute(null);
+                viewModel.PairInputUri = viewModel.ActiveInvitationUri;
+                viewModel.SubmitPairModalCommand.Execute(null);
+                window.UpdateLayout();
+                Assert.False(viewModel.IsSendActionVisible);
+                Assert.Equal(Visibility.Collapsed, sendButton.Visibility);
             }
             catch (Exception ex)
             {

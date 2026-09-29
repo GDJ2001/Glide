@@ -128,7 +128,7 @@ public sealed class DesktopEngineArchitectureTests
     }
 
     [Fact]
-    public void WpfSendFlow_KeepsPrimaryActionVisibleAndStartsPhoneQrPairing()
+    public void WpfSendFlow_ChoosesOneMethodBeforeShowingTheSendAction()
     {
         string root = ResolveRepositoryRoot();
         string viewModel = File.ReadAllText(
@@ -136,18 +136,17 @@ public sealed class DesktopEngineArchitectureTests
         string view = File.ReadAllText(
             Path.Combine(root, "desktop", "windows", "Glide.Windows.UI", "Views", "MainWindow.xaml"));
 
-        int advancedStart = view.IndexOf(
-            "<Expander Header=\"Advanced: enter an address manually\"",
-            StringComparison.Ordinal);
         int primarySendAction = view.IndexOf(
             "Content=\"{Binding SendActionText}\"",
             StringComparison.Ordinal);
 
-        Assert.True(primarySendAction >= 0, "The normal Send view must expose a primary send action.");
-        Assert.True(advancedStart >= 0, "The manual-address fallback should remain available.");
-        Assert.True(
-            primarySendAction < advancedStart,
-            "The primary send action must not be hidden inside the advanced-address expander.");
+        Assert.True(primarySendAction >= 0, "The chosen-device card must expose a send action.");
+        Assert.Contains("Visibility=\"{Binding IsSendActionVisible", view);
+        Assert.Contains("Quick share with QR code", view);
+        Assert.Contains("Nearby device", view);
+        Assert.Contains("Saved device", view);
+        Assert.Contains("PairDevicesPage", view);
+        Assert.Contains("ExpectedPeerFingerprintHex: _selectedTrustedDevice?.FingerprintHex", viewModel);
         Assert.Contains("StartHostedSendPairingAsync", viewModel);
         Assert.Contains("SendHostedAsync", viewModel);
         Assert.Contains("IsHostedSendQrVisible", viewModel);

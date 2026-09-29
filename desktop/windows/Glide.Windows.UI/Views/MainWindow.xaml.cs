@@ -1,5 +1,7 @@
 using System.Windows;
 using System.Windows.Interop;
+using System.Windows.Input;
+using System.Windows.Threading;
 using Glide.Windows.UI.Services;
 using Glide.Windows.UI.ViewModels;
 
@@ -8,6 +10,7 @@ namespace Glide.Windows.UI.Views;
 public partial class MainWindow : Window
 {
     private HwndSource? _windowSource;
+    private IInputElement? _focusBeforeTrustedPicker;
 
     public MainWindow()
     {
@@ -91,6 +94,20 @@ public partial class MainWindow : Window
             {
                 vm.AddDroppedFiles(files);
             }
+        }
+    }
+
+    private void TrustedPicker_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (e.NewValue is true)
+        {
+            _focusBeforeTrustedPicker = Keyboard.FocusedElement;
+            Dispatcher.BeginInvoke(() => CloseTrustedDevicePickerButton.Focus(), DispatcherPriority.Input);
+        }
+        else if (_focusBeforeTrustedPicker is { } previous)
+        {
+            _focusBeforeTrustedPicker = null;
+            Dispatcher.BeginInvoke(() => Keyboard.Focus(previous), DispatcherPriority.Input);
         }
     }
 
