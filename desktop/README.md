@@ -21,7 +21,7 @@ desktop/
 │   ├── glide-daemon.env.example
 │   └── glide-daemon-policy.example.json
 └── tests/           # Desktop test suites
-    └── Glide.Tests/     # xUnit test suite (292 tests)
+    └── Glide.Tests/     # xUnit test suite
 ```
 
 ## Building and Testing

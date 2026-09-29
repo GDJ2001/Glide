@@ -37,9 +37,9 @@ if ($LASTEXITCODE -ne 0) {
     Write-Error "FAIL: dotnet build failed with exit code $LASTEXITCODE."
 }
 
-$UIDll = Join-Path $ProjectRoot "desktop\windows\Glide.Windows.UI\bin\Release\net10.0-windows\Glide.Windows.UI.dll"
+$UIDll = Join-Path $ProjectRoot "desktop\windows\Glide.Windows.UI\bin\Release\net10.0-windows\Glide.dll"
 if (-not (Test-Path $UIDll)) {
-    Write-Error "FAIL: Glide.Windows.UI.dll not produced in bin/Release/net10.0-windows."
+    Write-Error "FAIL: Glide.dll not produced in bin/Release/net10.0-windows."
 }
 
 Write-Host "  PASS: Glide.Core, Glide.Transport, Glide.Tests, Glide.App, and Glide.Windows.UI compiled with 0 errors." -ForegroundColor Green

@@ -2,10 +2,8 @@
 .SYNOPSIS
     Builds full self-contained Linux release distributions and installers (.deb, .run, .tar.gz) for Glide.
 .DESCRIPTION
-    1. Compiles Glide.App targeting linux-x64 as a self-contained single-file executable.
-    2. Packages glide-linux-linux-x64.tar.gz.
-    3. Builds glide_1.0.0_amd64.deb (Debian/Ubuntu package) using WSL dpkg-deb.
-    4. Builds Glide-Installer-v1.0.0-linux-x64.run (Universal Linux self-extracting installer).
+    Publishes a Linux tarball, Debian package, and self-extracting installer.
+    Uses native bash/dpkg-deb on Linux and WSL on Windows.
 #>
 
 param(
@@ -18,6 +16,15 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRoot = Resolve-Path "$ScriptDir\..\.."
 $ProjectFile = Join-Path $RepoRoot "desktop\src\Glide.App\Glide.App.csproj"
 $OutputDir = Join-Path $RepoRoot "build\distributions\linux"
+
+function Convert-ToLinuxPath([string]$FilePath) {
+    if (-not $IsWindows) { return $FilePath }
+    $converted = (& wsl wslpath -u ($FilePath -replace "\\", "/")).Trim()
+    if ($LASTEXITCODE -ne 0 -or -not $converted) {
+        throw "Could not resolve Linux path for packaging."
+    }
+    return $converted
+}
 
 if (-not (Test-Path $OutputDir)) {
     New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
@@ -54,12 +61,12 @@ foreach ($rid in $Runtimes) {
     if (Test-Path $tarPath) { Remove-Item -Force $tarPath }
     tar -czf $tarPath -C $publishDir .
 
-    # Build .deb package and .run self-extracting installer via WSL
+    # Build .deb package and .run self-extracting installer with Linux tools.
     Write-Host "[3/4] Building Debian/Ubuntu package (glide_1.0.0_amd64.deb) and Universal Installer (Glide-Installer-v1.0.0-$rid.run)..." -ForegroundColor Yellow
 
-    $wslPublishDir = (wsl wslpath -u ($publishDir -replace "\\","/")).Trim()
-    $wslOutputDir = (wsl wslpath -u ($OutputDir -replace "\\","/")).Trim()
-    $wslTarPath = (wsl wslpath -u ($tarPath -replace "\\","/")).Trim()
+    $linuxPublishDir = Convert-ToLinuxPath $publishDir
+    $linuxOutputDir = Convert-ToLinuxPath $OutputDir
+    $linuxTarPath = Convert-ToLinuxPath $tarPath
 
     $buildDebAndRunScript = @'
 set -e
@@ -99,9 +106,8 @@ Priority: optional
 Architecture: amd64
 Installed-Size: $INSTALLED_KB
 Maintainer: Glide Open Source Project <release@glide.dev>
-Description: Glide Authenticated Local & Cross-Platform File Sharing
- Account-free, end-to-end encrypted TLS 1.3 and WebRTC file transfer daemon
- and CLI for Linux, interoperating natively with Android, Windows 11, and macOS.
+Description: Glide Local File Sharing CLI and Daemon
+ Account-free authenticated local LAN file transfer with peer-specific trust.
 EOF
 
 cat > "$DEB_ROOT/DEBIAN/postinst" << 'EOF'
@@ -161,7 +167,8 @@ WRAP_EOF
 chmod 0755 "$INSTALL_PREFIX/bin/glide"
 
 cp "$INSTALL_PREFIX/lib/glide/glide.desktop" "$INSTALL_PREFIX/share/applications/glide.desktop" 2>/dev/null || true
-cp "$INSTALL_PREFIX/lib/glide/glide.service" "$HOME/.config/systemd/user/glide.service" 2>/dev/null || true
+sed "s|/usr/local/bin/glide|$INSTALL_PREFIX/bin/glide|" \
+    "$INSTALL_PREFIX/lib/glide/glide.service" > "$HOME/.config/systemd/user/glide.service"
 
 echo "=============================================================="
 echo "  Glide v${APP_VERSION} installed successfully!"
@@ -178,16 +185,19 @@ rm -rf "$DEB_ROOT"
 '@
 
     $buildDebAndRunScript = $buildDebAndRunScript.
-        Replace("__WSL_PUBLISH_DIR__", $wslPublishDir).
-        Replace("__WSL_OUTPUT_DIR__", $wslOutputDir).
-        Replace("__WSL_TAR_PATH__", $wslTarPath).
+        Replace("__WSL_PUBLISH_DIR__", $linuxPublishDir).
+        Replace("__WSL_OUTPUT_DIR__", $linuxOutputDir).
+        Replace("__WSL_TAR_PATH__", $linuxTarPath).
         Replace("__RID__", $rid)
 
     $tempSh = Join-Path $OutputDir "build-deb-run.sh"
     Set-Content -Path $tempSh -Value ($buildDebAndRunScript -replace "`r`n", "`n") -NoNewline -Encoding UTF8
-    $wslTempSh = (wsl wslpath -u ($tempSh -replace "\\","/")).Trim()
-    wsl bash $wslTempSh
-    if ($LASTEXITCODE -ne 0) { throw "Failed to build Linux .deb and .run installers in WSL" }
+    if ($IsWindows) {
+        wsl bash (Convert-ToLinuxPath $tempSh)
+    } else {
+        bash $tempSh
+    }
+    if ($LASTEXITCODE -ne 0) { throw "Failed to build Linux .deb and .run installers" }
     Remove-Item -Force $tempSh -ErrorAction SilentlyContinue
     Remove-Item -Recurse -Force $publishDir -ErrorAction SilentlyContinue
 

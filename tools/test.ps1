@@ -41,7 +41,7 @@ $testErrors = [System.Collections.Generic.List[string]]::new()
 # --- Android Test ---
 if ($Target -eq "All" -or $Target -eq "Android") {
     Write-Host "`n[Android] Running unit tests via Gradle..." -ForegroundColor Yellow
-    $gradleTask = "test${Configuration}UnitTest"
+    $gradleTask = if ($Filter) { ":android:app:test${Configuration}UnitTest" } else { "test" }
     $gradleArgs = @($gradleTask, "--no-daemon")
     if ($Filter) {
         $gradleArgs += "--tests", $Filter
@@ -49,9 +49,9 @@ if ($Target -eq "All" -or $Target -eq "Android") {
 
     Write-Host "  Running: gradlew.bat $($gradleArgs -join ' ')" -ForegroundColor Gray
     $pinfo = New-Object System.Diagnostics.ProcessStartInfo
-    $pinfo.FileName = "$projectRoot\gradlew.bat"
+    $pinfo.FileName = "$projectRoot\android\gradlew.bat"
     $pinfo.Arguments = $gradleArgs -join " "
-    $pinfo.WorkingDirectory = $projectRoot
+    $pinfo.WorkingDirectory = "$projectRoot\android"
     $pinfo.UseShellExecute = $false
     $pinfo.RedirectStandardOutput = $true
     $pinfo.RedirectStandardError = $true

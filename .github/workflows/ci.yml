@@ -22,6 +22,9 @@ jobs:
     name: Android Build, Lint & Test
     runs-on: ubuntu-24.04
     timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: android
 
     steps:
       - name: Checkout repository

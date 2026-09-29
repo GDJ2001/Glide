@@ -1,27 +1,18 @@
-# Linux Desktop Development
+# Linux desktop development
 
-Glide's Linux desktop implementation shares the .NET Generic Host codebase with Windows.
-The shared desktop lives in `windows/` (Glide.App, Glide.Desktop, Glide.Core).
+The Linux CLI and daemon use the shared .NET projects in `desktop/src/`. This directory contains the Linux desktop entry, systemd user service, daemon configuration examples, and packaging script.
 
-## Linux-specific files
+From the repository root, build and test the shared code:
 
-This folder contains Linux-only packaging and configuration:
-
-- `build-linux-packages.ps1` — Build .deb/.rpm packages
-- `glide.desktop` — XDG desktop entry
-- `glide.service` — systemd user service unit
-- `glide-daemon.env.example` — Environment config template
-- `glide-daemon-policy.example.json` — Security policy template
-
-## Building for Linux
-
-```bash
-cd windows
-dotnet build Glide.slnx -c Release -r linux-x64
+```sh
+dotnet build desktop/Glide.slnx -c Release
+dotnet test desktop/tests/Glide.Tests/Glide.Tests.csproj -c Release --no-build
 ```
 
-## Packaging
+Build the Linux tarball, Debian package, and self-extracting `.run` installer with PowerShell 7 and the native Linux `tar`, `bash`, and `dpkg-deb` tools. On Windows, the script uses WSL for those Linux tools:
 
-```powershell
-./build-linux-packages.ps1
+```sh
+pwsh -File desktop/linux/build-linux-packages.ps1 -Configuration Release -Runtimes linux-x64
 ```
+
+The daemon reads the peer-specific settings in `glide-daemon.env.example`; configure a real trusted peer and destination before enabling `glide.service`.

@@ -2,7 +2,7 @@
 
 Glide is an account-free file-sharing project with substantial Android, .NET desktop/Linux, browser/LAN, Apple, and remote-transfer implementation work. The repository is currently in an evidence-backed **code review, improvement, hardening, and development-completion cycle**.
 
-> **Current authority:** [`docs/planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md`](docs/planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md) and [`docs/TODO_MASTER.md`](docs/TODO_MASTER.md). Historical `COMPLETE`, `shipped`, `certified`, or release labels are retained as historical evidence but do not certify the current checkout.
+> **Planning and history:** [`doc/planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md`](../doc/planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md) and [`doc/TODO_MASTER.md`](../doc/TODO_MASTER.md). Check current source and fresh validation before using historical completion labels.
 
 ## Current status
 
@@ -17,9 +17,9 @@ Evidence terms used below:
 
 | Platform / capability | Current evidence classification | Active HARD position |
 | --- | --- | --- |
-| Android Nearby + LAN | Implemented; substantial historical automated/device evidence exists, but production wiring defects remain under review | Active scope; HARD-005–010 |
-| Windows 11 desktop/CLI | Implemented; substantial automated tests exist, but shared orchestration and native interoperability are not currently certified | Active scope; HARD-011–017 |
-| Linux CLI/daemon | Implemented; authentication/receive-lifecycle hardening remains | Active scope; HARD-016–017 |
+| Android Nearby + LAN | Production service/runtime wiring exists; automated checks cover components, while current device journeys require verification | Active local-sharing scope |
+| Windows 11 desktop/CLI | Shared transfer runtime and engine exist; native interoperability requires current physical verification | Active local-sharing scope |
+| Linux CLI/daemon | CLI and daemon exist; installation and receive lifecycle require current platform verification | Active local-sharing scope |
 | Browser local sharing | Implemented prototype over local HTTP/Web gateway; plaintext HTTP path is not release-acceptable | Active scope; replace/harden in HARD-025–030 |
 | Persistent trust / folders / true resume | Partial design and implementation work exists; end-to-end integration is not complete | Active scope; HARD-018–024 |
 | Apple iOS/iPadOS/macOS | `GlideCoreKit` models/codecs/storage/coordinator components exist and have historical unit-test evidence; native production app/transport lifecycle is not certified | Preserved but deferred in this hardening cycle |
@@ -50,16 +50,11 @@ Deferred for this cycle, while preserving existing code:
 
 ```text
 Glide/
-├── app/                         # Android application, Compose UI, DI, lifecycle/service integration
-├── transfer-core/               # Pure Kotlin/JVM protocol and transfer domain
-├── transport-nearby/            # Google Nearby transport
-├── transport-lan/               # Android LAN transport and browser gateway work
-├── data/                        # Android storage, Room, settings, recovery
-├── designsystem/                # Android design system
-├── windows/                     # .NET shared core, transport, Windows UI, CLI/daemon, tests
-├── apple/GlideCoreKit/          # Deferred Swift shared-library/component work
-├── docs/                        # Current HARD authority plus historical specifications/evidence
-└── tools/                       # Verification/audit/developer scripts
+├── android/                     # Gradle project: app, core, data, design system, transports
+├── desktop/                     # .NET solution: shared libraries, WPF, CLI, Linux packaging
+├── apple/GlideCoreKit/          # Deferred Swift components
+├── doc/                         # Protocol, planning, historical task and test evidence
+└── tools/                       # Developer verification scripts
 ```
 
 ## Build and verification entry points
@@ -68,19 +63,22 @@ Inspect the selected HARD task before running commands. Historical scripts may v
 
 Typical developer commands include:
 
-```bash
-# Android / Gradle
-./gradlew test
-./gradlew :app:assembleDebug
+```powershell
+# From the repository root; configure ANDROID_HOME or ignored local.properties first.
+pwsh -File tools/doctor.ps1
+pwsh -File tools/verify.ps1
 
-# Repository Android verification
-pwsh -File tools/verify-local.ps1
+# Android-only checks, from android/.
+cd android
+.\gradlew.bat checkDocumentation checkArchitecture checkLanGate test :android:app:assembleDebug :android:app:lintDebug
 
-# .NET shared/desktop tests
-dotnet test windows/Glide.Tests/Glide.Tests.csproj -c Release
+# Desktop checks, from the repository root.
+cd ..
+dotnet build desktop/Glide.slnx -c Release
+dotnet test desktop/Glide.slnx -c Release --no-build
 ```
 
-HARD-004 will establish the authoritative multi-platform CI baseline and exact fresh-checkout command set. Until then, do not turn a local script pass into a release or interoperability claim.
+These commands validate local code and packaging prerequisites. Physical interoperability and released artifacts need separate evidence.
 
 ## Protocol and security
 
@@ -96,18 +94,18 @@ The portable contract is Glide Protocol V1 plus the versioned LAN/extension spec
 
 Start with:
 
-- [`docs/README.md`](docs/README.md) — documentation portal
-- [`docs/planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md`](docs/planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md) — current completion plan
-- [`docs/TODO_MASTER.md`](docs/TODO_MASTER.md) — current task/status authority
-- [`docs/protocol/GLIDE_PROTOCOL_V1.md`](docs/protocol/GLIDE_PROTOCOL_V1.md) — protocol authority
-- [`docs/security/GLIDE_THREAT_MODEL.md`](docs/security/GLIDE_THREAT_MODEL.md) — threat model
+- [`doc/README.md`](../doc/README.md) — documentation portal
+- [`doc/planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md`](../doc/planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md) — completion plan
+- [`doc/TODO_MASTER.md`](../doc/TODO_MASTER.md) — task history
+- [`doc/protocol/GLIDE_PROTOCOL_V1.md`](../doc/protocol/GLIDE_PROTOCOL_V1.md) — protocol authority
+- [`doc/security/GLIDE_THREAT_MODEL.md`](../doc/security/GLIDE_THREAT_MODEL.md) — threat model
 
 ## Historical evidence
 
 The repository contains extensive V1, cross-platform, session, testing, and release documentation. These files remain useful for provenance, prior decisions, commands, fixtures, and regression evidence. They are not deleted or rewritten simply because later review found that a completion label was too broad.
 
-For current status, always use the HARD ledger rather than inferring completion from historical session numbers or milestone names.
+For current status, reconcile the HARD ledger with the checked-out source, tests, and device evidence.
 
 ## License
 
-Glide is released under the Apache License 2.0. See [`LICENSE`](LICENSE).
+This checkout has no LICENSE file. Confirm distribution terms before publishing artifacts.

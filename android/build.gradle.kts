@@ -39,7 +39,7 @@ tasks.register("checkDocumentation") {
             "doc/android/STORAGE_AND_BACKGROUND.md"
         )
         for (docPath in requiredDocs) {
-            val docFile = file(docPath)
+            val docFile = rootProject.file(docPath)
             if (!docFile.exists() || docFile.length() == 0L) {
                 throw GradleException("Required documentation file missing or empty: $docPath")
             }

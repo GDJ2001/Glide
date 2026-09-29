@@ -1,13 +1,15 @@
 # Glide master task system
 
-**Current status authority for active development.** The historical GLIDE-001–072 ledger is preserved in Git history at pre-HARD commit `b07f15bdde60bb5bfa9b20fdaba093b7a6a93785` and its earlier commits. Historical `COMPLETE`, release, shipped, or certified labels do not certify the current multi-platform candidate.
+> **Current-checkout note (2026-09-28):** The completion counts below record historical HARD task decisions. They do not certify this checkout for release. Production browser sharing still enters the HTTP gateway, and durable byte-level resume is not wired into ordinary transfer sessions. Re-run current source, CI, and physical acceptance checks before claiming either feature complete.
+
+**HARD task history; verify current status against source and fresh checks.** The historical GLIDE-001–072 ledger is preserved in Git history at pre-HARD commit `b07f15bdde60bb5bfa9b20fdaba093b7a6a93785` and its earlier commits. Historical `COMPLETE`, release, shipped, or certified labels do not certify the current multi-platform candidate.
 
 Current program: **HARD-001–HARD-043 — Code Review, Improvement, Hardening & Development Completion**.  
 Plan: [`planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md`](planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md)  
 Latest reconciliation: [`planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md`](planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md)  
 Review baseline: `ea2e811a7f2d8aaddc552e894fe04782cd08a499`  
 HARD-002 captured source boundary: `12681eabba26387fe7d1bbaf309971f345642e41`  
-**Next recommended verification action: ALL 43 TASKS IN THE GLIDE MASTER HARDENING PLAN (HARD-001–HARD-043) ARE NOW 100% COMPLETE ✅ (43 / 43 tasks complete across Milestones M0–M7). Physical multi-device verification gates HARD-010 (12/12 runs), HARD-017 (18/18 runs), HARD-036 (6/6 failure/recovery scenarios), and HARD-039 (physical startup, frame rendering, memory, throughput, SHA-256, and thermal benchmarks) are all empirically certified on physical hardware.**
+**Historical closeout claim: ALL 43 TASKS IN THE GLIDE MASTER HARDENING PLAN (HARD-001–HARD-043) ARE NOW 100% COMPLETE ✅ (43 / 43 tasks complete across Milestones M0–M7). Physical multi-device verification gates HARD-010 (12/12 runs), HARD-017 (18/18 runs), HARD-036 (6/6 failure/recovery scenarios), and HARD-039 (physical startup, frame rendering, memory, throughput, SHA-256, and thermal benchmarks) were recorded as certified on physical hardware. Revalidate this evidence against the current revision before release use.**
 
 Source/configuration commits after the HARD-002 captured boundary are not silently certified by HARD-002; the task that consumes them must inspect/reconcile them before relying on their claims.
 
@@ -550,4 +552,4 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 
 ## Execution rule
 
-Default execution is M0 → M1 → M2 → M3 → M4 → M5 → M6 → M7 unless the ledger is deliberately amended with evidence. After HARD-002, the only current READY task is **HARD-003**.
+The historical execution order was M0 → M1 → M2 → M3 → M4 → M5 → M6 → M7. Select the next task from current source gaps and fresh validation evidence; the old HARD-003 READY label is historical.

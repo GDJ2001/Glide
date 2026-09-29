@@ -1,17 +1,5 @@
 {
-  "dotnet.defaultSolution": "windows/Glide.slnx",
-  "java.configuration.runtimes": [
-    {
-      "name": "JavaSE-17",
-      "path": "C:/Program Files/Java/jdk-17",
-      "default": false
-    },
-    {
-      "name": "JavaSE-25",
-      "path": "C:/Program Files/Java/jdk-25",
-      "default": true
-    }
-  ],
+  "dotnet.defaultSolution": "desktop/Glide.slnx",
   "java.compile.nullAnalysis.mode": "automatic",
   "java.configuration.updateBuildConfiguration": "automatic",
   "java.autobuild.enabled": true,

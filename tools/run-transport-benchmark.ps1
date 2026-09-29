@@ -9,10 +9,16 @@ Write-Host "====================================================================
 Write-Host " Running GLIDE-018 Transport Benchmark Suite (STREAM vs FILE)" -ForegroundColor Cyan
 Write-Host "================================================================================`n"
 
-$gradlew = Join-Path $PSScriptRoot "..\gradlew.bat"
+$gradlew = Join-Path $PSScriptRoot "..\android\gradlew.bat"
 
 Write-Host "Executing TransportBenchmarkTest via Gradle..." -ForegroundColor Yellow
-$result = & $gradlew :android:transport-nearby:testDebugUnitTest --tests "dev.glide.transport.nearby.benchmark.TransportBenchmarkTest" 2>&1
+Push-Location (Join-Path $PSScriptRoot "..\android")
+try {
+    $result = & $gradlew :android:transport-nearby:testDebugUnitTest --tests "dev.glide.transport.nearby.benchmark.TransportBenchmarkTest" 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "Transport benchmark failed with exit code $LASTEXITCODE" }
+} finally {
+    Pop-Location
+}
 
 $xmlReport = Join-Path $PSScriptRoot "..\android\transport-nearby\build\test-results\testDebugUnitTest\TEST-dev.glide.transport.nearby.benchmark.TransportBenchmarkTest.xml"
 if (-not (Test-Path $xmlReport)) {

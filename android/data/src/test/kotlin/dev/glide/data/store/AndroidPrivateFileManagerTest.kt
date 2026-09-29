@@ -7,6 +7,8 @@ import dev.glide.data.db.ReceivedFileEntity
 import dev.glide.data.db.SessionDao
 import dev.glide.data.db.SessionEntity
 import dev.glide.data.db.SessionWithItems
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -112,6 +114,9 @@ class FakeTestSessionDao : SessionDao {
     override suspend fun deleteTerminalSessions(): Int = 0
     override suspend fun getSessionWithItems(sessionId: String): SessionWithItems? = null
     override suspend fun getSessionsWithItemsPaged(role: String?, limit: Int, offset: Int): List<SessionWithItems> = emptyList()
+    override fun observeSessionsWithItems(role: String?, limit: Int): Flow<List<SessionWithItems>> = flow {
+        emit(getSessionsWithItemsPaged(role, limit, 0))
+    }
 }
 
 class AndroidPrivateFileManagerTest {

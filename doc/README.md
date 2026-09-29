@@ -3,9 +3,9 @@
 Glide is in an evidence-backed **code review, improvement, hardening and development-completion cycle**. Historical Android V1 and later cross-platform session records remain valuable evidence, but historical `COMPLETE`, release, or certification labels do not by themselves certify the current multi-platform checkout.
 
 **Current development authority:** [Code Review, Improvement, Hardening & Development Completion Plan](planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md)  
-**Current task authority:** [HARD-001–043 master task ledger](TODO_MASTER.md)  
+**Task history:** [HARD-001–043 master task ledger](TODO_MASTER.md)
 **Latest reconciliation:** [HARD-002 source/doc/claim reconciliation](planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md)  
-**Current active task:** [HARD-005 — introduce service-owned Android TransferRuntime](TODO_MASTER.md#hard-005). M0 (HARD-001–004) is complete.
+**Current development status:** The HARD ledger records historical task claims. Reconcile those claims with the checked-out source and fresh tests before selecting or closing a task; the active Android runtime exists, while secure browser sharing and durable resume still require production integration.
 
 The hardening review baseline is `ea2e811a7f2d8aaddc552e894fe04782cd08a499`. HARD-002 froze its reconciliation boundary at `12681eabba26387fe7d1bbaf309971f345642e41`, reviewed every source/configuration commit between those points, and separated component implementation/test evidence from physical interoperability and release claims. Apple and remote/Internet implementation is preserved but remains deferred from the active release gate.
 

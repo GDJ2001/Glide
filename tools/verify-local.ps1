@@ -19,7 +19,12 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host "`n=== 3. Building and Testing All Modules ===" -ForegroundColor Cyan
 $LASTEXITCODE = 0
-& "$PSScriptRoot\..\gradlew.bat" assembleDebug test
+Push-Location (Join-Path $PSScriptRoot "..\android")
+try {
+    & .\gradlew.bat assembleDebug test
+} finally {
+    Pop-Location
+}
 if ($LASTEXITCODE -ne 0) {
     Write-Error "assembleDebug test failed with exit code $LASTEXITCODE."
     exit $LASTEXITCODE
@@ -27,7 +32,12 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host "`n=== 4. Running Android Lint Analysis ===" -ForegroundColor Cyan
 $LASTEXITCODE = 0
-& "$PSScriptRoot\..\gradlew.bat" :android:app:lintDebug
+Push-Location (Join-Path $PSScriptRoot "..\android")
+try {
+    & .\gradlew.bat :android:app:lintDebug
+} finally {
+    Pop-Location
+}
 if ($LASTEXITCODE -ne 0) {
     Write-Error "lintDebug failed with exit code $LASTEXITCODE."
     exit $LASTEXITCODE

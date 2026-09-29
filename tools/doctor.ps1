@@ -92,7 +92,7 @@ if ($sdkEnv) {
     Write-Host "  [OK]   ANDROID_HOME : $sdkEnv" -ForegroundColor Green
     $platformsDir = Join-Path $sdkEnv "platforms"
     if (Test-Path $platformsDir) {
-        $api37 = Get-ChildItem $platformsDir -Filter "android-37" -Directory -ErrorAction SilentlyContinue
+        $api37 = Get-ChildItem $platformsDir -Filter "android-37*" -Directory -ErrorAction SilentlyContinue
         if ($api37) {
             Write-Host "  [OK]   compileSdk 37 platform installed" -ForegroundColor Green
         } else {
@@ -107,11 +107,11 @@ if ($sdkEnv) {
 
 # --- 3. Gradle wrapper ---
 Write-Host "`n[3/8] Gradle wrapper" -ForegroundColor Yellow
-$gradlewPath = Join-Path $projectRoot "gradlew.bat"
+$gradlewPath = Join-Path $projectRoot "android\gradlew.bat"
 if (Test-Path $gradlewPath) {
     Write-Host "  [OK]   gradlew.bat : $gradlewPath" -ForegroundColor Green
 } else {
-    Write-Host "  [FAIL] gradlew.bat not found at repository root" -ForegroundColor Red
+    Write-Host "  [FAIL] Android Gradle wrapper not found" -ForegroundColor Red
     $failures.Add("Gradle wrapper missing")
 }
 
@@ -150,12 +150,14 @@ Write-Host "`n[6/8] Android platform-tools" -ForegroundColor Yellow
 $adbCmd = Get-Command adb -ErrorAction SilentlyContinue
 if ($adbCmd) {
     Write-Host "  [OK]   adb : $($adbCmd.Source)" -ForegroundColor Green
+} elseif ($sdkEnv -and (Test-Path (Join-Path $sdkEnv "platform-tools\adb.exe"))) {
+    Write-Host "  [OK]   adb : $(Join-Path $sdkEnv 'platform-tools\adb.exe')" -ForegroundColor Green
 } else {
     Write-Host "  [WARN] adb not found (needed for device install/preview only)" -ForegroundColor Yellow
     $warnings.Add("adb not found; preview on device will fail.")
 }
-$aapt2Path = Join-Path $env:LOCALAPPDATA "Android\Sdk\build-tools"
-if (Test-Path $aapt2Path) {
+$aapt2Path = if ($sdkEnv) { Join-Path $sdkEnv "build-tools" } else { $null }
+if ($aapt2Path -and (Test-Path $aapt2Path)) {
     $aapt2Exe = Get-ChildItem $aapt2Path -Recurse -Filter "aapt2.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($aapt2Exe) {
         Write-Host "  [OK]   aapt2 : $($aapt2Exe.FullName)" -ForegroundColor Green

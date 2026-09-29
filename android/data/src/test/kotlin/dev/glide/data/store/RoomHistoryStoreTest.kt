@@ -14,6 +14,8 @@ import dev.glide.data.db.ReceivedFileEntity
 import dev.glide.data.db.SessionDao
 import dev.glide.data.db.SessionEntity
 import dev.glide.data.db.SessionWithItems
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -132,6 +134,10 @@ class FakeSessionDao(private val itemDaoSupplier: () -> FakeItemDao) : SessionDa
         return pagedSessions.map { session ->
             SessionWithItems(session, itemDaoSupplier().getItemsForSession(session.sessionId))
         }
+    }
+
+    override fun observeSessionsWithItems(role: String?, limit: Int): Flow<List<SessionWithItems>> = flow {
+        emit(getSessionsWithItemsPaged(role, limit, 0))
     }
 }
 

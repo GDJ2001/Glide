@@ -5,7 +5,7 @@
       "label": "doctor",
       "type": "shell",
       "command": "pwsh",
-      "args": ["-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/doctor.ps1"],
+      "args": ["-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/tools/doctor.ps1"],
       "problemMatcher": [],
       "presentation": { "reveal": "always", "panel": "shared" }
     },
@@ -13,7 +13,7 @@
       "label": "build-android",
       "type": "shell",
       "command": "pwsh",
-      "args": ["-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/build.ps1", "-Configuration", "Debug", "-Target", "Android"],
+      "args": ["-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/tools/build.ps1", "-Configuration", "Debug", "-Target", "Android"],
       "group": { "kind": "build", "isDefault": false },
       "problemMatcher": ["$msCompile", "$gradle"]
     },
@@ -21,7 +21,7 @@
       "label": "build-windows",
       "type": "shell",
       "command": "dotnet",
-      "args": ["build", "${workspaceFolder}/windows/Glide.slnx", "-c", "Debug", "--nologo"],
+      "args": ["build", "${workspaceFolder}/desktop/Glide.slnx", "-c", "Debug", "--nologo"],
       "group": { "kind": "build", "isDefault": false },
       "problemMatcher": "$msCompile"
     },
@@ -29,7 +29,7 @@
       "label": "build-all",
       "type": "shell",
       "command": "pwsh",
-      "args": ["-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/build.ps1", "-Configuration", "Debug", "-Target", "All"],
+      "args": ["-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/tools/build.ps1", "-Configuration", "Debug", "-Target", "All"],
       "group": { "kind": "build", "isDefault": true },
       "problemMatcher": ["$msCompile", "$gradle"]
     },
@@ -37,7 +37,7 @@
       "label": "test-all",
       "type": "shell",
       "command": "pwsh",
-      "args": ["-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/test.ps1", "-Target", "All"],
+      "args": ["-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/tools/test.ps1", "-Target", "All"],
       "group": { "kind": "test", "isDefault": true },
       "problemMatcher": []
     },
@@ -45,7 +45,7 @@
       "label": "test-windows",
       "type": "shell",
       "command": "dotnet",
-      "args": ["test", "${workspaceFolder}/windows/Glide.Tests/Glide.Tests.csproj", "-c", "Debug", "--nologo"],
+      "args": ["test", "${workspaceFolder}/desktop/Glide.slnx", "-c", "Debug", "--nologo"],
       "group": { "kind": "test", "isDefault": false },
       "problemMatcher": "$msCompile"
     },
@@ -53,14 +53,14 @@
       "label": "lint-all",
       "type": "shell",
       "command": "pwsh",
-      "args": ["-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/lint.ps1", "-Target", "All"],
+      "args": ["-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/tools/lint.ps1", "-Target", "All"],
       "problemMatcher": []
     },
     {
       "label": "verify-all",
       "type": "shell",
       "command": "pwsh",
-      "args": ["-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/verify.ps1"],
+      "args": ["-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/tools/verify.ps1"],
       "problemMatcher": []
     },
     {

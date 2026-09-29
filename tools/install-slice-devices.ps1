@@ -56,7 +56,7 @@ foreach ($line in $deviceLines) {
         Write-Host "  Installing $ApkPath ..."
         & $AdbPath -s $serial install -r -d $ApkPath
     } else {
-        Write-Warning "  APK not found at $ApkPath. Please run: .\gradlew.bat :android:app:assembleDebug"
+        Write-Warning "  APK not found at $ApkPath. Run android\gradlew.bat :android:app:assembleDebug from android/."
     }
 
     if (Test-Path $FixturePath) {

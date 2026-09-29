@@ -131,11 +131,11 @@ $gradleArgs = @(
     "--no-daemon"
 )
 
-$gradlew = "$projectRoot\gradlew.bat"
+$gradlew = "$projectRoot\android\gradlew.bat"
 $pinfo = New-Object System.Diagnostics.ProcessStartInfo
 $pinfo.FileName = $gradlew
 $pinfo.Arguments = $gradleArgs -join " "
-$pinfo.WorkingDirectory = $projectRoot
+$pinfo.WorkingDirectory = "$projectRoot\android"
 $pinfo.UseShellExecute = $false
 $pinfo.RedirectStandardOutput = $true
 $pinfo.RedirectStandardError = $true
