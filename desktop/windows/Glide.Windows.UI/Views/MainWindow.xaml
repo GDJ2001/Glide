@@ -171,23 +171,37 @@
                 <!-- Pair devices -->
                 <ScrollViewer x:Name="PairDevicesPage" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Visibility="{Binding IsPairDevicesSelected, Converter={StaticResource BoolToVis}}">
                     <StackPanel>
-                        <TextBlock Text="Connect a receiving device, then return to Send. A device is saved only after a verified transfer and your approval." Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,0,0,20" />
+                        <TextBlock Text="Choose how the two devices connect. You approve each transfer; saving a device is optional after verification." Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,0,0,20" />
                         <Border Style="{StaticResource CardStyle}">
                             <StackPanel>
-                                <TextBlock Text="Pair with a QR or link" FontWeight="SemiBold" FontSize="16" />
-                                <TextBlock Text="On the receiving device, open Receive and copy its current Glide pairing link. Paste it here. The link is also encoded in that device's QR code." Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" FontSize="12" Margin="0,4,0,12" />
-                                <TextBox Style="{StaticResource ModernTextBoxStyle}" Text="{Binding PairInputUri, UpdateSourceTrigger=PropertyChanged}" TextWrapping="Wrap" MinHeight="56" AutomationProperties.Name="Receiving device pairing link" />
-                                <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
-                                    <Button Style="{StaticResource SecondaryButtonStyle}" Content="Paste link" Command="{Binding PastePairingLinkCommand}" Margin="0,0,8,0" />
-                                    <Button Style="{StaticResource PrimaryButtonStyle}" Content="Use invitation" Command="{Binding SubmitPairModalCommand}" />
+                                <TextBlock Text="Connect with QR or link" FontWeight="SemiBold" FontSize="16" />
+                                <TextBlock Text="Choose where the one-time code is shown." Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="0,4,0,0" />
+                                <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                                    <RadioButton x:Name="UseDeviceInvitationTab" Style="{StaticResource PairDirectionTabStyle}" GroupName="PairDirection" Content="Use device invitation" IsChecked="{Binding IsUseInvitationSelected, Mode=OneWay}" Command="{Binding SelectPairDirectionCommand}" CommandParameter="UseInvitation" AutomationProperties.Name="Use invitation from another device" Margin="0,0,8,0" />
+                                    <RadioButton x:Name="ShowThisPcQrTab" Style="{StaticResource PairDirectionTabStyle}" GroupName="PairDirection" Content="Show this PC's QR" IsChecked="{Binding IsShowThisPcQrSelected, Mode=OneWay}" Command="{Binding SelectPairDirectionCommand}" CommandParameter="ShowThisPcQr" AutomationProperties.Name="Show this PC QR code" />
                                 </StackPanel>
-                                <TextBlock Text="{Binding PairingStatusText}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,12,0,0" AutomationProperties.LiveSetting="Polite" />
+                                <StackPanel x:Name="UseDeviceInvitationPanel" Visibility="{Binding IsUseInvitationSelected, Converter={StaticResource BoolToVis}}" Margin="0,16,0,0">
+                                    <TextBlock Text="On the receiving device, open Receive and copy its current Glide pairing link. The link is also in that device's QR code." Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" FontSize="12" Margin="0,0,0,12" />
+                                    <TextBox Style="{StaticResource ModernTextBoxStyle}" Text="{Binding PairInputUri, UpdateSourceTrigger=PropertyChanged}" TextWrapping="Wrap" MinHeight="56" AutomationProperties.Name="Receiving device pairing link" />
+                                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                                        <Button Style="{StaticResource SecondaryButtonStyle}" Content="Paste link" Command="{Binding PastePairingLinkCommand}" Margin="0,0,8,0" />
+                                        <Button Style="{StaticResource PrimaryButtonStyle}" Content="Use invitation" Command="{Binding SubmitPairModalCommand}" />
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding PairingStatusText}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,12,0,0" AutomationProperties.LiveSetting="Polite" />
+                                </StackPanel>
+                                <StackPanel x:Name="ShowThisPcQrPanel" Visibility="{Binding IsShowThisPcQrSelected, Converter={StaticResource BoolToVis}}" Margin="0,16,0,0">
+                                    <TextBlock Text="The other device scans this PC's one-time QR code. You confirm the recipient before files are sent." Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" FontSize="12" Margin="0,0,0,12" />
+                                    <Button x:Name="ShowPairingQrButton" Style="{StaticResource PrimaryButtonStyle}" Content="Show one-time QR code" Command="{Binding ShowQuickShareQrCommand}" HorizontalAlignment="Left" AutomationProperties.Name="Show one-time QR code for selected files" />
+                                    <TextBlock Text="Choose files on Send to enable QR sharing." Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="0,10,0,0">
+                                        <TextBlock.Style><Style TargetType="TextBlock"><Style.Triggers><DataTrigger Binding="{Binding HasSelectedFiles}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger></Style.Triggers></Style></TextBlock.Style>
+                                    </TextBlock>
+                                </StackPanel>
                             </StackPanel>
                         </Border>
                         <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0">
                             <StackPanel>
                                 <TextBlock Text="Find a nearby device" FontWeight="SemiBold" FontSize="16" />
-                                <TextBlock Text="Discovery shows availability. Select a device, then use its invitation above to authenticate it." Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,4,0,12" />
+                                <TextBlock Text="Discovery shows availability. Select a device, then use its current invitation to authenticate it." Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,4,0,12" />
                                 <TextBlock Text="No nearby devices found. Open Glide on the other device, turn on Receive, then refresh." Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,0,0,12">
                                     <TextBlock.Style><Style TargetType="TextBlock"><Style.Triggers><DataTrigger Binding="{Binding HasDiscoveredPeers}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger></Style.Triggers></Style></TextBlock.Style>
                                 </TextBlock>
@@ -200,13 +214,6 @@
                                     </DataTemplate></ItemsControl.ItemTemplate>
                                 </ItemsControl>
                                 <Button Style="{StaticResource SecondaryButtonStyle}" Content="Refresh nearby devices" Command="{Binding RefreshPeersCommand}" HorizontalAlignment="Left" Margin="0,6,0,0" />
-                            </StackPanel>
-                        </Border>
-                        <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0">
-                            <StackPanel>
-                                <TextBlock Text="Let a new device scan this PC" FontWeight="SemiBold" FontSize="16" />
-                                <TextBlock Text="With files selected, show a one-time QR code. The other device scans it; you confirm the recipient before files are sent." Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,4,0,12" />
-                                <Button Style="{StaticResource SecondaryButtonStyle}" Content="Show quick-share QR" Command="{Binding ShowQuickShareQrCommand}" IsEnabled="{Binding HasSelectedFiles}" HorizontalAlignment="Left" />
                             </StackPanel>
                         </Border>
                         <Button Style="{StaticResource SecondaryButtonStyle}" Content="Back to Send" Command="{Binding SwitchTabCommand}" CommandParameter="Send" HorizontalAlignment="Left" Margin="0,16,0,8" />
@@ -379,8 +386,8 @@
         <Border Grid.ColumnSpan="2" Background="#99000000" Visibility="{Binding IsPairModalVisible, Converter={StaticResource BoolToVis}}" Panel.ZIndex="13">
             <Border Style="{StaticResource CardStyle}" Width="500" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="28" KeyboardNavigation.TabNavigation="Cycle">
                 <StackPanel><TextBlock Text="{Binding PairingSheetTitle}" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center" /><TextBlock Text="{Binding PairingSheetInstruction}" Foreground="{DynamicResource TextSecondaryBrush}" TextAlignment="Center" TextWrapping="Wrap" Margin="0,10,0,18" />
-                    <StackPanel Visibility="{Binding IsHostedSendQrVisible, Converter={StaticResource BoolToVis}}" HorizontalAlignment="Center"><Border Background="White" CornerRadius="10" Padding="12"><Image Source="{Binding PairingQrImage}" Width="260" Height="260" Stretch="Uniform" RenderOptions.BitmapScalingMode="NearestNeighbor" AutomationProperties.Name="QR code for receiving selected files" /></Border><TextBlock Text="This code expires automatically for your security." Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" HorizontalAlignment="Center" Margin="0,10,0,0" /><Button Style="{StaticResource SecondaryButtonStyle}" Content="Refresh code" Command="{Binding RefreshQrCommand}" Margin="0,12,0,0" /></StackPanel>
-                    <Button Style="{StaticResource SecondaryButtonStyle}" Content="Cancel quick share" Command="{Binding CancelPairModalCommand}" HorizontalAlignment="Center" Margin="0,20,0,0" />
+                    <StackPanel Visibility="{Binding IsHostedSendQrVisible, Converter={StaticResource BoolToVis}}" HorizontalAlignment="Center"><Border Background="White" CornerRadius="10" Padding="12"><Image Source="{Binding PairingQrImage}" Width="260" Height="260" Stretch="Uniform" RenderOptions.BitmapScalingMode="NearestNeighbor" AutomationProperties.Name="QR code for receiving selected files" /></Border><TextBlock Text="This code expires automatically for your security." Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" HorizontalAlignment="Center" Margin="0,10,0,0" /></StackPanel>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,16,0,0"><Button Style="{StaticResource SecondaryButtonStyle}" Content="Refresh code" Command="{Binding RefreshQrCommand}" Width="160" Margin="0,0,8,0" /><Button x:Name="CancelQuickShareButton" Style="{StaticResource SecondaryButtonStyle}" Content="Cancel quick share" Command="{Binding CancelPairModalCommand}" Width="160" /></StackPanel>
                 </StackPanel>
             </Border>
         </Border>

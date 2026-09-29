@@ -22,6 +22,7 @@ using Microsoft.Win32;
 namespace Glide.Windows.UI.ViewModels;
 
 public enum SendMethodChoice { None, QuickQr, Nearby, Trusted }
+public enum PairDirectionChoice { UseInvitation, ShowThisPcQr }
 
 public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
 {
@@ -83,8 +84,9 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     private DiscoveredPeerViewModel? _selectedPeer;
     private TrustedDeviceViewModel? _selectedTrustedDevice;
     private SendMethodChoice _sendMethod;
+    private PairDirectionChoice _pairDirection = PairDirectionChoice.UseInvitation;
     private bool _isTrustedDevicePickerVisible;
-    private string _pairingStatusText = "Choose a nearby device to start.";
+    private string _pairingStatusText = "Paste a current invitation, or choose a nearby device below.";
     private readonly LanInvitationAuthority _invitationAuthority = new();
 
     private GlideWebGateway? _webGateway;
@@ -167,6 +169,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     public RelayCommand CloseTrustedDevicePickerCommand { get; }
     public RelayCommand SelectTrustedDeviceCommand { get; }
     public RelayCommand ShowQuickShareQrCommand { get; }
+    public RelayCommand SelectPairDirectionCommand { get; }
     public RelayCommand RefreshPeersCommand { get; }
     public RelayCommand RefreshQrCommand { get; }
     public RelayCommand ToggleQrZoomCommand { get; }
@@ -266,6 +269,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         ShowPairModalCommand = new RelayCommand(() =>
         {
             IsTrustedDevicePickerVisible = false;
+            SelectPairDirection(PairDirectionChoice.UseInvitation);
             CurrentTab = "Pair devices";
         });
         CancelPairModalCommand = new RelayCommand(() =>
@@ -304,7 +308,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             _pairedInvitation = null;
             _selectedPeer = null;
             _selectedTrustedDevice = null;
-            PairingStatusText = "Choose a nearby device to start.";
+            PairingStatusText = "Paste a current invitation, or choose a nearby device below.";
             OnPropertyChanged(nameof(PairingSheetTitle));
             OnPropertyChanged(nameof(PairingSheetInstruction));
             NotifySendState();
@@ -324,6 +328,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             }
             else if (method == SendMethodChoice.Nearby)
             {
+                SelectPairDirection(PairDirectionChoice.UseInvitation);
                 CurrentTab = "Pair devices";
                 try { _mdnsService.QueryPeers(); }
                 catch (Exception ex) { StatusMessage = $"Discovery is unavailable: {ex.Message}"; }
@@ -336,6 +341,11 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         ShowQuickShareQrCommand = new RelayCommand(
             () => _ = StartQuickShareSafelyAsync(),
             () => SelectedFiles.Count > 0 && !IsTransferActive);
+        SelectPairDirectionCommand = new RelayCommand(param =>
+        {
+            if (Enum.TryParse(param?.ToString(), out PairDirectionChoice direction))
+                SelectPairDirection(direction);
+        });
         ShowTrustedDevicePickerCommand = new RelayCommand(() =>
         {
             SelectSendMethod(SendMethodChoice.Trusted);
@@ -351,6 +361,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             PairingStatusText = $"{device.DisplayName} selected. Paste a fresh invite from that device.";
             StatusMessage = PairingStatusText;
             NotifySendState();
+            SelectPairDirection(PairDirectionChoice.UseInvitation);
             CurrentTab = "Pair devices";
         });
         SelectPeerCommand = new RelayCommand(param =>
@@ -367,6 +378,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                 PairingStatusText = $"{peer.DeviceName} selected. Paste its current Glide invitation to continue.";
                 StatusMessage = PairingStatusText;
                 NotifySendState();
+                SelectPairDirection(PairDirectionChoice.UseInvitation);
                 CurrentTab = "Pair devices";
             }
         });
@@ -516,6 +528,8 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     public bool IsActivitySelected => CurrentTab == "Activity";
     public bool IsSettingsSelected => CurrentTab == "Settings";
     public bool IsPairDevicesSelected => CurrentTab == "Pair devices";
+    public bool IsUseInvitationSelected => _pairDirection == PairDirectionChoice.UseInvitation;
+    public bool IsShowThisPcQrSelected => _pairDirection == PairDirectionChoice.ShowThisPcQr;
 
     public SendMethodChoice SendMethod => _sendMethod;
     public bool IsQuickQrSelected => SendMethod == SendMethodChoice.QuickQr;
@@ -856,8 +870,16 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         _selectedPeer = null;
         _selectedTrustedDevice = null;
         PairInputUri = string.Empty;
-        PairingStatusText = "Choose a device to continue.";
+        PairingStatusText = "Paste a current invitation, or choose a nearby device below.";
         NotifySendState();
+    }
+
+    private void SelectPairDirection(PairDirectionChoice direction)
+    {
+        if (_pairDirection == direction) return;
+        _pairDirection = direction;
+        OnPropertyChanged(nameof(IsUseInvitationSelected));
+        OnPropertyChanged(nameof(IsShowThisPcQrSelected));
     }
 
     private void ResetSendSelection()
@@ -867,7 +889,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         _selectedPeer = null;
         _selectedTrustedDevice = null;
         PairInputUri = string.Empty;
-        PairingStatusText = "Choose a device to continue.";
+        PairingStatusText = "Paste a current invitation, or choose a nearby device below.";
         NotifySendState();
     }
 
@@ -972,6 +994,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
 
     private void ExecuteSubmitPairModal()
     {
+        SelectPairDirection(PairDirectionChoice.UseInvitation);
         if (string.IsNullOrWhiteSpace(PairInputUri))
         {
             StatusMessage = "Scan a Glide QR code or paste a pairing code to continue.";

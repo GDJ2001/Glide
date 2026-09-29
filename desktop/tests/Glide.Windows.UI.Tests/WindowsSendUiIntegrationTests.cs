@@ -166,8 +166,38 @@ public sealed class WindowsSendUiIntegrationTests
                         "QR code for receiving selected files");
                 Assert.Equal(Visibility.Visible, qrImage.Visibility);
                 Assert.NotNull(qrImage.Source);
+                var cancelQuickShare = Assert.IsType<Button>(window.FindName("CancelQuickShareButton"));
+                double cancelBottom = cancelQuickShare.TranslatePoint(
+                    new Point(0, cancelQuickShare.ActualHeight), window).Y;
+                Assert.True(cancelBottom <= window.ActualHeight,
+                    "The QR popup's Cancel action must remain visible at the minimum window size.");
 
                 viewModel.CancelPairModalCommand.Execute(null);
+                viewModel.CurrentTab = "Pair devices";
+                window.UpdateLayout();
+                var invitationPanel = Assert.IsType<StackPanel>(window.FindName("UseDeviceInvitationPanel"));
+                var pcQrPanel = Assert.IsType<StackPanel>(window.FindName("ShowThisPcQrPanel"));
+                var pcQrTab = Assert.IsType<RadioButton>(window.FindName("ShowThisPcQrTab"));
+                var invitationTab = Assert.IsType<RadioButton>(window.FindName("UseDeviceInvitationTab"));
+                var showPairingQr = Assert.IsType<Button>(window.FindName("ShowPairingQrButton"));
+                Assert.Same(ContainingCard(invitationPanel), ContainingCard(pcQrPanel));
+                Assert.Equal(Visibility.Visible, invitationPanel.Visibility);
+                Assert.Equal(Visibility.Collapsed, pcQrPanel.Visibility);
+                pcQrTab.Command.Execute(pcQrTab.CommandParameter);
+                window.UpdateLayout();
+                Assert.Equal(Visibility.Collapsed, invitationPanel.Visibility);
+                Assert.Equal(Visibility.Visible, pcQrPanel.Visibility);
+                Assert.True(showPairingQr.IsEnabled);
+                showPairingQr.Command.Execute(null);
+                PumpDispatcherUntil(() => viewModel.IsPairModalVisible, TimeSpan.FromSeconds(5));
+                Assert.True(viewModel.IsHostedSendQrVisible);
+                viewModel.CancelPairModalCommand.Execute(null);
+                invitationTab.Command.Execute(invitationTab.CommandParameter);
+                window.UpdateLayout();
+                Assert.Equal(Visibility.Visible, invitationPanel.Visibility);
+                Assert.Equal(Visibility.Collapsed, pcQrPanel.Visibility);
+
+                viewModel.CurrentTab = "Send";
                 RadioButton nearby = Descendants(window).OfType<RadioButton>()
                     .Single(button => AutomationProperties.GetName(button) == "Nearby device");
                 nearby.Command.Execute(nearby.CommandParameter);
@@ -214,6 +244,11 @@ public sealed class WindowsSendUiIntegrationTests
                 window.UpdateLayout();
                 Assert.Equal(Visibility.Visible, emptyFileState.Visibility);
                 Assert.Equal(Visibility.Collapsed, selectedFileState.Visibility);
+                viewModel.CurrentTab = "Pair devices";
+                pcQrTab.Command.Execute(pcQrTab.CommandParameter);
+                window.UpdateLayout();
+                Assert.Equal(Visibility.Visible, pcQrPanel.Visibility);
+                Assert.False(showPairingQr.IsEnabled);
             }
             catch (Exception ex)
             {
@@ -268,6 +303,17 @@ public sealed class WindowsSendUiIntegrationTests
                 yield return descendant;
             }
         }
+    }
+
+    private static Border ContainingCard(DependencyObject element)
+    {
+        DependencyObject? ancestor = VisualTreeHelper.GetParent(element);
+        while (ancestor is not null)
+        {
+            if (ancestor is Border border) return border;
+            ancestor = VisualTreeHelper.GetParent(ancestor);
+        }
+        throw new InvalidOperationException("The pairing panel is not inside a card.");
     }
 
     private static void PumpDispatcherUntil(
