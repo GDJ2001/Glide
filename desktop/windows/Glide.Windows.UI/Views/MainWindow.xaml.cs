@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Input;
 using System.Windows.Threading;
@@ -17,6 +18,59 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        UpdateResponsiveLayout();
+    }
+
+    private void Window_SizeChanged(object sender, SizeChangedEventArgs e) => UpdateResponsiveLayout();
+
+    private void UpdateResponsiveLayout()
+    {
+        if (SidebarColumn is null || MainContent is null)
+            return;
+
+        // Use the window's WPF units, not physical screen pixels: Snap zones can be
+        // substantially narrower after Windows display scaling. The requested Width
+        // must participate too, or a wide child's desired size can block the resize
+        // before its compact layout has a chance to activate.
+        double layoutWidth = double.IsNaN(Width) ? ActualWidth :
+            ActualWidth > 0 ? Math.Min(Width, ActualWidth) : Width;
+        double layoutHeight = double.IsNaN(Height) ? ActualHeight :
+            ActualHeight > 0 ? Math.Min(Height, ActualHeight) : Height;
+        bool compactNavigation = layoutWidth < 1008;
+        bool narrowContent = layoutWidth < 640;
+        SidebarColumn.Width = new GridLength(compactNavigation ? 64 : 212);
+        Sidebar.Padding = compactNavigation ? new Thickness(8, 20, 8, 20) : new Thickness(16, 20, 16, 20);
+        BrandName.Visibility = compactNavigation ? Visibility.Collapsed : Visibility.Visible;
+        BrandSymbol.Margin = compactNavigation ? new Thickness(0) : new Thickness(0, 0, 10, 0);
+        LocalSharingNote.Visibility = compactNavigation ? Visibility.Collapsed : Visibility.Visible;
+        MainContent.Margin = narrowContent
+            ? new Thickness(16, 20, 16, 16)
+            : compactNavigation
+                ? new Thickness(24, 24, 24, 20)
+                : new Thickness(32, 28, 32, 24);
+
+        RadioButton[] navigation = [NavSend, NavReceive, NavActivity, NavPairDevices, NavSettings];
+        System.Windows.Shapes.Path[] icons =
+            [NavSendIcon, NavReceiveIcon, NavActivityIcon, NavPairDevicesIcon, NavSettingsIcon];
+        TextBlock[] labels =
+            [NavSendLabel, NavReceiveLabel, NavActivityLabel, NavPairDevicesLabel, NavSettingsLabel];
+        for (int index = 0; index < navigation.Length; index++)
+        {
+            navigation[index].Padding = compactNavigation ? new Thickness(14, 0, 0, 0) : new Thickness(12, 0, 12, 0);
+            icons[index].Margin = compactNavigation ? new Thickness(0) : new Thickness(0, 0, 12, 0);
+            labels[index].Visibility = compactNavigation ? Visibility.Collapsed : Visibility.Visible;
+        }
+
+        Grid.SetRow(SelectedFileActions, narrowContent ? 1 : 0);
+        Grid.SetColumn(SelectedFileActions, narrowContent ? 0 : 1);
+        SelectedFileActions.Margin = narrowContent ? new Thickness(0, 8, 0, 0) : new Thickness(0);
+        SelectedFileActions.HorizontalAlignment = narrowContent ? HorizontalAlignment.Left : HorizontalAlignment.Right;
+        ReceiveQrLayout.Orientation = narrowContent ? Orientation.Vertical : Orientation.Horizontal;
+        ReceiveQrActions.Margin = narrowContent ? new Thickness(0, 12, 0, 0) : new Thickness(20, 4, 0, 0);
+        bool shortWindow = layoutHeight < 600;
+        HostedQrImage.Width = HostedQrImage.Height = shortWindow ? 196 : 260;
+        ZoomQrImage.Width = ZoomQrImage.Height = shortWindow ? 232 : 320;
+        TrustedDevicesScroll.MaxHeight = shortWindow ? 160 : 260;
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -49,6 +103,8 @@ public partial class MainWindow : Window
     protected override void OnPropertyChanged(DependencyPropertyChangedEventArgs e)
     {
         base.OnPropertyChanged(e);
+        if (e.Property == WidthProperty || e.Property == HeightProperty)
+            UpdateResponsiveLayout();
         if (e.Property == BackgroundProperty || e.Property == ForegroundProperty)
             WindowsTitleBar.Apply(this);
     }

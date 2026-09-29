@@ -126,6 +126,48 @@ public sealed class WindowsSendUiIntegrationTests
                     button => AutomationProperties.GetName(button) == "Add more files to send");
                 Assert.Contains(Descendants(selectedFileState).OfType<Button>(),
                     button => AutomationProperties.GetName(button) == "Add another folder to send");
+                window.Width = 500;
+                window.Height = 520;
+                PumpDispatcherUntil(() => window.ActualWidth < 640, TimeSpan.FromSeconds(2));
+                window.UpdateLayout();
+                Assert.Equal(500, window.MinWidth);
+                Assert.Equal(480, window.MinHeight);
+                Assert.Equal(64, Assert.IsType<ColumnDefinition>(window.FindName("SidebarColumn")).ActualWidth);
+                Assert.Equal(Visibility.Collapsed,
+                    Assert.IsType<TextBlock>(window.FindName("NavSendLabel")).Visibility);
+                Assert.True(window.ActualWidth < 640,
+                    $"The test window did not reach the narrow layout: Width={window.Width}, ActualWidth={window.ActualWidth}, " +
+                    $"RootDesired={Assert.IsType<Grid>(window.Content).DesiredSize.Width}, " +
+                    $"MainDesired={Assert.IsType<Grid>(window.FindName("MainContent")).DesiredSize.Width}, " +
+                    $"MainActual={Assert.IsType<Grid>(window.FindName("MainContent")).ActualWidth}, " +
+                    $"MainChildren={string.Join(",", Assert.IsType<Grid>(window.FindName("MainContent")).Children.Cast<FrameworkElement>().Select(child => child.DesiredSize.Width))}, " +
+                    $"SendDesired={sendPage.DesiredSize.Width}, DropDesired={dropZone.DesiredSize.Width}, " +
+                    $"HeaderDesired={Assert.IsType<Grid>(window.FindName("SelectedFileHeader")).DesiredSize.Width}, " +
+                    $"FileListDesired={selectedFilesList.DesiredSize.Width}, " +
+                    $"MethodDesired={Descendants(window).OfType<RadioButton>().Single(button => AutomationProperties.GetName(button) == "Quick share with QR code").DesiredSize.Width}.");
+                Assert.Equal(1, Grid.GetRow(Assert.IsType<StackPanel>(window.FindName("SelectedFileActions"))));
+                Assert.Equal(Orientation.Vertical,
+                    Assert.IsType<StackPanel>(window.FindName("ReceiveQrLayout")).Orientation);
+                foreach (string tab in new[] { "Send", "Receive", "Activity", "Pair devices", "Settings" })
+                {
+                    viewModel.CurrentTab = tab;
+                    window.UpdateLayout();
+                    string pageName = tab == "Pair devices" ? "PairDevicesPage" : $"{tab}Page";
+                    var page = Assert.IsType<ScrollViewer>(window.FindName(pageName));
+                    Assert.True(page.ViewportWidth > 0);
+                    Assert.True(page.ScrollableWidth <= 1, $"{tab} overflows the 500-DIP Snap width by {page.ScrollableWidth}.");
+                }
+                viewModel.CurrentTab = "Send";
+                window.Width = 1040;
+                window.Dispatcher.Invoke(() => { }, DispatcherPriority.Background);
+                window.UpdateLayout();
+                Assert.Equal(212, Assert.IsType<ColumnDefinition>(window.FindName("SidebarColumn")).ActualWidth);
+                Assert.Equal(Visibility.Visible,
+                    Assert.IsType<TextBlock>(window.FindName("NavSendLabel")).Visibility);
+                window.Width = 820;
+                window.Height = 560;
+                window.Dispatcher.Invoke(() => { }, DispatcherPriority.Background);
+                window.UpdateLayout();
                 var sendButton = Assert.IsType<Button>(window.FindName("SendChosenDeviceButton"));
                 Assert.Equal(Visibility.Collapsed, sendButton.Visibility);
                 Assert.False(viewModel.IsSendActionVisible);
@@ -149,6 +191,10 @@ public sealed class WindowsSendUiIntegrationTests
 
                 RadioButton quickQr = Descendants(window).OfType<RadioButton>()
                     .Single(button => AutomationProperties.GetName(button) == "Quick share with QR code");
+                window.Width = 500;
+                window.Height = 480;
+                window.Dispatcher.Invoke(() => { }, DispatcherPriority.Background);
+                window.UpdateLayout();
                 Assert.True(quickQr.IsEnabled);
                 quickQr.Command.Execute(quickQr.CommandParameter);
                 PumpDispatcherUntil(() => viewModel.IsPairModalVisible, TimeSpan.FromSeconds(5));
@@ -174,6 +220,10 @@ public sealed class WindowsSendUiIntegrationTests
                     "The QR popup's Cancel action must remain visible at the minimum window size.");
 
                 viewModel.CancelPairModalCommand.Execute(null);
+                window.Width = 820;
+                window.Height = 560;
+                window.Dispatcher.Invoke(() => { }, DispatcherPriority.Background);
+                window.UpdateLayout();
                 viewModel.CurrentTab = "Pair devices";
                 window.UpdateLayout();
                 var invitationPanel = Assert.IsType<StackPanel>(window.FindName("UseDeviceInvitationPanel"));
@@ -220,8 +270,14 @@ public sealed class WindowsSendUiIntegrationTests
                 RadioButton trusted = Descendants(window).OfType<RadioButton>()
                     .Single(button => AutomationProperties.GetName(button) == "Saved device");
                 trusted.Command.Execute(trusted.CommandParameter);
+                window.Width = 500;
+                window.Height = 480;
+                PumpDispatcherUntil(() => window.ActualWidth < 640, TimeSpan.FromSeconds(2));
+                window.UpdateLayout();
                 Assert.True(viewModel.IsTrustedDevicePickerVisible);
                 Assert.Equal(Visibility.Collapsed, sendButton.Visibility);
+                var closePicker = Assert.IsType<Button>(window.FindName("CloseTrustedDevicePickerButton"));
+                Assert.True(closePicker.TranslatePoint(new Point(0, closePicker.ActualHeight), window).Y <= window.ActualHeight);
                 var savedDevice = new TrustedDeviceViewModel(
                     new DesktopTrustedPeer(new string('a', 64), "00", "Saved test device", 1, 1));
                 viewModel.SelectTrustedDeviceCommand.Execute(savedDevice);
@@ -231,6 +287,8 @@ public sealed class WindowsSendUiIntegrationTests
                 Assert.True(viewModel.IsSavedDeviceConnectVisible);
                 Assert.Equal(Visibility.Visible,
                     Assert.IsType<TextBox>(window.FindName("SavedDeviceInvitationInput")).Visibility);
+                var savedLinkInput = Assert.IsType<TextBox>(window.FindName("SavedDeviceInvitationInput"));
+                Assert.True(savedLinkInput.TranslatePoint(new Point(savedLinkInput.ActualWidth, 0), window).X <= window.ActualWidth);
                 Assert.False(viewModel.IsSendActionVisible);
                 viewModel.ConnectSavedDeviceCommand.Execute(null);
                 Assert.True(viewModel.IsSavedDeviceConnectVisible);
@@ -247,6 +305,10 @@ public sealed class WindowsSendUiIntegrationTests
                 Assert.True(viewModel.IsSavedDeviceConnectVisible);
                 viewModel.ClearPairingCommand.Execute(null);
                 Assert.False(viewModel.IsSendActionVisible);
+                window.Width = 820;
+                window.Height = 560;
+                window.Dispatcher.Invoke(() => { }, DispatcherPriority.Background);
+                window.UpdateLayout();
                 sendPage.ScrollToVerticalOffset(50);
                 window.UpdateLayout();
                 viewModel.ClearFilesCommand.Execute(null);
