@@ -1,4 +1,6 @@
 # Glide threat model
+
+> **Historical Android V1 scope (2026-10-01):** Statements here that Apple is deferred or persistent trust is absent do not describe the native-platform recovery branch. See [the current native threat model](NATIVE_APP_THREAT_MODEL.md) for cross-platform controls and open gaps. No control is validated until its final-source Phase 2 case runs.
 Planning threat model, 2026-09-12. [Protocol](../protocol/GLIDE_PROTOCOL_V1.md) · [Storage](../android/STORAGE_AND_BACKGROUND.md) · [Security checklist](SECURITY_CHECKLIST.md).
 
 ## Assets, actors and boundaries

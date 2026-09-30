@@ -1,4 +1,6 @@
 # Security completion checklist
+
+> **Native-platform recovery notice (2026-10-01):** The checked items below are historical Android/desktop controls, not proof that Apple, Linux, packaging, and physical interoperability are validated. The current cross-platform control map and open cases are in [NATIVE_APP_THREAT_MODEL.md](NATIVE_APP_THREAT_MODEL.md).
 Use for every sensitive task; attach evidence to [TODO](../TODO_MASTER.md), cite applicable [threat IDs](GLIDE_THREAT_MODEL.md). An unchecked relevant item prevents COMPLETE.
 
 - [x] Peer verification is explicit on both devices; names cannot bypass it. *(Evidence: NearbyConnectionAdapter, TransferCoordinator, PairingVerificationView, SecurityGateAcceptanceTest.threatT01)*
