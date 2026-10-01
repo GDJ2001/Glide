@@ -13,6 +13,7 @@ namespace Glide.Windows.UI.Services;
 /// Handles:
 /// - Send protocol execution (connect, bootstrap, offer, stream)
 /// - Receive protocol execution (accept, bootstrap, receive, verify)
+/// - Receiver-as-client execution (connect, bootstrap, receive, verify from invitation)
 /// - Transfer engine delegation
 /// </summary>
 public sealed class DesktopProtocolService
@@ -40,5 +41,16 @@ public sealed class DesktopProtocolService
         CancellationToken cancellationToken)
     {
         return await _engine.ReceiveAsync(connection, request, interaction, cancellationToken);
+    }
+
+    /// <summary>
+    /// Executes a receiver-as-client operation connecting to a sender-hosted endpoint.
+    /// </summary>
+    public async Task<DesktopTransferResult> ReceiveFromInvitationAsync(
+        DesktopReceiveRequest request,
+        IDesktopTransferInteraction interaction,
+        CancellationToken cancellationToken)
+    {
+        return await _engine.ReceiveFromInvitationAsync(request, interaction, cancellationToken);
     }
 }

@@ -106,8 +106,7 @@ Write-Host "[Check 3/7] Verifying Transport adapter does not import UI, ViewMode
 
 $transportDirs = @(
     "$projectRoot/android/transport-nearby/src/main/kotlin",
-    "$projectRoot/android/transport-lan/src/main/kotlin",
-    "$projectRoot/android/transport-webrtc/src/main/kotlin"
+    "$projectRoot/android/transport-lan/src/main/kotlin"
 )
 $forbiddenTransportImports = @(
     "dev.glide.app.ui.",
@@ -233,7 +232,6 @@ $buildFiles = @(
     "$projectRoot/android/designsystem/build.gradle.kts",
     "$projectRoot/android/transport-lan/build.gradle.kts",
     "$projectRoot/android/transport-nearby/build.gradle.kts",
-    "$projectRoot/android/transport-webrtc/build.gradle.kts",
     "$projectRoot/android/benchmark/build.gradle.kts"
 )
 

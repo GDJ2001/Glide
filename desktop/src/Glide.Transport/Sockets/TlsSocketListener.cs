@@ -102,7 +102,12 @@ public sealed class TlsSocketListener : IDisposable
 
         try
         {
-            await sslStream.AuthenticateAsServerAsync(options, cancellationToken);
+            // An accepted TCP socket must not hold the single active listener
+            // indefinitely without completing TLS. Leave the idle accept loop
+            // unbounded, but bound each individual handshake.
+            using var handshakeCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            handshakeCts.CancelAfter(TimeSpan.FromSeconds(15));
+            await sslStream.AuthenticateAsServerAsync(options, handshakeCts.Token);
 
             if (sslStream.SslProtocol != SslProtocols.Tls13)
             {

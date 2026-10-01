@@ -64,7 +64,7 @@ adb uninstall dev.glide.app
 
 The run directory contains `BUILD-MANIFEST.txt` and `SHA256SUMS-<runtime>.txt`. Verify those against the exact package before installation. No package from this recovery branch has yet passed a target-host installation test.
 
-The optional user daemon requires an enrolled trusted peer and an explicit per-peer headless policy. Keep `~/.config/glide/daemon.env` readable only by your user (`chmod 600`). Its one-use pairing URI is written to `XDG_RUNTIME_DIR/glide/daemon-invitation.txt`, which is replaced on rotation and removed after use or shutdown; service logs contain only the path.
+The optional user daemon requires an enrolled trusted peer and an explicit per-peer headless policy. Keep `~/.config/glide/daemon.env` readable only by your user (`chmod 600`). Its one-use pairing URI is written to `XDG_RUNTIME_DIR/glide/daemon-invitation.txt`, which is replaced on rotation and removed after use or shutdown; service logs do not contain the URI or its full path.
 
 ### Installation (Debian / Ubuntu)
 ```bash

@@ -106,4 +106,85 @@ public class QuarantineStagingTests : IDisposable
         Assert.True(File.Exists(path1));
         Assert.True(File.Exists(path2));
     }
+
+    [Fact]
+    public async Task CommitVerified_CopyDigestMismatch_LeavesNoPublicOrTemporaryFile()
+    {
+        var sessionId = new SessionId("11111111-1111-4111-8111-111111111111");
+        var itemId = new ItemId("22222222-2222-4222-8222-222222222222");
+        await using (var stream = _store.OpenQuarantineWrite(sessionId, itemId))
+            await stream.WriteAsync("changed"u8.ToArray());
+
+        var expectedDigest = new Sha256Digest(new string('0', 64));
+        await Assert.ThrowsAsync<IOException>(() => _store.CommitVerifiedQuarantineFileAsync(
+            sessionId, itemId, "docs/received.txt", expectedDigest, 7));
+
+        Assert.False(File.Exists(Path.Combine(_testDestDir, "docs", "received.txt")));
+        Assert.Empty(Directory.GetFiles(_testDestDir, ".glide-commit-*.part",
+            SearchOption.AllDirectories));
+    }
+
+    [Fact]
+    public void QuarantineWrite_ExistingPart_IsNeverOverwritten()
+    {
+        var sessionId = new SessionId("11111111-1111-4111-8111-111111111111");
+        var itemId = new ItemId("22222222-2222-4222-8222-222222222222");
+        using var first = _store.OpenQuarantineWrite(sessionId, itemId);
+        Assert.Throws<IOException>(() => _store.OpenQuarantineWrite(sessionId, itemId));
+    }
+
+    [Fact]
+    public void PurgeAbandonedCommitFiles_RemovesOnlyOldGlideTemporaryFiles()
+    {
+        string nested = Path.Combine(_testDestDir, "received");
+        Directory.CreateDirectory(nested);
+        string oldCommit = Path.Combine(nested,
+            $".glide-commit-{Guid.NewGuid():N}.part");
+        string recentCommit = Path.Combine(nested,
+            $".glide-commit-{Guid.NewGuid():N}.part");
+        string unrelated = Path.Combine(nested, ".glide-commit-not-a-guid.part");
+        File.WriteAllText(oldCommit, "old verified bytes");
+        File.WriteAllText(recentCommit, "active bytes");
+        File.WriteAllText(unrelated, "user data");
+        File.SetLastWriteTimeUtc(oldCommit, DateTime.UtcNow.AddHours(-1));
+        File.SetLastWriteTimeUtc(unrelated, DateTime.UtcNow.AddHours(-1));
+
+        Assert.Equal(1, _store.PurgeAbandonedCommitFiles());
+        Assert.False(File.Exists(oldCommit));
+        Assert.True(File.Exists(recentCommit));
+        Assert.True(File.Exists(unrelated));
+    }
+
+    [Fact]
+    public async Task WriteAndCommit_OversizedDeclaredLength_RejectsBeforeReading()
+    {
+        var sessionId = SessionId.NewRandom();
+        var itemId = ItemId.NewRandom();
+        using var source = new MemoryStream("unread"u8.ToArray());
+        var digest = new Sha256Digest(new string('0', 64));
+
+        await Assert.ThrowsAsync<ProtocolViolationException>(() =>
+            _store.WriteAndCommitAsync(sessionId, itemId, "file.txt", source, digest,
+                Glide.Core.Codec.ProtocolCatalog.MaxItemBytes + 1));
+        Assert.Equal(0, source.Position);
+        Assert.False(File.Exists(_store.GetQuarantinePath(sessionId, itemId)));
+    }
+
+    [Fact]
+    public void PurgeAbandonedQuarantineSessions_PreservesRecentSession()
+    {
+        var oldSession = SessionId.NewRandom();
+        var recentSession = SessionId.NewRandom();
+        var item = ItemId.NewRandom();
+        using (_store.OpenQuarantineWrite(oldSession, item)) { }
+        using (_store.OpenQuarantineWrite(recentSession, item)) { }
+        string oldPath = _store.GetQuarantinePath(oldSession, item);
+        string recentPath = _store.GetQuarantinePath(recentSession, item);
+        File.SetLastWriteTimeUtc(oldPath, DateTime.UtcNow.AddDays(-2));
+
+        Assert.Equal(1, _store.PurgeAbandonedQuarantineSessions());
+        Assert.False(File.Exists(oldPath));
+        Assert.False(Directory.Exists(Path.GetDirectoryName(oldPath)));
+        Assert.True(File.Exists(recentPath));
+    }
 }

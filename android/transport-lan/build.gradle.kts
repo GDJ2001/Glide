@@ -24,17 +24,6 @@ android {
     }
 }
 
-// HARD-003 red-before-fix browser regressions run only when explicitly requested.
-tasks.withType<Test>().configureEach {
-    if (providers.gradleProperty("hard003Regression").orNull == "true") {
-        filter {
-            includeTestsMatching("*Hard003*")
-        }
-    } else {
-        exclude("**/Hard003*")
-    }
-}
-
 dependencies {
     implementation(project(":android:core"))
     implementation(libs.androidx.core.ktx)

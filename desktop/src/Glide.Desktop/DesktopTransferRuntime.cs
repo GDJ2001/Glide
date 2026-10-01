@@ -20,6 +20,7 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
     }
 
     public event EventHandler<DesktopTransferSnapshot>? SnapshotChanged;
+    public event EventHandler<TransferEvent>? EventOccurred;
 
     public DesktopTransferSnapshot Snapshot
     {
@@ -65,6 +66,16 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
             DesktopTransferDirection.Receive,
             "Incoming peer",
             token => _executor.ReceiveAsync(connection, request, interaction, token),
+            cancellationToken);
+
+    public Task<DesktopTransferResult> ReceiveFromInvitationAsync(
+        DesktopReceiveRequest request,
+        IDesktopTransferInteraction interaction,
+        CancellationToken cancellationToken = default) =>
+        RunAsync(
+            DesktopTransferDirection.Receive,
+            request.Invitation?.Name ?? "Sending peer",
+            token => _executor.ReceiveFromInvitationAsync(request, interaction, token),
             cancellationToken);
 
     public Task<DesktopTransferResult> SendHostedAsync(
@@ -151,6 +162,16 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
             _snapshot = snapshot;
         }
         SnapshotChanged?.Invoke(this, snapshot);
+        EventOccurred?.Invoke(this, new TransferEvent.PhaseChanged(
+            snapshot.Phase,
+            snapshot.Direction,
+            snapshot.PeerName,
+            snapshot.Message));
+    }
+
+    public void NotifyEvent(TransferEvent @event)
+    {
+        EventOccurred?.Invoke(this, @event);
     }
 
     public ValueTask DisposeAsync()

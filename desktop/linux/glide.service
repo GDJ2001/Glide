@@ -11,10 +11,12 @@ Type=simple
 EnvironmentFile=%h/.config/glide/daemon.env
 Environment=XDG_DATA_HOME=%h/.local/share
 Environment=XDG_CONFIG_HOME=%h/.config
-ExecStart=/usr/local/bin/glide daemon --accept-paired-offers --trusted-peer ${GLIDE_TRUSTED_PEER} --max-offer-bytes ${GLIDE_MAX_OFFER_BYTES} --destination ${GLIDE_DESTINATION}
+ExecStart=/usr/bin/glide daemon --accept-paired-offers --trusted-peer ${GLIDE_TRUSTED_PEER} --max-offer-bytes ${GLIDE_MAX_OFFER_BYTES} --destination ${GLIDE_DESTINATION}
 Restart=on-failure
 RestartSec=5s
 KillMode=process
+UMask=0077
+NoNewPrivileges=true
 
 [Install]
 WantedBy=default.target

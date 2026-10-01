@@ -67,6 +67,12 @@ public sealed class DesktopTransferRuntimeTests
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
+        public Task<DesktopTransferResult> ReceiveFromInvitationAsync(
+            DesktopReceiveRequest request,
+            IDesktopTransferInteraction interaction,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
         public void Complete(DesktopTransferResult result) =>
             _completion.TrySetResult(result);
     }

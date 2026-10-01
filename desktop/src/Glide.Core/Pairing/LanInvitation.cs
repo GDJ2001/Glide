@@ -68,7 +68,7 @@ public sealed record LanInvitation
 
         if (!PresenceRegex.IsMatch(presence))
         {
-            throw new ArgumentException($"presence must be 32 lowercase hex characters, got: '{presence}'", nameof(presence));
+            throw new ArgumentException("presence must be 32 lowercase hex characters", nameof(presence));
         }
 
         if (string.IsNullOrWhiteSpace(name))
@@ -106,12 +106,12 @@ public sealed record LanInvitation
 
         if (!IdentifierValidation.IsValidSha256(spkiSha256))
         {
-            throw new ArgumentException($"spkiSha256 must be 64 lowercase hex characters, got: '{spkiSha256}'", nameof(spkiSha256));
+            throw new ArgumentException("spkiSha256 must be 64 lowercase hex characters", nameof(spkiSha256));
         }
 
         if (!TokenRegex.IsMatch(token))
         {
-            throw new ArgumentException($"token must be 43 unpadded base64url characters encoding 32 bytes, got: '{token}'", nameof(token));
+            throw new ArgumentException("token must be 43 unpadded base64url characters encoding 32 bytes", nameof(token));
         }
 
         if (!ExpiresAtRegex.IsMatch(expiresAt))
@@ -126,7 +126,7 @@ public sealed record LanInvitation
 
         if (!string.IsNullOrEmpty(invitationHash) && !IdentifierValidation.IsValidSha256(invitationHash))
         {
-            throw new ArgumentException($"invitationHash must be 64 lowercase hex characters if present, got: '{invitationHash}'", nameof(invitationHash));
+            throw new ArgumentException("invitationHash must be 64 lowercase hex characters if present", nameof(invitationHash));
         }
 
         V = v;
@@ -167,8 +167,8 @@ public sealed record LanInvitation
     public override string ToString()
     {
         return $"LanInvitation(v={V}, transport='{Transport}', profile={Profile}, protocol={Protocol}, " +
-               $"invitationId='{InvitationId}', presence='{Presence}', name='{Name}', platform='{Platform}', " +
-               $"endpoints=[{string.Join(", ", Endpoints)}], spkiSha256='{SpkiSha256}', token=[REDACTED], " +
-               $"expiresAt='{ExpiresAt}', ttlSeconds={TtlSeconds}, invitationHash='{InvitationHash}')";
+               $"invitationId=[REDACTED], presence=[REDACTED], name=[REDACTED], platform='{Platform}', " +
+               $"endpoints=[REDACTED], spkiSha256=[REDACTED], token=[REDACTED], " +
+               $"expiresAt='{ExpiresAt}', ttlSeconds={TtlSeconds}, invitationHash=[REDACTED])";
     }
 }

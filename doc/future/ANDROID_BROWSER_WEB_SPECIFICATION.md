@@ -1,7 +1,10 @@
-# Android & Windows to Web Browser Zero-Install Transfer Specification
+# Android & Windows to Web Browser Zero-Install Transfer Specification [SUPERSEDED]
 
-- **Document Version:** 1.0.0
-- **Status:** Approved Technical Specification
+> [!WARNING]
+> **SUPERSEDED BY NATIVE PLATFORM EXPANSION**: Browser-based file sharing is retired. Glide now provides 100% native peer-to-peer applications for Android, Windows, iOS/iPadOS, macOS, and Linux using mutual TLS 1.3 LAN pairing (`lan-tls`).
+
+- **Document Version:** 1.0.0 (Archived)
+- **Status:** Superseded by Native Platform Delivery
 - **Milestone:** M14 — Cross-Platform Browser & Web Client Expansion
 - **Task Authority:** [ADR-0019](../adr/ADR-0019-browser-web-local-transfer.md)
 - **Roadmap Precedence:** Step 3 of [CROSS_PLATFORM_PATH.md](CROSS_PLATFORM_PATH.md)

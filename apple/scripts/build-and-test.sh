@@ -13,6 +13,6 @@ if command -v swift >/dev/null 2>&1; then
     swift test --enable-code-coverage
     echo "GlideCoreKit tests PASSED."
 else
-    echo "Notice: swift toolchain not found on PATH. Run this script in an Xcode/macOS environment."
-    exit 0
+    echo "BLOCKER: swift toolchain not found on PATH. An Xcode/macOS build host is required." >&2
+    exit 1
 fi

@@ -15,7 +15,6 @@ using Glide.Core.Storage;
 using Glide.Desktop;
 using Glide.Transport.Discovery;
 using Glide.Transport.Sockets;
-using Glide.Transport.Web;
 using Glide.Windows.UI.Common;
 using Microsoft.Win32;
 
@@ -89,12 +88,6 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     private bool _isSavedDeviceConnectVisible;
     private string _pairingStatusText = "Paste a current invitation, or choose a nearby device below.";
     private readonly LanInvitationAuthority _invitationAuthority = new();
-
-    private GlideWebGateway? _webGateway;
-    private bool _isWebShareModalVisible;
-    private string _webShareUrl = "";
-
-    private ImageSource? _webShareQrImage;
     private ImageSource? _pairingQrImage;
     private bool _isQrZoomModalVisible;
 
@@ -102,30 +95,6 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     {
         get => _isQrZoomModalVisible;
         set => SetProperty(ref _isQrZoomModalVisible, value);
-    }
-
-    public bool IsWebShareModalVisible
-    {
-        get => _isWebShareModalVisible;
-        set => SetProperty(ref _isWebShareModalVisible, value);
-    }
-
-    public string WebShareUrl
-    {
-        get => _webShareUrl;
-        set
-        {
-            if (SetProperty(ref _webShareUrl, value))
-            {
-                WebShareQrImage = QrImageHelper.GenerateQrImageSource(value);
-            }
-        }
-    }
-
-    public ImageSource? WebShareQrImage
-    {
-        get => _webShareQrImage;
-        set => SetProperty(ref _webShareQrImage, value);
     }
 
     public ImageSource? PairingQrImage
@@ -162,6 +131,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     public RelayCommand ShowPairModalCommand { get; }
     public RelayCommand CancelPairModalCommand { get; }
     public RelayCommand SubmitPairModalCommand { get; }
+    public RelayCommand OpenReceiveFromInvitationCommand { get; }
     public RelayCommand PastePairingLinkCommand { get; }
     public RelayCommand ClearPairingCommand { get; }
     public RelayCommand SelectPeerCommand { get; }
@@ -178,9 +148,6 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     public RelayCommand RefreshQrCommand { get; }
     public RelayCommand ToggleQrZoomCommand { get; }
     public RelayCommand CopyPairingLinkCommand { get; }
-    public RelayCommand StartWebShareCommand { get; }
-    public RelayCommand StopWebShareCommand { get; }
-    public RelayCommand CopyWebShareLinkCommand { get; }
 
     public MainViewModel()
     {
@@ -295,6 +262,11 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                 : "Pairing cancelled.";
         });
         SubmitPairModalCommand = new RelayCommand(ExecuteSubmitPairModal);
+        OpenReceiveFromInvitationCommand = new RelayCommand(() =>
+        {
+            SelectPairDirection(PairDirectionChoice.UseInvitation);
+            IsPairModalVisible = true;
+        });
         PastePairingLinkCommand = new RelayCommand(() =>
         {
             if (TryReadPairingLinkFromClipboard(out string invitationUri))
@@ -452,19 +424,6 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             {
                 Clipboard.SetText(ActiveInvitationUri);
                 StatusMessage = "Pairing link copied to clipboard!";
-            }
-        });
-
-        StartWebShareCommand = new RelayCommand(
-            () => StatusMessage = "Browser sharing is not included in this Windows release.",
-            () => false);
-        StopWebShareCommand = new RelayCommand(async () => await ExecuteStopWebShareAsync());
-        CopyWebShareLinkCommand = new RelayCommand(() =>
-        {
-            if (!string.IsNullOrEmpty(WebShareUrl))
-            {
-                Clipboard.SetText(WebShareUrl);
-                StatusMessage = "Web Share link copied to clipboard!";
             }
         });
 
@@ -1059,12 +1018,75 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             return;
         }
 
-        if (TryApplyPairingInvitation(PairInputUri.Trim(), showErrors: true))
+        string trimmedUri = PairInputUri.Trim();
+        if (TryApplyPairingInvitation(trimmedUri, showErrors: true))
         {
             IsPairModalVisible = false;
             PairInputUri = "";
-            CurrentTab = SelectedFiles.Count > 0 ? "Send" : "Pair devices";
-            NotifySendState();
+            if (SelectedFiles.Count == 0 || string.Equals(CurrentTab, "Receive", StringComparison.OrdinalIgnoreCase))
+            {
+                if (_pairedInvitation != null)
+                {
+                    _ = ExecuteReceiveFromInvitationSafelyAsync(_pairedInvitation);
+                }
+            }
+            else
+            {
+                CurrentTab = "Send";
+                NotifySendState();
+            }
+        }
+    }
+
+    private async Task ExecuteReceiveFromInvitationSafelyAsync(LanInvitation invitation)
+    {
+        if (IsTransferActive) return;
+
+        _activeTransferCts?.Dispose();
+        _activeTransferCts = new CancellationTokenSource();
+        var cancellationToken = _activeTransferCts.Token;
+
+        try
+        {
+            RunOnUi(() =>
+            {
+                CurrentTab = "Receive";
+                IsTransferActive = true;
+                TransferTitle = $"Connecting to {invitation.Name}...";
+                TotalProgress = 0;
+                _transferStopwatch.Restart();
+            });
+
+            var request = new DesktopReceiveRequest(
+                StagingStore: new QuarantineStagingStore(destinationRoot: ReceiveDirectory),
+                LocalDeviceName: Environment.MachineName,
+                TrustManager: _trustManager,
+                Invitation: invitation);
+
+            DesktopTransferResult result = await _transferRuntime.ReceiveFromInvitationAsync(
+                request,
+                this,
+                cancellationToken);
+
+            RunOnUi(() => StatusMessage = result.Message);
+        }
+        catch (OperationCanceledException)
+        {
+            RunOnUi(() => StatusMessage = "Receive cancelled.");
+        }
+        catch (Exception ex)
+        {
+            RunOnUi(() => StatusMessage = $"Receive failed: {ex.Message}");
+        }
+        finally
+        {
+            RunOnUi(() =>
+            {
+                _transferStopwatch.Stop();
+                IsTransferActive = false;
+                IsOfferModalVisible = false;
+                _pairedInvitation = null;
+            });
         }
     }
 
@@ -1146,6 +1168,23 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             _listener = null;
             IsListening = false;
             StatusMessage = "Receiving is off. Turn it on in Receive when you are ready.";
+            return;
+        }
+
+        // Scan only a bounded portion of the configured destination, off the UI
+        // thread. Old verified commit copies can remain after an interrupted run.
+        try
+        {
+            await Task.Run(() =>
+            {
+                var store = new QuarantineStagingStore(destinationRoot: ReceiveDirectory);
+                store.PurgeAbandonedCommitFiles();
+                store.PurgeAbandonedQuarantineSessions();
+            });
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            StatusMessage = "The receiving folder is unavailable. Choose a safe folder in Settings and try again.";
             return;
         }
 
@@ -2210,74 +2249,4 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         }
     }
 
-    private async Task ExecuteStartWebShareAsync()
-    {
-        if (SelectedFiles.Count == 0)
-        {
-            StatusMessage = "Please add at least one file to share via Web.";
-            return;
-        }
-
-        try
-        {
-            await ExecuteStopWebShareAsync();
-
-            var offeredItems = SelectedFiles
-                .Where(f => File.Exists(f.FilePath))
-                .Select(f => new OfferedWebItem(f.FilePath))
-                .ToList();
-
-            if (offeredItems.Count == 0)
-            {
-                StatusMessage = "None of the selected files exist on disk.";
-                return;
-            }
-
-            string hostName = Dns.GetHostName();
-            var localIp = Dns.GetHostAddresses(hostName)
-                .FirstOrDefault(ip => ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork && !IPAddress.IsLoopback(ip))?
-                .ToString() ?? "127.0.0.1";
-
-            _webGateway = new GlideWebGateway(
-                host: localIp,
-                port: 0,
-                offeredItems: offeredItems,
-                deviceName: Environment.MachineName);
-
-            await _webGateway.StartAsync();
-
-            WebShareUrl = _webGateway.OnboardingUrl;
-            IsWebShareModalVisible = true;
-            StatusMessage = $"Web Share active on port {_webGateway.Port} ({offeredItems.Count} item(s)).";
-        }
-        catch (Exception ex)
-        {
-            StatusMessage = $"Failed to start Web Share: {ex.Message}";
-            IsWebShareModalVisible = false;
-        }
-    }
-
-    private async Task ExecuteStopWebShareAsync()
-    {
-        if (_webGateway != null)
-        {
-            try
-            {
-                await _webGateway.StopAsync();
-                await _webGateway.DisposeAsync();
-            }
-            catch
-            {
-                // Ignored
-            }
-            finally
-            {
-                _webGateway = null;
-            }
-        }
-
-        IsWebShareModalVisible = false;
-        WebShareUrl = "";
-        StatusMessage = "Web Share stopped.";
-    }
 }

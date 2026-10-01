@@ -4,7 +4,6 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Language
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -82,7 +81,6 @@ fun SelectionScreen(
     onProceedToSend: (SourceHandle) -> Unit,
     modifier: Modifier = Modifier,
     onProceedToSendBatch: ((TransferBatch) -> Unit)? = null,
-    onShareViaWeb: ((List<dev.glide.transport.lan.web.OfferedWebItem>) -> Unit)? = null,
     initialState: SelectionUiState = SelectionUiState.Idle,
     initialUris: List<Uri> = emptyList(),
     viewModel: SelectionViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
@@ -518,44 +516,6 @@ fun SelectionScreen(
                             )
                         }
 
-                        if (onShareViaWeb != null) {
-                            OutlinedButton(
-                                onClick = {
-                                    val offered = state.validItems.map { item ->
-                                        dev.glide.transport.lan.web.OfferedWebItem(
-                                            itemId = item.id.value,
-                                            fileName = item.displayName,
-                                            fileSize = item.sizeBytes,
-                                            contentSupplier = {
-                                                context.contentResolver.openInputStream(Uri.parse(item.handle.value))
-                                                    ?: java.io.ByteArrayInputStream(ByteArray(0))
-                                            }
-                                        )
-                                    }
-                                    onShareViaWeb(offered)
-                                },
-                                enabled = state.canProceed,
-                                shape = PrimaryButtonShape,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(min = 48.dp)
-                                    .semantics {
-                                        role = Role.Button
-                                        contentDescription = "Share ${state.validItemCount} files via Web Browser"
-                                    }
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Language,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "Share via Browser",
-                                    style = MaterialTheme.typography.titleMedium
-                                )
-                            }
-                        }
 
                         FlowRow(
                             modifier = Modifier.fillMaxWidth(),
@@ -693,43 +653,6 @@ fun SelectionScreen(
                             Text("Proceed to send", style = MaterialTheme.typography.titleMedium)
                         }
 
-                        if (onShareViaWeb != null) {
-                            OutlinedButton(
-                                onClick = {
-                                    val offered = listOf(
-                                        dev.glide.transport.lan.web.OfferedWebItem(
-                                            itemId = java.util.UUID.randomUUID().toString(),
-                                            fileName = state.displayName,
-                                            fileSize = state.sizeBytes,
-                                            contentSupplier = {
-                                                context.contentResolver.openInputStream(Uri.parse(state.handle.value))
-                                                    ?: java.io.ByteArrayInputStream(ByteArray(0))
-                                            }
-                                        )
-                                    )
-                                    onShareViaWeb(offered)
-                                },
-                                shape = PrimaryButtonShape,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(min = 48.dp)
-                                    .semantics {
-                                        role = Role.Button
-                                        contentDescription = "Share via Web Browser"
-                                    }
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Language,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "Share via Browser",
-                                    style = MaterialTheme.typography.titleMedium
-                                )
-                            }
-                        }
                     }
                 }
             }

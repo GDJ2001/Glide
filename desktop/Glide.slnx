@@ -8,6 +8,9 @@
   <Folder Name="/windows/">
     <Project Path="windows/Glide.Windows.UI/Glide.Windows.UI.csproj" />
   </Folder>
+  <Folder Name="/linux/">
+    <Project Path="linux/Glide.Linux.UI/Glide.Linux.UI.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Glide.Tests/Glide.Tests.csproj" />
     <Project Path="tests/Glide.Windows.UI.Tests/Glide.Windows.UI.Tests.csproj" />

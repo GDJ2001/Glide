@@ -37,6 +37,7 @@ final class QuarantineStagingStoreTests: XCTestCase {
         let destDir = tempBaseDir.appendingPathComponent("Downloads")
         let committedUrl = try store.finalizeAndCommit(
             expectedSha256Hex: expectedHex,
+            expectedLengthBytes: Int64(chunk1.count + chunk2.count + chunk3.count),
             destinationDirectory: destDir,
             rawFilename: "document.txt"
         )
@@ -60,6 +61,7 @@ final class QuarantineStagingStoreTests: XCTestCase {
 
         XCTAssertThrowsError(try store.finalizeAndCommit(
             expectedSha256Hex: wrongHex,
+            expectedLengthBytes: Int64(chunk.count),
             destinationDirectory: destDir,
             rawFilename: "corrupt.bin"
         )) { error in
@@ -102,6 +104,7 @@ final class QuarantineStagingStoreTests: XCTestCase {
 
         let committedUrl = try store.finalizeAndCommit(
             expectedSha256Hex: hex,
+            expectedLengthBytes: Int64(content.count),
             destinationDirectory: destDir,
             rawFilename: "report.pdf"
         )

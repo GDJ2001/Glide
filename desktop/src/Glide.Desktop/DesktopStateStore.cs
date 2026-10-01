@@ -218,6 +218,16 @@ public sealed class DesktopStateStore
             overwrite: true);
     }
 
+    public void ClearHistory()
+    {
+        lock (_gate)
+        {
+            DesktopPersistentState current = _cached ?? Load();
+            _cached = current with { History = Array.Empty<DesktopHistoryEntry>() };
+            PersistLocked(_cached);
+        }
+    }
+
     private DesktopPersistentState RecoverInvalidStateLocked()
     {
         LastRecoveryPath = null;

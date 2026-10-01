@@ -33,7 +33,7 @@ public enum ShareExtensionCoordinator {
     // Protocol V1 Bounded Limits
     public static let maxItemSizeBytes: Int64 = 68_719_476_736   // 64 GiB
     public static let maxBatchSizeBytes: Int64 = 274_877_906_944 // 256 GiB
-    public static let maxItemCount: Int = 10_000
+    public static let maxItemCount: Int = 1_000
 
     public enum ShareError: Error, Equatable, Sendable {
         case emptyBatch
@@ -41,6 +41,8 @@ public enum ShareExtensionCoordinator {
         case itemTooLarge(name: String, size: Int64, max: Int64)
         case batchTooLarge(totalSize: Int64, max: Int64)
         case fileNotFound(String)
+        case unsupportedFile(String)
+        case unreadableMetadata(String)
     }
 
     /// Prepares and validates a `ShareBatch` from a collection of file URLs.
@@ -57,21 +59,29 @@ public enum ShareExtensionCoordinator {
 
         for url in fileUrls {
             let filename = url.lastPathComponent
-            guard FileManager.default.fileExists(atPath: url.path) else {
+            guard url.isFileURL, FileManager.default.fileExists(atPath: url.path) else {
                 throw ShareError.fileNotFound(url.path)
             }
-
-            let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
-            let fileSize = (attrs?[.size] as? NSNumber)?.int64Value ?? 0
+            let resourceValues = try url.resourceValues(forKeys: [.isSymbolicLinkKey, .isRegularFileKey])
+            guard resourceValues.isSymbolicLink != true,
+                  resourceValues.isRegularFile == true else {
+                throw ShareError.unsupportedFile(filename)
+            }
+            let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
+            guard let fileSize = (attrs[.size] as? NSNumber)?.int64Value,
+                  fileSize >= 0 else {
+                throw ShareError.unreadableMetadata(filename)
+            }
 
             guard fileSize <= maxItemSizeBytes else {
                 throw ShareError.itemTooLarge(name: filename, size: fileSize, max: maxItemSizeBytes)
             }
 
-            runningTotal += fileSize
-            guard runningTotal <= maxBatchSizeBytes else {
-                throw ShareError.batchTooLarge(totalSize: runningTotal, max: maxBatchSizeBytes)
+            let (newTotal, overflow) = runningTotal.addingReportingOverflow(fileSize)
+            guard !overflow && newTotal <= maxBatchSizeBytes else {
+                throw ShareError.batchTooLarge(totalSize: newTotal, max: maxBatchSizeBytes)
             }
+            runningTotal = newTotal
 
             let mimeType = mimeTypeForExtension((filename as NSString).pathExtension)
             items.append(ShareItem(name: filename, sizeBytes: fileSize, mimeType: mimeType, sourceUrl: url))

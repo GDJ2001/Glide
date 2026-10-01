@@ -4,9 +4,6 @@
     <ProjectReference Include="..\Glide.Core\Glide.Core.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <EmbeddedResource Include="Web\Assets\**\*" />
-  </ItemGroup>
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>

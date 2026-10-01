@@ -208,6 +208,101 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
         }
     }
 
+    public async Task<DesktopTransferResult> ReceiveFromInvitationAsync(
+        DesktopReceiveRequest request,
+        IDesktopTransferInteraction interaction,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(interaction);
+
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return DesktopTransferResult.CancelledByUser("Transfer cancelled.");
+        }
+
+        if (request.Invitation == null)
+        {
+            return DesktopTransferResult.Failed(
+                "Authenticated pairing invitation required. Scan or paste a current Glide pairing invitation before receiving.");
+        }
+
+        if (request.Invitation.InvitationHash.Length != 64)
+        {
+            return DesktopTransferResult.Failed(
+                "Pairing invitation is not canonical. Scan or paste the encoded pairing invitation again.");
+        }
+
+        try
+        {
+            LanInvitation invitation = request.Invitation;
+            if (invitation.IsExpired())
+            {
+                return DesktopTransferResult.Failed(
+                    "Pairing invitation has expired. Request a new pairing code.");
+            }
+
+            var client = new TlsSocketClient();
+            TlsSocketConnection? connectedSocket = null;
+            Exception? lastConnectException = null;
+
+            foreach (LanEndpoint endpoint in invitation.Endpoints)
+            {
+                string host = endpoint.Address;
+                int port = endpoint.Port;
+
+                interaction.OnStatus(
+                    DesktopTransferDirection.Receive,
+                    $"Connecting to sender {host}:{port} over TLS 1.3...");
+
+                try
+                {
+                    connectedSocket = await client.ConnectAsync(
+                        host,
+                        port,
+                        expectedSpkiSha256: invitation.SpkiSha256,
+                        cancellationToken);
+                    break;
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    lastConnectException = ex;
+                }
+            }
+
+            if (connectedSocket == null)
+            {
+                throw lastConnectException ?? new InvalidOperationException("Unable to connect to any endpoint in pairing invitation.");
+            }
+
+            await using TlsSocketConnection connection = connectedSocket;
+
+            return await RunReceiverSessionAsync(
+                connection,
+                request,
+                interaction,
+                cancellationToken,
+                localEndpointHostsTls: false);
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+            interaction.OnStatus(
+                DesktopTransferDirection.Receive,
+                "Transfer cancelled.");
+            return DesktopTransferResult.CancelledByUser(
+                "Transfer cancelled.");
+        }
+        catch (Exception ex)
+        {
+            interaction.OnStatus(
+                DesktopTransferDirection.Receive,
+                $"Receive failed: {ex.Message}");
+            return DesktopTransferResult.Failed(
+                $"Receive failed: {ex.Message}");
+        }
+    }
+
     public async Task<DesktopTransferResult> SendHostedAsync(
         TlsSocketConnection connection,
         DesktopSendRequest request,
@@ -851,50 +946,93 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
         TlsSocketConnection connection,
         DesktopReceiveRequest request,
         IDesktopTransferInteraction interaction,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool localEndpointHostsTls = true)
     {
         await using var channel =
             new LanRecordChannel(connection.SslStream);
 
-        LanRecord? firstRecord =
-            await DesktopControlSequence.ReadRecordAsync(
+        LanBootstrapResult bootstrapResult;
+        SessionId sessionId;
+        var sequence = new DesktopControlSequence();
+
+        if (localEndpointHostsTls)
+        {
+            if (request.InvitationAuthority == null)
+            {
+                throw new InvalidOperationException("InvitationAuthority required for inbound receiver session.");
+            }
+
+            LanRecord? firstRecord =
+                await DesktopControlSequence.ReadRecordAsync(
+                    channel,
+                    cancellationToken);
+            if (firstRecord == null)
+            {
+                return DesktopTransferResult.Failed(
+                    "Peer disconnected before sending the first record.");
+            }
+
+            if (firstRecord is not LanRecord.Bootstrap bootstrapRecord)
+            {
+                throw new ProtocolViolationException(
+                    WireErrorCodes.ProtocolOrder,
+                    "Authenticated BOOTSTRAP must be the first LAN record.");
+            }
+
+            LanBootstrapMessage bootstrap =
+                LanBootstrapCodec.DecodeBootstrap(
+                    bootstrapRecord.JsonBytes);
+            bootstrapResult =
+                request.InvitationAuthority.Consume(
+                    bootstrap);
+
+            await channel.WriteBootstrapResultAsync(
+                bootstrapResult,
+                cancellationToken);
+
+            if (!bootstrapResult.IsAccepted)
+            {
+                return DesktopTransferResult.RejectedByPeer(
+                    $"Inbound pairing bootstrap rejected: {bootstrapResult.Code}.");
+            }
+
+            sessionId = new SessionId(bootstrap.SessionId);
+        }
+        else
+        {
+            LanInvitation invitation = request.Invitation
+                ?? throw new InvalidOperationException("Authenticated pairing invitation is required.");
+
+            sessionId = NewSessionId();
+            var bootstrap = new LanBootstrapMessage(
+                invitationId: invitation.InvitationId,
+                token: invitation.Token,
+                invitationHash: invitation.InvitationHash,
+                sessionId: sessionId.Value,
+                role: LanBootstrapMessage.RoleReceiver);
+
+            await channel.WriteBootstrapAsync(bootstrap, cancellationToken);
+            bootstrapResult = await DesktopControlSequence.ReadBootstrapResultAsync(
                 channel,
                 cancellationToken);
-        if (firstRecord == null)
-        {
-            return DesktopTransferResult.Failed(
-                "Peer disconnected before sending the first record.");
+
+            if (!bootstrapResult.IsAccepted)
+            {
+                return DesktopTransferResult.RejectedByPeer(
+                    $"Pairing bootstrap rejected by peer: {bootstrapResult.Code}.");
+            }
+
+            if (!string.Equals(
+                    bootstrapResult.SessionId,
+                    sessionId.Value,
+                    StringComparison.Ordinal))
+            {
+                throw new ProtocolViolationException(
+                    WireErrorCodes.AuthenticationFailed,
+                    "Accepted bootstrap returned a different sessionId.");
+            }
         }
-
-        if (firstRecord is not
-            LanRecord.Bootstrap bootstrapRecord)
-        {
-            throw new ProtocolViolationException(
-                WireErrorCodes.ProtocolOrder,
-                "Authenticated BOOTSTRAP must be the first LAN record.");
-        }
-
-        LanBootstrapMessage bootstrap =
-            LanBootstrapCodec.DecodeBootstrap(
-                bootstrapRecord.JsonBytes);
-        LanBootstrapResult bootstrapResult =
-            request.InvitationAuthority.Consume(
-                bootstrap);
-
-        await channel.WriteBootstrapResultAsync(
-            bootstrapResult,
-            cancellationToken);
-
-        if (!bootstrapResult.IsAccepted)
-        {
-            return DesktopTransferResult.RejectedByPeer(
-                $"Inbound pairing bootstrap rejected: {bootstrapResult.Code}.");
-        }
-
-        var sessionId =
-            new SessionId(bootstrap.SessionId);
-        var sequence =
-            new DesktopControlSequence();
 
         try
         {
@@ -1019,6 +1157,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                             trustManager,
                             request.ExpectedPeerFingerprintHex,
                             interaction,
+                            localEndpointHostsTls,
                             cancellationToken);
                 authenticatedPeerFingerprint =
                     authenticated.FingerprintHex;
@@ -1273,32 +1412,12 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
 
                 var itemId =
                     new ItemId(item.ItemId);
-                string quarantinePath =
-                    request.StagingStore
-                        .GetQuarantinePath(
-                            sessionId,
-                            itemId);
-                string? quarantineDirectory =
-                    Path.GetDirectoryName(
-                        quarantinePath);
-                if (quarantineDirectory != null)
-                {
-                    Directory.CreateDirectory(
-                        quarantineDirectory);
-                }
-
                 byte[] hash;
                 long receivedBytes = 0;
                 try
                 {
                     await using var fileStream =
-                        new FileStream(
-                            quarantinePath,
-                            FileMode.Create,
-                            FileAccess.Write,
-                            FileShare.None,
-                            65_536,
-                            useAsync: true);
+                        request.StagingStore.OpenQuarantineWrite(sessionId, itemId);
                     using var sha256 =
                         IncrementalHash.CreateHash(
                             HashAlgorithmName.SHA256);
@@ -1464,11 +1583,14 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                 }
 
                 string finalPath =
-                    request.StagingStore
-                        .CommitQuarantineFile(
+                    await request.StagingStore
+                        .CommitVerifiedQuarantineFileAsync(
                             sessionId,
                             itemId,
-                            item.RelativePath);
+                            item.RelativePath,
+                            new Sha256Digest(actualSha),
+                            receivedBytes,
+                            cancellationToken);
 
                 verifiedCount++;
                 verifiedBytes +=
@@ -1564,6 +1686,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                 interaction.OnStatus(
                     DesktopTransferDirection.Receive,
                     partialMessage);
+                request.StagingStore.PurgeSession(sessionId);
                 return DesktopTransferResult.Failed(
                     partialMessage);
             }
@@ -1573,6 +1696,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
             interaction.OnStatus(
                 DesktopTransferDirection.Receive,
                 message);
+            request.StagingStore.PurgeSession(sessionId);
             return DesktopTransferResult.Completed(
                 message,
                 verifiedCount,

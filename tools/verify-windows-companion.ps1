@@ -153,24 +153,15 @@ if ($clientCode -notmatch "expectedSpkiSha256" -or $clientCode -notmatch "glide-
 }
 Write-Host "  PASS: TlsSocketClient enforces out-of-band SPKI fingerprint pinning and ALPN negotiation." -ForegroundColor Green
 
-# --- Check 7: Web Transfer Gateway, Embedded Assets & CSP Security ---
-Write-Host "`n[Check 7/8] Auditing Web Transfer Gateway, Embedded Assets, and CSP Security Headers..." -ForegroundColor Yellow
+# --- Check 7: Browser Removal and Native Peer-to-Peer Exclusivity ---
+Write-Host "`n[Check 7/8] Auditing Browser Removal and Native P2P Exclusivity..." -ForegroundColor Yellow
 $GatewayFile = Join-Path $ProjectRoot "desktop\src\Glide.Transport\Web\GlideWebGateway.cs"
-$WebAssetHtml = Join-Path $ProjectRoot "desktop\src\Glide.Transport\Web\Assets\index.html"
-$WebAssetCss = Join-Path $ProjectRoot "desktop\src\Glide.Transport\Web\Assets\style.css"
-$WebAssetJs = Join-Path $ProjectRoot "desktop\src\Glide.Transport\Web\Assets\app.js"
 $WebTestFile = Join-Path $ProjectRoot "desktop\tests\Glide.Tests\WebGatewayIntegrationTests.cs"
 
-if (-not (Test-Path $GatewayFile) -or -not (Test-Path $WebAssetHtml) -or -not (Test-Path $WebAssetCss) -or -not (Test-Path $WebAssetJs) -or -not (Test-Path $WebTestFile)) {
-    Write-Error "FAIL: GlideWebGateway, embedded assets, or WebGatewayIntegrationTests missing."
+if ((Test-Path $GatewayFile) -or (Test-Path $WebTestFile)) {
+    Write-Error "FAIL: Obsolete browser WebGateway or WebGatewayIntegrationTests still present."
 }
-
-$gatewayCode = Get-Content $GatewayFile -Raw
-if ($gatewayCode -notmatch "Content-Security-Policy" -or $gatewayCode -notmatch "X-Content-Type-Options" -or $gatewayCode -notmatch "nosniff" -or $gatewayCode -notmatch "DENY") {
-    Write-Error "FAIL: GlideWebGateway missing CSP or security headers."
-}
-Write-Host "  PASS: GlideWebGateway enforces CSP, X-Content-Type-Options, X-Frame-Options, and token authentication." -ForegroundColor Green
-Write-Host "  PASS: Embedded zero-CDN Single-Page Application assets (index.html, style.css, app.js) verified." -ForegroundColor Green
+Write-Host "  PASS: Browser web gateway and assets completely removed in conformance with native P2P requirements." -ForegroundColor Green
 
 # --- Check 8: Isolation & Android Architecture Non-Interference ---
 Write-Host "`n[Check 8/8] Verifying zero leakage into Android build tree..." -ForegroundColor Yellow

@@ -1,0 +1,508 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		100101 /* GlideIOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100001 /* GlideIOSApp.swift */; };
+		100102 /* IosTransferViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100002 /* IosTransferViewModel.swift */; };
+		100103 /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100003 /* MainTabView.swift */; };
+		100104 /* SendView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100004 /* SendView.swift */; };
+		100105 /* ReceiveView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100005 /* ReceiveView.swift */; };
+		100106 /* PairView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100006 /* PairView.swift */; };
+		100107 /* ActivityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100007 /* ActivityView.swift */; };
+		100108 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100008 /* SettingsView.swift */; };
+		100109 /* QrScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100009 /* QrScannerView.swift */; };
+		100110 /* GlideCoreKit in Frameworks */ = {isa = PBXBuildFile; productRef = 300001 /* GlideCoreKit */; };
+		200101 /* GlideMacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200001 /* GlideMacApp.swift */; };
+		200102 /* MacTransferViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200002 /* MacTransferViewModel.swift */; };
+		200103 /* MacMainWindowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200003 /* MacMainWindowView.swift */; };
+		200104 /* MacSendView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200004 /* MacSendView.swift */; };
+		200105 /* MacReceiveView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200005 /* MacReceiveView.swift */; };
+		200106 /* MacPairView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200006 /* MacPairView.swift */; };
+		200107 /* MacActivityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200007 /* MacActivityView.swift */; };
+		200108 /* MacSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200008 /* MacSettingsView.swift */; };
+		200110 /* GlideCoreKit in Frameworks */ = {isa = PBXBuildFile; productRef = 300001 /* GlideCoreKit */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		100000 /* GlideIOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GlideIOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		100001 /* GlideIOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlideIOSApp.swift; sourceTree = "<group>"; };
+		100002 /* IosTransferViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IosTransferViewModel.swift; sourceTree = "<group>"; };
+		100003 /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
+		100004 /* SendView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SendView.swift; sourceTree = "<group>"; };
+		100005 /* ReceiveView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiveView.swift; sourceTree = "<group>"; };
+		100006 /* PairView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairView.swift; sourceTree = "<group>"; };
+		100007 /* ActivityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityView.swift; sourceTree = "<group>"; };
+		100008 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		100009 /* QrScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QrScannerView.swift; sourceTree = "<group>"; };
+		100010 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		100011 /* GlideIOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = GlideIOS.entitlements; sourceTree = "<group>"; };
+		200000 /* GlideMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GlideMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		200001 /* GlideMacApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlideMacApp.swift; sourceTree = "<group>"; };
+		200002 /* MacTransferViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacTransferViewModel.swift; sourceTree = "<group>"; };
+		200003 /* MacMainWindowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacMainWindowView.swift; sourceTree = "<group>"; };
+		200004 /* MacSendView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacSendView.swift; sourceTree = "<group>"; };
+		200005 /* MacReceiveView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacReceiveView.swift; sourceTree = "<group>"; };
+		200006 /* MacPairView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacPairView.swift; sourceTree = "<group>"; };
+		200007 /* MacActivityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacActivityView.swift; sourceTree = "<group>"; };
+		200008 /* MacSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacSettingsView.swift; sourceTree = "<group>"; };
+		200010 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		200011 /* GlideMac.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = GlideMac.entitlements; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		100200 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				100110 /* GlideCoreKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		200200 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				200110 /* GlideCoreKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		000001 = {
+			isa = PBXGroup;
+			children = (
+				100050 /* GlideIOS */,
+				200050 /* GlideMac */,
+				300050 /* GlideCoreKit */,
+				000002 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		000002 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				100000 /* GlideIOS.app */,
+				200000 /* GlideMac.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		100050 /* GlideIOS */ = {
+			isa = PBXGroup;
+			children = (
+				100001 /* GlideIOSApp.swift */,
+				100051 /* ViewModels */,
+				100052 /* Views */,
+				100010 /* Info.plist */,
+				100011 /* GlideIOS.entitlements */,
+			);
+			path = GlideIOS;
+			sourceTree = "<group>";
+		};
+		100051 /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				100002 /* IosTransferViewModel.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		100052 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				100003 /* MainTabView.swift */,
+				100004 /* SendView.swift */,
+				100005 /* ReceiveView.swift */,
+				100006 /* PairView.swift */,
+				100007 /* ActivityView.swift */,
+				100008 /* SettingsView.swift */,
+				100009 /* QrScannerView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		200050 /* GlideMac */ = {
+			isa = PBXGroup;
+			children = (
+				200001 /* GlideMacApp.swift */,
+				200051 /* ViewModels */,
+				200052 /* Views */,
+				200010 /* Info.plist */,
+				200011 /* GlideMac.entitlements */,
+			);
+			path = GlideMac;
+			sourceTree = "<group>";
+		};
+		200051 /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				200002 /* MacTransferViewModel.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		200052 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				200003 /* MacMainWindowView.swift */,
+				200004 /* MacSendView.swift */,
+				200005 /* MacReceiveView.swift */,
+				200006 /* MacPairView.swift */,
+				200007 /* MacActivityView.swift */,
+				200008 /* MacSettingsView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		100300 /* GlideIOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 100400 /* Build configuration list for PBXNativeTarget "GlideIOS" */;
+			buildPhases = (
+				100201 /* Sources */,
+				100200 /* Frameworks */,
+				100202 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = GlideIOS;
+			packageProductDependencies = (
+				300001 /* GlideCoreKit */,
+			);
+			productName = GlideIOS;
+			productReference = 100000 /* GlideIOS.app */;
+			productType = "com.apple.product-type.application";
+		};
+		200300 /* GlideMac */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 200400 /* Build configuration list for PBXNativeTarget "GlideMac" */;
+			buildPhases = (
+				200201 /* Sources */,
+				200200 /* Frameworks */,
+				200202 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = GlideMac;
+			packageProductDependencies = (
+				300001 /* GlideCoreKit */,
+			);
+			productName = GlideMac;
+			productReference = 200000 /* GlideMac.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		000000 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					100300 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+					200300 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+				};
+			};
+			buildConfigurationList = 000400 /* Build configuration list for PBXProject "GlideApple" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 000001;
+			packageReferences = (
+				300000 /* XCLocalSwiftPackageReference "GlideCoreKit" */,
+			);
+			productRefGroup = 000002 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				100300 /* GlideIOS */,
+				200300 /* GlideMac */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		100202 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		200202 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		100201 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				100101 /* GlideIOSApp.swift in Sources */,
+				100102 /* IosTransferViewModel.swift in Sources */,
+				100103 /* MainTabView.swift in Sources */,
+				100104 /* SendView.swift in Sources */,
+				100105 /* ReceiveView.swift in Sources */,
+				100106 /* PairView.swift in Sources */,
+				100107 /* ActivityView.swift in Sources */,
+				100108 /* SettingsView.swift in Sources */,
+				100109 /* QrScannerView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		200201 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				200101 /* GlideMacApp.swift in Sources */,
+				200102 /* MacTransferViewModel.swift in Sources */,
+				200103 /* MacMainWindowView.swift in Sources */,
+				200104 /* MacSendView.swift in Sources */,
+				200105 /* MacReceiveView.swift in Sources */,
+				200106 /* MacPairView.swift in Sources */,
+				200107 /* MacActivityView.swift in Sources */,
+				200108 /* MacSettingsView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		000401 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		000402 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SWIFT_COMPILATION_MODE = "wholemodule";
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+			};
+			name = Release;
+		};
+		100401 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = GlideIOS/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.glide.ios;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		100402 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = GlideIOS/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.glide.ios;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		200401 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = GlideMac/GlideMac.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = GlideMac/Info.plist;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.glide.mac;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		200402 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = GlideMac/GlideMac.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = GlideMac/Info.plist;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.glide.mac;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		000400 /* Build configuration list for PBXProject "GlideApple" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				000401 /* Debug */,
+				000402 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		100400 /* Build configuration list for PBXNativeTarget "GlideIOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				100401 /* Debug */,
+				100402 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		200400 /* Build configuration list for PBXNativeTarget "GlideMac" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				200401 /* Debug */,
+				200402 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		300000 /* XCLocalSwiftPackageReference "GlideCoreKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = GlideCoreKit;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		300001 /* GlideCoreKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 300000 /* XCLocalSwiftPackageReference "GlideCoreKit" */;
+			productName = GlideCoreKit;
+		};
+/* End XCSwiftPackageProductDependency section */
+
+	};
+	rootObject = 000000 /* Project object */;
+}

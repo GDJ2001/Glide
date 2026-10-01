@@ -3,7 +3,6 @@ using System.Net.Sockets;
 using System.Security.Cryptography;
 using Glide.Core.Pairing;
 using Glide.Transport.Sockets;
-using Glide.Transport.Web;
 
 namespace Glide.Windows.UI.Services;
 

@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>dev.glide.ios</string>
+	<key>CFBundleName</key>
+	<string>Glide</string>
+	<key>CFBundleDisplayName</key>
+	<string>Glide</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Glide requires camera access to scan pairing QR codes displayed on nearby devices.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Glide discovers and transfers files to peer devices on your local Wi-Fi network.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Glide accesses your photos to let you choose images and videos to share.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Glide saves received photos directly to your Photos Library.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_glide._tcp</string>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+	</array>
+	<key>UILaunchScreen</key>
+	<dict/>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+</dict>
+</plist>

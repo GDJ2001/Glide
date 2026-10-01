@@ -25,13 +25,6 @@ if (Get-Command swift -ErrorAction SilentlyContinue) {
         Pop-Location
     }
 } else {
-    Write-Host "Swift toolchain not installed on this host. Verifying source structure..." -ForegroundColor Yellow
-    $sources = Join-Path $coreKitDir "Sources"
-    $tests = Join-Path $coreKitDir "Tests"
-    if ((Test-Path $sources) -and (Test-Path $tests)) {
-        Write-Host "GlideCoreKit Sources and Tests validated structurally." -ForegroundColor Green
-    } else {
-        Write-Error "GlideCoreKit source directories missing."
-        exit 1
-    }
+    Write-Host "BLOCKER: Swift toolchain not installed on this host. An Xcode/macOS build host is required." -ForegroundColor Red
+    exit 1
 }

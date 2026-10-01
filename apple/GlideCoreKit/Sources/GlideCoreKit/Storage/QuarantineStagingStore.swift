@@ -1,5 +1,6 @@
 import Foundation
 import CryptoKit
+import Darwin
 
 /// Errors encountered during quarantine staging, digest verification, or commitment.
 public enum QuarantineError: Error, Equatable, Sendable {
@@ -7,6 +8,9 @@ public enum QuarantineError: Error, Equatable, Sendable {
     case quarantineFileNotFound(String)
     case cannotCreateStagingDirectory(String)
     case ioError(String)
+    case lengthMismatch(expected: Int64, actual: Int64)
+    case invalidStagingIdentifier
+    case oversizedChunk
 }
 
 /// Manages isolated quarantine staging and atomic commitment for incoming streams on Apple platforms.
@@ -21,6 +25,7 @@ public final class QuarantineStagingStore: @unchecked Sendable {
     private var fileHandle: FileHandle?
     private var isFinalized = false
     private var finalizedDigest: String?
+    private var receivedBytes: Int64 = 0
 
     public init(baseDirectory: URL, sessionId: String, itemId: String) {
         self.baseDirectory = baseDirectory
@@ -36,17 +41,27 @@ public final class QuarantineStagingStore: @unchecked Sendable {
 
     /// Prepares quarantine storage for writing.
     public func open() throws {
+        func safeId(_ value: String) -> Bool {
+            return !value.isEmpty && value.utf8.count <= 64 &&
+                value.utf8.allSatisfy { ($0 >= 48 && $0 <= 57) ||
+                    ($0 >= 65 && $0 <= 90) || ($0 >= 97 && $0 <= 122) || $0 == 45 }
+        }
+        guard safeId(sessionId) && safeId(itemId) else {
+            throw QuarantineError.invalidStagingIdentifier
+        }
+        try rejectSymlink(baseDirectory)
+        try rejectSymlink(baseDirectory.appendingPathComponent("staging", isDirectory: true))
         let stagingDir = quarantineUrl.deletingLastPathComponent()
-        try FileManager.default.createDirectory(at: stagingDir, withIntermediateDirectories: true)
+        try rejectSymlink(stagingDir)
+        try FileManager.default.createDirectory(
+            at: stagingDir, withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700])
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: stagingDir.path)
+        try rejectSymlink(stagingDir)
 
-        if !FileManager.default.fileExists(atPath: quarantineUrl.path) {
-            FileManager.default.createFile(atPath: quarantineUrl.path, contents: nil)
-        }
-
-        guard let handle = FileHandle(forWritingAtPath: quarantineUrl.path) else {
-            throw QuarantineError.ioError("Could not open file handle for \(quarantineUrl.path)")
-        }
-        self.fileHandle = handle
+        let fd = Darwin.open(quarantineUrl.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
+        guard fd >= 0 else { throw QuarantineError.ioError("Could not create private staging file.") }
+        self.fileHandle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
     }
 
     /// Appends a streamed data chunk to the quarantine file and updates the incremental SHA-256 hash.
@@ -55,19 +70,29 @@ public final class QuarantineStagingStore: @unchecked Sendable {
             throw QuarantineError.ioError("File handle is not open.")
         }
 
-        hasher.update(data: chunk)
+        guard chunk.count <= 65_536 else { throw QuarantineError.oversizedChunk }
+        let (nextSize, overflow) = receivedBytes.addingReportingOverflow(Int64(chunk.count))
+        guard !overflow && nextSize <= 68_719_476_736 else { throw QuarantineError.oversizedChunk }
         try handle.write(contentsOf: chunk)
+        hasher.update(data: chunk)
+        receivedBytes = nextSize
     }
 
     /// Finalizes the SHA-256 digest, verifies against expected hash, and atomically moves
     /// the quarantine file to the destination directory with sanitized filename and collision resolution.
     public func finalizeAndCommit(
         expectedSha256Hex: String,
+        expectedLengthBytes: Int64,
         destinationDirectory: URL,
         rawFilename: String
     ) throws -> URL {
         try fileHandle?.close()
         fileHandle = nil
+
+        guard expectedLengthBytes >= 0 && receivedBytes == expectedLengthBytes else {
+            purge()
+            throw QuarantineError.lengthMismatch(expected: expectedLengthBytes, actual: receivedBytes)
+        }
 
         let computed = getOrComputeDigest()
         let expected = expectedSha256Hex.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -82,7 +107,9 @@ public final class QuarantineStagingStore: @unchecked Sendable {
         let sanitizedName = DarwinPathSanitizer.sanitizeFilename(rawFilename)
 
         // Ensure destination directory exists
+        try rejectSymlink(destinationDirectory)
         try FileManager.default.createDirectory(at: destinationDirectory, withIntermediateDirectories: true)
+        try rejectSymlink(destinationDirectory)
 
         // Resolve filename collisions in destination directory
         let existingFiles = (try? FileManager.default.contentsOfDirectory(atPath: destinationDirectory.path)) ?? []
@@ -126,6 +153,12 @@ public final class QuarantineStagingStore: @unchecked Sendable {
         let sessionDir = quarantineUrl.deletingLastPathComponent()
         if let contents = try? FileManager.default.contentsOfDirectory(atPath: sessionDir.path), contents.isEmpty {
             try? FileManager.default.removeItem(at: sessionDir)
+        }
+    }
+
+    private func rejectSymlink(_ url: URL) throws {
+        if (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == true {
+            throw QuarantineError.ioError("A symbolic link is not allowed in private staging.")
         }
     }
 

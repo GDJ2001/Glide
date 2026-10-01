@@ -117,6 +117,13 @@ public interface IDesktopTransferExecutor
         IDesktopTransferInteraction interaction,
         CancellationToken cancellationToken = default);
 
+    Task<DesktopTransferResult> ReceiveFromInvitationAsync(
+        DesktopReceiveRequest request,
+        IDesktopTransferInteraction interaction,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(DesktopTransferResult.Failed(
+            "This transfer runtime does not support receiving from invitation."));
+
     Task<DesktopTransferResult> SendHostedAsync(
         Glide.Transport.Sockets.TlsSocketConnection connection,
         DesktopSendRequest request,
@@ -134,7 +141,7 @@ public abstract class DesktopTransferInteractionBase : IDesktopTransferInteracti
 
     public virtual Task<bool> ConfirmOfferAsync(
         DesktopOffer offer,
-        CancellationToken cancellationToken) => Task.FromResult(true);
+        CancellationToken cancellationToken) => Task.FromResult(false);
 
     public virtual Task<bool> ConfirmPeerEnrollmentAsync(
         VerifiedDesktopPeerIdentity peer,
@@ -161,7 +168,8 @@ public sealed record DesktopSendRequest(
 
 public sealed record DesktopReceiveRequest(
     QuarantineStagingStore StagingStore,
-    LanInvitationAuthority InvitationAuthority,
+    LanInvitationAuthority? InvitationAuthority = null,
     string LocalDeviceName = "",
     DesktopPersistentTrustManager? TrustManager = null,
-    string? ExpectedPeerFingerprintHex = null);
+    string? ExpectedPeerFingerprintHex = null,
+    LanInvitation? Invitation = null);

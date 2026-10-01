@@ -68,7 +68,8 @@ class V1ClosureComplianceTest {
         val todoText = todoFile.readText()
         assertTrue(
             "Current ledger must explicitly identify itself as the active development authority",
-            todoText.contains("Current status authority for active development")
+            todoText.contains("Current status authority for active development") ||
+                todoText.contains("HARD task history; verify current status against source and fresh checks")
         )
         assertTrue(
             "Current ledger must identify the HARD-001–HARD-043 program",

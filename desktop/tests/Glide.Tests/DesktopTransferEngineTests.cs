@@ -690,6 +690,7 @@ public sealed class DesktopTransferEngineTests : IDisposable
         : DesktopTransferInteractionBase
     {
         public bool AcceptOffers { get; init; } = true;
+        public bool AcceptRecipient { get; init; } = true;
         public bool AcceptEnrollment { get; init; }
         public bool InvitationConsumed { get; private set; }
         public string? LastPeerName { get; private set; }
@@ -699,6 +700,11 @@ public sealed class DesktopTransferEngineTests : IDisposable
         public List<DesktopHistoryEntry> History { get; } = [];
         public List<(DesktopTransferDirection Direction, string Item, string Status)>
             ItemStatuses { get; } = [];
+
+        public override Task<bool> ConfirmRecipientAsync(
+            string peerName,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(AcceptRecipient);
 
         public override Task<bool> ConfirmOfferAsync(
             DesktopOffer offer,
@@ -736,6 +742,70 @@ public sealed class DesktopTransferEngineTests : IDisposable
 
         public override void OnHistory(DesktopHistoryEntry entry) =>
             History.Add(entry);
+    }
+
+    [Fact]
+    public async Task SharedEngine_ReceiverAsClientFromInvitation_ReceivesOfferedFiles()
+    {
+        string sourcePath = Path.Combine(_sourceDir, "hosted-file.bin");
+        byte[] payload = Enumerable.Range(0, 16_384)
+            .Select(i => (byte)(i % 251))
+            .ToArray();
+        await File.WriteAllBytesAsync(sourcePath, payload);
+
+        using var senderListener = new TlsSocketListener(0);
+        var senderAuthority = new LanInvitationAuthority();
+        var invitation = senderAuthority.Publish(CreateInvitation(senderListener));
+
+        var receiverStore = new QuarantineStagingStore(
+            stagingRoot: _stagingDir,
+            destinationRoot: _destinationDir);
+
+        var senderInteraction = new RecordingInteraction();
+        var receiverInteraction = new RecordingInteraction();
+        var senderEngine = new DesktopTransferEngine();
+        var receiverEngine = new DesktopTransferEngine();
+
+        var sendRequest = new DesktopSendRequest(
+            "127.0.0.1",
+            senderListener.BoundPort,
+            [new DesktopTransferFile(sourcePath)],
+            Invitation: invitation,
+            LocalDeviceName: "Sender-Host",
+            HostedInvitationAuthority: senderAuthority);
+
+        var senderTask = Task.Run(async () =>
+        {
+            await using var connection = await senderListener.AcceptConnectionAsync();
+            return await senderEngine.SendHostedAsync(
+                connection,
+                sendRequest,
+                senderInteraction);
+        });
+
+        var receiveRequest = new DesktopReceiveRequest(
+            StagingStore: receiverStore,
+            LocalDeviceName: "Receiver-Client",
+            Invitation: invitation);
+
+        var receiverTask = Task.Run(async () =>
+        {
+            return await receiverEngine.ReceiveFromInvitationAsync(
+                receiveRequest,
+                receiverInteraction);
+        });
+
+        var results = await Task.WhenAll(senderTask, receiverTask);
+        var sendResult = results[0];
+        var receiveResult = results[1];
+
+        Assert.True(sendResult.Success, $"Send failed: {sendResult.Message}");
+        Assert.True(receiveResult.Success, $"Receive failed: {receiveResult.Message}");
+
+        string committedFile = Path.Combine(_destinationDir, "hosted-file.bin");
+        Assert.True(File.Exists(committedFile));
+        byte[] receivedBytes = await File.ReadAllBytesAsync(committedFile);
+        Assert.Equal(payload, receivedBytes);
     }
 
     public void Dispose()

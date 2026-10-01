@@ -17,7 +17,7 @@ public sealed record DesktopIdentityProofContext(
 
 public sealed class VerifiedDesktopPeerIdentity
 {
-    internal VerifiedDesktopPeerIdentity(
+    public VerifiedDesktopPeerIdentity(
         string fingerprintHex,
         string publicKeyDerHex,
         string displayName)

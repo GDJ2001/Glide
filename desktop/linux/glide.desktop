@@ -1,18 +1,14 @@
 [Desktop Entry]
 Name=Glide
 Comment=High-Speed Zero-Cloud Local File Sharing
-Exec=glide web %F
+Exec=glide-desktop %F
 Icon=dev.glide.app
-Terminal=true
+Terminal=false
 Type=Application
 Categories=Network;FileTransfer;Utility;
 MimeType=all/allfiles;
-Actions=Receive;WebShare;
+Actions=Receive;
 
 [Desktop Action Receive]
 Name=Receive Files
 Exec=glide receive
-
-[Desktop Action WebShare]
-Name=Share to Web Browser
-Exec=glide web

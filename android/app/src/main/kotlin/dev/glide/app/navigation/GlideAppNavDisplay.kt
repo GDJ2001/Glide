@@ -176,10 +176,6 @@ fun GlideAppNavDisplay(
                 )
             }
             entry<GlideRoute.Selection> { route ->
-                val webShareViewModel = androidx.lifecycle.viewmodel.compose.viewModel<dev.glide.app.ui.web.WebShareViewModel>()
-                val webShareState by webShareViewModel.uiState.collectAsStateWithLifecycle()
-                var showWebShareSheet by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
-
                 SelectionScreen(
                     initialUris = route.initialUris.map { android.net.Uri.parse(it) },
                     onBack = {
@@ -193,23 +189,8 @@ fun GlideAppNavDisplay(
                     onProceedToSendBatch = { batch ->
                         val sourceHandles = dev.glide.app.ui.selection.SelectedTransferStore.getSourceMap(batch.id).values.map { it.value }
                         backStack.add(GlideRoute.Discovery(batchId = batch.id.value, sourceHandles = sourceHandles))
-                    },
-                    onShareViaWeb = { items ->
-                        webShareViewModel.startSharing(items)
-                        showWebShareSheet = true
                     }
                 )
-
-                if (showWebShareSheet) {
-                    dev.glide.app.ui.web.WebShareSheet(
-                        uiState = webShareState,
-                        onStopShare = { webShareViewModel.stopSharing() },
-                        onDismiss = {
-                            webShareViewModel.dismiss()
-                            showWebShareSheet = false
-                        }
-                    )
-                }
             }
             entry<GlideRoute.Discovery> { route ->
                 val viewModel = if (transferRuntime != null) {

@@ -145,11 +145,15 @@ internal static class DesktopTrustedSessionAuthenticator
         DesktopPersistentTrustManager trustManager,
         string? expectedPeerFingerprintHex,
         IDesktopTransferInteraction interaction,
-        CancellationToken cancellationToken)
+        bool localEndpointHostsTls = true,
+        CancellationToken cancellationToken = default)
     {
         RequireIdentityCapability(negotiatedCapabilities);
         string channelBinding =
-            RequireChannelBinding(connection.LocalSpkiSha256);
+            RequireChannelBinding(
+                localEndpointHostsTls
+                    ? connection.LocalSpkiSha256
+                    : connection.RemoteSpkiSha256);
         string localFingerprint =
             trustManager.LocalFingerprintHex();
         RequireExpectedPeerIsEnrolled(

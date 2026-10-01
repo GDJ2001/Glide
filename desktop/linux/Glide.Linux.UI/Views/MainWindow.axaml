@@ -1,0 +1,445 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Glide.Linux.UI.ViewModels"
+        x:Class="Glide.Linux.UI.Views.MainWindow"
+        x:DataType="vm:LinuxMainViewModel"
+        Title="Glide"
+        Width="920" Height="620"
+        MinWidth="760" MinHeight="520"
+        WindowStartupLocation="CenterScreen"
+        Background="#0F172A"
+        Foreground="#F8FAFC"
+        DragDrop.AllowDrop="True">
+
+  <Grid>
+    <!-- Main Window Layout: Left Nav Rail, Right Content -->
+    <Grid ColumnDefinitions="220,*">
+      
+      <!-- Left Navigation Rail -->
+      <Border Grid.Column="0" Background="#1E293B" BorderBrush="#334155" BorderThickness="0,0,1,0">
+        <Grid RowDefinitions="Auto,*,Auto">
+          
+          <!-- App Header -->
+          <StackPanel Grid.Row="0" Margin="24,24,24,20" Spacing="4">
+            <TextBlock Text="GLIDE" FontSize="22" FontWeight="Bold" Foreground="#38BDF8" LetterSpacing="2" />
+            <TextBlock Text="Peer-to-Peer Transfer" FontSize="12" Foreground="#94A3B8" />
+          </StackPanel>
+
+          <!-- Navigation Buttons -->
+          <StackPanel Grid.Row="1" Margin="12,0" Spacing="4">
+            <Button Content="Send"
+                    Command="{Binding SwitchTabCommand}" CommandParameter="Send"
+                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                    Padding="16,10" CornerRadius="8"
+                    Background="{Binding CurrentTab, ConverterParameter=Send}" />
+            <Button Content="Receive"
+                    Command="{Binding SwitchTabCommand}" CommandParameter="Receive"
+                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                    Padding="16,10" CornerRadius="8"
+                    Background="{Binding CurrentTab, ConverterParameter=Receive}" />
+            <Button Content="Pair"
+                    Command="{Binding SwitchTabCommand}" CommandParameter="Pair"
+                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                    Padding="16,10" CornerRadius="8"
+                    Background="{Binding CurrentTab, ConverterParameter=Pair}" />
+            <Button Content="Activity"
+                    Command="{Binding SwitchTabCommand}" CommandParameter="Activity"
+                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                    Padding="16,10" CornerRadius="8"
+                    Background="{Binding CurrentTab, ConverterParameter=Activity}" />
+            <Button Content="Settings"
+                    Command="{Binding SwitchTabCommand}" CommandParameter="Settings"
+                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                    Padding="16,10" CornerRadius="8"
+                    Background="{Binding CurrentTab, ConverterParameter=Settings}" />
+          </StackPanel>
+
+          <!-- Footer Status Indicator -->
+          <Border Grid.Row="2" Margin="16" Padding="12" Background="#0F172A" CornerRadius="8">
+            <StackPanel Spacing="4">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <Ellipse Width="8" Height="8"
+                         Fill="{Binding IsListening, ConverterParameter=#10B981, FallbackValue=#64748B}" />
+                <TextBlock Text="{Binding IsListening, StringFormat='{}Listening: {0}'}"
+                           FontSize="11" Foreground="#94A3B8" />
+              </StackPanel>
+              <TextBlock Text="{Binding StatusMessage}" FontSize="10" Foreground="#64748B" TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+          </Border>
+        </Grid>
+      </Border>
+
+      <!-- Right Content Panels -->
+      <Grid Grid.Column="1" Margin="24">
+        
+        <!-- SEND TAB -->
+        <Grid IsVisible="{Binding CurrentTab, ConverterParameter=Send}">
+          <Grid RowDefinitions="Auto,*,Auto,Auto,Auto">
+            
+            <!-- Send Header & Action Bar -->
+            <Grid Grid.Row="0" Margin="0,0,0,16" ColumnDefinitions="*,Auto">
+              <StackPanel Grid.Column="0">
+                <TextBlock Text="Send Files" FontSize="20" FontWeight="SemiBold" Foreground="#F8FAFC" />
+                <TextBlock Text="Drag and drop files here, or use the buttons below." FontSize="13" Foreground="#94A3B8" />
+              </StackPanel>
+              <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                <Button x:Name="AddFilesButton" Content="Add Files..." Padding="14,8" CornerRadius="6" Background="#334155" Foreground="#F8FAFC" />
+                <Button x:Name="AddFolderButton" Content="Add Folder..." Padding="14,8" CornerRadius="6" Background="#334155" Foreground="#F8FAFC" />
+                <Button Content="Clear" Command="{Binding ClearStagedItemsCommand}" Padding="14,8" CornerRadius="6" Background="#334155" Foreground="#F8FAFC" />
+              </StackPanel>
+            </Grid>
+
+            <!-- Staged Items List -->
+            <Border Grid.Row="1" Background="#1E293B" CornerRadius="8" BorderBrush="#334155" BorderThickness="1" Margin="0,0,0,16">
+              <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <ItemsControl ItemsSource="{Binding StagedItems}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <Border BorderBrush="#334155" BorderThickness="0,0,0,1" Padding="12,8">
+                        <Grid ColumnDefinitions="*,Auto,Auto">
+                          <StackPanel Grid.Column="0">
+                            <TextBlock Text="{Binding Name}" FontWeight="Medium" Foreground="#F8FAFC" />
+                            <TextBlock Text="{Binding FullPath}" FontSize="11" Foreground="#64748B" TextTrimming="CharacterEllipsis" />
+                          </StackPanel>
+                          <TextBlock Grid.Column="1" Text="{Binding FormattedSize}" VerticalAlignment="Center" Margin="16,0" Foreground="#94A3B8" />
+                          <Button Grid.Column="2" Content="✕"
+                                  Command="{Binding $parent[Window].((vm:LinuxMainViewModel)DataContext).RemoveStagedItemCommand}"
+                                  CommandParameter="{Binding}"
+                                  Background="Transparent" Foreground="#EF4444" Padding="8,4" />
+                        </Grid>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </ScrollViewer>
+            </Border>
+
+            <!-- Nearby Peers Selector -->
+            <Border Grid.Row="2" Background="#1E293B" CornerRadius="8" BorderBrush="#334155" BorderThickness="1" Padding="16" Margin="0,0,0,16">
+              <StackPanel Spacing="10">
+                <TextBlock Text="Nearby Devices" FontWeight="Medium" Foreground="#F8FAFC" />
+                <ListBox ItemsSource="{Binding DiscoveredPeers}"
+                         SelectedItem="{Binding SelectedPeer}"
+                         MaxHeight="120" Background="Transparent">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate>
+                      <StackPanel Orientation="Horizontal" Spacing="12">
+                        <TextBlock Text="📱" FontSize="16" VerticalAlignment="Center" />
+                        <StackPanel>
+                          <TextBlock Text="{Binding DisplayName}" FontWeight="Medium" Foreground="#F8FAFC" />
+                          <TextBlock Text="{Binding EndpointText}" FontSize="11" Foreground="#94A3B8" />
+                        </StackPanel>
+                      </StackPanel>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+                <TextBlock Text="Saved devices (optional identity check)" FontWeight="Medium" Foreground="#F8FAFC" />
+                <ListBox ItemsSource="{Binding TrustedPeers}" SelectedItem="{Binding SelectedTrustedPeer}"
+                         MaxHeight="70" Background="Transparent">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate>
+                      <TextBlock Text="{Binding DisplayName}" Foreground="#F8FAFC" />
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+              </StackPanel>
+            </Border>
+
+            <StackPanel Grid.Row="3" Spacing="6" Margin="0,0,0,12">
+              <TextBlock Text="Current receiving link" FontWeight="Medium" Foreground="#F8FAFC" />
+              <TextBox Text="{Binding InvitationInput}" PlaceholderText="Paste the receiving device's Glide pairing link"
+                       Background="#1E293B" Foreground="#F8FAFC" BorderBrush="#334155" />
+              <TextBlock Text="A nearby device needs its own fresh link. Discovery alone does not verify identity."
+                         Foreground="#94A3B8" FontSize="12" TextWrapping="Wrap" />
+            </StackPanel>
+
+            <!-- Send Action Footer -->
+            <Grid Grid.Row="4" ColumnDefinitions="*,Auto,Auto">
+              <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                <TextBlock Text="{Binding StagedCount, StringFormat='{}{0} items staged'}" FontWeight="Medium" Foreground="#F8FAFC" />
+                <TextBlock Text="{Binding FormattedTotalStagedBytes, StringFormat='{}Total: {0}'}" FontSize="12" Foreground="#94A3B8" />
+              </StackPanel>
+              <Button Grid.Column="1" Content="Quick share with QR"
+                      Command="{Binding StartQuickShareCommand}"
+                      Margin="0,0,8,0" Padding="16,12" CornerRadius="8"
+                      Background="#334155" Foreground="#FFFFFF" />
+              <Button Grid.Column="2" Content="Send with link"
+                      Command="{Binding SendFilesCommand}"
+                      Padding="28,12" CornerRadius="8"
+                      Background="#2563EB" Foreground="#FFFFFF" FontWeight="SemiBold" />
+            </Grid>
+          </Grid>
+        </Grid>
+
+        <!-- RECEIVE TAB -->
+        <Grid IsVisible="{Binding CurrentTab, ConverterParameter=Receive}">
+          <StackPanel Spacing="20">
+            <TextBlock Text="Receive Files" FontSize="20" FontWeight="SemiBold" Foreground="#F8FAFC" />
+
+            <!-- Receiver Listener Card -->
+            <Border Background="#1E293B" CornerRadius="8" BorderBrush="#334155" BorderThickness="1" Padding="20">
+              <StackPanel Spacing="12">
+                <Grid ColumnDefinitions="*,Auto">
+                  <StackPanel Grid.Column="0" Spacing="6">
+                  <TextBlock Text="Nearby Listener" FontSize="16" FontWeight="Medium" Foreground="#F8FAFC" />
+                  <TextBlock Text="Share this one-time link with a sender. You will approve each incoming offer." Foreground="#94A3B8" FontSize="13" />
+                  <TextBlock Text="{Binding ListeningPort, StringFormat='{}Listening Port: {0}'}" Foreground="#64748B" FontSize="12" />
+                  </StackPanel>
+                  <Button Grid.Column="1"
+                        Content="{Binding ReceivingButtonText}"
+                        Command="{Binding ToggleListenerCommand}"
+                        Padding="20,10" CornerRadius="6"
+                        Background="#334155" Foreground="#F8FAFC" VerticalAlignment="Center" />
+                </Grid>
+                <TextBox Text="{Binding CurrentInvitationUri}" IsReadOnly="True" TextWrapping="Wrap"
+                         PlaceholderText="Turn on receiving to create a one-time link"
+                         Background="#0F172A" Foreground="#F8FAFC" BorderBrush="#334155" />
+                <Border Background="White" Padding="8" CornerRadius="8" HorizontalAlignment="Left">
+                  <Image Source="{Binding PairingQrImage}" Width="160" Height="160" Stretch="Uniform"
+                         AutomationProperties.Name="One-time QR code for receiving files" />
+                </Border>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <Button x:Name="CopyInvitationButton" Content="Copy link" Padding="14,8" />
+                  <Button Content="Refresh link" Command="{Binding RefreshInvitationCommand}" Padding="14,8" />
+                </StackPanel>
+              </StackPanel>
+            </Border>
+
+            <!-- Receiver-as-Client Card -->
+            <Border Background="#1E293B" CornerRadius="8" BorderBrush="#334155" BorderThickness="1" Padding="20">
+              <StackPanel Spacing="12">
+                <TextBlock Text="Connect to Sender Invitation" FontSize="16" FontWeight="Medium" Foreground="#F8FAFC" />
+                <TextBlock Text="Enter or paste an invitation URI (glide://pair/v1#...) to receive files directly:" Foreground="#94A3B8" FontSize="13" />
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBox Grid.Column="0" Text="{Binding InvitationInput}" PlaceholderText="glide://pair/v1#..."
+                           CornerRadius="6" Background="#0F172A" Foreground="#F8FAFC" BorderBrush="#334155" Margin="0,0,10,0" />
+                  <Button Grid.Column="1" Content="Connect &amp; Receive"
+                          Command="{Binding ReceiveFromInvitationCommand}"
+                          Padding="16,8" CornerRadius="6" Background="#2563EB" Foreground="#FFFFFF" />
+                </Grid>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </Grid>
+
+        <!-- PAIR TAB -->
+        <Grid IsVisible="{Binding CurrentTab, ConverterParameter=Pair}">
+          <StackPanel Spacing="20">
+            <TextBlock Text="Device Pairing" FontSize="20" FontWeight="SemiBold" Foreground="#F8FAFC" />
+            
+            <Border Background="#1E293B" CornerRadius="8" BorderBrush="#334155" BorderThickness="1" Padding="20">
+              <StackPanel Spacing="12">
+                <TextBlock Text="Pair with Invitation Code" FontSize="16" FontWeight="Medium" Foreground="#F8FAFC" />
+                <TextBlock Text="Paste a pair URI from another device or enter a manual connection code." Foreground="#94A3B8" FontSize="13" />
+                <TextBox Text="{Binding InvitationInput}" PlaceholderText="Paste invitation code here..."
+                         Height="80" TextWrapping="Wrap" AcceptsReturn="True"
+                         CornerRadius="6" Background="#0F172A" Foreground="#F8FAFC" BorderBrush="#334155" />
+                <Button Content="Connect to Peer" Command="{Binding ReceiveFromInvitationCommand}"
+                        Padding="20,10" CornerRadius="6" Background="#2563EB" Foreground="#FFFFFF" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </Grid>
+
+        <!-- ACTIVITY TAB -->
+        <Grid IsVisible="{Binding CurrentTab, ConverterParameter=Activity}">
+          <Grid RowDefinitions="Auto,*,Auto">
+            <Grid Grid.Row="0" Margin="0,0,0,16" ColumnDefinitions="*,Auto,Auto">
+              <TextBlock Grid.Column="0" Text="Transfer Activity" FontSize="20" FontWeight="SemiBold" Foreground="#F8FAFC" />
+              <Button Grid.Column="1" Content="Open Downloads" Command="{Binding OpenDownloadsDirectoryCommand}"
+                      Padding="14,8" CornerRadius="6" Background="#334155" Foreground="#F8FAFC" Margin="0,0,8,0" />
+              <Button Grid.Column="2" Content="Clear" Command="{Binding ClearHistoryCommand}"
+                      Padding="14,8" CornerRadius="6" Background="#334155" Foreground="#F8FAFC" />
+            </Grid>
+
+            <Border Grid.Row="1" Background="#1E293B" CornerRadius="8" BorderBrush="#334155" BorderThickness="1">
+              <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <ItemsControl ItemsSource="{Binding HistoryItems}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <Border BorderBrush="#334155" BorderThickness="0,0,0,1" Padding="16,12">
+                        <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                          <TextBlock Grid.Column="0" Text="{Binding Direction}" FontWeight="SemiBold"
+                                     Foreground="#38BDF8" VerticalAlignment="Center" Margin="0,0,16,0" />
+                          <StackPanel Grid.Column="1">
+                            <TextBlock Text="{Binding PeerName}" FontWeight="Medium" Foreground="#F8FAFC" />
+                            <TextBlock Text="{Binding FormattedTimestamp}" FontSize="11" Foreground="#64748B" />
+                          </StackPanel>
+                          <TextBlock Grid.Column="2" Text="{Binding FormattedTotalBytes}"
+                                     VerticalAlignment="Center" Margin="16,0" Foreground="#94A3B8" />
+                          <TextBlock Grid.Column="3" Text="{Binding Status}"
+                                     VerticalAlignment="Center" FontWeight="SemiBold"
+                                     Foreground="{Binding Status, ConverterParameter=#10B981, FallbackValue=#94A3B8}" />
+                        </Grid>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </ScrollViewer>
+            </Border>
+          </Grid>
+        </Grid>
+
+        <!-- SETTINGS TAB -->
+        <Grid IsVisible="{Binding CurrentTab, ConverterParameter=Settings}">
+          <StackPanel Spacing="20">
+            <TextBlock Text="Settings" FontSize="20" FontWeight="SemiBold" Foreground="#F8FAFC" />
+
+            <Border Background="#1E293B" CornerRadius="8" BorderBrush="#334155" BorderThickness="1" Padding="20">
+              <StackPanel Spacing="16">
+                <StackPanel Spacing="6">
+                  <TextBlock Text="Device Name" FontWeight="Medium" Foreground="#F8FAFC" />
+                  <TextBox Text="{Binding DeviceName}" CornerRadius="6" Background="#0F172A" Foreground="#F8FAFC" BorderBrush="#334155" />
+                </StackPanel>
+
+                <StackPanel Spacing="6">
+                  <TextBlock Text="Download Directory" FontWeight="Medium" Foreground="#F8FAFC" />
+                  <Grid ColumnDefinitions="*,Auto">
+                    <TextBox Grid.Column="0" Text="{Binding DownloadDirectory}" CornerRadius="6" Background="#0F172A" Foreground="#F8FAFC" BorderBrush="#334155" Margin="0,0,10,0" />
+                    <Button Grid.Column="1" x:Name="BrowseDownloadDirButton" Content="Browse..." Padding="14,8" CornerRadius="6" Background="#334155" Foreground="#F8FAFC" />
+                  </Grid>
+                </StackPanel>
+
+                <StackPanel Spacing="4">
+                  <TextBlock Text="Trusted devices" FontSize="13" Foreground="#F8FAFC" />
+                  <TextBlock Text="Trust verifies identity; each incoming offer still needs your approval."
+                             TextWrapping="Wrap" FontSize="12" Foreground="#94A3B8" />
+                  <ListBox ItemsSource="{Binding TrustedPeers}" SelectedItem="{Binding SelectedTrustedPeer}"
+                           MaxHeight="130" Background="Transparent">
+                    <ListBox.ItemTemplate>
+                      <DataTemplate>
+                        <TextBlock Text="{Binding DisplayName}" Foreground="#F8FAFC" />
+                      </DataTemplate>
+                    </ListBox.ItemTemplate>
+                  </ListBox>
+                  <Button Content="Remove selected trusted device" Command="{Binding RevokeTrustedPeerCommand}"
+                          Padding="14,8" HorizontalAlignment="Left" />
+                </StackPanel>
+
+                <StackPanel Spacing="4">
+                  <TextBlock Text="Glide Version" FontSize="12" Foreground="#64748B" />
+                  <TextBlock Text="1.0.0-linux-avalonia (.NET 10)" FontSize="13" Foreground="#94A3B8" />
+                </StackPanel>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </Grid>
+
+      </Grid>
+    </Grid>
+
+    <!-- Bottom Active Transfer Banner -->
+    <Border VerticalAlignment="Bottom" Margin="24" Background="#1E293B" BorderBrush="#2563EB" BorderThickness="1"
+            CornerRadius="10" Padding="16" IsVisible="{Binding IsTransferActive}">
+      <Grid RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="*,Auto">
+        <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding TransferTitle}" FontWeight="SemiBold" Foreground="#F8FAFC" />
+        <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding TransferRateText}" FontWeight="Medium" Foreground="#38BDF8" />
+
+        <ProgressBar Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,8" Height="6"
+                     Value="{Binding TransferProgressPercent}" Maximum="100" />
+
+        <TextBlock Grid.Row="2" Grid.Column="0" Text="{Binding CurrentTransferFile}" FontSize="12" Foreground="#94A3B8" />
+        <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Spacing="12">
+          <TextBlock Text="{Binding TransferredBytesText}" FontSize="12" Foreground="#94A3B8" VerticalAlignment="Center" />
+          <Button Content="Cancel" Command="{Binding CancelTransferCommand}"
+                  Padding="10,4" CornerRadius="4" Background="#EF4444" Foreground="#FFFFFF" FontSize="11" />
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <!-- Modal Scrim / Overlay: Verified identity enrollment -->
+    <Border Background="#B0000000" IsVisible="{Binding IsSasModalVisible}"
+            HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+      <Border Background="#1E293B" BorderBrush="#38BDF8" BorderThickness="1" CornerRadius="12"
+              Padding="28" Width="440" HorizontalAlignment="Center" VerticalAlignment="Center">
+        <StackPanel Spacing="16" HorizontalAlignment="Center">
+          <TextBlock Text="Save this verified device?" FontSize="18" FontWeight="Bold" Foreground="#F8FAFC" HorizontalAlignment="Center" />
+          <TextBlock Text="Glide verified this identity for the current connection. Review its fingerprint before saving it for future sends:"
+                      TextWrapping="Wrap" Foreground="#94A3B8" FontSize="13" TextAlignment="Center" />
+          
+          <Border Background="#0F172A" CornerRadius="8" Padding="16,12" HorizontalAlignment="Stretch">
+            <TextBlock Text="{Binding SasCode}" FontSize="13" FontFamily="monospace" FontWeight="SemiBold"
+                       Foreground="#38BDF8" TextWrapping="Wrap" TextAlignment="Center" />
+          </Border>
+
+          <TextBlock Text="{Binding SasPeerName, StringFormat='{}Device: {0}'}" FontSize="13" Foreground="#94A3B8" HorizontalAlignment="Center" />
+
+          <Grid ColumnDefinitions="*,*" Margin="0,8,0,0">
+            <Button Grid.Column="0" Content="Decline" Command="{Binding DeclineSasCommand}"
+                    Margin="0,0,6,0" Padding="0,10" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                    CornerRadius="6" Background="#334155" Foreground="#EF4444" />
+            <Button Grid.Column="1" Content="Accept &amp; Continue" Command="{Binding AcceptSasCommand}"
+                    Margin="6,0,0,0" Padding="0,10" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                    CornerRadius="6" Background="#10B981" Foreground="#FFFFFF" FontWeight="SemiBold" />
+          </Grid>
+        </StackPanel>
+      </Border>
+    </Border>
+
+    <!-- Modal Scrim / Overlay: Incoming Transfer Offer -->
+    <Border Background="#B0000000" IsVisible="{Binding IsOfferModalVisible}"
+            HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+      <Border Background="#1E293B" BorderBrush="#334155" BorderThickness="1" CornerRadius="12"
+              Padding="28" Width="440" HorizontalAlignment="Center" VerticalAlignment="Center">
+        <StackPanel Spacing="16">
+          <TextBlock Text="Incoming Transfer Request" FontSize="18" FontWeight="Bold" Foreground="#F8FAFC" />
+          <TextBlock Text="{Binding OfferPeerName, StringFormat='{}{0} wants to send you files:'}"
+                     FontWeight="Medium" Foreground="#F8FAFC" />
+          <TextBlock Text="{Binding OfferSummaryText}" Foreground="#94A3B8" FontSize="14" />
+
+          <Grid ColumnDefinitions="*,*" Margin="0,12,0,0">
+            <Button Grid.Column="0" Content="Decline" Command="{Binding DeclineOfferCommand}"
+                    Margin="0,0,6,0" Padding="0,10" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                    CornerRadius="6" Background="#334155" Foreground="#EF4444" />
+            <Button Grid.Column="1" Content="Accept Transfer" Command="{Binding AcceptOfferCommand}"
+                    Margin="6,0,0,0" Padding="0,10" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                    CornerRadius="6" Background="#2563EB" Foreground="#FFFFFF" FontWeight="SemiBold" />
+          </Grid>
+        </StackPanel>
+      </Border>
+    </Border>
+
+    <Border Background="#B0000000" IsVisible="{Binding IsRecipientModalVisible}"
+            HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+      <Border Background="#1E293B" BorderBrush="#38BDF8" BorderThickness="1" CornerRadius="12"
+              Padding="28" Width="440" HorizontalAlignment="Center" VerticalAlignment="Center">
+        <StackPanel Spacing="16">
+          <TextBlock Text="Confirm recipient" FontSize="18" FontWeight="Bold" Foreground="#F8FAFC" />
+          <TextBlock Text="{Binding RecipientPeerName, StringFormat='{}Send selected files to {0}?'}"
+                     TextWrapping="Wrap" Foreground="#F8FAFC" />
+          <TextBlock Text="Only continue if this is the device that scanned your one-time code."
+                     TextWrapping="Wrap" Foreground="#94A3B8" />
+          <Grid ColumnDefinitions="*,*">
+            <Button Grid.Column="0" Content="Cancel" Command="{Binding DeclineRecipientCommand}"
+                    Margin="0,0,6,0" Padding="0,10" HorizontalAlignment="Stretch" />
+            <Button Grid.Column="1" Content="Confirm recipient" Command="{Binding AcceptRecipientCommand}"
+                    Margin="6,0,0,0" Padding="0,10" HorizontalAlignment="Stretch"
+                    Background="#2563EB" Foreground="#FFFFFF" />
+          </Grid>
+        </StackPanel>
+      </Border>
+    </Border>
+
+    <Border Background="#B0000000" IsVisible="{Binding IsQuickShareActive}"
+            HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+      <Border Background="#1E293B" BorderBrush="#38BDF8" BorderThickness="1" CornerRadius="12"
+              Padding="24" Width="440" HorizontalAlignment="Center" VerticalAlignment="Center">
+        <StackPanel Spacing="12" HorizontalAlignment="Center">
+          <TextBlock Text="Scan to receive selected files" FontSize="18" FontWeight="Bold"
+                     Foreground="#F8FAFC" HorizontalAlignment="Center" />
+          <TextBlock Text="The other device scans this code in Glide. Confirm its name before sending."
+                     TextWrapping="Wrap" Foreground="#94A3B8" TextAlignment="Center" />
+          <Border Background="White" Padding="12" CornerRadius="8" HorizontalAlignment="Center">
+            <Image Source="{Binding PairingQrImage}" Width="256" Height="256" Stretch="Uniform"
+                   AutomationProperties.Name="One-time QR code for sending selected files" />
+          </Border>
+          <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
+            <Button Content="Refresh code" Command="{Binding RefreshInvitationCommand}" Padding="12,8" />
+            <Button Content="Cancel quick share" Command="{Binding CancelQuickShareCommand}" Padding="12,8" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </Border>
+
+  </Grid>
+</Window>

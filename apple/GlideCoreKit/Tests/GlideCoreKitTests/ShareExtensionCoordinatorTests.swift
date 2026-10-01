@@ -56,4 +56,16 @@ final class ShareExtensionCoordinatorTests: XCTestCase {
         XCTAssertEqual(ShareExtensionCoordinator.mimeTypeForExtension("zip"), "application/zip")
         XCTAssertEqual(ShareExtensionCoordinator.mimeTypeForExtension("unknown"), "application/octet-stream")
     }
+
+    func testPrepareBatchRejectsSymbolicLink() throws {
+        let source = tempDir.appendingPathComponent("source.txt")
+        let link = tempDir.appendingPathComponent("link.txt")
+        try "data".write(to: source, atomically: true, encoding: .utf8)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: source)
+
+        XCTAssertThrowsError(try ShareExtensionCoordinator.prepareBatch(from: [link])) { error in
+            XCTAssertEqual(error as? ShareExtensionCoordinator.ShareError,
+                           .unsupportedFile("link.txt"))
+        }
+    }
 }
