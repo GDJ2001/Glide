@@ -69,6 +69,19 @@ public final class IosTransferViewModel: ObservableObject {
 
     public init() {
         generateLocalInvitation()
+        importSharedFiles()
+    }
+
+    /// The share extension stages files in the common App Group; no transfer starts here.
+    public func importSharedFiles() {
+        do {
+            let queued = try AppGroupShareQueue.queuedFiles()
+            guard !queued.isEmpty else { return }
+            stageFiles(urls: queued)
+            selectedTab = "send"
+        } catch {
+            transferStatusText = "Shared files could not be opened. Check Glide's App Group access."
+        }
     }
 
     public func stageFiles(urls: [URL]) {
@@ -81,11 +94,17 @@ public final class IosTransferViewModel: ObservableObject {
     }
 
     public func removeStagedFile(url: URL) {
+        do { try AppGroupShareQueue.removeQueuedFile(url) }
+        catch { transferStatusText = "Could not remove the shared file from staging." }
         stagedUrls.removeAll { $0 == url }
         recalculateStagedSize()
     }
 
     public func clearStaged() {
+        for url in stagedUrls {
+            do { try AppGroupShareQueue.removeQueuedFile(url) }
+            catch { transferStatusText = "Could not clear every shared file from staging." }
+        }
         stagedUrls.removeAll()
         stagedSize = 0
     }
