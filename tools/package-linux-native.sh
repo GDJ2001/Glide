@@ -75,6 +75,7 @@ for rid in "$@"; do
     "$root/usr/share/icons/hicolor/96x96/apps/dev.glide.app.png"
 
   installed_kb="$(du -sk "$root/usr" | cut -f1)"
+  # Ubuntu 24.04 dependencies for the self-contained .NET runtime and Avalonia X11.
   cat > "$root/DEBIAN/control" <<EOF
 Package: glide
 Version: $version
@@ -83,6 +84,7 @@ Priority: optional
 Architecture: $deb_arch
 Maintainer: Glide Developers
 Installed-Size: $installed_kb
+Depends: ca-certificates, libc6, libgcc-s1, libgssapi-krb5-2, libicu74, libssl3t64, libstdc++6, tzdata, zlib1g, libx11-6, libice6, libsm6, libfontconfig1, xdg-utils
 Description: Glide native local file sharing
  Offline authenticated file transfers with a desktop GUI and optional daemon.
 EOF
@@ -108,6 +110,7 @@ Summary: Native local file sharing
 License: LicenseRef-Glide
 BuildArch: $rpm_arch
 AutoReqProv: no
+Requires: ca-certificates, glibc, libgcc, krb5-libs, libicu, openssl-libs, libstdc++, tzdata, zlib, libX11, libICE, libSM, fontconfig, xdg-utils
 
 %description
 Glide offline authenticated local file sharing GUI and daemon.
