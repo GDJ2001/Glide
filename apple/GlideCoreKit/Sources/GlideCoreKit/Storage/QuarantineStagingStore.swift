@@ -78,8 +78,9 @@ public final class QuarantineStagingStore: @unchecked Sendable {
         receivedBytes = nextSize
     }
 
-    /// Finalizes the SHA-256 digest, verifies against expected hash, and atomically moves
-    /// the quarantine file to the destination directory with sanitized filename and collision resolution.
+    /// Verifies the private quarantine, then rehashes a destination-volume temporary copy
+    /// before moving it to a visible name. A cross-volume move directly to the final name
+    /// would expose a partially copied file if the destination fills or the process dies.
     public func finalizeAndCommit(
         expectedSha256Hex: String,
         expectedLengthBytes: Int64,
@@ -89,7 +90,8 @@ public final class QuarantineStagingStore: @unchecked Sendable {
         try fileHandle?.close()
         fileHandle = nil
 
-        guard expectedLengthBytes >= 0 && receivedBytes == expectedLengthBytes else {
+        guard expectedLengthBytes >= 0, expectedLengthBytes <= 68_719_476_736,
+              receivedBytes == expectedLengthBytes else {
             purge()
             throw QuarantineError.lengthMismatch(expected: expectedLengthBytes, actual: receivedBytes)
         }
@@ -111,16 +113,64 @@ public final class QuarantineStagingStore: @unchecked Sendable {
         try FileManager.default.createDirectory(at: destinationDirectory, withIntermediateDirectories: true)
         try rejectSymlink(destinationDirectory)
 
-        // Resolve filename collisions in destination directory
-        let existingFiles = (try? FileManager.default.contentsOfDirectory(atPath: destinationDirectory.path)) ?? []
+        let commitDirectory = destinationDirectory.appendingPathComponent(
+            ".glide-commit-\(UUID().uuidString)", isDirectory: true)
+        guard Darwin.mkdir(commitDirectory.path, 0o700) == 0 else {
+            throw QuarantineError.ioError("Could not create a private destination staging directory.")
+        }
+        try rejectSymlink(commitDirectory)
+        let temporaryUrl = commitDirectory.appendingPathComponent(UUID().uuidString + ".part")
+        defer {
+            try? FileManager.default.removeItem(at: temporaryUrl)
+            if let contents = try? FileManager.default.contentsOfDirectory(atPath: commitDirectory.path),
+               contents.isEmpty {
+                try? FileManager.default.removeItem(at: commitDirectory)
+            }
+        }
+
+        let source = try FileHandle(forReadingFrom: quarantineUrl)
+        let fd = Darwin.open(temporaryUrl.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
+        guard fd >= 0 else {
+            try? source.close()
+            throw QuarantineError.ioError("Could not create a private destination staging file.")
+        }
+        let target = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+        var copyHasher = SHA256()
+        var copiedBytes: Int64 = 0
+        do {
+            while let chunk = try source.read(upToCount: 65_536), !chunk.isEmpty {
+                let (next, overflow) = copiedBytes.addingReportingOverflow(Int64(chunk.count))
+                guard !overflow && next <= expectedLengthBytes else {
+                    throw QuarantineError.lengthMismatch(expected: expectedLengthBytes, actual: next)
+                }
+                try target.write(contentsOf: chunk)
+                copyHasher.update(data: chunk)
+                copiedBytes = next
+            }
+            try source.close()
+            guard copiedBytes == expectedLengthBytes else {
+                throw QuarantineError.lengthMismatch(expected: expectedLengthBytes, actual: copiedBytes)
+            }
+            let copiedDigest = copyHasher.finalize().map { String(format: "%02x", $0) }.joined()
+            guard constantTimeCompare(copiedDigest, expected) else {
+                throw QuarantineError.digestMismatch(expected: expected, actual: copiedDigest)
+            }
+            guard Darwin.fsync(fd) == 0 else {
+                throw QuarantineError.ioError("Could not sync the verified destination copy.")
+            }
+            try target.close()
+        } catch {
+            try? source.close()
+            try? target.close()
+            throw error
+        }
+
+        let existingFiles = try FileManager.default.contentsOfDirectory(atPath: destinationDirectory.path)
         let finalFilename = DarwinPathSanitizer.resolveCollision(filename: sanitizedName, existingNames: Set(existingFiles))
-
         let destinationUrl = destinationDirectory.appendingPathComponent(finalFilename)
-
-        // Atomic move from quarantine to committed storage
-        try FileManager.default.moveItem(at: quarantineUrl, to: destinationUrl)
-
-        // Clean up parent session staging folder if empty
+        // Both paths are on the destination volume. FileManager will refuse a collision.
+        try FileManager.default.moveItem(at: temporaryUrl, to: destinationUrl)
+        try? FileManager.default.removeItem(at: quarantineUrl)
         cleanupSessionFolderIfEmpty()
 
         return destinationUrl

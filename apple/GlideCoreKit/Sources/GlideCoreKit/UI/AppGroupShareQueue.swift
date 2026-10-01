@@ -167,7 +167,7 @@ public enum AppGroupShareQueue {
     /// Remove a queued source after the user removes it or after verified send completion.
     /// Ordinary document-picker URLs are never touched.
     public static func removeQueuedFile(_ url: URL) throws {
-        let root = try queueRoot().standardizedFileURL
+        guard let root = try? queueRoot().standardizedFileURL else { return }
         let itemDirectory = url.deletingLastPathComponent().standardizedFileURL
         let batchDirectory = itemDirectory.deletingLastPathComponent().standardizedFileURL
         guard batchDirectory.deletingLastPathComponent() == root,
