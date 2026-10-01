@@ -29,6 +29,11 @@ public final class IosTransferViewModel: ObservableObject {
     @Published public var selectedTab: String = "send"
     @Published public var stagedUrls: [URL] = []
     @Published public var stagedSize: Int64 = 0
+    @Published public private(set) var stagedSizes: [URL: Int64] = [:]
+    @Published public private(set) var isStagingFiles = false
+    private let stagedFiles = StagedFilesStore()
+    private var stagingTask: Task<Void, Never>?
+    private var pendingStagingOperations = 0
     @Published public var invitationInput: String = ""
     @Published public var currentInvitationUri: String = ""
     @Published public var isListening: Bool = false
@@ -74,50 +79,65 @@ public final class IosTransferViewModel: ObservableObject {
 
     /// The share extension stages files in the common App Group; no transfer starts here.
     public func importSharedFiles() {
-        do {
-            let queued = try AppGroupShareQueue.queuedFiles()
-            guard !queued.isEmpty else { return }
-            stageFiles(urls: queued)
-            selectedTab = "send"
-        } catch {
-            transferStatusText = "Shared files could not be opened. Check Glide's App Group access."
+        guard !isTransferActive else { return }
+        enqueueStaging {
+            do {
+                let snapshot = try await self.stagedFiles.importSharedFiles()
+                let added = snapshot.urls.contains { !self.stagedUrls.contains($0) }
+                self.apply(snapshot)
+                if added { self.selectedTab = "send" }
+            } catch {
+                self.transferStatusText = "Shared files could not be opened. Check access and the 1,000-file batch limit."
+            }
         }
     }
 
     public func stageFiles(urls: [URL]) {
-        for url in urls {
-            if !stagedUrls.contains(url) {
-                stagedUrls.append(url)
+        guard !isTransferActive else { return }
+        enqueueStaging {
+            do { self.apply(try await self.stagedFiles.add(urls)) }
+            catch {
+                self.transferStatusText = "Files could not be added. Choose accessible files within the batch limits."
             }
         }
-        recalculateStagedSize()
     }
 
     public func removeStagedFile(url: URL) {
-        do { try AppGroupShareQueue.removeQueuedFile(url) }
-        catch { transferStatusText = "Could not remove the shared file from staging." }
-        stagedUrls.removeAll { $0 == url }
-        recalculateStagedSize()
+        removeStagedFiles(urls: [url])
     }
 
     public func clearStaged() {
-        for url in stagedUrls {
-            do { try AppGroupShareQueue.removeQueuedFile(url) }
-            catch { transferStatusText = "Could not clear every shared file from staging." }
-        }
-        stagedUrls.removeAll()
-        stagedSize = 0
+        guard !isTransferActive else { return }
+        enqueueStaging { self.apply(await self.stagedFiles.remove(self.stagedUrls)) }
     }
 
-    private func recalculateStagedSize() {
-        var total: Int64 = 0
-        for url in stagedUrls {
-            if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
-               let size = attrs[.size] as? NSNumber {
-                total += size.int64Value
+    public func removeStagedFiles(urls: [URL]) {
+        guard !isTransferActive else { return }
+        enqueueStaging { self.apply(await self.stagedFiles.remove(urls)) }
+    }
+
+    private func enqueueStaging(_ operation: @escaping @MainActor () async -> Void) {
+        let preceding = stagingTask
+        pendingStagingOperations += 1
+        isStagingFiles = true
+        stagingTask = Task {
+            await preceding?.value
+            await operation()
+            pendingStagingOperations -= 1
+            if pendingStagingOperations == 0 {
+                isStagingFiles = false
+                stagingTask = nil
             }
         }
-        stagedSize = total
+    }
+
+    private func apply(_ snapshot: StagedFilesStore.Snapshot) {
+        stagedUrls = snapshot.urls
+        stagedSizes = snapshot.sizes
+        stagedSize = snapshot.totalBytes
+        if snapshot.removalFailed {
+            transferStatusText = "Some shared files could not be removed. Try removing them again."
+        }
     }
 
     public func generateLocalInvitation() {
@@ -128,7 +148,7 @@ public final class IosTransferViewModel: ObservableObject {
     }
 
     public func sendStagedFiles() {
-        guard !stagedUrls.isEmpty else { return }
+        guard !isTransferActive, !isStagingFiles, !stagedUrls.isEmpty else { return }
         guard !invitationInput.isEmpty else {
             transferStatusText = "Please enter or scan peer invitation QR code"
             return
@@ -172,7 +192,7 @@ public final class IosTransferViewModel: ObservableObject {
                     status: "Completed"
                 ), at: 0)
 
-                clearStaged()
+                apply(await stagedFiles.remove(stagedUrls))
             } catch {
                 transferStatusText = "Transfer failed: \(error.localizedDescription)"
                 historyItems.insert(IosHistoryItem(
@@ -192,7 +212,7 @@ public final class IosTransferViewModel: ObservableObject {
     }
 
     public func receiveFromInvitation() {
-        guard !invitationInput.isEmpty else { return }
+        guard !isTransferActive, !isStagingFiles, !invitationInput.isEmpty else { return }
 
         let invitation: LanInvitation
         do {

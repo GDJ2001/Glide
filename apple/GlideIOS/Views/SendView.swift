@@ -40,8 +40,8 @@ public struct SendView: View {
                                         Text(url.lastPathComponent)
                                             .font(.body)
                                             .lineLimit(1)
-                                        if let size = try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber {
-                                            Text(ByteCountFormatter.string(fromByteCount: size.int64Value, countStyle: .file))
+                                        if let size = viewModel.stagedSizes[url] {
+                                            Text(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
                                                 .font(.caption)
                                                 .foregroundColor(.secondary)
                                         }
@@ -49,9 +49,8 @@ public struct SendView: View {
                                 }
                             }
                             .onDelete { indexSet in
-                                for index in indexSet {
-                                    viewModel.removeStagedFile(url: viewModel.stagedUrls[index])
-                                }
+                                let urls = indexSet.map { viewModel.stagedUrls[$0] }
+                                viewModel.removeStagedFiles(urls: urls)
                             }
                         } header: {
                             HStack {
@@ -110,6 +109,14 @@ public struct SendView: View {
                 }
                 .padding()
                 .background(Color(uiColor: .secondarySystemBackground))
+            }
+            .disabled(viewModel.isStagingFiles || viewModel.isTransferActive)
+            .overlay {
+                if viewModel.isStagingFiles {
+                    ProgressView("Preparing files…")
+                        .padding()
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                }
             }
             .navigationTitle("Glide Send")
             .fileImporter(

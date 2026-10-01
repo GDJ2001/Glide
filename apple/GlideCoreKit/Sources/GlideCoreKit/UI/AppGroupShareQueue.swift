@@ -39,12 +39,29 @@ public enum AppGroupShareQueue {
         fileprivate init(directory: URL) { self.directory = directory }
 
         /// Must run before NSItemProvider's completion handler returns: its URL is temporary.
-        public func appendTemporaryFile(_ source: URL, suggestedName: String?) throws {
+        public func appendTemporaryFile(_ source: URL, suggestedName: String?,
+                                        isCancelled: () -> Bool = { false }) throws {
+            if isCancelled() { throw CancellationError() }
             guard !published else { throw QueueError.invalidFile }
             guard entries.count < ShareExtensionCoordinator.maxItemCount else { throw QueueError.tooManyItems }
             let values = try source.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
             guard source.isFileURL, values.isRegularFile == true, values.isSymbolicLink != true else {
                 throw QueueError.invalidFile
+            }
+            let sourceFD = Darwin.open(source.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
+            guard sourceFD >= 0 else { throw QueueError.invalidFile }
+            let input = FileHandle(fileDescriptor: sourceFD, closeOnDealloc: true)
+            defer { try? input.close() }
+            var sourceMetadata = stat()
+            guard Darwin.fstat(sourceFD, &sourceMetadata) == 0,
+                  sourceMetadata.st_mode & mode_t(S_IFMT) == mode_t(S_IFREG),
+                  sourceMetadata.st_size >= 0 else { throw QueueError.invalidFile }
+            guard sourceMetadata.st_size <= ShareExtensionCoordinator.maxItemSizeBytes else {
+                throw QueueError.itemTooLarge
+            }
+            let (expectedTotal, overflow) = totalBytes.addingReportingOverflow(sourceMetadata.st_size)
+            guard !overflow, expectedTotal <= ShareExtensionCoordinator.maxBatchSizeBytes else {
+                throw QueueError.batchTooLarge
             }
             let rawName = (suggestedName?.isEmpty == false ? suggestedName! : source.lastPathComponent)
             let name = DarwinPathSanitizer.sanitizeFilename(rawName)
@@ -53,16 +70,16 @@ public enum AppGroupShareQueue {
             try FileManager.default.createDirectory(at: itemDirectory, withIntermediateDirectories: false,
                                                     attributes: [.posixPermissions: 0o700])
             let target = itemDirectory.appendingPathComponent(name)
-            let input = try FileHandle(forReadingFrom: source)
             let fd = Darwin.open(target.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
             guard fd >= 0 else {
-                try? input.close()
+                try? FileManager.default.removeItem(at: itemDirectory)
                 throw QueueError.invalidFile
             }
             let output = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
             var copied: Int64 = 0
             do {
                 while let chunk = try input.read(upToCount: 65_536), !chunk.isEmpty {
+                    if isCancelled() { throw CancellationError() }
                     let (itemNext, itemOverflow) = copied.addingReportingOverflow(Int64(chunk.count))
                     let (batchNext, batchOverflow) = totalBytes.addingReportingOverflow(itemNext)
                     guard !itemOverflow, itemNext <= ShareExtensionCoordinator.maxItemSizeBytes else {
@@ -74,10 +91,12 @@ public enum AppGroupShareQueue {
                     try output.write(contentsOf: chunk)
                     copied = itemNext
                 }
+                if isCancelled() { throw CancellationError() }
                 try input.close()
                 try output.close()
                 let attributes = try FileManager.default.attributesOfItem(atPath: target.path)
-                guard (attributes[.size] as? NSNumber)?.int64Value == copied else {
+                guard copied == sourceMetadata.st_size,
+                      (attributes[.size] as? NSNumber)?.int64Value == copied else {
                     throw QueueError.incompleteCopy
                 }
                 entries.append(Entry(name: name, storedName: storedName, sizeBytes: copied))
