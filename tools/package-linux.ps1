@@ -7,7 +7,7 @@
 #>
 param(
     [ValidateSet('Release')][string]$Configuration = 'Release',
-    [string[]]$Runtimes = @('linux-x64', 'linux-arm64')
+    [string[]]$Runtimes = @()
 )
 
 $ErrorActionPreference = 'Stop'

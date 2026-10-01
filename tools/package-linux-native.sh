@@ -11,8 +11,21 @@ if [[ -n "$(git -C "$repo" status --porcelain)" ]]; then
   echo "Refusing to package a dirty working tree; commit the implementation first." >&2
   exit 2
 fi
-for command in dotnet tar dpkg-deb rpmbuild sha256sum; do
+for command in dotnet tar dpkg-deb rpmbuild rpm2cpio cpio sha256sum cmp; do
   command -v "$command" >/dev/null || { echo "Missing packaging tool: $command" >&2; exit 2; }
+done
+
+case "$(uname -m)" in
+  x86_64) native_rid=linux-x64 ;;
+  aarch64|arm64) native_rid=linux-arm64 ;;
+  *) echo "Unsupported native Linux architecture" >&2; exit 2 ;;
+esac
+if [[ "$#" -eq 0 ]]; then set -- "$native_rid"; fi
+for rid in "$@"; do
+  [[ "$rid" == "$native_rid" ]] || {
+    echo "Build $rid packages on a matching native runner; this host is $native_rid." >&2
+    exit 2
+  }
 done
 
 commit="$(git -C "$repo" rev-parse HEAD)"
@@ -22,7 +35,6 @@ mkdir -p "$out" "$repo/build/tmp"
 work="$(mktemp -d "$repo/build/tmp/linux-package.XXXXXXXX")"
 trap '[[ "$work" == "$repo"/build/tmp/linux-package.* ]] && rm -rf -- "$work"' EXIT
 
-if [[ "$#" -eq 0 ]]; then set -- linux-x64 linux-arm64; fi
 for rid in "$@"; do
   case "$rid" in
     linux-x64) deb_arch=amd64; rpm_arch=x86_64 ;;
@@ -85,6 +97,10 @@ EOF
   mkdir -p "$rpm_top"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
   spec="$rpm_top/SPECS/glide.spec"
   cat > "$spec" <<EOF
+# These are already-published .NET bundles. RPM post-processing must not strip
+# or otherwise rewrite their appended managed payloads.
+%global __os_install_post %{nil}
+%global _build_id_links none
 Name: glide
 Version: $version
 Release: 1
@@ -111,6 +127,20 @@ EOF
   rpmbuild -bb --define "_topdir $rpm_top" --target "$rpm_arch" "$spec"
   cp "$rpm_top/RPMS/$rpm_arch/glide-${version}-1.${rpm_arch}.rpm" "$rpm"
 
+  # Check the packaged executable bytes against the compiler output before
+  # generating a manifest. This inspects payloads; it does not install packages.
+  for format in portable deb rpm; do
+    extracted="$work/$rid/extracted-$format"
+    mkdir -p "$extracted"
+    case "$format" in
+      portable) tar -xzf "$portable" -C "$extracted" ;;
+      deb) dpkg-deb --extract "$deb" "$extracted" ;;
+      rpm) (cd "$extracted" && rpm2cpio "$rpm" | cpio -idm --quiet) ;;
+    esac
+    cmp "$gui/Glide.Linux.UI" "$extracted/usr/lib/glide/desktop/Glide.Linux.UI"
+    cmp "$daemon/Glide.App" "$extracted/usr/lib/glide/daemon/Glide.App"
+  done
+
   for artifact in "$portable" "$deb" "$rpm"; do test -s "$artifact"; done
   (cd "$out" && sha256sum "$(basename "$portable")" "$(basename "$deb")" "$(basename "$rpm")") \
     > "$out/SHA256SUMS-${rid}.txt"
@@ -120,6 +150,9 @@ cat > "$out/BUILD-MANIFEST.txt" <<EOF
 source_commit=$commit
 build_utc=$run_id
 dotnet_sdk=$(dotnet --version)
+build_arch=$(uname -m)
+build_os=$(uname -sr)
+rpm_version=$(rpmbuild --version)
 package_version=$version
 runtimes=$*
 signing_status=unsigned_development

@@ -96,7 +96,15 @@ jobs:
 
   dotnet-linux:
     name: .NET Shared + Linux GUI and Packages
-    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            runtime: linux-x64
+          - runner: ubuntu-24.04-arm
+            runtime: linux-arm64
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
 
     steps:
@@ -118,16 +126,16 @@ jobs:
         run: dotnet test desktop/tests/Glide.Tests/Glide.Tests.csproj -c Release --no-build --filter "HARD!=003-red" --logger "trx;LogFileName=ordinary-linux.trx"
 
       - name: Install native RPM packaging tool
-        run: sudo apt-get update && sudo apt-get install -y rpm
+        run: sudo apt-get update && sudo apt-get install -y rpm cpio
 
-      - name: Build native Linux x64 and ARM64 packages
-        run: bash tools/package-linux-native.sh linux-x64 linux-arm64
+      - name: Build native Linux packages
+        run: bash tools/package-linux-native.sh '${{ matrix.runtime }}'
 
       - name: Upload Linux package and .NET reports
         if: always()
         uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
         with:
-          name: linux-dotnet-verification
+          name: linux-dotnet-verification-${{ matrix.runtime }}
           path: |
             build/distributions/runs/*/linux/*.tar.gz
             build/distributions/runs/*/linux/*.deb
