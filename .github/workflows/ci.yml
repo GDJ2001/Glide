@@ -95,7 +95,7 @@ jobs:
           retention-days: 14
 
   dotnet-linux:
-    name: .NET Shared + Linux Package
+    name: .NET Shared + Linux GUI and Packages
     runs-on: ubuntu-24.04
     timeout-minutes: 30
 
@@ -111,12 +111,17 @@ jobs:
       - name: Build cross-platform .NET tests and dependencies
         run: dotnet build desktop/tests/Glide.Tests/Glide.Tests.csproj -c Release
 
+      - name: Build Avalonia Linux GUI
+        run: dotnet build desktop/linux/Glide.Linux.UI/Glide.Linux.UI.csproj -c Release
+
       - name: Run ordinary .NET tests
         run: dotnet test desktop/tests/Glide.Tests/Glide.Tests.csproj -c Release --no-build --filter "HARD!=003-red" --logger "trx;LogFileName=ordinary-linux.trx"
 
-      - name: Build Linux self-contained package
-        shell: pwsh
-        run: ./desktop/linux/build-linux-packages.ps1 -Configuration Release -Runtimes linux-x64
+      - name: Install native RPM packaging tool
+        run: sudo apt-get update && sudo apt-get install -y rpm
+
+      - name: Build native Linux x64 and ARM64 packages
+        run: bash tools/package-linux-native.sh linux-x64 linux-arm64
 
       - name: Upload Linux package and .NET reports
         if: always()
@@ -124,9 +129,56 @@ jobs:
         with:
           name: linux-dotnet-verification
           path: |
-            build/distributions/linux/*.tar.gz
+            build/distributions/runs/*/linux/*.tar.gz
+            build/distributions/runs/*/linux/*.deb
+            build/distributions/runs/*/linux/*.rpm
+            build/distributions/runs/*/linux/BUILD-MANIFEST.txt
+            build/distributions/runs/*/linux/SHA256SUMS-*.txt
             desktop/tests/Glide.Tests/TestResults/
-          if-no-files-found: ignore
+          if-no-files-found: error
+          retention-days: 14
+
+  apple-build:
+    name: Apple Swift, iOS and macOS development packages
+    runs-on: macos-26
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Select pinned Xcode 26.6 and record toolchain
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+          mkdir -p build/ci-toolchains
+          xcodebuild -version | tee build/ci-toolchains/xcode-version.txt
+          swift --version | tee build/ci-toolchains/swift-version.txt
+          grep -q 'Xcode 26.6' build/ci-toolchains/xcode-version.txt
+
+      - name: Build GlideCoreKit
+        run: swift build --package-path apple/GlideCoreKit
+
+      - name: Package unsigned macOS app
+        run: bash apple/scripts/package-macos.sh
+
+      - name: Package unsigned iOS simulator and device archive
+        run: bash apple/scripts/package-ios.sh
+
+      - name: Upload Apple toolchain and unsigned build products
+        if: always()
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
+        with:
+          name: apple-unsigned-development
+          path: |
+            build/ci-toolchains/xcode-version.txt
+            build/ci-toolchains/swift-version.txt
+            build/distributions/runs/*/apple/macos/*.zip
+            build/distributions/runs/*/apple/macos/BUILD-MANIFEST.txt
+            build/distributions/runs/*/apple/macos/SHA256SUMS.txt
+            build/distributions/runs/*/apple/ios/*.zip
+            build/distributions/runs/*/apple/ios/BUILD-MANIFEST.txt
+            build/distributions/runs/*/apple/ios/SHA256SUMS.txt
+          if-no-files-found: error
           retention-days: 14
 
   dotnet-windows:

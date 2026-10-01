@@ -26,6 +26,7 @@ windows/**/obj/
 desktop/publish/
 desktop/**/bin/
 desktop/**/obj/
+**/.build/
 graphify-out/
 **/.graphify_python/
 .vs/
