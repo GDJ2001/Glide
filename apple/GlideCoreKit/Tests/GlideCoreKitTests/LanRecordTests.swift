@@ -53,4 +53,22 @@ final class LanRecordTests: XCTestCase {
             XCTAssertEqual(error as? LanRecordError, LanRecordError.unknownRecordKind(0x99))
         }
     }
+
+    func testDecodeRejectsTrailingBytes() throws {
+        var frame = try LanRecordCodec.encode(.control(payload: Data("x".utf8)))
+        frame.append(0)
+        XCTAssertThrowsError(try LanRecordCodec.decode(frame)) { error in
+            XCTAssertEqual(error as? LanRecordError,
+                           .trailingPayload(expected: 6, actual: 7))
+        }
+    }
+
+    func testDecodeStreamEndFromSlicedData() throws {
+        let record = LanRecord.streamEnd(
+            bulkRef: UUID(uuidString: "8a32a67e-071a-4d23-92b4-3ec9fef39db3")!,
+            actualBytes: 1_234_567)
+        let frame = try LanRecordCodec.encode(record)
+        let padded = Data([0xff]) + frame
+        XCTAssertEqual(try LanRecordCodec.decode(padded.dropFirst()), record)
+    }
 }

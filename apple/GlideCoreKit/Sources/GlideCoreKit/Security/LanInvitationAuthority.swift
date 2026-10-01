@@ -83,6 +83,29 @@ public final class LanInvitationAuthority: @unchecked Sendable {
         return .accepted
     }
 
+    public func consume(_ message: LanBootstrapMessage,
+                        expectedRole: String = "sender") throws -> LanBootstrapResult {
+        let decision = claim(
+            invitationId: message.invitationId,
+            token: message.token,
+            invitationHash: message.invitationHash,
+            role: message.role,
+            expectedRole: expectedRole
+        )
+        switch decision {
+        case .accepted:
+            return try .accepted(sessionId: message.sessionId)
+        case .expired:
+            return try .rejected(code: "INVITATION_EXPIRED")
+        case .used:
+            return try .rejected(code: "INVITATION_USED")
+        case .unsupportedRole:
+            return try .rejected(code: "UNSUPPORTED_PROFILE")
+        case .authenticationFailed:
+            return try .rejected(code: "AUTHENTICATION_FAILED")
+        }
+    }
+
     private static func fixedTimeEqual(_ left: String, _ right: String) -> Bool {
         let lhs = Array(left.utf8)
         let rhs = Array(right.utf8)

@@ -20,10 +20,12 @@ public enum InvitationError: Error, Equatable, Sendable {
 
 /// A bounded structural pass before JSONDecoder. JSONDecoder silently accepts unknown and
 /// duplicate keys; both must be rejected before using an invitation for authentication.
-private enum StrictInvitationKeys {
-    static func validate(_ data: Data, rootKeys: Set<String>, endpointKeys: Set<String>) throws {
+enum StrictJsonObjectKeys {
+    static func validate(_ data: Data, allowedKeys: Set<String>,
+                         requiredKeys: Set<String>, endpointKeys: Set<String>? = nil) throws {
         var parser = Parser(bytes: Array(data))
-        try parser.object(expected: rootKeys, endpointKeys: endpointKeys)
+        try parser.object(allowed: allowedKeys, required: requiredKeys,
+                          endpointKeys: endpointKeys)
         parser.whitespace()
         guard parser.position == parser.bytes.count else { throw InvitationError.invalidSchema }
     }
@@ -95,7 +97,7 @@ private enum StrictInvitationKeys {
                 return
             }
             while true {
-                try object(expected: expected, endpointKeys: nil)
+                try object(allowed: expected, required: expected, endpointKeys: nil)
                 whitespace()
                 guard position < bytes.count else { throw InvitationError.invalidSchema }
                 let delimiter = bytes[position]
@@ -105,7 +107,8 @@ private enum StrictInvitationKeys {
             }
         }
 
-        mutating func object(expected: Set<String>, endpointKeys: Set<String>?) throws {
+        mutating func object(allowed: Set<String>, required: Set<String>,
+                             endpointKeys: Set<String>?) throws {
             try expect(123)
             var seen = Set<String>()
             while true {
@@ -116,7 +119,7 @@ private enum StrictInvitationKeys {
                     break
                 }
                 let key = try string()
-                guard expected.contains(key) && seen.insert(key).inserted else {
+                guard allowed.contains(key) && seen.insert(key).inserted else {
                     throw InvitationError.invalidSchema
                 }
                 try expect(58)
@@ -132,7 +135,7 @@ private enum StrictInvitationKeys {
                 if delimiter == 125 { break }
                 guard delimiter == 44 else { throw InvitationError.invalidSchema }
             }
-            guard seen == expected else { throw InvitationError.invalidSchema }
+            guard required.isSubset(of: seen) else { throw InvitationError.invalidSchema }
         }
     }
 }
@@ -190,7 +193,8 @@ public enum InvitationCodec {
             throw InvitationError.jsonExceedsMaxBytes(actual: jsonData.count, max: maxJsonBytes)
         }
 
-        try StrictInvitationKeys.validate(jsonData, rootKeys: rootKeys, endpointKeys: endpointKeys)
+        try StrictJsonObjectKeys.validate(jsonData, allowedKeys: rootKeys,
+                                          requiredKeys: rootKeys, endpointKeys: endpointKeys)
 
         // Calculate payload hash directly from decoded JSON bytes
         let digest = SHA256.hash(data: jsonData)

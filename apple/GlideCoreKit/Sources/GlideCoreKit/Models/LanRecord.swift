@@ -39,6 +39,7 @@ public enum LanRecordError: Error, Equatable, Sendable {
     case payloadOutOfBounds(kind: LanRecordKind, actual: Int, min: Int, max: Int)
     case payloadExceedsMaxCeiling(actual: Int, max: Int)
     case truncatedPayload(expected: Int, actual: Int)
+    case trailingPayload(expected: Int, actual: Int)
     case invalidUuidLength
     case invalidStreamEndLength
 }
@@ -127,8 +128,8 @@ public enum LanRecordCodec {
             throw LanRecordError.unknownRecordKind(kindByte)
         }
 
-        let payloadLength = frame.subdata(in: 1..<5).withUnsafeBytes { ptr in
-            UInt32(bigEndian: ptr.load(as: UInt32.self))
+        let payloadLength = frame.dropFirst().prefix(4).reduce(UInt32(0)) {
+            ($0 << 8) | UInt32($1)
         }
 
         let length = Int(payloadLength)
@@ -148,6 +149,9 @@ public enum LanRecordCodec {
         guard frame.count >= headerSize + length else {
             throw LanRecordError.truncatedPayload(expected: headerSize + length, actual: frame.count)
         }
+        guard frame.count == headerSize + length else {
+            throw LanRecordError.trailingPayload(expected: headerSize + length, actual: frame.count)
+        }
 
         let payload = frame.subdata(in: headerSize..<(headerSize + length))
 
@@ -160,20 +164,26 @@ public enum LanRecordCodec {
             return .control(payload: payload)
         case .data:
             guard payload.count >= 17 else { throw LanRecordError.invalidUuidLength }
-            let uuidBytes = payload.subdata(in: 0..<16)
-            let uuid: UUID = uuidBytes.withUnsafeBytes { ptr in
-                UUID(uuid: ptr.load(as: uuid_t.self))
-            }
+            let uuidBytes = Array(payload.prefix(16))
+            let uuid = UUID(uuid: (
+                uuidBytes[0], uuidBytes[1], uuidBytes[2], uuidBytes[3],
+                uuidBytes[4], uuidBytes[5], uuidBytes[6], uuidBytes[7],
+                uuidBytes[8], uuidBytes[9], uuidBytes[10], uuidBytes[11],
+                uuidBytes[12], uuidBytes[13], uuidBytes[14], uuidBytes[15]
+            ))
             let chunk = payload.subdata(in: 16..<payload.count)
             return .data(bulkRef: uuid, chunk: chunk)
         case .streamEnd:
             guard payload.count == 24 else { throw LanRecordError.invalidStreamEndLength }
-            let uuidBytes = payload.subdata(in: 0..<16)
-            let uuid: UUID = uuidBytes.withUnsafeBytes { ptr in
-                UUID(uuid: ptr.load(as: uuid_t.self))
-            }
-            let actualBytes = payload.subdata(in: 16..<24).withUnsafeBytes { ptr in
-                UInt64(bigEndian: ptr.load(as: UInt64.self))
+            let uuidBytes = Array(payload.prefix(16))
+            let uuid = UUID(uuid: (
+                uuidBytes[0], uuidBytes[1], uuidBytes[2], uuidBytes[3],
+                uuidBytes[4], uuidBytes[5], uuidBytes[6], uuidBytes[7],
+                uuidBytes[8], uuidBytes[9], uuidBytes[10], uuidBytes[11],
+                uuidBytes[12], uuidBytes[13], uuidBytes[14], uuidBytes[15]
+            ))
+            let actualBytes = payload.suffix(8).reduce(UInt64(0)) {
+                ($0 << 8) | UInt64($1)
             }
             return .streamEnd(bulkRef: uuid, actualBytes: actualBytes)
         }

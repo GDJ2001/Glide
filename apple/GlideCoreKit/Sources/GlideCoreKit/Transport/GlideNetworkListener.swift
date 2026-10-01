@@ -4,6 +4,7 @@ import Security
 
 public enum GlideNetworkListenerError: Error {
     case missingTlsIdentity
+    case noBoundPort
 }
 
 /// Supervises continuous or on-demand TLS 1.3 socket listeners on Apple platforms.
@@ -11,6 +12,7 @@ public enum GlideNetworkListenerError: Error {
 public final class GlideNetworkListener: @unchecked Sendable {
     public private(set) var boundPort: UInt16 = 0
     public private(set) var isListening: Bool = false
+    public private(set) var tlsIdentity: SecIdentity?
 
     private var listener: NWListener?
     private let queue = DispatchQueue(label: "dev.glide.network.listener", qos: .userInitiated)
@@ -25,6 +27,8 @@ public final class GlideNetworkListener: @unchecked Sendable {
         spkiSha256Hex: String? = nil,
         presenceTokenHex: String? = nil,
         tlsIdentity: SecIdentity? = nil,
+        onReady: ((UInt16) -> Void)? = nil,
+        onFailure: ((Error) -> Void)? = nil,
         onConnection: @escaping (NWConnection) -> Void
     ) throws {
         stop()
@@ -32,6 +36,7 @@ public final class GlideNetworkListener: @unchecked Sendable {
         guard let tlsIdentity else { throw GlideNetworkListenerError.missingTlsIdentity }
 
         self.onConnectionHandler = onConnection
+        self.tlsIdentity = tlsIdentity
 
         let parameters = try GlideTlsParameters.createServerParameters(identity: tlsIdentity)
         let endpointPort = NWEndpoint.Port(rawValue: port) ?? NWEndpoint.Port(rawValue: 0)!
@@ -57,12 +62,24 @@ public final class GlideNetworkListener: @unchecked Sendable {
 
         listener.stateUpdateHandler = { [weak self] state in
             guard let self = self else { return }
+            guard self.listener === listener else { return }
             switch state {
             case .ready:
+                guard let port = listener.port?.rawValue, port > 0 else {
+                    self.isListening = false
+                    onFailure?(GlideNetworkListenerError.noBoundPort)
+                    return
+                }
+                self.boundPort = port
                 self.isListening = true
-                self.boundPort = listener.port?.rawValue ?? 0
-            case .failed, .cancelled:
+                onReady?(port)
+            case .failed(let error):
                 self.isListening = false
+                self.boundPort = 0
+                onFailure?(error)
+            case .cancelled:
+                self.isListening = false
+                self.boundPort = 0
             default:
                 break
             }
@@ -70,6 +87,7 @@ public final class GlideNetworkListener: @unchecked Sendable {
 
         listener.newConnectionHandler = { [weak self] connection in
             guard let self = self else { return }
+            guard self.listener === listener else { connection.cancel(); return }
             connection.start(queue: self.queue)
             self.onConnectionHandler?(connection)
         }
@@ -84,6 +102,8 @@ public final class GlideNetworkListener: @unchecked Sendable {
         listener = nil
         isListening = false
         boundPort = 0
+        tlsIdentity = nil
+        onConnectionHandler = nil
     }
 
     deinit {
