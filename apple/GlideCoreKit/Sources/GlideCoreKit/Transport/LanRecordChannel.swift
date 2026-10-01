@@ -21,6 +21,9 @@ public actor LanRecordChannel {
 
     /// Reads exactly `count` bytes from the underlying TLS connection.
     public func readExact(count: Int) async throws -> Data {
+        guard count >= 0, count <= LanRecordCodec.maxRecordPayloadSize else {
+            throw LanChannelError.payloadTooLarge(count)
+        }
         var accumulated = Data()
         while accumulated.count < count {
             let needed = count - accumulated.count
@@ -52,6 +55,7 @@ public actor LanRecordChannel {
         let headerData = try await readExact(count: LanRecordCodec.headerSize)
         guard let kindByte = headerData.first,
               let kind = LanRecordKind(rawValue: kindByte) else {
+            connection.cancel()
             throw LanRecordError.unknownRecordKind(headerData.first ?? 0)
         }
 
@@ -63,7 +67,13 @@ public actor LanRecordChannel {
 
         let payloadSize = Int(length)
         guard payloadSize <= LanRecordCodec.maxRecordPayloadSize else {
+            connection.cancel()
             throw LanRecordError.payloadExceedsMaxCeiling(actual: payloadSize, max: LanRecordCodec.maxRecordPayloadSize)
+        }
+        guard payloadSize >= kind.minPayloadSize, payloadSize <= kind.maxPayloadSize else {
+            connection.cancel()
+            throw LanRecordError.payloadOutOfBounds(kind: kind, actual: payloadSize,
+                                                  min: kind.minPayloadSize, max: kind.maxPayloadSize)
         }
 
         let payloadData = try await readExact(count: payloadSize)

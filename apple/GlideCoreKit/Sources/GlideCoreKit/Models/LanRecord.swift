@@ -79,6 +79,13 @@ public enum LanRecordCodec {
         case .control(let data):
             payload = data
         case .data(let bulkRef, let chunk):
+            // Validate before adding the UUID prefix or allocating a second buffer.
+            guard !chunk.isEmpty, chunk.count <= LanRecordKind.data.maxPayloadSize - 16 else {
+                let (actual, overflow) = chunk.count.addingReportingOverflow(16)
+                throw LanRecordError.payloadOutOfBounds(
+                    kind: .data, actual: overflow ? Int.max : actual,
+                    min: LanRecordKind.data.minPayloadSize, max: LanRecordKind.data.maxPayloadSize)
+            }
             var data = Data(count: 16 + chunk.count)
             withUnsafeBytes(of: bulkRef.uuid) { uuidPtr in
                 data.replaceSubrange(0..<16, with: uuidPtr)
