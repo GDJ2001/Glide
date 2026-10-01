@@ -1,0 +1,51 @@
+name: Linux development packages
+
+on:
+  push:
+    branches:
+      - fix/native-completion-hardening
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Select .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install RPM packaging tool
+        run: sudo apt-get update && sudo apt-get install -y rpm
+
+      - name: Build x64 and ARM64 native packages
+        run: bash tools/package-linux-native.sh linux-x64 linux-arm64
+
+      - name: Check package metadata and manifest
+        run: |
+          manifest=$(find build/distributions/runs -name BUILD-MANIFEST.txt -print -quit)
+          test -n "$manifest"
+          grep -Fx "source_commit=$GITHUB_SHA" "$manifest"
+          package_dir=$(dirname "$manifest")
+          test "$(find "$package_dir" -maxdepth 1 -name '*.deb' | wc -l)" -eq 2
+          test "$(find "$package_dir" -maxdepth 1 -name '*.rpm' | wc -l)" -eq 2
+          test "$(find "$package_dir" -maxdepth 1 -name '*.tar.gz' | wc -l)" -eq 2
+          (cd "$package_dir" && sha256sum -c SHA256SUMS-linux-x64.txt && sha256sum -c SHA256SUMS-linux-arm64.txt)
+          dpkg-deb --info "$package_dir/glide_1.0.0_amd64.deb"
+          dpkg-deb --info "$package_dir/glide_1.0.0_arm64.deb"
+          rpm -qip "$package_dir"/*.rpm
+
+      - name: Upload development packages
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
+        with:
+          name: linux-packages-${{ github.sha }}
+          path: build/distributions/runs/*/linux/
+          if-no-files-found: error
+          retention-days: 7
