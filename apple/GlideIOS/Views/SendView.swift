@@ -5,7 +5,7 @@ import GlideCoreKit
 public struct SendView: View {
     @ObservedObject var viewModel: IosTransferViewModel
     @State private var isFileImporterPresented: Bool = false
-    @State private var selectedPhotoItems: [PhotosPickerItem] = []
+    @State private var isPhotoPickerPresented = false
 
     public init(viewModel: IosTransferViewModel) {
         self.viewModel = viewModel
@@ -77,10 +77,9 @@ public struct SendView: View {
                         }
                         .buttonStyle(.bordered)
 
-                        PhotosPicker(
-                            selection: $selectedPhotoItems,
-                            matching: .any(of: [.images, .videos])
-                        ) {
+                        Button {
+                            isPhotoPickerPresented = true
+                        } label: {
                             Label("Photos", systemImage: "photo.badge.plus")
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 12)
@@ -113,9 +112,15 @@ public struct SendView: View {
             .disabled(viewModel.isStagingFiles || viewModel.isTransferActive)
             .overlay {
                 if viewModel.isStagingFiles {
-                    ProgressView("Preparing files…")
-                        .padding()
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                    VStack(spacing: 12) {
+                        ProgressView("Preparing files…")
+                        if viewModel.isImportingPhotos {
+                            Button("Cancel") { viewModel.cancelPhotoImport() }
+                                .frame(minHeight: 44)
+                        }
+                    }
+                    .padding()
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
                 }
             }
             .navigationTitle("Glide Send")
@@ -131,20 +136,10 @@ public struct SendView: View {
                     break
                 }
             }
-            .onChange(of: selectedPhotoItems) { items in
-                Task {
-                    var urls: [URL] = []
-                    for item in items {
-                        if let data = try? await item.loadTransferable(type: Data.self) {
-                            let tempUrl = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".jpg")
-                            try? data.write(to: tempUrl)
-                            urls.append(tempUrl)
-                        }
-                    }
-                    await MainActor.run {
-                        viewModel.stageFiles(urls: urls)
-                        selectedPhotoItems.removeAll()
-                    }
+            .sheet(isPresented: $isPhotoPickerPresented) {
+                PhotoFilePicker { providers in
+                    isPhotoPickerPresented = false
+                    viewModel.importPhotos(providers: providers)
                 }
             }
             .sheet(isPresented: $viewModel.isScannerPresented) {
@@ -155,6 +150,35 @@ public struct SendView: View {
                 }
                 #endif
             }
+        }
+    }
+}
+
+/// The system picker supplies file representations through NSItemProvider, avoiding
+/// loading a whole video into Data or changing its extension to .jpg.
+private struct PhotoFilePicker: UIViewControllerRepresentable {
+    let onSelection: ([NSItemProvider]) -> Void
+
+    func makeUIViewController(context: Context) -> PHPickerViewController {
+        var configuration = PHPickerConfiguration(photoLibrary: .shared())
+        configuration.filter = .any(of: [.images, .videos])
+        configuration.selectionLimit = ShareExtensionCoordinator.maxItemCount
+        configuration.preferredAssetRepresentationMode = .current
+        let picker = PHPickerViewController(configuration: configuration)
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ controller: PHPickerViewController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator { Coordinator(onSelection: onSelection) }
+
+    final class Coordinator: NSObject, PHPickerViewControllerDelegate {
+        private let onSelection: ([NSItemProvider]) -> Void
+        init(onSelection: @escaping ([NSItemProvider]) -> Void) { self.onSelection = onSelection }
+
+        func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+            onSelection(results.map(\.itemProvider))
         }
     }
 }

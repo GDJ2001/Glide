@@ -4,19 +4,19 @@ This is an implementation record, not signed-device or runtime validation. The c
 
 ## Implemented source
 
-- `ShareViewController` delegates to one serial provider-import worker. Only one provider load proceeds at a time. The provider URL is copied before its completion callback returns. A stalled provider has a 120-second wait deadline; a file copy checks cancellation between bounded 64 KiB chunks.
+- `ShareViewController` and the native Photos picker delegate to `AppGroupProviderImport`, a serial provider-import worker. Only one provider load proceeds at a time. The provider URL is copied before its completion callback returns. A stalled provider has a 120-second wait deadline; a file copy checks cancellation between bounded 64 KiB chunks.
 - Cancel signals the active provider's `Progress`, interrupts copying, and discards the unpublished batch. Worker ownership prevents cleanup racing a copy. Publication and cancellation are ordered; an already published batch is a completed handoff, not an outbound transfer.
 - `AppGroupShareQueue.PendingBatch` opens sources with `O_NOFOLLOW`, checks the open descriptor is a regular file, applies item/batch limits before copying, checks limits during streaming, and rejects a final length that differs from the source's initial length. The manifest appears only after all items are staged.
 - `StagedFilesStore` owns selected-document security-scope leases until removal, serializes queue mutations off the main actor, and publishes bounded metadata snapshots. The UI uses cached sizes. The view model orders pending imports/removals so activation cannot race a Clear action.
 - Send and Receive cannot start while staging is pending, and selection cannot mutate during an active transfer. Multi-row deletion captures all URLs before mutating the list.
+- The Photos picker uses provider file representations and requests the current asset representation, instead of loading entire images/videos into `Data`. Names retain provider extensions, with a content-type-derived extension when the suggested name has none. Its import budget subtracts the current selection's item count and bytes. Cancellation discards the unpublished photo batch and retains the earlier selection.
 
 Apple specifies that provider completion callbacks use an internal queue and that temporary file representations must be copied within the callback: [NSItemProvider](https://developer.apple.com/documentation/foundation/nsitemprovider), [file representations](https://developer.apple.com/documentation/foundation/nsitemprovider/loadfilerepresentation%28fortypeidentifier%3Acompletionhandler%3A%29).
 
 ## Remaining implementation
 
-1. Replace the Photos picker `Data` load and unconditional `.jpg` temporary filename with bounded file representations preserving the actual media type. Keep copied sources private, clean them up on removal/cancellation, and enforce limits across the selected batch.
-2. Wire the authenticated Apple engine, listener, consent, cancellation and verified history before enabling transfers. Document leases alone do not implement a transfer.
-3. Add target-host runtime coverage for App Group access using matching signed app/extension provisioning. Unsigned simulator compilation does not establish entitlement behavior.
+1. Wire the authenticated Apple engine, listener, consent, cancellation and verified history before enabling transfers. Document leases alone do not implement a transfer.
+2. Add target-host runtime coverage for App Group access using matching signed app/extension provisioning. Unsigned simulator compilation does not establish entitlement behavior.
 
 ## Phase 2 cases (not executed)
 

@@ -31,6 +31,8 @@ public final class IosTransferViewModel: ObservableObject {
     @Published public var stagedSize: Int64 = 0
     @Published public private(set) var stagedSizes: [URL: Int64] = [:]
     @Published public private(set) var isStagingFiles = false
+    @Published public private(set) var isImportingPhotos = false
+    private var photoImport: AppGroupProviderImport?
     private let stagedFiles = StagedFilesStore()
     private var stagingTask: Task<Void, Never>?
     private var pendingStagingOperations = 0
@@ -101,6 +103,38 @@ public final class IosTransferViewModel: ObservableObject {
             }
         }
     }
+
+    public func importPhotos(providers: [NSItemProvider]) {
+        guard !isTransferActive, !providers.isEmpty else { return }
+        enqueueStaging {
+            self.isImportingPhotos = true
+            let remainingItems = ShareExtensionCoordinator.maxItemCount - self.stagedUrls.count
+            let remainingBytes = ShareExtensionCoordinator.maxBatchSizeBytes - self.stagedSize
+            let result: Result<[URL], Error> = await withCheckedContinuation { continuation in
+                let importer = AppGroupProviderImport(providers: providers, maxItems: remainingItems,
+                                                       maxBatchBytes: remainingBytes) { result in
+                    continuation.resume(returning: result)
+                }
+                self.photoImport = importer
+                importer.start()
+            }
+            self.photoImport = nil
+            self.isImportingPhotos = false
+            switch result {
+            case .success(let urls):
+                do { self.apply(try await self.stagedFiles.add(urls)) }
+                catch {
+                    self.transferStatusText = "Photos were queued but could not be selected. Reopen Glide to retry."
+                }
+            case .failure(let error):
+                self.transferStatusText = error is CancellationError
+                    ? "Photo import cancelled. Your earlier selection is unchanged."
+                    : "Photos could not be added. Check available storage and the batch limits."
+            }
+        }
+    }
+
+    public func cancelPhotoImport() { photoImport?.cancel() }
 
     public func removeStagedFile(url: URL) {
         removeStagedFiles(urls: [url])

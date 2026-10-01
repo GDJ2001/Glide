@@ -17,7 +17,20 @@ public actor StagedFilesStore {
     public init() {}
 
     public func importSharedFiles() throws -> Snapshot {
-        try add(AppGroupShareQueue.queuedFiles())
+        var selected: [URL] = []
+        var total = sizes.values.reduce(0, +)
+        for url in try AppGroupShareQueue.queuedFiles() where !urls.contains(url) {
+            guard urls.count + selected.count < ShareExtensionCoordinator.maxItemCount else { break }
+            let values = try url.resourceValues(forKeys: [.fileSizeKey])
+            guard let size = values.fileSize, size >= 0 else { continue }
+            let (next, overflow) = total.addingReportingOverflow(Int64(size))
+            guard !overflow, next <= ShareExtensionCoordinator.maxBatchSizeBytes else { break }
+            selected.append(url)
+            total = next
+        }
+        // More than one extension batch can be queued. Leave excess files queued
+        // for a later send rather than making the entire queue impossible to import.
+        return try add(selected)
     }
 
     public func add(_ incoming: [URL]) throws -> Snapshot {

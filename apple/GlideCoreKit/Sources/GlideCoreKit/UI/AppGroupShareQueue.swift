@@ -32,18 +32,25 @@ public enum AppGroupShareQueue {
 
     public final class PendingBatch {
         private let directory: URL
+        private let maxItems: Int
+        private let maxBatchBytes: Int64
         private var entries: [Entry] = []
         private var totalBytes: Int64 = 0
         private var published = false
 
-        fileprivate init(directory: URL) { self.directory = directory }
+        fileprivate init(directory: URL, maxItems: Int, maxBatchBytes: Int64) {
+            self.directory = directory
+            self.maxItems = maxItems
+            self.maxBatchBytes = maxBatchBytes
+        }
 
         /// Must run before NSItemProvider's completion handler returns: its URL is temporary.
+        @discardableResult
         public func appendTemporaryFile(_ source: URL, suggestedName: String?,
-                                        isCancelled: () -> Bool = { false }) throws {
+                                        isCancelled: () -> Bool = { false }) throws -> URL {
             if isCancelled() { throw CancellationError() }
             guard !published else { throw QueueError.invalidFile }
-            guard entries.count < ShareExtensionCoordinator.maxItemCount else { throw QueueError.tooManyItems }
+            guard entries.count < maxItems else { throw QueueError.tooManyItems }
             let values = try source.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
             guard source.isFileURL, values.isRegularFile == true, values.isSymbolicLink != true else {
                 throw QueueError.invalidFile
@@ -60,7 +67,7 @@ public enum AppGroupShareQueue {
                 throw QueueError.itemTooLarge
             }
             let (expectedTotal, overflow) = totalBytes.addingReportingOverflow(sourceMetadata.st_size)
-            guard !overflow, expectedTotal <= ShareExtensionCoordinator.maxBatchSizeBytes else {
+            guard !overflow, expectedTotal <= maxBatchBytes else {
                 throw QueueError.batchTooLarge
             }
             let rawName = (suggestedName?.isEmpty == false ? suggestedName! : source.lastPathComponent)
@@ -85,7 +92,7 @@ public enum AppGroupShareQueue {
                     guard !itemOverflow, itemNext <= ShareExtensionCoordinator.maxItemSizeBytes else {
                         throw QueueError.itemTooLarge
                     }
-                    guard !batchOverflow, batchNext <= ShareExtensionCoordinator.maxBatchSizeBytes else {
+                    guard !batchOverflow, batchNext <= maxBatchBytes else {
                         throw QueueError.batchTooLarge
                     }
                     try output.write(contentsOf: chunk)
@@ -101,6 +108,7 @@ public enum AppGroupShareQueue {
                 }
                 entries.append(Entry(name: name, storedName: storedName, sizeBytes: copied))
                 totalBytes += copied
+                return target
             } catch {
                 try? input.close()
                 try? output.close()
@@ -123,12 +131,19 @@ public enum AppGroupShareQueue {
         }
     }
 
-    public static func createBatch() throws -> PendingBatch {
+    public static func createBatch(maxItems: Int = ShareExtensionCoordinator.maxItemCount,
+                                   maxBatchBytes: Int64 = ShareExtensionCoordinator.maxBatchSizeBytes) throws -> PendingBatch {
+        guard maxItems > 0, maxItems <= ShareExtensionCoordinator.maxItemCount else {
+            throw QueueError.tooManyItems
+        }
+        guard maxBatchBytes >= 0, maxBatchBytes <= ShareExtensionCoordinator.maxBatchSizeBytes else {
+            throw QueueError.batchTooLarge
+        }
         let root = try queueRoot()
         let directory = root.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false,
                                                 attributes: [.posixPermissions: 0o700])
-        return PendingBatch(directory: directory)
+        return PendingBatch(directory: directory, maxItems: maxItems, maxBatchBytes: maxBatchBytes)
     }
 
     /// Returns only completed batches. Files stay staged until the user sends or removes them.
