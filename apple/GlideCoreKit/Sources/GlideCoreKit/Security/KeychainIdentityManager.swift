@@ -7,6 +7,9 @@ public enum KeychainIdentityError: Error, Equatable, Sendable {
     case keyNotFound
     case keyExportFailed(String)
     case signingFailed(String)
+    case tlsCertificateFailed(String)
+    case tlsIdentityUnavailable
+    case certificateStoreFailed(Int)
 }
 
 /// Manages local device cryptographic identity keys using Apple Keychain Services.
@@ -16,7 +19,9 @@ public final class KeychainIdentityManager: @unchecked Sendable {
     private static let keyTag = "dev.glide.identity.key.p256"
 
     private let lock = NSLock()
+    private let tlsLock = NSLock()
     private var cachedKey: SecKey?
+    private var cachedTlsIdentity: SecIdentity?
 
     public init() {}
 
@@ -85,6 +90,60 @@ public final class KeychainIdentityManager: @unchecked Sendable {
         let spkiData = try getPublicKeySpkiData()
         let digest = SHA256.hash(data: spkiData)
         return digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Returns a real TLS identity whose certificate uses the persistent
+    /// Keychain key. The invitation must pin the SPKI of this certificate.
+    public func getOrCreateTlsIdentity() throws -> SecIdentity {
+        tlsLock.lock()
+        defer { tlsLock.unlock() }
+        if let identity = cachedTlsIdentity { return identity }
+
+        let privateKey = try getOrCreateIdentityKey()
+        let certificate: SecCertificate
+        do {
+            certificate = try LocalTlsCertificate.create(privateKey: privateKey)
+            let certificateSpki = try AppleCertificateSpki.der(from: certificate)
+            let keySpki = try getPublicKeySpkiData()
+            guard certificateSpki == keySpki else {
+                throw KeychainIdentityError.tlsIdentityUnavailable
+            }
+        } catch {
+            throw KeychainIdentityError.tlsCertificateFailed(error.localizedDescription)
+        }
+
+        let certificateQuery: [String: Any] = [
+            kSecClass as String: kSecClassCertificate,
+            kSecAttrLabel as String: "dev.glide.local.tls.certificate"
+        ]
+        let deleteStatus = SecItemDelete(certificateQuery as CFDictionary)
+        guard deleteStatus == errSecSuccess || deleteStatus == errSecItemNotFound else {
+            throw KeychainIdentityError.certificateStoreFailed(Int(deleteStatus))
+        }
+        var addQuery = certificateQuery
+        addQuery[kSecValueRef as String] = certificate
+        let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
+        guard addStatus == errSecSuccess else {
+            throw KeychainIdentityError.certificateStoreFailed(Int(addStatus))
+        }
+
+        guard let identity = SecIdentityCreate(nil, certificate, privateKey) else {
+            throw KeychainIdentityError.tlsIdentityUnavailable
+        }
+        cachedTlsIdentity = identity
+        return identity
+    }
+
+    public func getTlsCertificateSpkiSha256Hex() throws -> String {
+        let identity = try getOrCreateTlsIdentity()
+        var certificate: SecCertificate?
+        guard SecIdentityCopyCertificate(identity, &certificate) == errSecSuccess,
+              let certificate else {
+            throw KeychainIdentityError.tlsIdentityUnavailable
+        }
+        let spki = try AppleCertificateSpki.der(from: certificate)
+        return SHA256.hash(data: spki)
+            .map { String(format: "%02x", $0) }.joined()
     }
 
     /// Signs challenge data using the device private key with SHA-256.
