@@ -135,7 +135,6 @@ public final class QuarantineStagingStore: @unchecked Sendable {
             throw QuarantineError.ioError("Could not create a private destination staging file.")
         }
         let target = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
-        var copyHasher = SHA256()
         var copiedBytes: Int64 = 0
         do {
             while let chunk = try source.read(upToCount: 65_536), !chunk.isEmpty {
@@ -144,16 +143,11 @@ public final class QuarantineStagingStore: @unchecked Sendable {
                     throw QuarantineError.lengthMismatch(expected: expectedLengthBytes, actual: next)
                 }
                 try target.write(contentsOf: chunk)
-                copyHasher.update(data: chunk)
                 copiedBytes = next
             }
             try source.close()
             guard copiedBytes == expectedLengthBytes else {
                 throw QuarantineError.lengthMismatch(expected: expectedLengthBytes, actual: copiedBytes)
-            }
-            let copiedDigest = copyHasher.finalize().map { String(format: "%02x", $0) }.joined()
-            guard constantTimeCompare(copiedDigest, expected) else {
-                throw QuarantineError.digestMismatch(expected: expected, actual: copiedDigest)
             }
             guard Darwin.fsync(fd) == 0 else {
                 throw QuarantineError.ioError("Could not sync the verified destination copy.")
@@ -164,6 +158,31 @@ public final class QuarantineStagingStore: @unchecked Sendable {
             try? target.close()
             throw error
         }
+
+        // Read back the destination file itself. Hashing only the source chunks
+        // passed to write() would not verify the bytes stored in this new file.
+        let verifyFd = Darwin.open(temporaryUrl.path, O_RDONLY | O_NOFOLLOW)
+        guard verifyFd >= 0 else { throw QuarantineError.ioError("Could not verify the destination copy.") }
+        let verificationSource = FileHandle(fileDescriptor: verifyFd, closeOnDealloc: true)
+        defer { try? verificationSource.close() }
+        var destinationHasher = SHA256()
+        var verifiedBytes: Int64 = 0
+        while let chunk = try verificationSource.read(upToCount: 65_536), !chunk.isEmpty {
+            let (next, overflow) = verifiedBytes.addingReportingOverflow(Int64(chunk.count))
+            guard !overflow && next <= expectedLengthBytes else {
+                throw QuarantineError.lengthMismatch(expected: expectedLengthBytes, actual: next)
+            }
+            destinationHasher.update(data: chunk)
+            verifiedBytes = next
+        }
+        guard verifiedBytes == expectedLengthBytes else {
+            throw QuarantineError.lengthMismatch(expected: expectedLengthBytes, actual: verifiedBytes)
+        }
+        let destinationDigest = destinationHasher.finalize().map { String(format: "%02x", $0) }.joined()
+        guard constantTimeCompare(destinationDigest, expected) else {
+            throw QuarantineError.digestMismatch(expected: expected, actual: destinationDigest)
+        }
+        try verificationSource.close()
 
         let existingFiles = try FileManager.default.contentsOfDirectory(atPath: destinationDirectory.path)
         let finalFilename = DarwinPathSanitizer.resolveCollision(filename: sanitizedName, existingNames: Set(existingFiles))

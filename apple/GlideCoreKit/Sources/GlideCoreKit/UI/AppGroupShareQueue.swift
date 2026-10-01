@@ -7,6 +7,7 @@ public enum AppGroupShareQueue {
     public static let groupIdentifier = "group.dev.glide.shared"
     private static let queueDirectoryName = "ShareQueue"
     private static let manifestName = "manifest.json"
+    private static let maxManifestBytes = 1_048_576
     private static let staleInterval: TimeInterval = 7 * 24 * 60 * 60
 
     public enum QueueError: Error {
@@ -93,6 +94,7 @@ public enum AppGroupShareQueue {
             guard !published, !entries.isEmpty else { throw QueueError.invalidFile }
             let manifest = Manifest(createdAt: Date(), entries: entries)
             let data = try JSONEncoder().encode(manifest)
+            guard data.count <= AppGroupShareQueue.maxManifestBytes else { throw QueueError.batchTooLarge }
             try data.write(to: directory.appendingPathComponent(AppGroupShareQueue.manifestName), options: .atomic)
             published = true
         }
@@ -122,9 +124,7 @@ public enum AppGroupShareQueue {
                   UUID(uuidString: directory.lastPathComponent) != nil,
                   (try? directory.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink != true else { continue }
             let manifestURL = directory.appendingPathComponent(manifestName)
-            guard let data = try? Data(contentsOf: manifestURL),
-                  data.count <= 256_000,
-                  let manifest = try? JSONDecoder().decode(Manifest.self, from: data) else {
+            guard let manifest = try? readManifest(at: manifestURL) else {
                 removeIfStale(directory)
                 continue
             }
@@ -174,7 +174,7 @@ public enum AppGroupShareQueue {
               UUID(uuidString: batchDirectory.lastPathComponent) != nil,
               UUID(uuidString: itemDirectory.lastPathComponent) != nil else { return }
         let manifestURL = batchDirectory.appendingPathComponent(manifestName)
-        let manifest = try JSONDecoder().decode(Manifest.self, from: Data(contentsOf: manifestURL))
+        let manifest = try readManifest(at: manifestURL)
         guard let matched = manifest.entries.first(where: {
             $0.storedName == itemDirectory.lastPathComponent && $0.name == url.lastPathComponent
         }) else { return }
@@ -197,6 +197,24 @@ public enum AppGroupShareQueue {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true,
                                                 attributes: [.posixPermissions: 0o700])
         return root
+    }
+
+    /// Bound the read before allocating JSON data, including for a malformed local queue file.
+    private static func readManifest(at url: URL) throws -> Manifest {
+        let fd = Darwin.open(url.path, O_RDONLY | O_NOFOLLOW)
+        guard fd >= 0 else { throw QueueError.invalidFile }
+        let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+        defer { try? handle.close() }
+        var metadata = stat()
+        guard Darwin.fstat(fd, &metadata) == 0,
+              metadata.st_mode & mode_t(S_IFMT) == mode_t(S_IFREG),
+              metadata.st_size >= 0, metadata.st_size <= maxManifestBytes else {
+            throw QueueError.invalidFile
+        }
+        guard let data = try handle.read(upToCount: maxManifestBytes + 1),
+              data.count <= maxManifestBytes,
+              data.count == metadata.st_size else { throw QueueError.invalidFile }
+        return try JSONDecoder().decode(Manifest.self, from: data)
     }
 
     private static func removeIfStale(_ directory: URL) {

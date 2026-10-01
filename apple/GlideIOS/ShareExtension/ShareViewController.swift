@@ -57,7 +57,9 @@ public final class ShareViewController: UIViewController {
             guard let type = provider.registeredTypeIdentifiers.first(where: {
                 UTType($0)?.conforms(to: .data) == true
             }) else {
+                lock.lock()
                 firstError = AppGroupShareQueue.QueueError.invalidFile
+                lock.unlock()
                 continue
             }
             group.enter()
@@ -98,6 +100,7 @@ public final class ShareViewController: UIViewController {
     }
 
     private func showFailure(_ text: String) {
+        stagingError = stagingError ?? AppGroupShareQueue.QueueError.invalidFile
         message.text = text
         closeButton.isHidden = false
     }
