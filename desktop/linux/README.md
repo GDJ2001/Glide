@@ -2,12 +2,13 @@
 
 The Avalonia desktop app, CLI, and daemon use the shared .NET projects in `desktop/src/`. This directory contains the GUI, desktop entry, systemd user service, and daemon configuration examples. The current completion gates are tracked in [the recovery ledger](../../doc/planning/native-platforms/RECOVERY_STATUS.md).
 
-From the repository root, build and test the shared code:
+From the repository root, build the GUI during implementation:
 
 ```sh
 dotnet build desktop/linux/Glide.Linux.UI/Glide.Linux.UI.csproj -c Release
-dotnet test desktop/tests/Glide.Tests/Glide.Tests.csproj -c Release --no-build
 ```
+
+After the recovery implementation freeze, run the shared tests with `dotnet test desktop/tests/Glide.Tests/Glide.Tests.csproj -c Release` as part of Phase 2.
 
 Build unsigned development `.tar.gz`, `.deb`, and `.rpm` packages from a clean commit on a native Linux host with .NET 10, Bash, tar, dpkg-deb, rpmbuild, rpm2cpio, cpio, and coreutils. Run once on an x64 host and once on an ARM64 host; RPM packaging rejects a mismatched host architecture before publishing. With no runtime argument, the script selects the current host architecture.
 
