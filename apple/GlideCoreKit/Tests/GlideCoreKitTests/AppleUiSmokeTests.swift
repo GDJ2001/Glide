@@ -18,26 +18,23 @@ final class AppleUiSmokeTests: XCTestCase {
     }
 
     // 1. Send View & File Staging Smoke Test
-    func testSendFlowAndFileStaging() throws {
+    func testSendFlowAndFileStaging() async throws {
         let fileA = tempDir.appendingPathComponent("test1.txt")
         let fileB = tempDir.appendingPathComponent("test2.bin")
         try "Test file A contents".write(to: fileA, atomically: true, encoding: .utf8)
         try Data(repeating: 0x42, count: 1024).write(to: fileB)
 
         let store = StagedFilesStore()
-        store.stage(fileA)
-        store.stage(fileB)
-
-        let staged = store.stagedUrls
-        XCTAssertEqual(staged.count, 2)
-        XCTAssertTrue(staged.contains(fileA))
-        XCTAssertTrue(staged.contains(fileB))
-        XCTAssertGreaterThan(store.totalSizeBytes, 1000)
+        let snap1 = try await store.add([fileA, fileB])
+        XCTAssertEqual(snap1.urls.count, 2)
+        XCTAssertTrue(snap1.urls.contains(fileA))
+        XCTAssertTrue(snap1.urls.contains(fileB))
+        XCTAssertGreaterThan(snap1.totalBytes, 1000)
 
         // Clear staged files
-        store.removeAll()
-        XCTAssertEqual(store.stagedUrls.count, 0)
-        XCTAssertEqual(store.totalSizeBytes, 0)
+        let snap2 = await store.remove([fileA, fileB])
+        XCTAssertEqual(snap2.urls.count, 0)
+        XCTAssertEqual(snap2.totalBytes, 0)
     }
 
     // 2. Receive View & Invitation State Smoke Test
