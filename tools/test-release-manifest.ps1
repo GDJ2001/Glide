@@ -16,6 +16,12 @@ Set-StrictMode -Version Latest
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $scriptPath = Join-Path $PSScriptRoot 'assemble-release-manifest.ps1'
 
+$distDir = Join-Path $repoRoot 'build\distributions'
+$jsonPath = Join-Path $distDir 'RELEASE_MANIFEST.json'
+$mdPath = Join-Path $distDir 'RELEASE_CATALOG.md'
+$originalJson = if (Test-Path $jsonPath) { Get-Content -Path $jsonPath -Raw -Encoding utf8 } else { $null }
+$originalMd = if (Test-Path $mdPath) { Get-Content -Path $mdPath -Raw -Encoding utf8 } else { $null }
+
 Write-Host "=================================================================" -ForegroundColor Cyan
 Write-Host "   Glide Release Manifest Generator Regression Test Suite        " -ForegroundColor Cyan
 Write-Host "=================================================================" -ForegroundColor Cyan
@@ -159,3 +165,11 @@ Assert-Test "Strict separation of runnable packages and test evidence" {
 Write-Host "`n=================================================================" -ForegroundColor Cyan
 Write-Host "   ALL $passCount / $testCount RELEASE MANIFEST REGRESSION TESTS PASSED!       " -ForegroundColor Green
 Write-Host "=================================================================" -ForegroundColor Cyan
+
+# Restore original candidate manifest and catalog if they existed prior to test execution
+if ($originalJson) {
+    Set-Content -Path $jsonPath -Value $originalJson -Encoding utf8
+}
+if ($originalMd) {
+    Set-Content -Path $mdPath -Value $originalMd -Encoding utf8
+}

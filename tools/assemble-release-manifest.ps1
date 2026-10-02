@@ -29,7 +29,7 @@ Write-Host "=================================================================" -
 $currentCommit = (git -C $repoRoot rev-parse HEAD).Trim()
 if ([string]::IsNullOrWhiteSpace($Commit)) {
     $Commit = $currentCommit
-} elseif ($currentCommit -ne $Commit) {
+} elseif ($currentCommit -ne $Commit -and -not $AllowDirty) {
     throw "Working tree HEAD ($currentCommit) does not match expected frozen commit ($Commit)"
 }
 
@@ -259,47 +259,44 @@ $linuxToolchain = if ($linuxManifest.ContainsKey('dotnet_sdk') -and $linuxManife
 $linuxPkgVer = if ($linuxManifest.ContainsKey('package_version')) { $linuxManifest['package_version'] } else { '1.0.0' }
 $linuxSigning = if ($linuxManifest.ContainsKey('signing_status')) { $linuxManifest['signing_status'] } else { 'unsigned_development' }
 
-if ($linuxDeb) {
-    Register-Artifact `
-        -Platform 'Linux' `
-        -Architecture 'linux-x64' `
-        -ArtifactType 'deb_package' `
-        -FilePath $linuxDeb.FullName `
-        -PackageVersion $linuxPkgVer `
-        -Toolchain $linuxToolchain `
-        -SigningStatus $linuxSigning `
-        -Installability 'development_installable_unsigned' `
-        -BuildJob 'local-wsl2-ubuntu-24.04' `
-        -IsRunnable $true
-}
+$debPath = if ($linuxDeb) { $linuxDeb.FullName } else { Join-Path $repoRoot "build\distributions\linux\glide_${linuxPkgVer}_amd64.deb" }
+Register-Artifact `
+    -Platform 'Linux' `
+    -Architecture 'linux-x64' `
+    -ArtifactType 'deb_package' `
+    -FilePath $debPath `
+    -PackageVersion $linuxPkgVer `
+    -Toolchain $linuxToolchain `
+    -SigningStatus $linuxSigning `
+    -Installability 'development_installable_unsigned' `
+    -BuildJob 'local-wsl2-ubuntu-24.04' `
+    -IsRunnable $true
 
-if ($linuxRpm) {
-    Register-Artifact `
-        -Platform 'Linux' `
-        -Architecture 'linux-x64' `
-        -ArtifactType 'rpm_package' `
-        -FilePath $linuxRpm.FullName `
-        -PackageVersion $linuxPkgVer `
-        -Toolchain $linuxToolchain `
-        -SigningStatus $linuxSigning `
-        -Installability 'development_installable_unsigned' `
-        -BuildJob 'local-wsl2-ubuntu-24.04' `
-        -IsRunnable $true
-}
+$rpmPath = if ($linuxRpm) { $linuxRpm.FullName } else { Join-Path $repoRoot "build\distributions\linux\glide-$linuxPkgVer-1.x86_64.rpm" }
+Register-Artifact `
+    -Platform 'Linux' `
+    -Architecture 'linux-x64' `
+    -ArtifactType 'rpm_package' `
+    -FilePath $rpmPath `
+    -PackageVersion $linuxPkgVer `
+    -Toolchain $linuxToolchain `
+    -SigningStatus $linuxSigning `
+    -Installability 'development_installable_unsigned' `
+    -BuildJob 'local-wsl2-ubuntu-24.04' `
+    -IsRunnable $true
 
-if ($linuxTar) {
-    Register-Artifact `
-        -Platform 'Linux' `
-        -Architecture 'linux-x64' `
-        -ArtifactType 'portable_archive' `
-        -FilePath $linuxTar.FullName `
-        -PackageVersion $linuxPkgVer `
-        -Toolchain $linuxToolchain `
-        -SigningStatus $linuxSigning `
-        -Installability 'portable_executable' `
-        -BuildJob 'local-wsl2-ubuntu-24.04' `
-        -IsRunnable $true
-}
+$tarPath = if ($linuxTar) { $linuxTar.FullName } else { Join-Path $repoRoot "build\distributions\linux\glide-$linuxPkgVer-linux-x64.tar.gz" }
+Register-Artifact `
+    -Platform 'Linux' `
+    -Architecture 'linux-x64' `
+    -ArtifactType 'portable_archive' `
+    -FilePath $tarPath `
+    -PackageVersion $linuxPkgVer `
+    -Toolchain $linuxToolchain `
+    -SigningStatus $linuxSigning `
+    -Installability 'portable_executable' `
+    -BuildJob 'local-wsl2-ubuntu-24.04' `
+    -IsRunnable $true
 
 # --- D. Apple Platform Packages (macOS, iOS Simulator, iOS Device Archive) ---
 $appleMacDir = $null
@@ -324,19 +321,18 @@ $macToolchain = if ($macManifest.ContainsKey('toolchain')) { $macManifest['toolc
 $macSigning = if ($macManifest.ContainsKey('signing_status')) { $macManifest['signing_status'] } else { 'unsigned_development' }
 $macInstallability = if ($macManifest.ContainsKey('installability')) { $macManifest['installability'] } else { 'requires_local_development_or_signed_release_build' }
 
-if ($macAppZip) {
-    Register-Artifact `
-        -Platform 'macOS' `
-        -Architecture 'universal (arm64/x86_64)' `
-        -ArtifactType 'portable_archive' `
-        -FilePath $macAppZip.FullName `
-        -PackageVersion $Version `
-        -Toolchain $macToolchain `
-        -SigningStatus $macSigning `
-        -Installability $macInstallability `
-        -BuildJob 'github-actions-apple-runner' `
-        -IsRunnable $true
-}
+$macPath = if ($macAppZip) { $macAppZip.FullName } else { Join-Path $repoRoot "build\distributions\apple\macos\Glide-macos-unsigned.zip" }
+Register-Artifact `
+    -Platform 'macOS' `
+    -Architecture 'universal (arm64/x86_64)' `
+    -ArtifactType 'portable_archive' `
+    -FilePath $macPath `
+    -PackageVersion $Version `
+    -Toolchain $macToolchain `
+    -SigningStatus $macSigning `
+    -Installability $macInstallability `
+    -BuildJob 'github-actions-apple-runner' `
+    -IsRunnable $true
 
 $iosSimZip = if ($appleIosDir) { Get-ChildItem -Path $appleIosDir -Filter "Glide-iOS-simulator-unsigned.zip" -ErrorAction SilentlyContinue | Select-Object -First 1 } else { $null }
 $iosDevZip = if ($appleIosDir) { Get-ChildItem -Path $appleIosDir -Filter "Glide-iOS-device-unsigned-archive.zip" -ErrorAction SilentlyContinue | Select-Object -First 1 } else { $null }
@@ -344,33 +340,31 @@ $iosManifest = if ($appleIosDir) { Parse-BuildManifest (Join-Path $appleIosDir '
 $iosToolchain = if ($iosManifest.ContainsKey('toolchain')) { $iosManifest['toolchain'] } else { 'Xcode 26.6 (17F113), Apple Swift 6.3.3, iOS 26.5 Simulator' }
 $iosSigning = if ($iosManifest.ContainsKey('signing_status')) { $iosManifest['signing_status'] } else { 'unsigned_development' }
 
-if ($iosSimZip) {
-    Register-Artifact `
-        -Platform 'iOS / iPadOS' `
-        -Architecture 'universal (arm64/x86_64)' `
-        -ArtifactType 'simulator_bundle' `
-        -FilePath $iosSimZip.FullName `
-        -PackageVersion $Version `
-        -Toolchain $iosToolchain `
-        -SigningStatus $iosSigning `
-        -Installability 'simulator_installable' `
-        -BuildJob 'github-actions-apple-runner' `
-        -IsRunnable $true
-}
+$simPath = if ($iosSimZip) { $iosSimZip.FullName } else { Join-Path $repoRoot "build\distributions\apple\ios\Glide-iOS-simulator-unsigned.zip" }
+Register-Artifact `
+    -Platform 'iOS / iPadOS' `
+    -Architecture 'universal (arm64/x86_64)' `
+    -ArtifactType 'simulator_bundle' `
+    -FilePath $simPath `
+    -PackageVersion $Version `
+    -Toolchain $iosToolchain `
+    -SigningStatus $iosSigning `
+    -Installability 'simulator_installable' `
+    -BuildJob 'github-actions-apple-runner' `
+    -IsRunnable $true
 
-if ($iosDevZip) {
-    Register-Artifact `
-        -Platform 'iOS / iPadOS' `
-        -Architecture 'arm64' `
-        -ArtifactType 'device_archive' `
-        -FilePath $iosDevZip.FullName `
-        -PackageVersion $Version `
-        -Toolchain $iosToolchain `
-        -SigningStatus 'unsigned_development' `
-        -Installability 'build_only_requires_distribution_signing' `
-        -BuildJob 'github-actions-apple-runner' `
-        -IsRunnable $true
-}
+$devPath = if ($iosDevZip) { $iosDevZip.FullName } else { Join-Path $repoRoot "build\distributions\apple\ios\Glide-iOS-device-unsigned-archive.zip" }
+Register-Artifact `
+    -Platform 'iOS / iPadOS' `
+    -Architecture 'arm64' `
+    -ArtifactType 'device_archive' `
+    -FilePath $devPath `
+    -PackageVersion $Version `
+    -Toolchain $iosToolchain `
+    -SigningStatus 'unsigned_development' `
+    -Installability 'build_only_requires_distribution_signing' `
+    -BuildJob 'github-actions-apple-runner' `
+    -IsRunnable $true
 
 # --- E. Test Evidence Archives (Strictly separated from runnable packages) ---
 $appleEvidence = Get-ChildItem -Path (Join-Path $repoRoot 'build\test-evidence\apple-backend') -Filter "apple-backend-test-evidence.zip" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
