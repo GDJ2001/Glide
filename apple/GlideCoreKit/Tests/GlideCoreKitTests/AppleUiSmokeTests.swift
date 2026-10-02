@@ -42,30 +42,45 @@ final class AppleUiSmokeTests: XCTestCase {
 
     // 2. Receive View & Invitation State Smoke Test
     func testReceiveFlowAndInvitationState() throws {
-        let auth = OneTimeTokenAuthority()
-        let token = auth.issueToken(ttlSeconds: 120)
-        XCTAssertNotNil(token)
-        XCTAssertEqual(token?.tokenBytes.count, 16)
+        let auth = LanInvitationAuthority()
+        let nowSeconds = Int64(Date().timeIntervalSince1970)
+        let invitation = LanInvitation(
+            v: 1,
+            transport: "lan-tls",
+            profile: 1,
+            protocolVersion: 1,
+            invitationId: "8a32a67e-071a-4d23-92b4-3ec9fef39db3",
+            presence: String(repeating: "a", count: 32),
+            name: "iPhone Simulator",
+            platform: "ios",
+            endpoints: [LanEndpoint(address: "192.168.1.100", port: 42424)],
+            spkiSha256: String(repeating: "f", count: 64),
+            token: InvitationCodec.toUnpaddedBase64Url(Data(repeating: 0x2a, count: 32)),
+            expiresAt: String(nowSeconds + 120),
+            ttlSeconds: 120
+        )
+        let published = try auth.publish(invitation)
+        XCTAssertNotNil(auth.activeInvitation)
+        XCTAssertEqual(auth.activeInvitation?.invitationId, invitation.invitationId)
 
-        let dummySpki = Data(repeating: 0xAA, count: 32)
-        let inv = InvitationCodec.format(token: token!.tokenBytes, spkiSha256: dummySpki, port: 42424)
-        XCTAssertTrue(inv.starts(with: "glide://pair/v1#"))
+        let uri = try InvitationCodec.encode(published)
+        XCTAssertTrue(uri.hasPrefix("glide://pair/v1#"))
 
         // Decode invitation
-        let decoded = try InvitationCodec.parse(inv)
-        XCTAssertEqual(decoded.port, 42424)
-        XCTAssertEqual(decoded.spkiSha256, dummySpki)
+        let decoded = try InvitationCodec.decode(uri)
+        XCTAssertEqual(decoded.invitationId, invitation.invitationId)
+        XCTAssertEqual(decoded.endpoints[0].port, 42424)
     }
 
     // 3. Pair View & Invalid Invitation Handling
     func testPairFlowAndErrorHandling() {
         // Invalid prefix
-        XCTAssertThrowsError(try InvitationCodec.parse("http://example.com")) { error in
-            XCTAssertEqual(error as? InvitationCodec.InvitationError, .invalidPrefix)
+        XCTAssertThrowsError(try InvitationCodec.decode("http://example.com")) { error in
+            XCTAssertEqual(error as? InvitationError, InvitationError.invalidUriPrefix)
         }
 
-        // Corrupted token hex
-        XCTAssertThrowsError(try InvitationCodec.parse("glide://pair/v1#p=42424&s=aabbcc&t=not-hex")) { error in
+        // Corrupted URI
+        XCTAssertThrowsError(try InvitationCodec.decode("glide://pair/v1#not-valid-json!")) { error in
             XCTAssertNotNil(error)
         }
     }
