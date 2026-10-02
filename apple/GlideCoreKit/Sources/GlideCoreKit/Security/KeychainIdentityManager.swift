@@ -39,7 +39,8 @@ public final class KeychainIdentityManager: @unchecked Sendable {
             kSecClass as String: kSecClassKey,
             kSecAttrApplicationTag as String: tag,
             kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
-            kSecReturnRef as String: true
+            kSecReturnRef as String: true,
+            kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail
         ]
 
         var item: CFTypeRef?
@@ -55,6 +56,7 @@ public final class KeychainIdentityManager: @unchecked Sendable {
         let attributes: [String: Any] = [
             kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
             kSecAttrKeySizeInBits as String: 256,
+            kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail,
             kSecPrivateKeyAttrs as String: [
                 kSecAttrIsPermanent as String: true,
                 kSecAttrApplicationTag as String: tag
