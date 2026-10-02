@@ -488,7 +488,8 @@ final class GlideTransferEngineTests: XCTestCase {
             spkiSha256: String(repeating: "f", count: 64),
             token: "dGVzdC10b2tlbg",
             expiresAt: String(Int64(Date().timeIntervalSince1970) - 10), // Expired 10s ago
-            ttlSeconds: 120
+            ttlSeconds: 120,
+            invitationHash: String(repeating: "f", count: 64)
         )
 
         do {

@@ -107,11 +107,11 @@ public final class GlideTransferEngine: @unchecked Sendable {
             totalBatchBytes = nextTotal
         }
 
-        guard invitation.invitationHash.count == 64 else {
-            throw TransferError.protocolViolation("Invitation hash must be 64 characters.")
-        }
         guard !invitation.isExpired() else {
             throw TransferError.protocolViolation("Invitation has expired.")
+        }
+        guard invitation.invitationHash.count == 64 else {
+            throw TransferError.protocolViolation("Invitation hash must be 64 characters.")
         }
 
         let client = GlideNetworkClient()
@@ -161,11 +161,11 @@ public final class GlideTransferEngine: @unchecked Sendable {
         onConsent: @escaping @Sendable (String, Int, Int64) async -> Bool,
         onProgress: (@Sendable (Double, Int64, Int64, String) -> Void)? = nil
     ) async throws -> Int {
-        guard invitation.invitationHash.count == 64 else {
-            throw TransferError.protocolViolation("Invitation hash must be 64 characters.")
-        }
         guard !invitation.isExpired() else {
             throw TransferError.protocolViolation("Invitation has expired.")
+        }
+        guard invitation.invitationHash.count == 64 else {
+            throw TransferError.protocolViolation("Invitation hash must be 64 characters.")
         }
 
         let client = GlideNetworkClient()
