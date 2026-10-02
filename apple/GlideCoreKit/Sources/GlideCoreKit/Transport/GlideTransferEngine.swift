@@ -328,17 +328,18 @@ public final class GlideTransferEngine: @unchecked Sendable {
 
         // 2. HELLO / HELLO_ACK
         let name = localDeviceName.isEmpty ? "Apple Device" : localDeviceName
+        let helloBody: [String: AnySendable] = [
+            "supportedMajors": .array([.int(1)]),
+            "requiredCapabilities": .array([.string("stream-v1"), .string("sha256")]),
+            "optionalCapabilities": .array([.string("folder-v1")]),
+            "role": .string("sender"),
+            "ephemeralPeerId": .string(UUID().uuidString.lowercased()),
+            "displayName": .string(name)
+        ]
         let helloRecord = try await sequence.createRecord(
             type: LanMessageTypes.hello,
             sessionId: sessionId,
-            body: [
-                "supportedMajors": .array([.int(1)]),
-                "requiredCapabilities": .array([.string("stream-v1"), .string("sha256")]),
-                "optionalCapabilities": .array([.string("folder-v1")]),
-                "role": .string("sender"),
-                "ephemeralPeerId": .string(UUID().uuidString.lowercased()),
-                "displayName": .string(name)
-            ]
+            body: helloBody
         )
         try await channel.writeRecord(helloRecord)
 
@@ -378,15 +379,16 @@ public final class GlideTransferEngine: @unchecked Sendable {
             Array(preparedItems[$0..<min($0 + Self.maxOfferPageItems, preparedItems.count)])
         }
 
+        let offerBeginBody: [String: AnySendable] = [
+            "batchId": .string(batchId),
+            "itemCount": .int(Int64(preparedItems.count)),
+            "totalBytes": .string(String(totalBatchBytes)),
+            "pageCount": .int(Int64(pages.count))
+        ]
         let offerBeginRecord = try await sequence.createRecord(
             type: LanMessageTypes.offerBegin,
             sessionId: sessionId,
-            body: [
-                "batchId": .string(batchId),
-                "itemCount": .int(Int64(preparedItems.count)),
-                "totalBytes": .string(String(totalBatchBytes)),
-                "pageCount": .int(Int64(pages.count))
-            ]
+            body: offerBeginBody
         )
         try await channel.writeRecord(offerBeginRecord)
 
@@ -399,22 +401,24 @@ public final class GlideTransferEngine: @unchecked Sendable {
                     "relativePath": .string(item.name)
                 ])
             }
+            let pageBody: [String: AnySendable] = [
+                "batchId": .string(batchId),
+                "pageIndex": .int(Int64(pageIndex)),
+                "items": .array(itemArray)
+            ]
             let pageRecord = try await sequence.createRecord(
                 type: LanMessageTypes.offerPage,
                 sessionId: sessionId,
-                body: [
-                    "batchId": .string(batchId),
-                    "pageIndex": .int(Int64(pageIndex)),
-                    "items": .array(itemArray)
-                ]
+                body: pageBody
             )
             try await channel.writeRecord(pageRecord)
         }
 
+        let offerEndBody: [String: AnySendable] = ["batchId": .string(batchId)]
         let offerEndRecord = try await sequence.createRecord(
             type: LanMessageTypes.offerEnd,
             sessionId: sessionId,
-            body: ["batchId": .string(batchId)]
+            body: offerEndBody
         )
         try await channel.writeRecord(offerEndRecord)
 
@@ -433,15 +437,16 @@ public final class GlideTransferEngine: @unchecked Sendable {
 
         for item in preparedItems {
             let bulkRef = UUID()
+            let itemStartBody: [String: AnySendable] = [
+                "batchId": .string(batchId),
+                "itemId": .string(item.itemId),
+                "bulkRef": .string(bulkRef.uuidString.lowercased()),
+                "sizeBytes": .string(String(item.sizeBytes))
+            ]
             let itemStartRecord = try await sequence.createRecord(
                 type: LanMessageTypes.itemStart,
                 sessionId: sessionId,
-                body: [
-                    "batchId": .string(batchId),
-                    "itemId": .string(item.itemId),
-                    "bulkRef": .string(bulkRef.uuidString.lowercased()),
-                    "sizeBytes": .string(String(item.sizeBytes))
-                ]
+                body: itemStartBody
             )
             try await channel.writeRecord(itemStartRecord)
 
@@ -474,15 +479,16 @@ public final class GlideTransferEngine: @unchecked Sendable {
             let streamEndRecord = try LanRecord.streamEnd(bulkRef: bulkRef, actualBytes: UInt64(streamedBytes))
             try await channel.writeRecord(streamEndRecord)
 
+            let itemEndBody: [String: AnySendable] = [
+                "batchId": .string(batchId),
+                "itemId": .string(item.itemId),
+                "actualBytes": .string(String(streamedBytes)),
+                "sha256": .string(computedDigest)
+            ]
             let itemEndRecord = try await sequence.createRecord(
                 type: LanMessageTypes.itemEnd,
                 sessionId: sessionId,
-                body: [
-                    "batchId": .string(batchId),
-                    "itemId": .string(item.itemId),
-                    "actualBytes": .string(String(streamedBytes)),
-                    "sha256": .string(computedDigest)
-                ]
+                body: itemEndBody
             )
             try await channel.writeRecord(itemEndRecord)
 
@@ -497,10 +503,11 @@ public final class GlideTransferEngine: @unchecked Sendable {
         }
 
         // 6. BATCH_END / BATCH_RESULT
+        let batchEndBody: [String: AnySendable] = ["batchId": .string(batchId)]
         let batchEndRecord = try await sequence.createRecord(
             type: LanMessageTypes.batchEnd,
             sessionId: sessionId,
-            body: ["batchId": .string(batchId)]
+            body: batchEndBody
         )
         try await channel.writeRecord(batchEndRecord)
 
@@ -603,22 +610,23 @@ public final class GlideTransferEngine: @unchecked Sendable {
         let peerName = hello.body["displayName"]?.stringValue ?? "Peer Device"
 
         let name = localDeviceName.isEmpty ? "Apple Receiver" : localDeviceName
+        let helloAckBody: [String: AnySendable] = [
+            "selectedMajor": .int(1),
+            "capabilities": .array([.string("stream-v1"), .string("sha256")]),
+            "role": .string("receiver"),
+            "ephemeralPeerId": .string(UUID().uuidString.lowercased()),
+            "displayName": .string(name),
+            "limits": .object([
+                "maxItems": .int(1000),
+                "maxItemBytes": .string(String(Self.maxItemBytes)),
+                "maxBatchBytes": .string(String(Self.maxBatchBytes)),
+                "maxControlBytes": .int(16384)
+            ])
+        ]
         let helloAckRecord = try await sequence.createRecord(
             type: LanMessageTypes.helloAck,
             sessionId: sessionId,
-            body: [
-                "selectedMajor": .int(1),
-                "capabilities": .array([.string("stream-v1"), .string("sha256")]),
-                "role": .string("receiver"),
-                "ephemeralPeerId": .string(UUID().uuidString.lowercased()),
-                "displayName": .string(name),
-                "limits": .object([
-                    "maxItems": .int(1000),
-                    "maxItemBytes": .string(String(Self.maxItemBytes)),
-                    "maxBatchBytes": .string(String(Self.maxBatchBytes)),
-                    "maxControlBytes": .int(16384)
-                ])
-            ]
+            body: helloAckBody
         )
         try await channel.writeRecord(helloAckRecord)
 
@@ -633,10 +641,15 @@ public final class GlideTransferEngine: @unchecked Sendable {
         }
 
         guard declaredItemCount <= Int64(Self.maxBatchFiles), declaredTotalBytes <= Self.maxBatchBytes else {
+            let limitBody: [String: AnySendable] = [
+                "batchId": .string(batchId),
+                "accepted": .bool(false),
+                "code": .string(LanWireErrorCodes.limitExceeded)
+            ]
             let decisionRecord = try await sequence.createRecord(
                 type: LanMessageTypes.offerDecision,
                 sessionId: sessionId,
-                body: ["batchId": .string(batchId), "accepted": .bool(false), "code": .string(LanWireErrorCodes.limitExceeded)]
+                body: limitBody
             )
             try await channel.writeRecord(decisionRecord)
             throw TransferError.limitExceeded("Batch exceeded limits")
@@ -677,14 +690,15 @@ public final class GlideTransferEngine: @unchecked Sendable {
 
         // 4. CONSENT
         let consentGranted = await onConsent(peerName, items.count, declaredTotalBytes)
+        let consentBody: [String: AnySendable] = [
+            "batchId": .string(batchId),
+            "accepted": .bool(consentGranted),
+            "code": .string(consentGranted ? "" : LanWireErrorCodes.userRejected)
+        ]
         let decisionRecord = try await sequence.createRecord(
             type: LanMessageTypes.offerDecision,
             sessionId: sessionId,
-            body: [
-                "batchId": .string(batchId),
-                "accepted": .bool(consentGranted),
-                "code": .string(consentGranted ? "" : LanWireErrorCodes.userRejected)
-            ]
+            body: consentBody
         )
         try await channel.writeRecord(decisionRecord)
         guard consentGranted else {
@@ -705,10 +719,14 @@ public final class GlideTransferEngine: @unchecked Sendable {
                 throw TransferError.protocolViolation("Malformed ITEM_START")
             }
 
+            let readyBody: [String: AnySendable] = [
+                "batchId": .string(batchId),
+                "itemId": .string(item.itemId)
+            ]
             let itemReadyRecord = try await sequence.createRecord(
                 type: LanMessageTypes.itemReady,
                 sessionId: sessionId,
-                body: ["batchId": .string(batchId), "itemId": .string(item.itemId)]
+                body: readyBody
             )
             try await channel.writeRecord(itemReadyRecord)
 
@@ -768,29 +786,31 @@ public final class GlideTransferEngine: @unchecked Sendable {
                 )
                 verifiedCount += 1
 
+                let verifiedBody: [String: AnySendable] = [
+                    "batchId": .string(batchId),
+                    "itemId": .string(item.itemId),
+                    "status": .string("verified"),
+                    "sizeBytes": .string(String(item.sizeBytes)),
+                    "sha256": .string(declaredSha)
+                ]
                 let itemResultRecord = try await sequence.createRecord(
                     type: LanMessageTypes.itemResult,
                     sessionId: sessionId,
-                    body: [
-                        "batchId": .string(batchId),
-                        "itemId": .string(item.itemId),
-                        "status": .string("verified"),
-                        "sizeBytes": .string(String(item.sizeBytes)),
-                        "sha256": .string(declaredSha)
-                    ]
+                    body: verifiedBody
                 )
                 try await channel.writeRecord(itemResultRecord)
             } catch {
                 stager.purge()
+                let failureBody: [String: AnySendable] = [
+                    "batchId": .string(batchId),
+                    "itemId": .string(item.itemId),
+                    "status": .string("failed"),
+                    "code": .string(LanWireErrorCodes.integrityMismatch)
+                ]
                 let itemResultRecord = try await sequence.createRecord(
                     type: LanMessageTypes.itemResult,
                     sessionId: sessionId,
-                    body: [
-                        "batchId": .string(batchId),
-                        "itemId": .string(item.itemId),
-                        "status": .string("failed"),
-                        "code": .string(LanWireErrorCodes.integrityMismatch)
-                    ]
+                    body: failureBody
                 )
                 try await channel.writeRecord(itemResultRecord)
             }
@@ -802,15 +822,16 @@ public final class GlideTransferEngine: @unchecked Sendable {
             throw TransferError.protocolViolation("Malformed BATCH_END")
         }
 
+        let batchResultBody: [String: AnySendable] = [
+            "batchId": .string(batchId),
+            "status": .string("completed"),
+            "verifiedCount": .int(Int64(verifiedCount)),
+            "totalVerifiedBytes": .string(String(cumulativeBytes))
+        ]
         let batchResultRecord = try await sequence.createRecord(
             type: LanMessageTypes.batchResult,
             sessionId: sessionId,
-            body: [
-                "batchId": .string(batchId),
-                "status": .string("completed"),
-                "verifiedCount": .int(Int64(verifiedCount)),
-                "totalVerifiedBytes": .string(String(cumulativeBytes))
-            ]
+            body: batchResultBody
         )
         try await channel.writeRecord(batchResultRecord)
 
