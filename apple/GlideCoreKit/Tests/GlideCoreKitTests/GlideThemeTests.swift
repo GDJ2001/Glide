@@ -11,14 +11,14 @@ final class GlideThemeTests: XCTestCase {
 
     func testHexToRgbParsing() {
         let blue = GlideTheme.hexToRgb("#0D6EFD")
-        XCTAssertNotNull(blue)
+        XCTAssertNotNil(blue)
         XCTAssertEqual(blue!.red, 13.0 / 255.0, accuracy: 0.001)
         XCTAssertEqual(blue!.green, 110.0 / 255.0, accuracy: 0.001)
         XCTAssertEqual(blue!.blue, 253.0 / 255.0, accuracy: 0.001)
 
         // Without leading '#'
         let green = GlideTheme.hexToRgb("198754")
-        XCTAssertNotNull(green)
+        XCTAssertNotNil(green)
         XCTAssertEqual(green!.red, 25.0 / 255.0, accuracy: 0.001)
 
         // Invalid hex string
