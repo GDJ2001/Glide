@@ -29,7 +29,7 @@ Write-Host "=================================================================" -
 $Commit = (git -C $RepoRoot rev-parse HEAD).Trim()
 $Branch = (git -C $RepoRoot rev-parse --abbrev-ref HEAD).Trim()
 $Status = (git -C $RepoRoot status --porcelain)
-$IsClean = ($Status | Where-Object { $_ -notmatch 'AGENTS\.md' }).Count -eq 0
+$IsClean = @($Status | Where-Object { $_ -and ($_ -notmatch 'AGENTS\.md') }).Count -eq 0
 
 Write-Host "[BASELINE] Branch: $Branch"
 Write-Host "[BASELINE] Commit: $Commit"
@@ -416,7 +416,7 @@ function Invoke-Scenario {
             $stagingClean = if ($Direction -eq "WinToLinux") {
                 (wsl.exe -d $DistroName -u glidetest -- bash -c "find $LinuxStaging -type f -name '*.part' | wc -l").Trim() -eq "0"
             } else {
-                (Get-ChildItem -Path $WinStaging -Recurse -Filter "*.part" -ErrorAction SilentlyContinue).Count -eq 0
+                @(Get-ChildItem -Path $WinStaging -Recurse -Filter "*.part" -ErrorAction SilentlyContinue).Count -eq 0
             }
             $Pass = $Pass -and $stagingClean
         }

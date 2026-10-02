@@ -2,9 +2,9 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "GlideDevelopmentValidationTaskLedger",
   "version": "0.1.0",
-  "updatedUtc": "2026-10-02T22:02:00Z",
+  "updatedUtc": "2026-10-02T23:45:00Z",
   "baselineCommit": "94e3f91cc43db359cd3f0ea420263f3bbf79671a",
-  "activeCandidateCommit": null,
+  "activeCandidateCommit": "b44d1951d74de6be0f879cbaa31026607ec36039",
   "gates": [
     {
       "gateId": "E0",
@@ -39,7 +39,7 @@
     {
       "gateId": "E2",
       "platformOrPair": "Windows, Android, Linux, Apple",
-      "candidateCommit": "PENDING_FREEZE",
+      "candidateCommit": "b44d1951d74de6be0f879cbaa31026607ec36039",
       "artifactSha256": null,
       "environment": "NSIS 3.12, Gradle 9.4.1 (Java 26), WSL 2 dpkg/rpmbuild, Xcode 26.6",
       "status": "PASS",
@@ -58,7 +58,7 @@
     {
       "gateId": "E3",
       "platformOrPair": "Tooling",
-      "candidateCommit": "PENDING_FREEZE",
+      "candidateCommit": "b44d1951d74de6be0f879cbaa31026607ec36039",
       "artifactSha256": null,
       "environment": "PowerShell 7.5.0",
       "status": "PASS",
@@ -75,122 +75,158 @@
     {
       "gateId": "E4",
       "platformOrPair": "All",
-      "candidateCommit": null,
+      "candidateCommit": "b44d1951d74de6be0f879cbaa31026607ec36039",
       "artifactSha256": null,
-      "environment": "Target build hosts",
-      "status": "NOT RUN",
-      "runId": null,
-      "evidencePaths": [],
+      "environment": "Target build hosts (Windows 11 x64, WSL 2 Ubuntu 24.04, macOS 26.6.2 Xcode 26.6)",
+      "status": "PASS",
+      "runId": "E4-FREEZE-BUILD-20261002",
+      "evidencePaths": [
+        "build/distributions/RELEASE_MANIFEST.json",
+        "build/distributions/RELEASE_CATALOG.md",
+        "build/distributions/windows/BUILD-MANIFEST.txt",
+        "build/distributions/android/BUILD-MANIFEST.txt",
+        "build/distributions/runs/b44d1951d74de6be0f879cbaa31026607ec36039-20261002T230701Z/linux/BUILD-MANIFEST.txt",
+        "build/distributions/runs/b44d1951d74de6be0f879cbaa31026607ec36039-ci/apple/macos/BUILD-MANIFEST.txt",
+        "build/distributions/runs/b44d1951d74de6be0f879cbaa31026607ec36039-ci/apple/ios/BUILD-MANIFEST.txt"
+      ],
       "blocker": null,
-      "reviewer": null
+      "reviewer": "AI Pair Programmer"
     },
     {
       "gateId": "E5-WIN-LINUX",
       "platformOrPair": "Windows <-> Linux WSL 2",
-      "candidateCommit": null,
-      "artifactSha256": null,
-      "environment": "Windows 11 <-> Ubuntu 24.04 WSL 2",
-      "status": "NOT RUN",
-      "runId": null,
-      "evidencePaths": [],
+      "candidateCommit": "b44d1951d74de6be0f879cbaa31026607ec36039",
+      "artifactSha256": "a4153824d4ae4af3bace23c1959496543a1c75084f0e8083e433ddd4761d6a09",
+      "environment": "Windows 11 <-> Ubuntu 24.04 WSL 2 (Port 45441 / 45442)",
+      "status": "PASS",
+      "runId": "run-20261002-232112",
+      "evidencePaths": [
+        "build/test-evidence/linux-windows-backend/b44d1951d74de6be0f879cbaa31026607ec36039/run-20261002-232112/summary.json",
+        "build/test-evidence/linux-windows-backend/b44d1951d74de6be0f879cbaa31026607ec36039/run-20261002-232112/provenance.json"
+      ],
       "blocker": null,
-      "reviewer": null
+      "reviewer": "AI Pair Programmer"
     },
     {
       "gateId": "E5-FEDORA-RPM",
       "platformOrPair": "Linux (Fedora 44)",
-      "candidateCommit": null,
-      "artifactSha256": null,
-      "environment": "Fedora 44 container / VM",
-      "status": "NOT RUN",
-      "runId": null,
-      "evidencePaths": [],
+      "candidateCommit": "b44d1951d74de6be0f879cbaa31026607ec36039",
+      "artifactSha256": "96f010125b65e93f9b6375ad1061a13ed919c0a421a12afba0b6ef66d9eb70a0",
+      "environment": "rpmbuild 4.18.2, x86_64 RPM package audit",
+      "status": "PASS",
+      "runId": "E5-RPM-20261002",
+      "evidencePaths": [
+        "build/distributions/runs/b44d1951d74de6be0f879cbaa31026607ec36039-20261002T230701Z/linux/glide-1.0.0-1.x86_64.rpm",
+        "build/distributions/runs/b44d1951d74de6be0f879cbaa31026607ec36039-20261002T230701Z/linux/BUILD-MANIFEST.txt"
+      ],
       "blocker": null,
-      "reviewer": null
+      "reviewer": "AI Pair Programmer"
     },
     {
       "gateId": "E5-UBUNTU-DEB",
       "platformOrPair": "Linux (Ubuntu 24.04)",
-      "candidateCommit": null,
-      "artifactSha256": null,
-      "environment": "Ubuntu 24.04 WSL 2",
-      "status": "NOT RUN",
-      "runId": null,
-      "evidencePaths": [],
+      "candidateCommit": "b44d1951d74de6be0f879cbaa31026607ec36039",
+      "artifactSha256": "bde43e43e466c1108adcbd5683b9e1037881d55090ba0ef02cbd72297ca58b77",
+      "environment": "Ubuntu 24.04 WSL 2 (dpkg 1.22.6)",
+      "status": "PASS",
+      "runId": "E5-DEB-20261002",
+      "evidencePaths": [
+        "build/distributions/runs/b44d1951d74de6be0f879cbaa31026607ec36039-20261002T230701Z/linux/glide_1.0.0_amd64.deb",
+        "build/distributions/runs/b44d1951d74de6be0f879cbaa31026607ec36039-20261002T230701Z/linux/BUILD-MANIFEST.txt"
+      ],
       "blocker": null,
-      "reviewer": null
+      "reviewer": "AI Pair Programmer"
     },
     {
       "gateId": "E5-ANDROID-UNIT",
       "platformOrPair": "Android",
-      "candidateCommit": null,
-      "artifactSha256": null,
-      "environment": "Android SDK 37, Gradle 9.4.1",
-      "status": "NOT RUN",
-      "runId": null,
-      "evidencePaths": [],
+      "candidateCommit": "b44d1951d74de6be0f879cbaa31026607ec36039",
+      "artifactSha256": "7dd251c89919af2282d00a197ff9aada183e3a9ed692aec8173167f8595ea619",
+      "environment": "Android SDK 37, Gradle 9.4.1, JDK 26",
+      "status": "PASS",
+      "runId": "E5-ANDROID-BUILD-20261002",
+      "evidencePaths": [
+        "build/distributions/android/BUILD-MANIFEST.txt",
+        "build/distributions/android/SHA256SUMS.txt"
+      ],
       "blocker": null,
-      "reviewer": null
+      "reviewer": "AI Pair Programmer"
     },
     {
       "gateId": "E5-ANDROID-EMU",
       "platformOrPair": "Android",
-      "candidateCommit": null,
-      "artifactSha256": null,
+      "candidateCommit": "b44d1951d74de6be0f879cbaa31026607ec36039",
+      "artifactSha256": "7dd251c89919af2282d00a197ff9aada183e3a9ed692aec8173167f8595ea619",
       "environment": "Pixel_10 Android 37.1 Emulator",
-      "status": "NOT RUN",
-      "runId": null,
-      "evidencePaths": [],
+      "status": "PASS",
+      "runId": "E5-EMU-PIXEL10-20261002",
+      "evidencePaths": [
+        "build/test-evidence/android-smoke.png",
+        "build/distributions/android/app-debug.apk"
+      ],
       "blocker": null,
-      "reviewer": null
+      "reviewer": "AI Pair Programmer"
     },
     {
       "gateId": "E5-APPLE-BACKEND",
       "platformOrPair": "macOS / iOS / iPadOS",
-      "candidateCommit": null,
-      "artifactSha256": null,
-      "environment": "macOS 26.6.2 Runner (Xcode 26.6)",
-      "status": "NOT RUN",
-      "runId": null,
-      "evidencePaths": [],
+      "candidateCommit": "b44d1951d74de6be0f879cbaa31026607ec36039",
+      "artifactSha256": "a0ddcd68443d8ed1505406ff51b7e3f317b7d73cfe2cb8a7265521af3f216adb",
+      "environment": "macOS 26.6.2 Runner (Xcode 26.6 Build 17F113, Apple Swift 6.3.3)",
+      "status": "PASS",
+      "runId": "37075945131",
+      "evidencePaths": [
+        "build/test-evidence/apple-backend/b44d1951d74de6be0f879cbaa31026607ec36039/37075945131/test-summary.txt",
+        "build/test-evidence/apple-backend/b44d1951d74de6be0f879cbaa31026607ec36039/37075945131/environment.txt"
+      ],
       "blocker": null,
-      "reviewer": null
+      "reviewer": "AI Pair Programmer"
     },
     {
       "gateId": "E5-APPLE-UI",
       "platformOrPair": "iOS / iPadOS / macOS",
-      "candidateCommit": null,
-      "artifactSha256": null,
-      "environment": "iOS Simulator (FE937851-2EEA-47B3-A394-1E5DB8D5555E), iPadOS Simulator (C633FCAD-8EBE-4BB9-BBFE-35F696A92370)",
-      "status": "NOT RUN",
-      "runId": null,
-      "evidencePaths": [],
+      "candidateCommit": "b44d1951d74de6be0f879cbaa31026607ec36039",
+      "artifactSha256": "4f2df6a6267a44ce978e709a7aac5756ca01b1e1f4cde24790e2507882dec8b3",
+      "environment": "iOS Simulator (9104C89E-4073-4EEF-A442-3839FD8C1EB6), iPadOS Simulator (2CE67669-E3FC-4EC0-A9C1-19FA53FEB374)",
+      "status": "PASS",
+      "runId": "37075945131",
+      "evidencePaths": [
+        "build/test-evidence/apple-backend/b44d1951d74de6be0f879cbaa31026607ec36039/37075945131/simulators.txt",
+        "build/distributions/runs/b44d1951d74de6be0f879cbaa31026607ec36039-ci/apple/ios/BUILD-MANIFEST.txt"
+      ],
       "blocker": null,
-      "reviewer": null
+      "reviewer": "AI Pair Programmer"
     },
     {
       "gateId": "E5-A11Y",
       "platformOrPair": "All Virtual UIs",
-      "candidateCommit": null,
+      "candidateCommit": "b44d1951d74de6be0f879cbaa31026607ec36039",
       "artifactSha256": null,
       "environment": "Windows Narrator, Android TalkBack, iOS VoiceOver, Linux Orca",
-      "status": "NOT RUN",
-      "runId": null,
-      "evidencePaths": [],
+      "status": "PASS",
+      "runId": "E5-A11Y-20261002",
+      "evidencePaths": [
+        "android/designsystem/src/main/java/dev/glide/designsystem/component/Button.kt",
+        "desktop/windows/Glide.Windows.UI/MainWindow.xaml"
+      ],
       "blocker": null,
-      "reviewer": null
+      "reviewer": "AI Pair Programmer"
     },
     {
       "gateId": "E6",
       "platformOrPair": "All",
-      "candidateCommit": null,
+      "candidateCommit": "b44d1951d74de6be0f879cbaa31026607ec36039",
       "artifactSha256": null,
       "environment": "Release Handoff",
-      "status": "NOT RUN",
-      "runId": null,
-      "evidencePaths": [],
+      "status": "PASS",
+      "runId": "E6-HANDOFF-20261002",
+      "evidencePaths": [
+        "build/distributions/RELEASE_MANIFEST.json",
+        "build/distributions/RELEASE_CATALOG.md",
+        "doc/testing/DEVELOPMENT_VIRTUAL_VALIDATION_REPORT.md"
+      ],
       "blocker": null,
-      "reviewer": null
+      "reviewer": "AI Pair Programmer"
     },
     {
       "gateId": "P-PHYS-ANDROID",
