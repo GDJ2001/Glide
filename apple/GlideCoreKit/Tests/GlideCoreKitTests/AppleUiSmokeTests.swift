@@ -96,13 +96,17 @@ final class AppleUiSmokeTests: XCTestCase {
     func testConsentAndSasComparison() throws {
         let clientKey = Data(repeating: 0x01, count: 32)
         let serverKey = Data(repeating: 0x02, count: 32)
+        let sessionNonce = Data(repeating: 0x03, count: 32)
 
-        let sasA = try SasCalculator.calculateSas(clientKey: clientKey, serverKey: serverKey)
-        let sasB = try SasCalculator.calculateSas(clientKey: clientKey, serverKey: serverKey)
+        let sasA = try SasCalculator.calculateSas(clientPublicKey: clientKey, serverPublicKey: serverKey, sessionNonce: sessionNonce)
+        let sasB = try SasCalculator.calculateSas(clientPublicKey: clientKey, serverPublicKey: serverKey, sessionNonce: sessionNonce)
 
-        XCTAssertEqual(sasA.count, 6)
-        XCTAssertEqual(sasA, sasB)
-        XCTAssertTrue(sasA.allSatisfy { $0.isNumber })
+        let formattedA = String(format: "%06d", sasA)
+        let formattedB = String(format: "%06d", sasB)
+
+        XCTAssertEqual(formattedA.count, 6)
+        XCTAssertEqual(formattedA, formattedB)
+        XCTAssertTrue(formattedA.allSatisfy { $0.isNumber })
     }
 
     // 7. Share Extension Handoff Smoke Test
@@ -119,13 +123,11 @@ final class AppleUiSmokeTests: XCTestCase {
 
     // 8. Mac Drop Target Coordinator Smoke Test
     func testMacDropTargetCoordinator() throws {
-        let coordinator = MacDropTargetCoordinator()
         let dropped = tempDir.appendingPathComponent("dropped_item.png")
         try "PNG FAKE DATA".write(to: dropped, atomically: true, encoding: .utf8)
 
-        let accepted = coordinator.acceptDroppedUrls([dropped])
-        XCTAssertTrue(accepted)
-        XCTAssertEqual(coordinator.validatedUrls.count, 1)
-        XCTAssertEqual(coordinator.validatedUrls[0], dropped)
+        let validated = try MacDropTargetCoordinator.validateDrop(fileUrls: [dropped])
+        XCTAssertEqual(validated.count, 1)
+        XCTAssertEqual(validated[0].lastPathComponent, "dropped_item.png")
     }
 }
