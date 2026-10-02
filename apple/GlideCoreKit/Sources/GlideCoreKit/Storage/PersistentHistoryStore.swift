@@ -50,7 +50,9 @@ public final class PersistentHistoryStore: @unchecked Sendable {
         guard FileManager.default.fileExists(atPath: fileUrl.path) else { return }
         do {
             let data = try Data(contentsOf: fileUrl)
-            entries = try JSONDecoder().decode([PersistentHistoryEntry].self, from: data)
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            entries = try decoder.decode([PersistentHistoryEntry].self, from: data)
         } catch {
             entries = []
         }

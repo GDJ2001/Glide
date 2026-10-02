@@ -126,6 +126,7 @@ public enum LanRecordCodec {
 
     /// Decodes an on-wire frame into a typed `LanRecord`.
     public static func decode(_ frame: Data) throws -> LanRecord {
+        let frame = Data(frame)
         guard frame.count >= headerSize else {
             throw LanRecordError.headerTooShort
         }
