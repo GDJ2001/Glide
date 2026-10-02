@@ -113,6 +113,10 @@ public struct LanEnvelope: Equatable, Sendable {
     }
 }
 
+#if canImport(CoreFoundation)
+import CoreFoundation
+#endif
+
 /// Type-safe wrapper for arbitrary JSON values in Swift.
 public enum AnySendable: Equatable, Sendable {
     case string(String)
@@ -124,21 +128,32 @@ public enum AnySendable: Equatable, Sendable {
     case null
 
     public var stringValue: String? {
-        if case .string(let s) = self { return s }
-        return nil
+        switch self {
+        case .string(let s): return s
+        case .int(let i): return String(i)
+        default: return nil
+        }
     }
 
     public var intValue: Int64? {
         switch self {
         case .int(let i): return i
         case .string(let s): return Int64(s)
+        case .double(let d): return Int64(d)
         default: return nil
         }
     }
 
     public var boolValue: Bool? {
-        if case .bool(let b) = self { return b }
-        return nil
+        switch self {
+        case .bool(let b): return b
+        case .int(let i): return i != 0
+        case .string(let s):
+            if s.lowercased() == "true" { return true }
+            if s.lowercased() == "false" { return false }
+            return nil
+        default: return nil
+        }
     }
 
     public var arrayValue: [AnySendable]? {
@@ -152,10 +167,25 @@ public enum AnySendable: Equatable, Sendable {
     }
 
     public static func fromAny(_ any: Any) -> AnySendable? {
+        if any is NSNull { return .null }
+        if let already = any as? AnySendable { return already }
         if let s = any as? String { return .string(s) }
+        #if canImport(Foundation)
+        if let num = any as? NSNumber {
+            if CFGetTypeID(num as CFTypeRef) == CFBooleanGetTypeID() {
+                return .bool(num.boolValue)
+            } else {
+                let doubleVal = num.doubleValue
+                if doubleVal.rounded() == doubleVal && !doubleVal.isInfinite && !doubleVal.isNaN && doubleVal >= Double(Int64.min) && doubleVal <= Double(Int64.max) {
+                    return .int(num.int64Value)
+                }
+                return .double(doubleVal)
+            }
+        }
+        #endif
         if let b = any as? Bool { return .bool(b) }
-        if let i = any as? Int { return .int(Int64(i)) }
         if let i = any as? Int64 { return .int(i) }
+        if let i = any as? Int { return .int(Int64(i)) }
         if let d = any as? Double { return .double(d) }
         if let arr = any as? [Any] {
             return .array(arr.compactMap { fromAny($0) })

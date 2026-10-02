@@ -333,7 +333,10 @@ public final class GlideTransferEngine: @unchecked Sendable {
                 throw TransferError.bootstrapRejected(result.code ?? "REJECTED")
             }
         }
-        defer { releaseSession(sessionId) }
+        defer {
+            releaseSession(sessionId)
+            channel.close()
+        }
 
         // 2. HELLO / HELLO_ACK
         let name = localDeviceName.isEmpty ? "Apple Device" : localDeviceName
@@ -611,7 +614,10 @@ public final class GlideTransferEngine: @unchecked Sendable {
             }
         }
 
-        defer { releaseSession(sessionId) }
+        defer {
+            releaseSession(sessionId)
+            channel.close()
+        }
 
         // 2. HELLO / HELLO_ACK
         let hello = try await sequence.readEnvelope(from: channel, expectedType: LanMessageTypes.hello, sessionId: sessionId)
@@ -640,11 +646,12 @@ public final class GlideTransferEngine: @unchecked Sendable {
 
         // 3. Paged OFFERS
         let offerBegin = try await sequence.readEnvelope(from: channel, expectedType: LanMessageTypes.offerBegin, sessionId: sessionId)
+        print("DEBUG: [runReceiverSession] Received OFFER_BEGIN: \(offerBegin.body)")
         guard let batchId = offerBegin.body["batchId"]?.stringValue,
               let declaredItemCount = offerBegin.body["itemCount"]?.intValue,
-              let declaredTotalBytesStr = offerBegin.body["totalBytes"]?.stringValue,
-              let declaredTotalBytes = Int64(declaredTotalBytesStr),
+              let declaredTotalBytes = offerBegin.body["totalBytes"]?.intValue,
               let pageCount = offerBegin.body["pageCount"]?.intValue else {
+            print("DEBUG: [runReceiverSession] Malformed OFFER_BEGIN body: \(offerBegin.body)")
             throw TransferError.protocolViolation("Malformed OFFER_BEGIN")
         }
 
@@ -665,18 +672,20 @@ public final class GlideTransferEngine: @unchecked Sendable {
 
         var items = [TransferItemInfo]()
         for pageIdx in 0..<pageCount {
+            print("DEBUG: [runReceiverSession] Reading OFFER_PAGE \(pageIdx)/\(pageCount)...")
             let pageEnvelope = try await sequence.readEnvelope(from: channel, expectedType: LanMessageTypes.offerPage, sessionId: sessionId)
             guard pageEnvelope.body["batchId"]?.stringValue == batchId,
                   pageEnvelope.body["pageIndex"]?.intValue == Int64(pageIdx),
                   let rawItems = pageEnvelope.body["items"]?.arrayValue else {
+                print("DEBUG: [runReceiverSession] Malformed OFFER_PAGE: \(pageEnvelope.body)")
                 throw TransferError.protocolViolation("Malformed OFFER_PAGE")
             }
             for raw in rawItems {
                 guard let obj = raw.objectValue,
                       let itemId = obj["itemId"]?.stringValue,
                       let itemName = obj["name"]?.stringValue,
-                      let sizeStr = obj["sizeBytes"]?.stringValue,
-                      let sizeBytes = Int64(sizeStr) else {
+                      let sizeBytes = obj["sizeBytes"]?.intValue else {
+                    print("DEBUG: [runReceiverSession] Malformed item in OFFER_PAGE: \(raw)")
                     throw TransferError.protocolViolation("Malformed item in OFFER_PAGE")
                 }
                 guard DarwinPathSanitizer.isSafeFilename(itemName) else {
@@ -690,14 +699,18 @@ public final class GlideTransferEngine: @unchecked Sendable {
             }
         }
 
+        print("DEBUG: [runReceiverSession] Reading OFFER_END...")
         let offerEnd = try await sequence.readEnvelope(from: channel, expectedType: LanMessageTypes.offerEnd, sessionId: sessionId)
         guard offerEnd.body["batchId"]?.stringValue == batchId,
               items.count == Int(declaredItemCount) else {
+            print("DEBUG: [runReceiverSession] OFFER_END mismatch: items=\(items.count), declared=\(declaredItemCount)")
             throw TransferError.protocolViolation("OFFER_END count mismatch")
         }
 
         // 4. CONSENT
+        print("DEBUG: [runReceiverSession] Asking user consent: items=\(items.count), totalBytes=\(declaredTotalBytes)...")
         let consentGranted = await onConsent(peerName, items.count, declaredTotalBytes)
+        print("DEBUG: [runReceiverSession] Consent result=\(consentGranted), sending OFFER_DECISION...")
         let consentBody: [String: AnySendable] = [
             "batchId": .string(batchId),
             "accepted": .bool(consentGranted),
@@ -710,7 +723,7 @@ public final class GlideTransferEngine: @unchecked Sendable {
         )
         try await channel.writeRecord(decisionRecord)
         guard consentGranted else {
-            await channel.close()
+            channel.close()
             return 0
         }
 

@@ -118,17 +118,22 @@ final class GlideTransferEngineTests: XCTestCase {
         let receiverEngine = GlideTransferEngine(storageDirectory: receiverDir)
 
         let receiveTask = Task<Int, Error> {
-            let conn = try await box.getConnection()
-            return try await receiverEngine.receiveInboundConnection(
-                connection: conn,
-                authority: authority,
-                destinationDirectory: self.destDir,
-                localDeviceName: "TestReceiver",
-                onConsent: { peer, count, bytes in
-                    XCTAssertEqual(count, 2)
-                    return true
-                }
-            )
+            do {
+                let conn = try await box.getConnection()
+                return try await receiverEngine.receiveInboundConnection(
+                    connection: conn,
+                    authority: authority,
+                    destinationDirectory: self.destDir,
+                    localDeviceName: "TestReceiver",
+                    onConsent: { peer, count, bytes in
+                        XCTAssertEqual(count, 2)
+                        return true
+                    }
+                )
+            } catch {
+                print("DEBUG: [testReceiverHosted] receiveTask error: \(error)")
+                throw error
+            }
         }
 
         let sentCount = try await senderEngine.sendFiles(
@@ -204,16 +209,21 @@ final class GlideTransferEngineTests: XCTestCase {
         let receiverEngine = GlideTransferEngine(storageDirectory: receiverDir)
 
         let hostedSendTask = Task<Int, Error> {
-            let conn = try await box.getConnection()
-            return try await senderEngine.sendHostedInboundConnection(
-                connection: conn,
-                authority: authority,
-                fileUrls: [testFile],
-                localDeviceName: "HostedSender",
-                onConfirmRecipient: { recipient in
-                    return true
-                }
-            )
+            do {
+                let conn = try await box.getConnection()
+                return try await senderEngine.sendHostedInboundConnection(
+                    connection: conn,
+                    authority: authority,
+                    fileUrls: [testFile],
+                    localDeviceName: "HostedSender",
+                    onConfirmRecipient: { recipient in
+                        return true
+                    }
+                )
+            } catch {
+                print("DEBUG: [testSenderHosted] hostedSendTask error: \(error)")
+                throw error
+            }
         }
 
         let receivedCount = try await receiverEngine.receiveFromInvitation(
@@ -282,17 +292,22 @@ final class GlideTransferEngineTests: XCTestCase {
         let receiverEngine = GlideTransferEngine(storageDirectory: receiverDir)
 
         let receiveTask = Task<Int, Error> {
-            let conn = try await box.getConnection()
-            return try await receiverEngine.receiveInboundConnection(
-                connection: conn,
-                authority: authority,
-                destinationDirectory: self.destDir,
-                localDeviceName: "TestReceiver",
-                onConsent: { _, count, _ in
-                    XCTAssertEqual(count, 40)
-                    return true
-                }
-            )
+            do {
+                let conn = try await box.getConnection()
+                return try await receiverEngine.receiveInboundConnection(
+                    connection: conn,
+                    authority: authority,
+                    destinationDirectory: self.destDir,
+                    localDeviceName: "TestReceiver",
+                    onConsent: { _, count, _ in
+                        XCTAssertEqual(count, 40)
+                        return true
+                    }
+                )
+            } catch {
+                print("DEBUG: [testMultiPage] receiveTask error: \(error)")
+                throw error
+            }
         }
 
         let sentCount = try await senderEngine.sendFiles(
@@ -357,19 +372,24 @@ final class GlideTransferEngineTests: XCTestCase {
         let receiverEngine = GlideTransferEngine(storageDirectory: receiverDir)
 
         let receiveTask = Task<Int, Error> {
-            print("DEBUG: [ConsentRejection] 6a. ReceiveTask awaiting box.getConnection()...")
-            let conn = try await box.getConnection()
-            print("DEBUG: [ConsentRejection] 6b. ReceiveTask got connection, dispatching receiveInboundConnection...")
-            return try await receiverEngine.receiveInboundConnection(
-                connection: conn,
-                authority: authority,
-                destinationDirectory: self.destDir,
-                localDeviceName: "TestReceiver",
-                onConsent: { _, _, _ in
-                    print("DEBUG: [ConsentRejection] 6c. onConsent called -> returning FALSE (rejection)")
-                    return false // User explicitly refuses offer
-                }
-            )
+            do {
+                print("DEBUG: [ConsentRejection] 6a. ReceiveTask awaiting box.getConnection()...")
+                let conn = try await box.getConnection()
+                print("DEBUG: [ConsentRejection] 6b. ReceiveTask got connection, dispatching receiveInboundConnection...")
+                return try await receiverEngine.receiveInboundConnection(
+                    connection: conn,
+                    authority: authority,
+                    destinationDirectory: self.destDir,
+                    localDeviceName: "TestReceiver",
+                    onConsent: { _, _, _ in
+                        print("DEBUG: [ConsentRejection] 6c. onConsent called -> returning FALSE (rejection)")
+                        return false // User explicitly refuses offer
+                    }
+                )
+            } catch {
+                print("DEBUG: [ConsentRejection] receiveTask error: \(error)")
+                throw error
+            }
         }
 
         print("DEBUG: [ConsentRejection] 7. Sender calling sendFiles...")

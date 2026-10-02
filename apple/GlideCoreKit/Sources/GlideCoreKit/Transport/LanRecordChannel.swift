@@ -107,7 +107,7 @@ public actor LanRecordChannel {
     }
 
     /// Closes the connection.
-    public func close() {
+    nonisolated public func close() {
         connection.cancel()
     }
 }

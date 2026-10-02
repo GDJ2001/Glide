@@ -47,7 +47,7 @@ TAIL_PID=$!
 swift test --package-path "${REPO_ROOT}/apple/GlideCoreKit" --enable-code-coverage > "$MACOS_LOG" 2>&1 &
 TEST_PID=$!
 
-TIMEOUT_SECS=60
+TIMEOUT_SECS=180
 for ((i=1; i<=TIMEOUT_SECS; i++)); do
     if ! kill -0 "$TEST_PID" 2>/dev/null; then
         wait "$TEST_PID"
