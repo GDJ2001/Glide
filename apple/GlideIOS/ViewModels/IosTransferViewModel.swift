@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import Combine
+import Network
 import GlideCoreKit
 
 public struct IosHistoryItem: Identifiable, Sendable {
