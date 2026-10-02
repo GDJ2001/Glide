@@ -364,14 +364,12 @@ public final class GlideTransferEngine: @unchecked Sendable {
         for url in fileUrls {
             let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
             let size = (attrs[.size] as? NSNumber)?.int64Value ?? 0
-            preparedItems.AddOrAppend: do {
-                preparedItems.append(PreparedItem(
-                    itemId: UUID().uuidString.lowercased(),
-                    url: url,
-                    name: url.lastPathComponent,
-                    sizeBytes: size
-                ))
-            }
+            preparedItems.append(PreparedItem(
+                itemId: UUID().uuidString.lowercased(),
+                url: url,
+                name: url.lastPathComponent,
+                sizeBytes: size
+            ))
         }
 
         let batchId = UUID().uuidString.lowercased()

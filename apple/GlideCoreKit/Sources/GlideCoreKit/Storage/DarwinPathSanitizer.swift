@@ -91,4 +91,24 @@ public enum DarwinPathSanitizer {
             counter += 1
         }
     }
+
+    /// Checks whether a filename is safe (no path separators, no traversal, not empty, <= 255 bytes).
+    public static func isSafeFilename(_ name: String) -> Bool {
+        guard !name.isEmpty, name.utf8.count <= maxFilenameBytes else { return false }
+        if name.contains("/") || name.contains("\\") || name.contains(":") || name.contains("\0") { return false }
+        if name == "." || name == ".." || name.contains("..") { return false }
+        return true
+    }
+
+    /// Checks whether a relative path is safe (no traversal .., no leading slash, valid components).
+    public static func isSafeRelativePath(_ relPath: String) -> Bool {
+        guard !relPath.isEmpty else { return false }
+        if relPath.hasPrefix("/") || relPath.hasPrefix("\\") { return false }
+        let components = relPath.components(separatedBy: CharacterSet(charactersIn: "/\\"))
+        for comp in components {
+            if comp == ".." || comp.isEmpty { return false }
+            if !isSafeFilename(comp) { return false }
+        }
+        return true
+    }
 }

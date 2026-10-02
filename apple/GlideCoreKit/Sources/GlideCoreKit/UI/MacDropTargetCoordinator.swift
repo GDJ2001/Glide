@@ -73,12 +73,7 @@ public final class MacDropTargetCoordinator: @unchecked Sendable {
             throw DropError.fileNotFound(path)
         }
 
-        let canonicalPath: String
-        do {
-            canonicalPath = try URL(fileURLWithPath: path).resolvingSymlinksInPath().path
-        } catch {
-            canonicalPath = path
-        }
+        let canonicalPath = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
 
         // Prevent infinite loops on recursive symlinks
         if visitedPaths.contains(canonicalPath) {
