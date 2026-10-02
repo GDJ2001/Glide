@@ -31,9 +31,9 @@ done
 commit="$(git -C "$repo" rev-parse HEAD)"
 run_id="$(date -u +%Y%m%dT%H%M%SZ)"
 out="$repo/build/distributions/runs/${commit}-${run_id}/linux"
-mkdir -p "$out" "$repo/build/tmp"
-work="$(mktemp -d "$repo/build/tmp/linux-package.XXXXXXXX")"
-trap '[[ "$work" == "$repo"/build/tmp/linux-package.* ]] && rm -rf -- "$work"' EXIT
+mkdir -p "$out"
+work="$(mktemp -d "${TMPDIR:-/tmp}/linux-package.XXXXXXXX")"
+trap 'rm -rf -- "$work"' EXIT
 
 for rid in "$@"; do
   case "$rid" in
