@@ -77,3 +77,9 @@ packages/
 
 # Publish outputs
 *.publish.xml
+
+# Xcode and SwiftPM
+xcuserdata/
+*.xcuserdatad
+**/.swiftpm/
+Package.resolved

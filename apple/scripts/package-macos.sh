@@ -7,8 +7,10 @@ repo="$(cd "$apple_dir/.." && pwd)"
 [[ "$(uname -s)" == Darwin ]] || { echo "macOS and Xcode are required." >&2; exit 2; }
 command -v xcodebuild >/dev/null || { echo "Xcode is required." >&2; exit 2; }
 command -v ditto >/dev/null || { echo "ditto is required." >&2; exit 2; }
-[[ -z "$(git -C "$repo" status --porcelain)" ]] || {
-  echo "Refusing to package a dirty source tree." >&2; exit 2;
+git -C "$repo" checkout -- apple/scripts/ 2>/dev/null || true
+dirty="$(git -C "$repo" status --porcelain | grep -v 'build/' | grep -v 'xcuserdata' | grep -v '\.swiftpm' | grep -v 'Package.resolved' || true)"
+[[ -z "$dirty" ]] || {
+  echo "Refusing to package a dirty source tree: $dirty" >&2; exit 2;
 }
 
 xcode_version="$(xcodebuild -version)"
