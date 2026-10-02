@@ -128,22 +128,25 @@ if [ -n "$IOS_RUNTIME" ]; then
     fi
 
     # Detect package scheme
-    PKG_SCHEME=$(xcodebuild -package-path "${REPO_ROOT}/apple/GlideCoreKit" -list 2>/dev/null | awk '/Schemes:/{flag=1;next} flag && NF {print $1; exit}' || echo "GlideCoreKit")
+    PKG_SCHEME=$( (cd "${REPO_ROOT}/apple/GlideCoreKit" && xcodebuild -list 2>/dev/null | awk '/Schemes:/{flag=1;next} flag && NF {print $1; exit}') || echo "GlideCoreKit")
+    if [ -z "$PKG_SCHEME" ]; then PKG_SCHEME="GlideCoreKit"; fi
     echo "Using Package Scheme: $PKG_SCHEME"
 
     # 4. Run iOS Simulator Tests
     if [ -n "$IPHONE_UDID" ]; then
         echo "--- Running iOS Simulator Backend Tests ---"
         IOS_LOG="${EVIDENCE_DIR}/ios-simulator.log"
-        xcodebuild test \
-            -package-path "${REPO_ROOT}/apple/GlideCoreKit" \
-            -scheme "$PKG_SCHEME" \
-            -destination "platform=iOS Simulator,id=$IPHONE_UDID" \
-            -resultBundlePath "${EVIDENCE_DIR}/ios-simulator.xcresult" \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGN_IDENTITY="" \
-            PROVISIONING_PROFILE_SPECIFIER="" \
-            2>&1 | tee "$IOS_LOG"
+        (
+            cd "${REPO_ROOT}/apple/GlideCoreKit"
+            xcodebuild test \
+                -scheme "$PKG_SCHEME" \
+                -destination "platform=iOS Simulator,id=$IPHONE_UDID" \
+                -resultBundlePath "${EVIDENCE_DIR}/ios-simulator.xcresult" \
+                CODE_SIGNING_ALLOWED=NO \
+                CODE_SIGN_IDENTITY="" \
+                PROVISIONING_PROFILE_SPECIFIER="" \
+                2>&1 | tee "$IOS_LOG"
+        )
         echo "iOS Simulator tests PASSED."
     fi
 
@@ -151,15 +154,17 @@ if [ -n "$IOS_RUNTIME" ]; then
     if [ -n "$IPAD_UDID" ]; then
         echo "--- Running iPadOS Simulator Backend Tests ---"
         IPAD_LOG="${EVIDENCE_DIR}/ipados-simulator.log"
-        xcodebuild test \
-            -package-path "${REPO_ROOT}/apple/GlideCoreKit" \
-            -scheme "$PKG_SCHEME" \
-            -destination "platform=iOS Simulator,id=$IPAD_UDID" \
-            -resultBundlePath "${EVIDENCE_DIR}/ipados-simulator.xcresult" \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGN_IDENTITY="" \
-            PROVISIONING_PROFILE_SPECIFIER="" \
-            2>&1 | tee "$IPAD_LOG"
+        (
+            cd "${REPO_ROOT}/apple/GlideCoreKit"
+            xcodebuild test \
+                -scheme "$PKG_SCHEME" \
+                -destination "platform=iOS Simulator,id=$IPAD_UDID" \
+                -resultBundlePath "${EVIDENCE_DIR}/ipados-simulator.xcresult" \
+                CODE_SIGNING_ALLOWED=NO \
+                CODE_SIGN_IDENTITY="" \
+                PROVISIONING_PROFILE_SPECIFIER="" \
+                2>&1 | tee "$IPAD_LOG"
+        )
         echo "iPadOS Simulator tests PASSED."
     fi
 else
