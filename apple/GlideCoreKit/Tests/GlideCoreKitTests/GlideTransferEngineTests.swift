@@ -27,7 +27,7 @@ private actor ConnectionBox {
                 try await Task.sleep(nanoseconds: UInt64(timeoutSeconds * 1_000_000_000))
                 if self.continuation != nil {
                     self.continuation = nil
-                    cont.resume(throwing: TransferError.timeout)
+                    cont.resume(throwing: TransferError.timedOut)
                 }
             }
         }

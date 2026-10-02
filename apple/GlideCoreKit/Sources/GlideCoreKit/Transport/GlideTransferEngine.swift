@@ -14,6 +14,7 @@ public enum TransferError: Error, Equatable, Sendable {
     case verificationFailed(String)
     case protocolViolation(String)
     case cancelled
+    case timedOut
     case busy
     case insufficientStorage
     case limitExceeded(String)
