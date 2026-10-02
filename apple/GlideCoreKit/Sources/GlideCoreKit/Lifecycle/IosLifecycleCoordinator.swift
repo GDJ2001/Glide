@@ -94,10 +94,13 @@ public final class IosLifecycleCoordinator: @unchecked Sendable {
         activeTaskId = nil
     }
 
-    private final class DefaultBackgroundTaskProvider: IBackgroundTaskProvider {
+    private final class DefaultBackgroundTaskProvider: IBackgroundTaskProvider, @unchecked Sendable {
+        private let lock = NSLock()
         private var counter = 1000
 
         func beginBackgroundTask(withName name: String, expirationHandler: @escaping @Sendable () -> Void) -> Int {
+            lock.lock()
+            defer { lock.unlock() }
             counter += 1
             return counter
         }

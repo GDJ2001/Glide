@@ -23,16 +23,15 @@ jobs:
           xcodebuild -version
           swift --version
 
-      - name: Compile GlideCoreKit
-        run: swift build --package-path apple/GlideCoreKit
-
-      - name: Compile iOS simulator application
-        run: xcodebuild build -project apple/GlideApple.xcodeproj -scheme GlideIOS -configuration Release -destination 'generic/platform=iOS Simulator' -derivedDataPath build/apple-compile CODE_SIGNING_ALLOWED=NO
-
-      - name: Check embedded Share Extension bundle
+      - name: Run Apple backend tests and validation
         run: |
-          test -d build/apple-compile/Build/Products/Release-iphonesimulator/GlideIOS.app/PlugIns/GlideShareExtension.appex
-          plutil -lint build/apple-compile/Build/Products/Release-iphonesimulator/GlideIOS.app/PlugIns/GlideShareExtension.appex/Info.plist
+          chmod +x apple/scripts/run-backend-tests.sh
+          ./apple/scripts/run-backend-tests.sh
 
-      - name: Compile macOS application
-        run: xcodebuild build -project apple/GlideApple.xcodeproj -scheme GlideMac -configuration Release -derivedDataPath build/apple-compile CODE_SIGNING_ALLOWED=NO
+      - name: Archive Apple backend test evidence
+        if: always()
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb99736d90 # v4.6.1
+        with:
+          name: apple-backend-test-evidence
+          path: build/test-evidence/apple-backend/
+          retention-days: 14

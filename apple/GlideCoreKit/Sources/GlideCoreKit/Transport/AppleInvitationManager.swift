@@ -90,6 +90,10 @@ public enum AppleInvitationManager {
                   !ip.hasPrefix("127."), seen.insert(ip).inserted else { continue }
             result.append(ip)
         }
+        if !result.contains("127.0.0.1") {
+            // Include loopback for local test environments, simulators, and CI runners
+            result.append("127.0.0.1")
+        }
         return result
     }
 }

@@ -67,6 +67,7 @@ public final class MacTransferViewModel: ObservableObject {
 
     private let engine = GlideTransferEngine.shared
     private let listener = GlideNetworkListener()
+    private let authority = LanInvitationAuthority()
 
     public init() {
         generateLocalInvitation()
@@ -103,10 +104,106 @@ public final class MacTransferViewModel: ObservableObject {
     }
 
     public func generateLocalInvitation() {
-        // A pairing invitation must be bound to a running TLS listener's certificate
-        // and reachable address. Never publish a placeholder QR from UI state.
-        currentInvitationUri = ""
-        transferStatusText = "Receiving setup is unavailable until a TLS listener identity is configured."
+        do {
+            let identity = try KeychainIdentityManager.shared.getOrCreateTlsIdentity()
+            if !listener.isListening {
+                try listener.start(
+                    port: 0,
+                    tlsIdentity: identity,
+                    onReady: { [weak self] port in
+                        Task { @MainActor in
+                            guard let self = self else { return }
+                            self.listeningPort = port
+                            self.isListening = true
+                            do {
+                                let (_, uri) = try AppleInvitationManager.publish(
+                                    listener: self.listener,
+                                    authority: self.authority,
+                                    deviceName: self.deviceName,
+                                    platform: "macos"
+                                )
+                                self.currentInvitationUri = uri
+                                self.transferStatusText = "Ready to receive"
+                            } catch {
+                                self.transferStatusText = "Could not publish invitation: \(error.localizedDescription)"
+                            }
+                        }
+                    },
+                    onFailure: { [weak self] error in
+                        Task { @MainActor in
+                            self?.isListening = false
+                            self?.transferStatusText = "Listener error: \(error.localizedDescription)"
+                        }
+                    },
+                    onConnection: { [weak self] connection in
+                        Task { @MainActor in
+                            self?.handleIncomingConnection(connection)
+                        }
+                    }
+                )
+            } else {
+                let (_, uri) = try AppleInvitationManager.publish(
+                    listener: listener,
+                    authority: authority,
+                    deviceName: deviceName,
+                    platform: "macos"
+                )
+                currentInvitationUri = uri
+                transferStatusText = "Ready to receive"
+            }
+        } catch {
+            currentInvitationUri = ""
+            transferStatusText = "Receiving setup unavailable: \(error.localizedDescription)"
+        }
+    }
+
+    private func handleIncomingConnection(_ connection: NWConnection) {
+        guard !isTransferActive else {
+            connection.cancel()
+            return
+        }
+        isTransferActive = true
+        transferProgress = 0.0
+        transferStatusText = "Receiving from connected peer..."
+        updateDockBadge(text: "↓")
+
+        Task {
+            do {
+                let count = try await engine.receiveInboundConnection(
+                    connection: connection,
+                    authority: authority,
+                    destinationDirectory: downloadDirectory,
+                    localDeviceName: deviceName,
+                    onConsent: { [weak self] peer, count, totalBytes in
+                        guard let self = self else { return false }
+                        return await self.requestOfferConsent(peer: peer, count: count, totalBytes: totalBytes)
+                    },
+                    onProgress: { [weak self] progress, bytesDone, totalBytes, filename in
+                        Task { @MainActor in
+                            self?.transferProgress = progress
+                            self?.currentFileName = filename
+                            self?.transferredBytesText = "\(ByteCountFormatter.string(fromByteCount: bytesDone, countStyle: .file)) / \(ByteCountFormatter.string(fromByteCount: totalBytes, countStyle: .file))"
+                        }
+                    }
+                )
+                transferStatusText = "Received \(count) file(s)!"
+                historyItems.insert(MacHistoryItem(
+                    id: UUID().uuidString,
+                    timestamp: Date(),
+                    direction: "Received",
+                    peerName: "Peer Device",
+                    fileCount: count,
+                    totalBytes: 0,
+                    status: "Completed",
+                    destinationUrl: downloadDirectory
+                ), at: 0)
+            } catch {
+                transferStatusText = "Receive failed: \(error.localizedDescription)"
+            }
+            isTransferActive = false
+            updateDockBadge(text: nil)
+            generateLocalInvitation()
+        }
     }
 
     public func sendStagedFiles() {
@@ -254,15 +351,10 @@ public final class MacTransferViewModel: ObservableObject {
         if isListening {
             listener.stop()
             isListening = false
+            currentInvitationUri = ""
+            transferStatusText = "Listener stopped"
         } else {
-            do {
-                try listener.start(port: listeningPort) { connection in
-                    // Connection dispatch
-                }
-                isListening = true
-            } catch {
-                transferStatusText = "Listener error: \(error.localizedDescription)"
-            }
+            generateLocalInvitation()
         }
     }
 
