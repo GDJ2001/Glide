@@ -39,7 +39,32 @@ cat "$ENV_LOG"
 # 2. Execute Native macOS Tests
 echo "--- Running macOS Native Backend Tests ---"
 MACOS_LOG="${EVIDENCE_DIR}/macos-backend.log"
-swift test --package-path "${REPO_ROOT}/apple/GlideCoreKit" --enable-code-coverage 2>&1 | tee "$MACOS_LOG"
+
+swift test --package-path "${REPO_ROOT}/apple/GlideCoreKit" --enable-code-coverage > "$MACOS_LOG" 2>&1 &
+TEST_PID=$!
+
+TIMEOUT_SECS=120
+for ((i=1; i<=TIMEOUT_SECS; i++)); do
+    if ! kill -0 "$TEST_PID" 2>/dev/null; then
+        wait "$TEST_PID"
+        break
+    fi
+    sleep 1
+done
+
+if kill -0 "$TEST_PID" 2>/dev/null; then
+    echo "ERROR: Native tests timed out after ${TIMEOUT_SECS}s. Capturing thread sample..."
+    sample "$TEST_PID" 1 2>&1 || true
+    pgrep -P "$TEST_PID" | while read -r cpid; do
+        echo "Sample child PID $cpid:"
+        sample "$cpid" 1 2>&1 || true
+        kill -9 "$cpid" 2>/dev/null || true
+    done
+    kill -9 "$TEST_PID" 2>/dev/null || true
+    cat "$MACOS_LOG" || true
+    exit 1
+fi
+cat "$MACOS_LOG"
 echo "macOS native tests PASSED."
 
 # 3. Create Disposable Simulators (iPhone and iPad)

@@ -53,7 +53,8 @@ public enum GlideTlsParameters {
         tcpOptions.keepaliveIdle = NetworkTransportConfig.keepaliveIdleSeconds
 
         let parameters = NWParameters(tls: tlsOptions, tcp: tcpOptions)
-        parameters.includePeerToPeer = NetworkTransportConfig.includePeerToPeer
+        // Standard LAN sockets and loopback testing operate over standard TCP/IP interfaces
+        parameters.includePeerToPeer = false
         return parameters
     }
 
@@ -75,7 +76,8 @@ public enum GlideTlsParameters {
         tcpOptions.keepaliveIdle = NetworkTransportConfig.keepaliveIdleSeconds
 
         let parameters = NWParameters(tls: tlsOptions, tcp: tcpOptions)
-        parameters.includePeerToPeer = NetworkTransportConfig.includePeerToPeer
+        // Standard LAN sockets and loopback testing operate over standard TCP/IP interfaces
+        parameters.includePeerToPeer = false
         return parameters
     }
 }

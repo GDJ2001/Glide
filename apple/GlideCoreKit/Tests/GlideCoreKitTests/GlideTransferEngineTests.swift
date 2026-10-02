@@ -310,7 +310,9 @@ final class GlideTransferEngineTests: XCTestCase {
     // MARK: - Consent Rejection
 
     func testExplicitConsentRejectionAbortsTransfer() async throws {
+        print("DEBUG: [ConsentRejection] 1. Getting TLS identity...")
         let identity = try KeychainIdentityManager.shared.getOrCreateTlsIdentity()
+        print("DEBUG: [ConsentRejection] 2. Got identity, starting listener on ephemeral port...")
         let listener = GlideNetworkListener()
         let authority = LanInvitationAuthority()
         let box = ConnectionBox()
@@ -320,20 +322,34 @@ final class GlideTransferEngineTests: XCTestCase {
                 try listener.start(
                     port: 0,
                     tlsIdentity: identity,
-                    onReady: { port in continuation.resume(returning: port) },
-                    onFailure: { error in continuation.resume(throwing: error) },
-                    onConnection: { conn in Task { await box.setConnection(conn) } }
+                    onReady: { port in
+                        print("DEBUG: [ConsentRejection] 3. Listener onReady on port \(port)")
+                        continuation.resume(returning: port)
+                    },
+                    onFailure: { error in
+                        print("DEBUG: [ConsentRejection] 3! Listener onFailure: \(error)")
+                        continuation.resume(throwing: error)
+                    },
+                    onConnection: { conn in
+                        print("DEBUG: [ConsentRejection] 3* Listener onConnection received!")
+                        Task { await box.setConnection(conn) }
+                    }
                 )
-            } catch { continuation.resume(throwing: error) }
+            } catch {
+                print("DEBUG: [ConsentRejection] 3! Listener start threw: \(error)")
+                continuation.resume(throwing: error)
+            }
         }
         defer { listener.stop() }
 
+        print("DEBUG: [ConsentRejection] 4. Publishing invitation...")
         let (invitation, _) = try AppleInvitationManager.publish(
             listener: listener,
             authority: authority,
             deviceName: "TestReceiver",
             platform: "macos"
         )
+        print("DEBUG: [ConsentRejection] 5. Published with endpoints: \(invitation.endpoints.map { "\($0.address):\($0.port)" })")
 
         let testFile = try createTestFile(named: "rejected.txt", size: 1024)
 
@@ -341,18 +357,22 @@ final class GlideTransferEngineTests: XCTestCase {
         let receiverEngine = GlideTransferEngine(storageDirectory: receiverDir)
 
         let receiveTask = Task<Int, Error> {
+            print("DEBUG: [ConsentRejection] 6a. ReceiveTask awaiting box.getConnection()...")
             let conn = try await box.getConnection()
+            print("DEBUG: [ConsentRejection] 6b. ReceiveTask got connection, dispatching receiveInboundConnection...")
             return try await receiverEngine.receiveInboundConnection(
                 connection: conn,
                 authority: authority,
                 destinationDirectory: self.destDir,
                 localDeviceName: "TestReceiver",
                 onConsent: { _, _, _ in
+                    print("DEBUG: [ConsentRejection] 6c. onConsent called -> returning FALSE (rejection)")
                     return false // User explicitly refuses offer
                 }
             )
         }
 
+        print("DEBUG: [ConsentRejection] 7. Sender calling sendFiles...")
         do {
             _ = try await senderEngine.sendFiles(
                 fileUrls: [testFile],
@@ -361,13 +381,16 @@ final class GlideTransferEngineTests: XCTestCase {
             )
             XCTFail("Sender should have thrown offerRejected")
         } catch {
+            print("DEBUG: [ConsentRejection] 8. Sender caught error: \(error)")
             guard case TransferError.offerRejected = error else {
                 XCTFail("Expected TransferError.offerRejected, got: \(error)")
                 return
             }
         }
 
+        print("DEBUG: [ConsentRejection] 9. Awaiting receiveTask.value...")
         let receivedCount = try await receiveTask.value
+        print("DEBUG: [ConsentRejection] 10. receiveTask returned count: \(receivedCount)")
         XCTAssertEqual(receivedCount, 0)
 
         // Ensure rejected file was never committed to destination
