@@ -39,9 +39,14 @@ public final class GlideNetworkListener: @unchecked Sendable {
         self.tlsIdentity = tlsIdentity
 
         let parameters = try GlideTlsParameters.createServerParameters(identity: tlsIdentity)
-        let endpointPort = NWEndpoint.Port(rawValue: port) ?? NWEndpoint.Port(rawValue: 0)!
-
-        let listener = try NWListener(using: parameters, on: endpointPort)
+        let listener: NWListener
+        if port == 0 {
+            listener = try NWListener(using: parameters)
+        } else if let endpointPort = NWEndpoint.Port(rawValue: port) {
+            listener = try NWListener(using: parameters, on: endpointPort)
+        } else {
+            listener = try NWListener(using: parameters)
+        }
 
         if let name = bonjourName,
            let spki = spkiSha256Hex,
@@ -74,6 +79,10 @@ public final class GlideNetworkListener: @unchecked Sendable {
                 self.isListening = true
                 onReady?(port)
             case .failed(let error):
+                self.isListening = false
+                self.boundPort = 0
+                onFailure?(error)
+            case .waiting(let error):
                 self.isListening = false
                 self.boundPort = 0
                 onFailure?(error)

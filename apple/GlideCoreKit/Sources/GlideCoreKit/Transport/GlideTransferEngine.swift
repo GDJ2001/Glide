@@ -123,7 +123,7 @@ public final class GlideTransferEngine: @unchecked Sendable {
                     host: endpoint.address,
                     port: UInt16(endpoint.port),
                     expectedSpkiSha256Hex: invitation.spkiSha256,
-                    timeoutSeconds: 10.0
+                    timeoutSeconds: 3.0
                 )
                 break
             } catch {
@@ -173,7 +173,7 @@ public final class GlideTransferEngine: @unchecked Sendable {
                     host: endpoint.address,
                     port: UInt16(endpoint.port),
                     expectedSpkiSha256Hex: invitation.spkiSha256,
-                    timeoutSeconds: 10.0
+                    timeoutSeconds: 3.0
                 )
                 break
             } catch {

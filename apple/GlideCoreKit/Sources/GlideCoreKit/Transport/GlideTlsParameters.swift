@@ -23,8 +23,9 @@ public enum GlideTlsParameters {
             { (_, secTrust, completion) in
                 let serverTrust = sec_trust_copy_ref(secTrust).takeRetainedValue()
 
-                // Evaluate trust using SecTrustCopyKey or SecCertificateCopyKey
-                guard let certificate = SecTrustGetCertificateAtIndex(serverTrust, 0) else {
+                // Evaluate certificate SPKI pin using SecTrustCopyCertificateChain
+                let certificates = SecTrustCopyCertificateChain(serverTrust) as? [SecCertificate]
+                guard let certificate = certificates?.first else {
                     completion(false)
                     return
                 }

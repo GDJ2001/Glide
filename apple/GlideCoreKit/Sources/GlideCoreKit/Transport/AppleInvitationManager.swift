@@ -91,8 +91,8 @@ public enum AppleInvitationManager {
             result.append(ip)
         }
         if !result.contains("127.0.0.1") {
-            // Include loopback for local test environments, simulators, and CI runners
-            result.append("127.0.0.1")
+            // Include loopback at position 0 for fast local test environments, simulators, and CI runners
+            result.insert("127.0.0.1", at: 0)
         }
         return result
     }

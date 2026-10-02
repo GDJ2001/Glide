@@ -4,7 +4,7 @@ import Network
 @testable import GlideCoreKit
 
 private actor ConnectionBox {
-    private var continuation: CheckedContinuation<NWConnection, Never>?
+    private var continuation: CheckedContinuation<NWConnection, Error>?
     private var connection: NWConnection?
 
     func setConnection(_ conn: NWConnection) {
@@ -16,13 +16,20 @@ private actor ConnectionBox {
         }
     }
 
-    func getConnection() async -> NWConnection {
+    func getConnection(timeoutSeconds: TimeInterval = 15.0) async throws -> NWConnection {
         if let conn = connection {
             connection = nil
             return conn
         }
-        return await withCheckedContinuation { cont in
+        return try await withCheckedThrowingContinuation { cont in
             self.continuation = cont
+            Task {
+                try await Task.sleep(nanoseconds: UInt64(timeoutSeconds * 1_000_000_000))
+                if self.continuation != nil {
+                    self.continuation = nil
+                    cont.resume(throwing: TransferError.timeout)
+                }
+            }
         }
     }
 }
@@ -111,7 +118,7 @@ final class GlideTransferEngineTests: XCTestCase {
         let receiverEngine = GlideTransferEngine(storageDirectory: receiverDir)
 
         let receiveTask = Task<Int, Error> {
-            let conn = await box.getConnection()
+            let conn = try await box.getConnection()
             return try await receiverEngine.receiveInboundConnection(
                 connection: conn,
                 authority: authority,
@@ -197,7 +204,7 @@ final class GlideTransferEngineTests: XCTestCase {
         let receiverEngine = GlideTransferEngine(storageDirectory: receiverDir)
 
         let hostedSendTask = Task<Int, Error> {
-            let conn = await box.getConnection()
+            let conn = try await box.getConnection()
             return try await senderEngine.sendHostedInboundConnection(
                 connection: conn,
                 authority: authority,
@@ -275,7 +282,7 @@ final class GlideTransferEngineTests: XCTestCase {
         let receiverEngine = GlideTransferEngine(storageDirectory: receiverDir)
 
         let receiveTask = Task<Int, Error> {
-            let conn = await box.getConnection()
+            let conn = try await box.getConnection()
             return try await receiverEngine.receiveInboundConnection(
                 connection: conn,
                 authority: authority,
@@ -334,7 +341,7 @@ final class GlideTransferEngineTests: XCTestCase {
         let receiverEngine = GlideTransferEngine(storageDirectory: receiverDir)
 
         let receiveTask = Task<Int, Error> {
-            let conn = await box.getConnection()
+            let conn = try await box.getConnection()
             return try await receiverEngine.receiveInboundConnection(
                 connection: conn,
                 authority: authority,

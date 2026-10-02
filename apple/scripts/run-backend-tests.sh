@@ -35,7 +35,7 @@ cat "$ENV_LOG"
 # 2. Execute Native macOS Tests
 echo "--- Running macOS Native Backend Tests ---"
 MACOS_LOG="${EVIDENCE_DIR}/macos-backend.log"
-swift test --package-path "${REPO_ROOT}/apple/GlideCoreKit" --enable-code-coverage 2>&1 | tee "$MACOS_LOG"
+swift test --package-path "${REPO_ROOT}/apple/GlideCoreKit" --enable-code-coverage -v 2>&1 | tee "$MACOS_LOG"
 echo "macOS native tests PASSED."
 
 # 3. Create Disposable Simulators (iPhone and iPad)
