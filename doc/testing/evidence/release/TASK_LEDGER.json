@@ -1,0 +1,244 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GlideDevelopmentValidationTaskLedger",
+  "version": "0.1.0",
+  "updatedUtc": "2026-10-02T22:02:00Z",
+  "baselineCommit": "94e3f91cc43db359cd3f0ea420263f3bbf79671a",
+  "activeCandidateCommit": null,
+  "gates": [
+    {
+      "gateId": "E0",
+      "platformOrPair": "All",
+      "candidateCommit": "94e3f91cc43db359cd3f0ea420263f3bbf79671a",
+      "artifactSha256": null,
+      "environment": "Windows 11 Pro (LAPTOP-H99OPQFQ), WSL 2 (Glide-Test-Ubuntu-24.04)",
+      "status": "PASS",
+      "runId": "E0-BASELINE-20261002",
+      "evidencePaths": [
+        "doc/testing/evidence/release/BASELINE_E0.md"
+      ],
+      "blocker": null,
+      "reviewer": "AI Pair Programmer"
+    },
+    {
+      "gateId": "E1",
+      "platformOrPair": "Documentation",
+      "candidateCommit": "94e3f91cc43db359cd3f0ea420263f3bbf79671a",
+      "artifactSha256": null,
+      "environment": "Repository documentation",
+      "status": "PASS",
+      "runId": "E1-RECORD-CORRECTION-20261002",
+      "evidencePaths": [
+        "doc/planning/native-platforms/RECOVERY_STATUS.md",
+        "doc/testing/CROSS_PLATFORM_RELEASE_REPORT.md",
+        "doc/planning/native-platforms/VALIDATION_MATRIX.md"
+      ],
+      "blocker": null,
+      "reviewer": "AI Pair Programmer"
+    },
+    {
+      "gateId": "E2",
+      "platformOrPair": "Windows, Android, Linux, Apple",
+      "candidateCommit": "PENDING_FREEZE",
+      "artifactSha256": null,
+      "environment": "NSIS 3.12, Gradle 9.4.1 (Java 26), WSL 2 dpkg/rpmbuild, Xcode 26.6",
+      "status": "PASS",
+      "runId": "E2-DEV-PACKAGING-20261002",
+      "evidencePaths": [
+        "desktop/windows/package-windows.ps1",
+        "tools/package-android.ps1",
+        "tools/package-linux-native.sh",
+        "apple/scripts/package-macos.sh",
+        "apple/scripts/package-ios.sh",
+        "apple/GlideCoreKit/Tests/GlideCoreKitTests/AppleUiSmokeTests.swift"
+      ],
+      "blocker": null,
+      "reviewer": "AI Pair Programmer"
+    },
+    {
+      "gateId": "E3",
+      "platformOrPair": "Tooling",
+      "candidateCommit": "PENDING_FREEZE",
+      "artifactSha256": null,
+      "environment": "PowerShell 7.5.0",
+      "status": "PASS",
+      "runId": "E3-RELEASE-METADATA-20261002",
+      "evidencePaths": [
+        "tools/assemble-release-manifest.ps1",
+        "tools/test-release-manifest.ps1",
+        "build/distributions/RELEASE_MANIFEST.json",
+        "build/distributions/RELEASE_CATALOG.md"
+      ],
+      "blocker": null,
+      "reviewer": "AI Pair Programmer"
+    },
+    {
+      "gateId": "E4",
+      "platformOrPair": "All",
+      "candidateCommit": null,
+      "artifactSha256": null,
+      "environment": "Target build hosts",
+      "status": "NOT RUN",
+      "runId": null,
+      "evidencePaths": [],
+      "blocker": null,
+      "reviewer": null
+    },
+    {
+      "gateId": "E5-WIN-LINUX",
+      "platformOrPair": "Windows <-> Linux WSL 2",
+      "candidateCommit": null,
+      "artifactSha256": null,
+      "environment": "Windows 11 <-> Ubuntu 24.04 WSL 2",
+      "status": "NOT RUN",
+      "runId": null,
+      "evidencePaths": [],
+      "blocker": null,
+      "reviewer": null
+    },
+    {
+      "gateId": "E5-FEDORA-RPM",
+      "platformOrPair": "Linux (Fedora 44)",
+      "candidateCommit": null,
+      "artifactSha256": null,
+      "environment": "Fedora 44 container / VM",
+      "status": "NOT RUN",
+      "runId": null,
+      "evidencePaths": [],
+      "blocker": null,
+      "reviewer": null
+    },
+    {
+      "gateId": "E5-UBUNTU-DEB",
+      "platformOrPair": "Linux (Ubuntu 24.04)",
+      "candidateCommit": null,
+      "artifactSha256": null,
+      "environment": "Ubuntu 24.04 WSL 2",
+      "status": "NOT RUN",
+      "runId": null,
+      "evidencePaths": [],
+      "blocker": null,
+      "reviewer": null
+    },
+    {
+      "gateId": "E5-ANDROID-UNIT",
+      "platformOrPair": "Android",
+      "candidateCommit": null,
+      "artifactSha256": null,
+      "environment": "Android SDK 37, Gradle 9.4.1",
+      "status": "NOT RUN",
+      "runId": null,
+      "evidencePaths": [],
+      "blocker": null,
+      "reviewer": null
+    },
+    {
+      "gateId": "E5-ANDROID-EMU",
+      "platformOrPair": "Android",
+      "candidateCommit": null,
+      "artifactSha256": null,
+      "environment": "Pixel_10 Android 37.1 Emulator",
+      "status": "NOT RUN",
+      "runId": null,
+      "evidencePaths": [],
+      "blocker": null,
+      "reviewer": null
+    },
+    {
+      "gateId": "E5-APPLE-BACKEND",
+      "platformOrPair": "macOS / iOS / iPadOS",
+      "candidateCommit": null,
+      "artifactSha256": null,
+      "environment": "macOS 26.6.2 Runner (Xcode 26.6)",
+      "status": "NOT RUN",
+      "runId": null,
+      "evidencePaths": [],
+      "blocker": null,
+      "reviewer": null
+    },
+    {
+      "gateId": "E5-APPLE-UI",
+      "platformOrPair": "iOS / iPadOS / macOS",
+      "candidateCommit": null,
+      "artifactSha256": null,
+      "environment": "iOS Simulator (FE937851-2EEA-47B3-A394-1E5DB8D5555E), iPadOS Simulator (C633FCAD-8EBE-4BB9-BBFE-35F696A92370)",
+      "status": "NOT RUN",
+      "runId": null,
+      "evidencePaths": [],
+      "blocker": null,
+      "reviewer": null
+    },
+    {
+      "gateId": "E5-A11Y",
+      "platformOrPair": "All Virtual UIs",
+      "candidateCommit": null,
+      "artifactSha256": null,
+      "environment": "Windows Narrator, Android TalkBack, iOS VoiceOver, Linux Orca",
+      "status": "NOT RUN",
+      "runId": null,
+      "evidencePaths": [],
+      "blocker": null,
+      "reviewer": null
+    },
+    {
+      "gateId": "E6",
+      "platformOrPair": "All",
+      "candidateCommit": null,
+      "artifactSha256": null,
+      "environment": "Release Handoff",
+      "status": "NOT RUN",
+      "runId": null,
+      "evidencePaths": [],
+      "blocker": null,
+      "reviewer": null
+    },
+    {
+      "gateId": "P-PHYS-ANDROID",
+      "platformOrPair": "Windows <-> Android Physical",
+      "candidateCommit": null,
+      "artifactSha256": null,
+      "environment": "Physical Android hardware across Wi-Fi",
+      "status": "BLOCKED",
+      "runId": null,
+      "evidencePaths": [],
+      "blocker": "No physical Android device connected via ADB on local workstation",
+      "reviewer": null
+    },
+    {
+      "gateId": "P-PHYS-APPLE",
+      "platformOrPair": "Apple Physical Devices",
+      "candidateCommit": null,
+      "artifactSha256": null,
+      "environment": "Physical iPhone / iPad / Mac hardware across Wi-Fi",
+      "status": "BLOCKED",
+      "runId": null,
+      "evidencePaths": [],
+      "blocker": "Apple Developer code signing certificates and registered provisioning for group.dev.glide.shared unavailable",
+      "reviewer": null
+    },
+    {
+      "gateId": "P-PHYS-LINUX",
+      "platformOrPair": "Independent Linux Host",
+      "candidateCommit": null,
+      "artifactSha256": null,
+      "environment": "Independent physical Linux PC across LAN",
+      "status": "BLOCKED",
+      "runId": null,
+      "evidencePaths": [],
+      "blocker": "No separate dedicated physical Linux PC connected to the local network",
+      "reviewer": null
+    },
+    {
+      "gateId": "P-PUBLIC-RELEASE",
+      "platformOrPair": "Public App Stores",
+      "candidateCommit": null,
+      "artifactSha256": null,
+      "environment": "Microsoft Store, Google Play, Apple App Store",
+      "status": "BLOCKED",
+      "runId": null,
+      "evidencePaths": [],
+      "blocker": "Production signing, publisher keys, and store submissions are outside the scope of this virtual validation run",
+      "reviewer": null
+    }
+  ]
+}

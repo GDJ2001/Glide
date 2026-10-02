@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - fix/native-completion-hardening
+      - 'codex/**'
   workflow_dispatch:
 
 permissions:

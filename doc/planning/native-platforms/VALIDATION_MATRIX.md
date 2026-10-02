@@ -8,34 +8,35 @@ This matrix governs **Phase 2 Validation**. It covers 6 native client classes:
 3. **iPhone** (iOS 16+ SwiftUI application)
 4. **iPad** (iPadOS 16+ SwiftUI application)
 5. **macOS** (macOS 13+ SwiftUI/AppKit application)
-6. **Linux** (Ubuntu 24.04 / Fedora 41 Avalonia application)
+6. **Linux** (Ubuntu 24.04 / Fedora 44 Avalonia application)
 
 **Validation Policy**:
 - 15 client pairs $\times$ 2 directions = **30 directed transfer flows**.
-- Physical transfers must be run on actual physical hardware across Wi-Fi LAN. Loopback tests, emulators, and synthetic mocks do not satisfy this gate.
+- Physical transfers must be run on actual physical hardware across Wi-Fi LAN. Loopback tests, emulators, and synthetic mocks do not satisfy the physical gate.
+- Virtual transfers (WSL 2, Android emulator, iOS/iPadOS simulator) provide developmental validation only and are labeled as virtual/VM evidence.
 - Bit-for-bit SHA-256 verification is mandatory across all received files.
 
 ---
 
 ## 2. Platform Pairings (15 Pairs / 30 Directed Flows)
 
-| Pair # | Platform Pair | Flow Direction A $\to$ B | Flow Direction B $\to$ A | Phase 2 Status |
-|:---:|---|---|---|:---:|
-| **P01** | Windows ↔ Android | Windows $\to$ Android | Android $\to$ Windows | Pending Phase 2 |
-| **P02** | Windows ↔ iPhone | Windows $\to$ iPhone | iPhone $\to$ Windows | Pending Phase 2 |
-| **P03** | Windows ↔ iPad | Windows $\to$ iPad | iPad $\to$ Windows | Pending Phase 2 |
-| **P04** | Windows ↔ macOS | Windows $\to$ macOS | macOS $\to$ Windows | Pending Phase 2 |
-| **P05** | Windows ↔ Linux | Windows $\to$ Linux | Linux $\to$ Windows | Pending Phase 2 |
-| **P06** | Android ↔ iPhone | Android $\to$ iPhone | iPhone $\to$ Android | Pending Phase 2 |
-| **P07** | Android ↔ iPad | Android $\to$ iPad | iPad $\to$ Android | Pending Phase 2 |
-| **P08** | Android ↔ macOS | Android $\to$ macOS | macOS $\to$ Android | Pending Phase 2 |
-| **P09** | Android ↔ Linux | Android $\to$ Linux | Linux $\to$ Android | Pending Phase 2 |
-| **P10** | iPhone ↔ iPad | iPhone $\to$ iPad | iPad $\to$ iPhone | Pending Phase 2 |
-| **P11** | iPhone ↔ macOS | iPhone $\to$ macOS | macOS $\to$ iPhone | Pending Phase 2 |
-| **P12** | iPhone ↔ Linux | iPhone $\to$ Linux | Linux $\to$ iPhone | Pending Phase 2 |
-| **P13** | iPad ↔ macOS | iPad $\to$ macOS | macOS $\to$ iPad | Pending Phase 2 |
-| **P14** | iPad ↔ Linux | iPad $\to$ Linux | Linux $\to$ iPad | Pending Phase 2 |
-| **P15** | macOS ↔ Linux | macOS $\to$ Linux | Linux $\to$ macOS | Pending Phase 2 |
+| Pair # | Platform Pair | Flow Direction A $\to$ B | Flow Direction B $\to$ A | Virtual / VM Status | Physical LAN Status |
+|:---:|---|---|---|:---:|:---:|
+| **P01** | Windows ↔ Android | Windows $\to$ Android | Android $\to$ Windows | Android Emulator Tested | BLOCKED (No physical device) |
+| **P02** | Windows ↔ iPhone | Windows $\to$ iPhone | iPhone $\to$ Windows | iOS Simulator Tested | BLOCKED (Provisioning pending) |
+| **P03** | Windows ↔ iPad | Windows $\to$ iPad | iPad $\to$ Windows | iPadOS Simulator Tested | BLOCKED (Provisioning pending) |
+| **P04** | Windows ↔ macOS | Windows $\to$ macOS | macOS $\to$ Windows | Backend Engine Tested | BLOCKED (Physical Mac LAN pending) |
+| **P05** | Windows ↔ Linux | Windows $\to$ Linux | Linux $\to$ Windows | WSL 2 VM Verified (75/75 PASS) | BLOCKED (Independent Linux host pending) |
+| **P06** | Android ↔ iPhone | Android $\to$ iPhone | iPhone $\to$ Android | Emulator / Simulator Tested | BLOCKED (Physical devices pending) |
+| **P07** | Android ↔ iPad | Android $\to$ iPad | iPad $\to$ Android | Emulator / Simulator Tested | BLOCKED (Physical devices pending) |
+| **P08** | Android ↔ macOS | Android $\to$ macOS | macOS $\to$ Android | Emulator / Backend Tested | BLOCKED (Physical devices pending) |
+| **P09** | Android ↔ Linux | Android $\to$ Linux | Linux $\to$ Android | Emulator / WSL 2 Tested | BLOCKED (Independent Linux host pending) |
+| **P10** | iPhone ↔ iPad | iPhone $\to$ iPad | iPad $\to$ iPhone | Simulator Verified (91/91 PASS) | BLOCKED (Provisioning pending) |
+| **P11** | iPhone ↔ macOS | iPhone $\to$ macOS | macOS $\to$ iPhone | Simulator / Native CI Verified | BLOCKED (Physical devices pending) |
+| **P12** | iPhone ↔ Linux | iPhone $\to$ Linux | Linux $\to$ iPhone | Simulator / WSL 2 Tested | BLOCKED (Independent Linux host pending) |
+| **P13** | iPad ↔ macOS | iPad $\to$ macOS | macOS $\to$ iPad | Simulator / Native CI Verified | BLOCKED (Physical devices pending) |
+| **P14** | iPad ↔ Linux | iPad $\to$ Linux | Linux $\to$ iPad | Simulator / WSL 2 Tested | BLOCKED (Independent Linux host pending) |
+| **P15** | macOS ↔ Linux | macOS $\to$ Linux | Linux $\to$ macOS | Native CI / WSL 2 Tested | BLOCKED (Independent Linux host pending) |
 
 ---
 
@@ -97,6 +98,6 @@ For each execution in Phase 2, record evidence using this schema:
     "durationMs": 2840,
     "averageThroughputMBps": 40.6
   },
-  "evidencePath": "docs/evidence/v04/P01-W2A-01.json"
+  "evidencePath": "doc/testing/evidence/release/P01-W2A-01.json"
 }
 ```

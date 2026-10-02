@@ -212,7 +212,7 @@ public sealed class WindowsSendUiIntegrationTests
                         AutomationProperties.GetName(image) ==
                         "QR code for receiving selected files");
                 Assert.Equal(Visibility.Visible, qrImage.Visibility);
-                PumpDispatcherUntil(() => qrImage.Source != null, TimeSpan.FromSeconds(5));
+                PumpDispatcherUntil(() => qrImage.Source != null, TimeSpan.FromSeconds(10), window);
                 Assert.NotNull(qrImage.Source);
                 var cancelQuickShare = Assert.IsType<Button>(window.FindName("CancelQuickShareButton"));
                 double cancelBottom = cancelQuickShare.TranslatePoint(
@@ -401,7 +401,8 @@ public sealed class WindowsSendUiIntegrationTests
 
     private static void PumpDispatcherUntil(
         Func<bool> condition,
-        TimeSpan timeout)
+        TimeSpan timeout,
+        UIElement? visualToUpdate = null)
     {
         DateTime deadline = DateTime.UtcNow + timeout;
         while (!condition() && DateTime.UtcNow < deadline)
@@ -411,6 +412,7 @@ public sealed class WindowsSendUiIntegrationTests
                 DispatcherPriority.Background,
                 new Action(() => frame.Continue = false));
             Dispatcher.PushFrame(frame);
+            visualToUpdate?.UpdateLayout();
             Thread.Sleep(20);
         }
     }

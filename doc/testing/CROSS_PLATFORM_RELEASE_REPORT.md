@@ -1,17 +1,21 @@
-# Glide Cross-Platform Shared-Build and Release Gate Report
+# Glide Cross-Platform Shared-Build and Release Gate Report (Historical Candidate)
 
-**Document Status:** Complete & Authoritative  
-**Release Candidate Commit:** `45ccb95f07f4b8a139458d573396c8037f7c582a`  
-**Branch:** `fix/native-completion-hardening`  
+> [!NOTE]
+> **Historical Candidate Evaluation (Superseded)**: This report documents the intermediate shared-build evaluation conducted on candidate commit `45ccb95f07f4b8a139458d573396c8037f7c582a` on 2026-10-02/2026-10-03. It is preserved for provenance and historical audit. It does **not** qualify subsequent release candidates or certify physical cross-device completion. Full 15-pair physical interoperability remains **OPEN / BLOCKED**.
+
+**Document Status:** Historical Candidate Record (Superseded)  
+**Evaluated Candidate Commit:** `45ccb95f07f4b8a139458d573396c8037f7c582a`  
+**Branch:** `fix/native-completion-hardening` (superseded by `codex/development-virtual-validation`)  
 **Evaluation Date:** 2026-10-03  
-**Release Manifest:** `build/distributions/RELEASE_MANIFEST.json`  
-**Release Catalog:** `build/distributions/RELEASE_CATALOG.md`  
+**Historical Release Manifest:** `build/distributions/RELEASE_MANIFEST.json`  
+**Historical Release Catalog:** `build/distributions/RELEASE_CATALOG.md`  
 
 ---
 
-## 1. Executive Summary & Release Scope
+## 1. Executive Summary & Evaluation Scope
 
-This report certifies the formal release qualification and cross-platform validation gate for Glide. Every native client artifact evaluated in this phase was compiled, verified, and packaged directly from a single frozen source commit: **`45ccb95f07f4b8a139458d573396c8037f7c582a`**.
+This report records the developmental shared-build evaluation of candidate commit **`45ccb95f07f4b8a139458d573396c8037f7c582a`**. Pairwise physical transfer claims are not certified by this evaluation.
+
 
 ### Verified Scope
 - **5 Platform Families Covered:** Windows (Windows 11 WPF desktop), Android (Android 13+ Compose), Linux (Ubuntu 24.04 LTS / Fedora 44 Avalonia GUI and CLI daemon), macOS (macOS 13+ AppKit/SwiftUI), and iOS/iPadOS (iOS/iPadOS 16+ SwiftUI with embedded Share Extension).

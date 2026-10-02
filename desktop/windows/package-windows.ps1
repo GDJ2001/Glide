@@ -93,6 +93,34 @@ if ($LASTEXITCODE -ne 0) {
     throw "NSIS installer build failed."
 }
 
+$portableHash = (Get-FileHash -Algorithm SHA256 -Path $portableArchive).Hash.ToLowerInvariant()
+$installerHash = (Get-FileHash -Algorithm SHA256 -Path $installerOutput).Hash.ToLowerInvariant()
+$shaFile = Join-Path $outputRoot "SHA256SUMS-$Runtime.txt"
+@(
+    "$portableHash  $(Split-Path -Leaf $portableArchive)",
+    "$installerHash  $(Split-Path -Leaf $installerOutput)"
+) | Set-Content -Path $shaFile -Encoding utf8
+
+$commit = (git -C $repoRoot rev-parse HEAD).Trim()
+$dotnetVersion = (dotnet --version).Trim()
+$nsisVersionOutput = (& $NsisCompiler -VERSION 2>&1)
+$nsisVersion = if ($LASTEXITCODE -eq 0) { $nsisVersionOutput.Trim() } else { "NSIS 3.12+" }
+
+$manifestFile = Join-Path $outputRoot "BUILD-MANIFEST.txt"
+@"
+source_commit=$commit
+build_utc=$((Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ'))
+dotnet_sdk=$dotnetVersion
+nsis_version=$nsisVersion
+package_version=$Version
+runtime=$Runtime
+installer_artifact=$(Split-Path -Leaf $installerOutput)
+portable_artifact=$(Split-Path -Leaf $portableArchive)
+signing_status=unsigned_development
+installability=development_installable_unsigned
+"@ | Set-Content -Path $manifestFile -Encoding utf8
+
 Write-Host "Portable archive: $portableArchive" -ForegroundColor Green
 Write-Host "Installer: $installerOutput" -ForegroundColor Green
+Write-Host "Manifest: $manifestFile" -ForegroundColor Green
 Write-Host "Sign the installer in the protected release pipeline before publishing it." -ForegroundColor Yellow

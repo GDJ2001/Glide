@@ -54,6 +54,6 @@ toolchain=$(printf '%s' "$xcode_version" | tr '\n' ' ')
 simulator_artifact=Glide-iOS-simulator-unsigned.zip
 device_artifact=Glide-iOS-device-unsigned-archive.zip
 signing_status=unsigned_development
-installability=device_archive_requires_distribution_signing
+installability=build_only_requires_distribution_signing
 EOF
 echo "Unsigned iOS builds: $out"
