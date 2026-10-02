@@ -601,7 +601,6 @@ public final class GlideTransferEngine: @unchecked Sendable {
         }
 
         defer { releaseSession(sessionId) }
-        let sequence = LanControlSequence()
 
         // 2. HELLO / HELLO_ACK
         let hello = try await sequence.readEnvelope(from: channel, expectedType: LanMessageTypes.hello, sessionId: sessionId)
