@@ -88,7 +88,7 @@ public actor LanRecordChannel {
     public func writeRecord(_ record: LanRecord) async throws {
         let frameData = try LanRecordCodec.encode(record)
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            connection.send(content: frameData, completion: .contentProcessed { error in
+            connection.send(content: frameData, isComplete: false, completion: .contentProcessed { error in
                 if let error = error {
                     continuation.resume(throwing: error)
                 } else {
