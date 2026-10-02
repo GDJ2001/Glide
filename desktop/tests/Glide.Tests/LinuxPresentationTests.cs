@@ -167,6 +167,7 @@ public sealed class LinuxPresentationTests
     public void TransferProgressAndStatus_UpdatesPresentationProperties()
     {
         var vm = new LinuxMainViewModel();
+        vm.HistoryItems.Clear();
 
         // Simulate progress update
         var progress = new DesktopTransferProgress(

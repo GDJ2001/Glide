@@ -194,7 +194,7 @@ public sealed class DesktopEngineArchitectureTests
         while (directory != null)
         {
             if (Directory.Exists(Path.Combine(directory.FullName, ".git")) ||
-                File.Exists(Path.Combine(directory.FullName, "settings.gradle.kts")))
+                (Directory.Exists(Path.Combine(directory.FullName, "android")) && Directory.Exists(Path.Combine(directory.FullName, "desktop"))))
             {
                 return directory.FullName;
             }

@@ -15,13 +15,36 @@ internal sealed class DaemonInvitationFile : IDisposable
     {
         string? configuredRuntimeRoot = Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR");
         bool usesSystemRuntimeDirectory = !string.IsNullOrWhiteSpace(configuredRuntimeRoot);
-        string runtimeRoot = usesSystemRuntimeDirectory
-            ? configuredRuntimeRoot!
-            : OperatingSystem.IsWindows()
+        string? runtimeRoot = configuredRuntimeRoot;
+
+        if (usesSystemRuntimeDirectory && !OperatingSystem.IsWindows())
+        {
+            try
+            {
+                Directory.CreateDirectory(runtimeRoot!);
+                if (new DirectoryInfo(runtimeRoot!).LinkTarget != null)
+                    throw new IOException("The runtime directory must not be a symbolic link.");
+                if ((File.GetUnixFileMode(runtimeRoot!) &
+                          (UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.GroupExecute |
+                           UnixFileMode.OtherRead | UnixFileMode.OtherWrite | UnixFileMode.OtherExecute)) != 0)
+                    throw new IOException("The system runtime directory is accessible to other users.");
+                Directory.CreateDirectory(System.IO.Path.Combine(runtimeRoot!, "glide"));
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+            {
+                usesSystemRuntimeDirectory = false;
+                runtimeRoot = null;
+            }
+        }
+
+        if (runtimeRoot == null)
+        {
+            runtimeRoot = OperatingSystem.IsWindows()
                 ? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)
                 : System.IO.Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
                     ".local", "share", "glide", "runtime");
+        }
 
         Directory.CreateDirectory(runtimeRoot);
         if (!OperatingSystem.IsWindows())
@@ -31,10 +54,6 @@ internal sealed class DaemonInvitationFile : IDisposable
             if (!usesSystemRuntimeDirectory)
                 File.SetUnixFileMode(runtimeRoot,
                     UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-            else if ((File.GetUnixFileMode(runtimeRoot) &
-                      (UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.GroupExecute |
-                       UnixFileMode.OtherRead | UnixFileMode.OtherWrite | UnixFileMode.OtherExecute)) != 0)
-                throw new IOException("The system runtime directory is accessible to other users.");
         }
 
         _directory = System.IO.Path.Combine(runtimeRoot, "glide");

@@ -212,6 +212,7 @@ public sealed class WindowsSendUiIntegrationTests
                         AutomationProperties.GetName(image) ==
                         "QR code for receiving selected files");
                 Assert.Equal(Visibility.Visible, qrImage.Visibility);
+                PumpDispatcherUntil(() => qrImage.Source != null, TimeSpan.FromSeconds(5));
                 Assert.NotNull(qrImage.Source);
                 var cancelQuickShare = Assert.IsType<Button>(window.FindName("CancelQuickShareButton"));
                 double cancelBottom = cancelQuickShare.TranslatePoint(

@@ -20,7 +20,7 @@ public sealed class QuarantineStagingStore
 
     public QuarantineStagingStore(string? stagingRoot = null, string? destinationRoot = null, Func<long>? freeSpaceProvider = null)
     {
-        _stagingRoot = stagingRoot ?? GetDefaultStagingRoot();
+        _stagingRoot = Path.GetFullPath(stagingRoot ?? GetDefaultStagingRoot());
 
         _destinationRoot = destinationRoot ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
