@@ -3,12 +3,17 @@
 **Evaluation Baseline & Execution Provenance**
 - **Date**: 2026-10-02
 - **Branch**: `fix/native-completion-hardening`
-- **Source Commit**: `a34e74360e2270921bc699f7d4b00516599b5329`
-- **Host Environment**: macOS 26.6.2 (25G83) / arm64 Apple Silicon
+- **Source Commit**: `a0e2dda23124a70b64e21642c2ef28569a2a04a5`
+- **GitHub Actions Run ID**: `37054781795`
+- **Host Environment**: macOS 26.6.2 (25G83) / arm64 Apple Silicon (Darwin Kernel 25.6.0)
 - **Xcode Version**: Xcode 26.6 (Build version `17F113`)
 - **Swift Toolchain**: Apple Swift version 6.3.3 (`swiftlang-6.3.3.1.3 clang-2100.1.1.101`)
+- **Target**: `arm64-apple-macosx26.0`
+- **Simulators**:
+  - iPhone: `C5DE337C-98EE-4405-9219-1F4FA26ABEF6` (`com.apple.CoreSimulator.SimRuntime.iOS-26-5`)
+  - iPad: `7B1CD6AF-E4D2-44AC-84F8-1E9AE234EDDF` (`com.apple.CoreSimulator.SimRuntime.iOS-26-5`)
 - **Evaluator**: Glide Development Team & Automated CI Matrix
-- **Evidence Path**: `build/test-evidence/apple-backend/a34e74360e2270921bc699f7d4b00516599b5329/`
+- **Evidence Path**: `build/test-evidence/apple-backend/a0e2dda23124a70b64e21642c2ef28569a2a04a5/`
 
 ---
 
@@ -104,4 +109,4 @@ Inbound transfer isolation was audited during the test run:
 
 ## 4. Pinned Completion Statement
 
-iOS Simulator and native macOS backend matrix passed at commit a34e74360e2270921bc699f7d4b00516599b5329.
+iOS Simulator and native macOS backend matrix passed at commit a0e2dda23124a70b64e21642c2ef28569a2a04a5.
