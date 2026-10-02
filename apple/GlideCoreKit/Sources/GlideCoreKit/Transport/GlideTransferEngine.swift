@@ -118,16 +118,20 @@ public final class GlideTransferEngine: @unchecked Sendable {
         var connectedChannel: LanRecordChannel?
         var lastError: Error?
 
+        print("DEBUG: [sendFiles] Starting connect loop over \(invitation.endpoints.count) endpoints...")
         for endpoint in invitation.endpoints {
             do {
+                print("DEBUG: [sendFiles] Trying to connect to \(endpoint.address):\(endpoint.port)...")
                 connectedChannel = try await client.connect(
                     host: endpoint.address,
                     port: UInt16(endpoint.port),
                     expectedSpkiSha256Hex: invitation.spkiSha256,
                     timeoutSeconds: 3.0
                 )
+                print("DEBUG: [sendFiles] Connected to \(endpoint.address):\(endpoint.port) successfully!")
                 break
             } catch {
+                print("DEBUG: [sendFiles] Failed to connect to \(endpoint.address):\(endpoint.port): \(error)")
                 lastError = error
             }
         }
@@ -275,6 +279,7 @@ public final class GlideTransferEngine: @unchecked Sendable {
         var sessionId = UUID().uuidString.lowercased()
         let sequence = LanControlSequence()
 
+        print("DEBUG: [runSenderSession] Entered: isHostedSender=\(isHostedSender), sessionId=\(sessionId)")
         // 1. BOOTSTRAP
         if !isHostedSender {
             guard tryAcquireSession(sessionId) else {
@@ -289,10 +294,13 @@ public final class GlideTransferEngine: @unchecked Sendable {
                 sessionId: sessionId,
                 role: "sender"
             )
+            print("DEBUG: [runSenderSession] Encoded bootstrap message, writing bootstrapRecord...")
             let bootstrapRecord = try LanRecord.bootstrap(jsonBytes: LanBootstrapCodec.encode(bootstrap))
             try await channel.writeRecord(bootstrapRecord)
+            print("DEBUG: [runSenderSession] Wrote bootstrapRecord, awaiting bootstrapResult...")
 
             let resultRecord = try await channel.readRecord()
+            print("DEBUG: [runSenderSession] Read resultRecord: \(resultRecord.kind)")
             guard case .bootstrapResult(let jsonBytes) = resultRecord else {
                 throw TransferError.protocolViolation("Expected BOOTSTRAP_RESULT")
             }
@@ -579,7 +587,9 @@ public final class GlideTransferEngine: @unchecked Sendable {
             }
         } else {
             guard let auth = authority else { throw TransferError.protocolViolation("Missing authority") }
+            print("DEBUG: [runReceiverSession] Waiting for firstRecord (BOOTSTRAP)...")
             let firstRecord = try await channel.readRecord()
+            print("DEBUG: [runReceiverSession] Got firstRecord: \(firstRecord.kind)")
             guard case .bootstrap(let jsonBytes) = firstRecord else {
                 throw TransferError.protocolViolation("Expected BOOTSTRAP as first record")
             }

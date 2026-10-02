@@ -97,6 +97,10 @@ public final class GlideNetworkListener: @unchecked Sendable {
         listener.newConnectionHandler = { [weak self] connection in
             guard let self = self else { return }
             guard self.listener === listener else { connection.cancel(); return }
+            print("DEBUG: [Listener] newConnectionHandler received connection")
+            connection.stateUpdateHandler = { state in
+                print("DEBUG: [InboundConnection] state=\(state)")
+            }
             connection.start(queue: self.queue)
             self.onConnectionHandler?(connection)
         }

@@ -27,17 +27,22 @@ public actor LanRecordChannel {
         var accumulated = Data()
         while accumulated.count < count {
             let needed = count - accumulated.count
+            print("DEBUG: [readExact] calling connection.receive for needed=\(needed)...")
             let chunk: Data = try await withCheckedThrowingContinuation { continuation in
                 connection.receive(minimumIncompleteLength: 1, maximumLength: needed) { content, _, isComplete, error in
                     if let error = error {
+                        print("DEBUG: [readExact] connection.receive error: \(error)")
                         continuation.resume(throwing: error)
                         return
                     }
                     if let data = content, !data.isEmpty {
+                        print("DEBUG: [readExact] connection.receive got \(data.count) bytes (isComplete=\(isComplete))")
                         continuation.resume(returning: data)
                     } else if isComplete {
+                        print("DEBUG: [readExact] connection.receive EOF isComplete=true")
                         continuation.resume(throwing: LanChannelError.connectionClosed)
                     } else {
+                        print("DEBUG: [readExact] connection.receive empty data, returning Data()")
                         continuation.resume(returning: Data())
                     }
                 }
@@ -87,11 +92,14 @@ public actor LanRecordChannel {
     /// Encodes and sends a `LanRecord` frame atomically.
     public func writeRecord(_ record: LanRecord) async throws {
         let frameData = try LanRecordCodec.encode(record)
+        print("DEBUG: [writeRecord] sending record kind=\(record.kind), len=\(frameData.count)...")
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             connection.send(content: frameData, isComplete: false, completion: .contentProcessed { error in
                 if let error = error {
+                    print("DEBUG: [writeRecord] send error: \(error)")
                     continuation.resume(throwing: error)
                 } else {
+                    print("DEBUG: [writeRecord] send completed for kind=\(record.kind)")
                     continuation.resume(returning: ())
                 }
             })
