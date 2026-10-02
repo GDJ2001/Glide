@@ -193,6 +193,7 @@ xcodebuild build \
 # Verify embedded Share Extension
 test -d "${REPO_ROOT}/build/apple-compile/Build/Products/Release-iphonesimulator/GlideIOS.app/PlugIns/GlideShareExtension.appex"
 plutil -lint "${REPO_ROOT}/build/apple-compile/Build/Products/Release-iphonesimulator/GlideIOS.app/PlugIns/GlideShareExtension.appex/Info.plist"
+plutil -lint "${REPO_ROOT}/build/apple-compile/Build/Products/Release-iphonesimulator/GlideIOS.app/Info.plist"
 
 # 7. Simulator and Native Application Launch Smoke Verification
 IPHONE_LAUNCH_RESULT="SKIPPED"
