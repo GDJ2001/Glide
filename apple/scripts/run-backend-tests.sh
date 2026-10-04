@@ -244,8 +244,8 @@ fi
 # 8. Produce Development Packages
 echo "--- Packaging Development macOS and iOS Archives ---"
 chmod +x "${SCRIPT_DIR}/package-macos.sh" "${SCRIPT_DIR}/package-ios.sh"
-"${SCRIPT_DIR}/package-macos.sh" || true
-"${SCRIPT_DIR}/package-ios.sh" || true
+"${SCRIPT_DIR}/package-macos.sh"
+"${SCRIPT_DIR}/package-ios.sh"
 
 # 9. Summary and Evidence Digest
 SUMMARY_FILE="${EVIDENCE_DIR}/test-summary.txt"
