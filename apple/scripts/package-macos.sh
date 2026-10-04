@@ -91,8 +91,20 @@ else
 fi
 
 package="$out/$package_name"
+components="$derived/GlideComponents.plist"
+pkgbuild --analyze --root "$payload" "$components"
+for index in 0 1; do
+  component_path="$(/usr/libexec/PlistBuddy -c "Print :$index:RootRelativeBundlePath" "$components")"
+  case "$component_path" in
+    Applications/Glide.app|Applications/Glide\ Uninstaller.app) ;;
+    *) echo "Unexpected installer component: $component_path" >&2; exit 1 ;;
+  esac
+  /usr/libexec/PlistBuddy -c "Set :$index:BundleIsRelocatable false" "$components" || \
+    /usr/libexec/PlistBuddy -c "Add :$index:BundleIsRelocatable bool false" "$components"
+done
+plutil -lint "$components"
 package_args=(--root "$payload" --identifier dev.glide.mac.installer \
-  --version "$version" --install-location /)
+  --version "$version" --install-location / --component-plist "$components")
 if $signed; then package_args+=(--sign "$installer_identity"); fi
 pkgbuild "${package_args[@]}" "$package"
 [[ -s "$package" ]] || { echo "The macOS installer package is missing." >&2; exit 1; }

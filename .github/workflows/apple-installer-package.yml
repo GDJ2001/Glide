@@ -1,0 +1,50 @@
+name: Apple installer package
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  macos-installer:
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+          xcodebuild -version
+
+      - name: Build macOS installer and uninstaller
+        run: |
+          chmod +x apple/scripts/package-macos.sh
+          apple/scripts/package-macos.sh
+
+      - name: Smoke test install and uninstall
+        run: |
+          package=$(find build/distributions/runs -name Glide-macos-development-unsigned.pkg -print -quit)
+          test -n "$package"
+          sudo /usr/sbin/installer -pkg "$package" -target /
+          pkgutil --files dev.glide.mac.installer | sed -n '1,12p'
+          ls -ld /Applications/Glide.app '/Applications/Glide Uninstaller.app'
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' /Applications/Glide.app/Contents/Info.plist)" = dev.glide.mac
+          sudo /bin/bash '/Applications/Glide Uninstaller.app/Contents/Resources/uninstall.sh'
+          test ! -e /Applications/Glide.app
+          test ! -e '/Applications/Glide Uninstaller.app'
+          if pkgutil --pkg-info dev.glide.mac.installer >/dev/null 2>&1; then
+            echo 'Glide package receipt remained after uninstall.' >&2
+            exit 1
+          fi
+
+      - name: Upload package and checksums
+        if: always()
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
+        with:
+          name: glide-macos-installer-${{ github.sha }}
+          path: build/distributions/runs/*/apple/macos/
+          if-no-files-found: error
+          retention-days: 14

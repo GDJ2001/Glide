@@ -34,6 +34,8 @@ jobs:
           package=$(find build/distributions/runs -name Glide-macos-development-unsigned.pkg -print -quit)
           test -n "$package"
           sudo /usr/sbin/installer -pkg "$package" -target /
+          pkgutil --files dev.glide.mac.installer | sed -n '1,12p'
+          ls -ld /Applications/Glide.app '/Applications/Glide Uninstaller.app'
           test -d /Applications/Glide.app
           test -d '/Applications/Glide Uninstaller.app'
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' /Applications/Glide.app/Contents/Info.plist)" = dev.glide.mac
