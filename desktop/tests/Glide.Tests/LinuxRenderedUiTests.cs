@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
+using Avalonia.Input;
 using Avalonia.Styling;
 using Avalonia.VisualTree;
 using Glide.Core.Models;
@@ -173,6 +174,31 @@ public sealed class LinuxRenderedUiTests
     }
 
     [Fact]
+    public async Task MainWindow_EscapeKey_DismissesActiveModal()
+    {
+        var session = HeadlessSetup.GetSession();
+        await session.Dispatch(() =>
+        {
+            var vm = new LinuxMainViewModel();
+            var window = new MainWindow { DataContext = vm };
+            window.Show();
+
+            var offer = new DesktopOffer("batch-1", "Peer Device", [], 0);
+            _ = vm.ConfirmOfferAsync(offer, CancellationToken.None);
+
+            Assert.True(vm.IsOfferModalVisible);
+            Assert.True(vm.IsAnyModalVisible);
+
+            window.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.Escape, null);
+
+            Assert.False(vm.IsOfferModalVisible);
+            Assert.False(vm.IsAnyModalVisible);
+
+            window.Close();
+        }, CancellationToken.None);
+    }
+
+    [Fact]
     public async Task Appearance_ThemeSelection_AppliesThemeVariant()
     {
         var session = HeadlessSetup.GetSession();
@@ -225,4 +251,59 @@ public sealed class LinuxRenderedUiTests
         Assert.Single(vm.FilteredHistoryItems);
         Assert.Equal("Pixel 8", vm.FilteredHistoryItems.First().PeerName);
     }
+
+    [Fact]
+    public async Task SendPage_WithStagedItems_RendersQueueAndAllowsItemRemoval()
+    {
+        var session = HeadlessSetup.GetSession();
+        string tempDir = Path.Combine(Path.GetTempPath(), $"glide_rendered_stage_test_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            string file1 = Path.Combine(tempDir, "document.pdf");
+            string file2 = Path.Combine(tempDir, "archive.tar");
+            await File.WriteAllBytesAsync(file1, new byte[1024]);
+            await File.WriteAllBytesAsync(file2, new byte[2048]);
+
+            await session.Dispatch(async () =>
+            {
+                var vm = new LinuxMainViewModel();
+                var window = new MainWindow { DataContext = vm };
+                window.Show();
+
+                await vm.StagePathsAsync([file1, file2]);
+                window.UpdateLayout();
+
+                var sendPage = window.GetVisualDescendants().OfType<SendPage>().Single();
+                Assert.True(sendPage.IsVisible);
+                Assert.True(vm.HasStagedItems);
+                Assert.False(vm.HasNoStagedItems);
+                Assert.Equal(2, vm.StagedCount);
+
+                // Find items control in send page
+                var itemsControl = sendPage.GetVisualDescendants().OfType<ItemsControl>().First();
+                Assert.NotNull(itemsControl);
+
+                // Remove the first item via its RemoveCommand
+                var firstItem = vm.StagedItems[0];
+                Assert.NotNull(firstItem.RemoveCommand);
+                Assert.True(firstItem.RemoveCommand.CanExecute(null));
+                firstItem.RemoveCommand.Execute(null);
+
+                Assert.Equal(1, vm.StagedCount);
+                Assert.Equal("archive.tar", vm.StagedItems[0].Name);
+
+                window.Close();
+            }, CancellationToken.None);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, true);
+            }
+        }
+    }
 }
+

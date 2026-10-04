@@ -9,6 +9,8 @@ public sealed class LinuxTransferItemViewModel : ViewModelBase
 
     public string FormattedSize => FormatBytes(Size);
 
+    public System.Windows.Input.ICommand? RemoveCommand { get; set; }
+
     public LinuxTransferItemViewModel(string fullPath, string name, long size, bool isDirectory)
     {
         FullPath = fullPath;

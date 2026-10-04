@@ -634,6 +634,8 @@ public static class Program
 
         string pairUri = args[1];
         string? trustedPeerFingerprint = null;
+        string? targetHost = null;
+        int targetPort = 0;
         var fileArgs = new List<string>();
 
         for (int i = 2; i < args.Length; i++)
@@ -643,6 +645,21 @@ public static class Program
             {
                 trustedPeerFingerprint =
                     args[++i];
+            }
+            else if (args[i] == "--connect" &&
+                     i + 1 < args.Length)
+            {
+                string connectStr = args[++i];
+                if (connectStr.Contains(':'))
+                {
+                    var parts = connectStr.Split(':');
+                    targetHost = parts[0];
+                    if (int.TryParse(parts[1], out int p)) targetPort = p;
+                }
+                else
+                {
+                    targetHost = connectStr;
+                }
             }
             else
             {
@@ -720,8 +737,8 @@ public static class Program
                 trustManager: trustManager);
         var result = await engine.SendAsync(
             new DesktopSendRequest(
-                endpoint.Address,
-                endpoint.Port,
+                targetHost ?? endpoint.Address,
+                targetPort > 0 ? targetPort : endpoint.Port,
                 files,
                 invitation,
                 Environment.MachineName,
@@ -729,6 +746,19 @@ public static class Program
                 ExpectedPeerFingerprintHex:
                     trustedPeerFingerprint),
             interaction);
+
+        if (!result.Success)
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"[ERROR] Send failed: {result.Message}");
+            Console.ResetColor();
+        }
+        else
+        {
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine($"[SUCCESS] {result.Message}");
+            Console.ResetColor();
+        }
 
         return result.Success ? 0 : 1;
     }

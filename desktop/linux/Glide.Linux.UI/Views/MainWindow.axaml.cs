@@ -12,6 +12,14 @@ public partial class MainWindow : Window
         InitializeComponent();
         Closed += (_, _) => (DataContext as LinuxMainViewModel)?.Dispose();
         AddHandler(DragDrop.DropEvent, OnDrop);
+        AddHandler(KeyDownEvent, (sender, e) =>
+        {
+            if (e.Key == Key.Escape && DataContext is LinuxMainViewModel vm && vm.IsAnyModalVisible)
+            {
+                vm.DismissActiveModalCommand.Execute(null);
+                e.Handled = true;
+            }
+        }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
     }
 
     private async void OnDrop(object? sender, DragEventArgs e)

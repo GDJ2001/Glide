@@ -114,7 +114,11 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
             TlsSocketConnection? connectedSocket = null;
             Exception? lastConnectException = null;
 
-            foreach (LanEndpoint endpoint in invitation.Endpoints)
+            IReadOnlyList<LanEndpoint> endpointsToTry = !string.IsNullOrWhiteSpace(request.Host)
+                ? new[] { new LanEndpoint(request.Host, request.Port > 0 ? request.Port : invitation.Endpoints.FirstOrDefault()?.Port ?? 42424) }
+                : invitation.Endpoints;
+
+            foreach (LanEndpoint endpoint in endpointsToTry)
             {
                 string host = endpoint.Address;
                 int port = endpoint.Port;

@@ -179,6 +179,8 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
     public bool HasStagedItems => StagedItems.Count > 0;
     public bool HasNoStagedItems => StagedItems.Count == 0;
 
+    public bool AutoConfirmForTesting { get; set; }
+
     public string DeviceName
     {
         get => _deviceName;
@@ -543,8 +545,7 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
         {
             if (p is LinuxTransferItemViewModel item)
             {
-                StagedItems.Remove(item);
-                NotifyStagingChanged();
+                RemoveStagedItem(item);
             }
         });
 
@@ -613,6 +614,8 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
             StatusMessage = "An incoming connection ended unexpectedly. Refresh the link and try again.");
         StartMdnsDiscovery();
     }
+
+    public void StagePaths(IEnumerable<string> paths) => _ = StagePathsAsync(paths);
 
     public async Task StagePathsAsync(IEnumerable<string> paths)
     {
@@ -690,12 +693,19 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
         {
             foreach (var item in items)
             {
+                item.RemoveCommand = new RelayCommand(_ => RemoveStagedItem(item));
                 StagedItems.Add(item);
             }
             NotifyStagingChanged();
             if (skipped > 0)
                 StatusMessage = $"{skipped} selection(s) skipped because they were unavailable, unreadable, or too large.";
         });
+    }
+
+    public void RemoveStagedItem(LinuxTransferItemViewModel item)
+    {
+        StagedItems.Remove(item);
+        NotifyStagingChanged();
     }
 
     private void NotifyStagingChanged()
@@ -999,6 +1009,7 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
         {
             var invitation = _invitationManager.CreateReceiverInvitation(listener, DeviceName, listener.BoundPort);
             CurrentInvitationUri = DesktopInvitationManager.EncodeInvitation(invitation);
+            try { File.WriteAllText(Path.Combine(Path.GetTempPath(), "glide_active_invitation.uri"), CurrentInvitationUri); } catch { }
             _mdnsDiscovery.StartAdvertising(DeviceName, listener.BoundPort, invitation.Presence);
             if (_hostedSendRequest != null)
                 _hostedSendRequest = _hostedSendRequest with { Invitation = invitation };
@@ -1101,6 +1112,10 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
             RecipientPeerName = peerName;
             IsRecipientModalVisible = true;
             _recipientTcs = prompt;
+            if (AutoConfirmForTesting)
+            {
+                _ = Task.Delay(1000).ContinueWith(_ => Dispatcher.UIThread.InvokeAsync(() => ResolveRecipient(true)));
+            }
         });
         using var registration = cancellationToken.Register(() => prompt.TrySetResult(false));
         return await prompt.Task;
@@ -1115,6 +1130,10 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
             OfferSummaryText = $"{offer.Items.Count} file(s), total {FormatBytes(offer.TotalBytes)}";
             IsOfferModalVisible = true;
             _offerTcs = prompt;
+            if (AutoConfirmForTesting)
+            {
+                _ = Task.Delay(1000).ContinueWith(_ => Dispatcher.UIThread.InvokeAsync(() => ResolveOffer(true)));
+            }
         });
         using var registration = cancellationToken.Register(() => prompt.TrySetResult(false));
         return await prompt.Task;
@@ -1134,6 +1153,10 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
                     Math.Min(8, peer.FingerprintHex.Length - i * 8)).ToUpperInvariant()));
             IsSasModalVisible = true;
             _sasTcs = prompt;
+            if (AutoConfirmForTesting)
+            {
+                _ = Task.Delay(1000).ContinueWith(_ => Dispatcher.UIThread.InvokeAsync(() => ResolveSas(true)));
+            }
         });
         using var registration = cancellationToken.Register(() => prompt.TrySetResult(false));
         return await prompt.Task;

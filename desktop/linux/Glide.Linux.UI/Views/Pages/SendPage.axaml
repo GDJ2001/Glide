@@ -78,8 +78,7 @@
                       <TextBlock Grid.Column="2" Text="{Binding FormattedSize}" VerticalAlignment="Center"
                                  Margin="16,0" Classes="secondary" />
                       <Button Grid.Column="3" Content="✕"
-                              Command="{Binding $parent[Window].((vm:LinuxMainViewModel)DataContext).RemoveStagedItemCommand}"
-                              CommandParameter="{Binding}"
+                              Command="{Binding RemoveCommand}"
                               Background="Transparent" BorderThickness="0"
                               Foreground="{DynamicResource StatusErrorBrush}" Padding="8,4"
                               ToolTip.Tip="Remove item"
