@@ -83,8 +83,6 @@ for rid in "$@"; do
     . /etc/os-release
     if [[ "${VERSION_ID:-}" == "26.04"* ]]; then
       deb_icu="libicu78"
-    elif [[ "${VERSION_ID:-}" == "24.04"* ]]; then
-      deb_icu="libicu74"
     fi
   fi
 
