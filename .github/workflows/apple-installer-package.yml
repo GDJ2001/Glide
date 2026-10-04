@@ -1,6 +1,13 @@
 name: Apple installer package
 
 on:
+  push:
+    branches:
+      - 'codex/**'
+    paths:
+      - apple/scripts/package-macos.sh
+      - apple/installer/**
+      - .github/workflows/apple-installer-package.yml
   workflow_dispatch:
 
 permissions:
