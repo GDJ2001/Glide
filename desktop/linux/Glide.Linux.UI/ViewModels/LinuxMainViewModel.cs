@@ -16,9 +16,44 @@ using Glide.Transport.Sockets;
 
 namespace Glide.Linux.UI.ViewModels;
 
+public enum LinuxPage
+{
+    Send,
+    Receive,
+    Pair,
+    Activity,
+    Settings
+}
+
+public enum SendMethod
+{
+    QuickShareQr,
+    NearbyDevice,
+    SavedDevice
+}
+
+public enum ActivityFilter
+{
+    All,
+    Sent,
+    Received
+}
+
+public enum AppThemePreference
+{
+    System,
+    Light,
+    Dark
+}
+
 public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteraction, IDisposable
 {
-    private string _currentTab = "Send";
+    private LinuxPage _activePage = LinuxPage.Send;
+    private SendMethod _selectedSendMethod = SendMethod.QuickShareQr;
+    private ActivityFilter _selectedActivityFilter = ActivityFilter.All;
+    private string _activitySearchQuery = "";
+    private AppThemePreference _currentThemePreference = AppThemePreference.System;
+
     private string _deviceName = Environment.MachineName;
     private string _downloadDirectory = LinuxEnvironment.ResolveDownloadsDirectory();
     private int _listeningPort = LanDiscoveryConstants.DefaultPort;
@@ -88,11 +123,61 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
         set => SetProperty(ref _selectedPeer, value);
     }
 
+    public LinuxPage ActivePage
+    {
+        get => _activePage;
+        set
+        {
+            if (SetProperty(ref _activePage, value))
+            {
+                OnPropertyChanged(nameof(CurrentTab));
+                OnPropertyChanged(nameof(IsSendActive));
+                OnPropertyChanged(nameof(IsReceiveActive));
+                OnPropertyChanged(nameof(IsPairActive));
+                OnPropertyChanged(nameof(IsActivityActive));
+                OnPropertyChanged(nameof(IsSettingsActive));
+            }
+        }
+    }
+
     public string CurrentTab
     {
-        get => _currentTab;
-        set => SetProperty(ref _currentTab, value);
+        get => _activePage.ToString();
+        set
+        {
+            if (Enum.TryParse<LinuxPage>(value, true, out var page))
+            {
+                ActivePage = page;
+            }
+        }
     }
+
+    public bool IsSendActive => _activePage == LinuxPage.Send;
+    public bool IsReceiveActive => _activePage == LinuxPage.Receive;
+    public bool IsPairActive => _activePage == LinuxPage.Pair;
+    public bool IsActivityActive => _activePage == LinuxPage.Activity;
+    public bool IsSettingsActive => _activePage == LinuxPage.Settings;
+
+    public SendMethod SelectedSendMethod
+    {
+        get => _selectedSendMethod;
+        set
+        {
+            if (SetProperty(ref _selectedSendMethod, value))
+            {
+                OnPropertyChanged(nameof(IsQuickShareMethodSelected));
+                OnPropertyChanged(nameof(IsNearbyMethodSelected));
+                OnPropertyChanged(nameof(IsSavedMethodSelected));
+            }
+        }
+    }
+
+    public bool IsQuickShareMethodSelected => _selectedSendMethod == SendMethod.QuickShareQr;
+    public bool IsNearbyMethodSelected => _selectedSendMethod == SendMethod.NearbyDevice;
+    public bool IsSavedMethodSelected => _selectedSendMethod == SendMethod.SavedDevice;
+
+    public bool HasStagedItems => StagedItems.Count > 0;
+    public bool HasNoStagedItems => StagedItems.Count == 0;
 
     public string DeviceName
     {
@@ -126,11 +211,94 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
         set
         {
             if (SetProperty(ref _isListening, value))
+            {
                 OnPropertyChanged(nameof(ReceivingButtonText));
+                OnPropertyChanged(nameof(ReceivingStatusText));
+                OnPropertyChanged(nameof(ReceivingStatusDetail));
+                OnPropertyChanged(nameof(ReceivingStatusActive));
+            }
         }
     }
 
     public string ReceivingButtonText => IsListening ? "Turn off receiving" : "Turn on receiving";
+    public string ReceivingStatusText => IsListening ? "Ready to receive" : "Receiving is off";
+    public string ReceivingStatusDetail => IsListening
+        ? $"Listening on port {ListeningPort} as {DeviceName}"
+        : "Turn on receiving to accept incoming transfers";
+    public bool ReceivingStatusActive => IsListening;
+
+    public AppThemePreference CurrentThemePreference
+    {
+        get => _currentThemePreference;
+        set
+        {
+            if (SetProperty(ref _currentThemePreference, value))
+            {
+                ApplyTheme(value);
+            }
+        }
+    }
+
+    private static void ApplyTheme(AppThemePreference preference)
+    {
+        if (Application.Current == null) return;
+        Application.Current.RequestedThemeVariant = preference switch
+        {
+            AppThemePreference.Light => Avalonia.Styling.ThemeVariant.Light,
+            AppThemePreference.Dark => Avalonia.Styling.ThemeVariant.Dark,
+            _ => Avalonia.Styling.ThemeVariant.Default
+        };
+    }
+
+    public ActivityFilter SelectedActivityFilter
+    {
+        get => _selectedActivityFilter;
+        set
+        {
+            if (SetProperty(ref _selectedActivityFilter, value))
+            {
+                OnPropertyChanged(nameof(FilteredHistoryItems));
+            }
+        }
+    }
+
+    public string ActivitySearchQuery
+    {
+        get => _activitySearchQuery;
+        set
+        {
+            if (SetProperty(ref _activitySearchQuery, value))
+            {
+                OnPropertyChanged(nameof(FilteredHistoryItems));
+            }
+        }
+    }
+
+    public IEnumerable<LinuxHistoryItemViewModel> FilteredHistoryItems
+    {
+        get
+        {
+            var query = HistoryItems.AsEnumerable();
+            if (SelectedActivityFilter == ActivityFilter.Sent)
+                query = query.Where(h => string.Equals(h.Direction, "Send", StringComparison.OrdinalIgnoreCase) || string.Equals(h.Direction, "Sent", StringComparison.OrdinalIgnoreCase));
+            else if (SelectedActivityFilter == ActivityFilter.Received)
+                query = query.Where(h => string.Equals(h.Direction, "Receive", StringComparison.OrdinalIgnoreCase) || string.Equals(h.Direction, "Received", StringComparison.OrdinalIgnoreCase));
+
+            if (!string.IsNullOrWhiteSpace(ActivitySearchQuery))
+            {
+                string search = ActivitySearchQuery.Trim();
+                query = query.Where(h =>
+                    (h.PeerName?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                    (h.ItemName?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false));
+            }
+
+            return query.ToList();
+        }
+    }
+
+    public string AppVersionText => typeof(LinuxMainViewModel).Assembly.GetName().Version?.ToString(3) ?? "0.1.0";
+
+    public bool IsAnyModalVisible => IsSasModalVisible || IsOfferModalVisible || IsRecipientModalVisible || IsQuickShareActive;
 
     public string StatusMessage
     {
@@ -193,7 +361,11 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
     public bool IsSasModalVisible
     {
         get => _isSasModalVisible;
-        set => SetProperty(ref _isSasModalVisible, value);
+        set
+        {
+            if (SetProperty(ref _isSasModalVisible, value))
+                OnPropertyChanged(nameof(IsAnyModalVisible));
+        }
     }
 
     public string SasPeerName
@@ -211,7 +383,11 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
     public bool IsOfferModalVisible
     {
         get => _isOfferModalVisible;
-        set => SetProperty(ref _isOfferModalVisible, value);
+        set
+        {
+            if (SetProperty(ref _isOfferModalVisible, value))
+                OnPropertyChanged(nameof(IsAnyModalVisible));
+        }
     }
 
     public string OfferPeerName
@@ -229,7 +405,11 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
     public bool IsRecipientModalVisible
     {
         get => _isRecipientModalVisible;
-        set => SetProperty(ref _isRecipientModalVisible, value);
+        set
+        {
+            if (SetProperty(ref _isRecipientModalVisible, value))
+                OnPropertyChanged(nameof(IsAnyModalVisible));
+        }
     }
 
     public string RecipientPeerName
@@ -297,9 +477,50 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
     public RelayCommand OpenDownloadsDirectoryCommand { get; }
     public RelayCommand ClearHistoryCommand { get; }
     public RelayCommand RevokeTrustedPeerCommand { get; }
+    public RelayCommand DismissActiveModalCommand { get; }
+    public RelayCommand SelectSendMethodCommand { get; }
+    public RelayCommand SelectActivityFilterCommand { get; }
+    public RelayCommand SetThemeCommand { get; }
 
     public LinuxMainViewModel()
     {
+        HistoryItems.CollectionChanged += (_, _) => OnPropertyChanged(nameof(FilteredHistoryItems));
+
+        DismissActiveModalCommand = new RelayCommand(() =>
+        {
+            if (IsSasModalVisible) ResolveSas(false);
+            else if (IsOfferModalVisible) ResolveOffer(false);
+            else if (IsRecipientModalVisible) ResolveRecipient(false);
+            else if (IsQuickShareActive)
+            {
+                _hostedSendRequest = null;
+                OnPropertyChanged(nameof(IsQuickShareActive));
+                OnPropertyChanged(nameof(IsAnyModalVisible));
+                if (IsListening) RefreshInvitation();
+            }
+        });
+
+        SelectSendMethodCommand = new RelayCommand(p =>
+        {
+            if (p is SendMethod method) SelectedSendMethod = method;
+            else if (p is string s && Enum.TryParse<SendMethod>(s, true, out var parsed))
+                SelectedSendMethod = parsed;
+        });
+
+        SelectActivityFilterCommand = new RelayCommand(p =>
+        {
+            if (p is ActivityFilter filter) SelectedActivityFilter = filter;
+            else if (p is string s && Enum.TryParse<ActivityFilter>(s, true, out var parsed))
+                SelectedActivityFilter = parsed;
+        });
+
+        SetThemeCommand = new RelayCommand(p =>
+        {
+            if (p is AppThemePreference theme) CurrentThemePreference = theme;
+            else if (p is string s && Enum.TryParse<AppThemePreference>(s, true, out var parsed))
+                CurrentThemePreference = parsed;
+        });
+
         if (OperatingSystem.IsLinux())
         {
             _trustManager = new DesktopPersistentTrustManager(
@@ -352,6 +573,7 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
         {
             _hostedSendRequest = null;
             OnPropertyChanged(nameof(IsQuickShareActive));
+            OnPropertyChanged(nameof(IsAnyModalVisible));
             if (IsListening) RefreshInvitation();
         });
 
@@ -481,6 +703,8 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
         OnPropertyChanged(nameof(StagedCount));
         OnPropertyChanged(nameof(TotalStagedBytes));
         OnPropertyChanged(nameof(FormattedTotalStagedBytes));
+        OnPropertyChanged(nameof(HasStagedItems));
+        OnPropertyChanged(nameof(HasNoStagedItems));
         SendFilesCommand.RaiseCanExecuteChanged();
         StartQuickShareCommand.RaiseCanExecuteChanged();
     }
@@ -709,6 +933,7 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
             TrustManager: _trustManager,
             HostedInvitationAuthority: _invitationManager.Authority);
         OnPropertyChanged(nameof(IsQuickShareActive));
+        OnPropertyChanged(nameof(IsAnyModalVisible));
         StatusMessage = "Scan this one-time QR in Glide on the receiving device. You will confirm the recipient.";
     }
 
@@ -800,6 +1025,7 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
                 {
                     _hostedSendRequest = null;
                     OnPropertyChanged(nameof(IsQuickShareActive));
+                    OnPropertyChanged(nameof(IsAnyModalVisible));
                     IsTransferActive = true;
                     TransferTitle = "Sending selected files…";
                 });
@@ -827,6 +1053,7 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
                 {
                     _hostedSendRequest = null;
                     OnPropertyChanged(nameof(IsQuickShareActive));
+                    OnPropertyChanged(nameof(IsAnyModalVisible));
                     if (result.Success)
                     {
                         StagedItems.Clear();
@@ -956,7 +1183,7 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
 
     private static LinuxHistoryItemViewModel ToHistoryItem(DesktopHistoryEntry entry) =>
         new(Guid.NewGuid().ToString("N"), entry.Timestamp.LocalDateTime,
-            entry.Direction.ToString(), entry.PeerName, 1, entry.SizeBytes, "Completed");
+            entry.Direction.ToString(), entry.PeerName, 1, entry.SizeBytes, "Completed", itemName: entry.ItemName);
 
     private void RefreshTrustedPeers()
     {
@@ -998,15 +1225,18 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
         return $"{gb:F2} GB";
     }
 
+    private static bool IsUiLoopActive =>
+        Application.Current?.ApplicationLifetime is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime;
+
     private static void OnUi(Action action)
     {
-        if (Application.Current == null || Dispatcher.UIThread.CheckAccess()) action();
+        if (!IsUiLoopActive || Dispatcher.UIThread.CheckAccess()) action();
         else Dispatcher.UIThread.Post(action);
     }
 
     private static async Task OnUiAsync(Action action)
     {
-        if (Application.Current == null || Dispatcher.UIThread.CheckAccess()) action();
+        if (!IsUiLoopActive || Dispatcher.UIThread.CheckAccess()) action();
         else await Dispatcher.UIThread.InvokeAsync(action);
     }
 

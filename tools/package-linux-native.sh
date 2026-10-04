@@ -74,8 +74,22 @@ for rid in "$@"; do
   install -m 0644 "$repo/assets/icons/blue/glide-symbol-blue-96.png" \
     "$root/usr/share/icons/hicolor/96x96/apps/dev.glide.app.png"
 
+  # Detect libicu dependency (libicu78 on Ubuntu 26.04+, libicu74 on Ubuntu 24.04).
+  deb_icu="libicu78 | libicu74"
+  if [[ -n "${GLIDE_DEB_ICU_DEP:-}" ]]; then
+    deb_icu="$GLIDE_DEB_ICU_DEP"
+  elif [[ -f /etc/os-release ]]; then
+    # shellcheck disable=SC1091
+    . /etc/os-release
+    if [[ "${VERSION_ID:-}" == "26.04"* ]]; then
+      deb_icu="libicu78"
+    elif [[ "${VERSION_ID:-}" == "24.04"* ]]; then
+      deb_icu="libicu74"
+    fi
+  fi
+
   installed_kb="$(du -sk "$root/usr" | cut -f1)"
-  # Ubuntu 24.04 dependencies for the self-contained .NET runtime and Avalonia X11.
+
   cat > "$root/DEBIAN/control" <<EOF
 Package: glide
 Version: $version
@@ -84,7 +98,7 @@ Priority: optional
 Architecture: $deb_arch
 Maintainer: Glide Developers
 Installed-Size: $installed_kb
-Depends: ca-certificates, libc6, libgcc-s1, libgssapi-krb5-2, libicu74, libssl3t64, libstdc++6, tzdata, zlib1g, libx11-6, libice6, libsm6, libfontconfig1, xdg-utils
+Depends: ca-certificates, libc6, libgcc-s1, libgssapi-krb5-2, $deb_icu, libssl3t64, libstdc++6, tzdata, zlib1g, libx11-6, libice6, libsm6, libfontconfig1, xdg-utils
 Description: Glide native local file sharing
  Offline authenticated file transfers with a desktop GUI and optional daemon.
 EOF

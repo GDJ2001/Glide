@@ -1,0 +1,102 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Glide.Linux.UI.ViewModels"
+             x:Class="Glide.Linux.UI.Views.Pages.PairPage"
+             x:DataType="vm:LinuxMainViewModel">
+
+  <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <StackPanel Spacing="20" Margin="0,0,8,0">
+
+      <!-- Header -->
+      <StackPanel Spacing="4">
+        <TextBlock Text="Pair Devices" Classes="h1" />
+        <TextBlock Text="Save verified cryptographic identities for seamless and secure future transfers."
+                   Classes="secondary" />
+      </StackPanel>
+
+      <!-- Educational Context Card -->
+      <Border Classes="card">
+        <StackPanel Spacing="10">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <PathIcon Data="{StaticResource IconPair}" Width="20" Height="20"
+                      Foreground="{DynamicResource AccentPrimaryBrush}" VerticalAlignment="Center" />
+            <TextBlock Text="How Pairing Works" Classes="h3" VerticalAlignment="Center" />
+          </StackPanel>
+          <TextBlock Text="Glide uses TLS 1.3 with pinned SHA-256 certificate fingerprints. When you connect, you compare a verification code on both screens to confirm each other's identity. Once verified, you can save the device so future transfers recognize it immediately."
+                     Classes="secondary" TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+
+      <!-- Option 1: Paste Invitation Link -->
+      <Border Classes="card">
+        <StackPanel Spacing="14">
+          <TextBlock Text="Connect with Pairing Link" Classes="h3" />
+          <TextBlock Text="Enter or paste the one-time Glide link (glide://pair/v1#...) from the other device:"
+                     Classes="secondary" TextWrapping="Wrap" />
+
+          <TextBox Text="{Binding InvitationInput}"
+                   PlaceholderText="Paste pairing link here..."
+                   Height="72" TextWrapping="Wrap" AcceptsReturn="True"
+                   Classes="body" FontFamily="{DynamicResource FontFamilyMonospace}" />
+
+          <Button Content="Connect to device"
+                  Command="{Binding ReceiveFromInvitationCommand}"
+                  Classes="primary" HorizontalAlignment="Left"
+                  AutomationProperties.Name="Connect to peer using pairing link" />
+        </StackPanel>
+      </Border>
+
+      <!-- Option 2: Discovered Nearby Devices -->
+      <Border Classes="card">
+        <StackPanel Spacing="14">
+          <TextBlock Text="Nearby Devices on Local Network" Classes="h3" />
+          <TextBlock Text="Nearby devices detected via local network discovery. Discovery shows network presence; paste the other device's link above to verify identity and pair."
+                     Classes="secondary" TextWrapping="Wrap" />
+
+          <Border Background="{DynamicResource SurfaceRaisedBrush}" CornerRadius="8" Padding="8">
+            <StackPanel Spacing="6">
+              <ListBox ItemsSource="{Binding DiscoveredPeers}" SelectedItem="{Binding SelectedPeer}"
+                       MaxHeight="140" Background="Transparent" BorderThickness="0">
+                <ListBox.ItemTemplate>
+                  <DataTemplate>
+                    <Grid ColumnDefinitions="Auto,*,Auto" Margin="4,2">
+                      <PathIcon Grid.Column="0" Data="{StaticResource IconDevice}" Width="20" Height="20"
+                                Foreground="{DynamicResource AccentPrimaryBrush}" VerticalAlignment="Center"
+                                Margin="0,0,12,0" />
+                      <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" Classes="body" />
+                        <TextBlock Text="{Binding EndpointText}" Classes="muted" />
+                      </StackPanel>
+                      <TextBlock Grid.Column="2" Text="Discovered" Classes="small" VerticalAlignment="Center"
+                                 Foreground="{DynamicResource TextSecondaryBrush}" />
+                    </Grid>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+              <TextBlock Text="Scanning for nearby devices advertising Glide..."
+                         Classes="muted" IsVisible="{Binding !DiscoveredPeers.Count}"
+                         HorizontalAlignment="Center" Margin="12" />
+            </StackPanel>
+          </Border>
+        </StackPanel>
+      </Border>
+
+      <!-- Saved Trusted Devices Summary -->
+      <Border Classes="card">
+        <Grid ColumnDefinitions="*,Auto">
+          <StackPanel Grid.Column="0" Spacing="4">
+            <TextBlock Text="Saved Devices" Classes="h3" />
+            <TextBlock Text="{Binding TrustedPeers.Count, StringFormat='{}{0} device(s) currently saved with verified cryptographic identities.'}"
+                       Classes="secondary" />
+          </StackPanel>
+          <Button Grid.Column="1" Content="Manage in Settings"
+                  Command="{Binding SwitchTabCommand}" CommandParameter="Settings"
+                  Classes="secondary" VerticalAlignment="Center"
+                  AutomationProperties.Name="Manage saved devices in Settings" />
+        </Grid>
+      </Border>
+
+    </StackPanel>
+  </ScrollViewer>
+
+</UserControl>

@@ -1,0 +1,144 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Glide.Linux.UI.ViewModels"
+             x:Class="Glide.Linux.UI.Views.Pages.ActivityPage"
+             x:DataType="vm:LinuxMainViewModel">
+
+  <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <StackPanel Spacing="20" Margin="0,0,8,0">
+
+      <!-- Header & Top Actions -->
+      <Grid ColumnDefinitions="*,Auto,Auto">
+        <StackPanel Grid.Column="0" Spacing="4">
+          <TextBlock Text="Transfer Activity" Classes="h1" />
+          <TextBlock Text="Monitor active transfers and view verified transfer history." Classes="secondary" />
+        </StackPanel>
+
+        <Button Grid.Column="1" Content="Open Downloads"
+                Command="{Binding OpenDownloadsDirectoryCommand}"
+                Classes="secondary" Margin="0,0,8,0" VerticalAlignment="Center"
+                AutomationProperties.Name="Open downloads directory in file manager" />
+
+        <Button Grid.Column="2" Content="Clear history"
+                Command="{Binding ClearHistoryCommand}"
+                Classes="secondary" VerticalAlignment="Center"
+                AutomationProperties.Name="Clear transfer history" />
+      </Grid>
+
+      <!-- Active Transfer Card (LUI-07: Active batch first) -->
+      <Border Classes="card" BorderBrush="{DynamicResource AccentPrimaryBrush}"
+              BorderThickness="1.5" IsVisible="{Binding IsTransferActive}">
+        <Grid RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="*,Auto">
+          <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" Spacing="8">
+            <Ellipse Classes="status-dot active" VerticalAlignment="Center" />
+            <TextBlock Text="{Binding TransferTitle}" Classes="h3" VerticalAlignment="Center" />
+          </StackPanel>
+
+          <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding TransferRateText}"
+                     FontWeight="SemiBold" Foreground="{DynamicResource AccentPrimaryBrush}"
+                     VerticalAlignment="Center" />
+
+          <ProgressBar Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
+                       Value="{Binding TransferProgressPercent}" Maximum="100"
+                       Height="8" Margin="0,12" CornerRadius="4" />
+
+          <StackPanel Grid.Row="2" Grid.Column="0" Spacing="2">
+            <TextBlock Text="{Binding CurrentTransferFile}" Classes="body" FontWeight="Medium"
+                       TextTrimming="CharacterEllipsis" />
+            <TextBlock Text="{Binding TransferredBytesText}" Classes="muted" />
+          </StackPanel>
+
+          <Button Grid.Row="2" Grid.Column="1" Content="Cancel transfer"
+                  Command="{Binding CancelTransferCommand}"
+                  Classes="danger" VerticalAlignment="Center"
+                  AutomationProperties.Name="Cancel active transfer" />
+        </Grid>
+      </Border>
+
+      <!-- History Section with Search and Filter -->
+      <Border Classes="card">
+        <StackPanel Spacing="16">
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Grid.Column="0" Text="Transfer History" Classes="h3" VerticalAlignment="Center" />
+
+            <!-- Filter Buttons: All, Sent, Received -->
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
+              <Button Content="All" Command="{Binding SelectActivityFilterCommand}" CommandParameter="All"
+                      Classes="method-tab"
+                      AutomationProperties.Name="Filter all transfers" />
+              <Button Content="Sent" Command="{Binding SelectActivityFilterCommand}" CommandParameter="Sent"
+                      Classes="method-tab"
+                      AutomationProperties.Name="Filter sent transfers" />
+              <Button Content="Received" Command="{Binding SelectActivityFilterCommand}" CommandParameter="Received"
+                      Classes="method-tab"
+                      AutomationProperties.Name="Filter received transfers" />
+            </StackPanel>
+          </Grid>
+
+          <!-- Search Input -->
+          <TextBox Text="{Binding ActivitySearchQuery}"
+                   PlaceholderText="Search history by peer name or file name..."
+                   Classes="body" />
+
+          <!-- History Items List -->
+          <ScrollViewer MaxHeight="380" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+              <ItemsControl ItemsSource="{Binding FilteredHistoryItems}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="0,0,0,1"
+                            Padding="12,10">
+                      <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                        <!-- Direction Icon -->
+                        <Border Grid.Column="0" Background="{DynamicResource SurfaceRaisedBrush}"
+                                CornerRadius="6" Width="36" Height="36" Margin="0,0,14,0"
+                                VerticalAlignment="Center">
+                          <PathIcon Data="{StaticResource IconActivity}" Width="16" Height="16"
+                                    Foreground="{DynamicResource AccentPrimaryBrush}"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+
+                        <!-- Peer and Item Details -->
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                          <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="{Binding PeerName}" FontWeight="SemiBold" Classes="body" />
+                            <TextBlock Text="{Binding Direction}" Classes="small" Foreground="{DynamicResource TextSecondaryBrush}" />
+                          </StackPanel>
+                          <TextBlock Text="{Binding FormattedTimestamp}" Classes="muted" />
+                        </StackPanel>
+
+                        <!-- Size & Item Count -->
+                        <TextBlock Grid.Column="2" Text="{Binding FormattedTotalBytes}"
+                                   VerticalAlignment="Center" Margin="16,0" Classes="secondary" />
+
+                        <!-- Status Badge -->
+                        <Border Grid.Column="3" Background="{DynamicResource StatusSuccessBackgroundBrush}"
+                                CornerRadius="6" Padding="10,4" VerticalAlignment="Center">
+                          <TextBlock Text="{Binding Status}" FontWeight="SemiBold" Classes="small"
+                                     Foreground="{DynamicResource StatusSuccessBrush}" />
+                        </Border>
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+
+              <!-- Empty State -->
+              <StackPanel IsVisible="{Binding !HistoryItems.Count}"
+                          Spacing="8" HorizontalAlignment="Center" Margin="24">
+                <PathIcon Data="{StaticResource IconActivity}" Width="36" Height="36"
+                          Foreground="{DynamicResource TextMutedBrush}" HorizontalAlignment="Center" />
+                <TextBlock Text="No transfer history yet" Classes="h3" HorizontalAlignment="Center" />
+                <TextBlock Text="Completed and failed file transfers will be recorded here."
+                           Classes="muted" HorizontalAlignment="Center" />
+              </StackPanel>
+            </StackPanel>
+          </ScrollViewer>
+
+        </StackPanel>
+      </Border>
+
+    </StackPanel>
+  </ScrollViewer>
+
+</UserControl>

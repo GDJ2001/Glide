@@ -1,0 +1,133 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Glide.Linux.UI.ViewModels"
+             x:Class="Glide.Linux.UI.Views.Controls.ModalHost"
+             x:DataType="vm:LinuxMainViewModel"
+             IsVisible="{Binding IsAnyModalVisible}">
+
+  <!-- Outer Scrim Overlay -->
+  <Grid Background="{DynamicResource ModalScrimBrush}">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                  Padding="20">
+      <Grid HorizontalAlignment="Center" VerticalAlignment="Center">
+
+        <!-- 1. SAS / Verified Identity Enrollment Modal (LUI-08) -->
+        <Border Classes="card" BorderBrush="{DynamicResource BorderFocusBrush}"
+                BorderThickness="1.5" MaxWidth="460" Width="440"
+                IsVisible="{Binding IsSasModalVisible}"
+                AutomationProperties.Name="Verify and save peer identity dialog">
+          <StackPanel Spacing="16">
+            <StackPanel Spacing="4">
+              <TextBlock Text="Save Verified Device?" Classes="h2" HorizontalAlignment="Center" />
+              <TextBlock Text="Glide verified this cryptographic identity for the current connection. Review the fingerprint before saving it for future transfers:"
+                         Classes="secondary" TextWrapping="Wrap" TextAlignment="Center" />
+            </StackPanel>
+
+            <Border Background="{DynamicResource SurfaceOverlayBrush}" CornerRadius="8" Padding="14,12">
+              <TextBlock Text="{Binding SasCode}" FontSize="{DynamicResource FontSizeSecondary}"
+                         FontFamily="{DynamicResource FontFamilyMonospace}" FontWeight="SemiBold"
+                         Foreground="{DynamicResource AccentPrimaryBrush}"
+                         TextWrapping="Wrap" TextAlignment="Center" />
+            </Border>
+
+            <TextBlock Text="{Binding SasPeerName, StringFormat='{}Device: {0}'}"
+                       Classes="secondary" HorizontalAlignment="Center" FontWeight="Medium" />
+
+            <Grid ColumnDefinitions="*,*" Margin="0,6,0,0">
+              <Button Grid.Column="0" Content="Decline" Command="{Binding DeclineSasCommand}"
+                      Classes="danger" Margin="0,0,6,0" HorizontalAlignment="Stretch"
+                      AutomationProperties.Name="Decline saving peer identity" />
+              <Button Grid.Column="1" Content="Accept &amp; Save" Command="{Binding AcceptSasCommand}"
+                      Classes="success" Margin="6,0,0,0" HorizontalAlignment="Stretch"
+                      AutomationProperties.Name="Accept and save peer identity" />
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <!-- 2. Incoming Transfer Offer Modal (LUI-08) -->
+        <Border Classes="card" BorderBrush="{DynamicResource AccentPrimaryBrush}"
+                BorderThickness="1.5" MaxWidth="460" Width="440"
+                IsVisible="{Binding IsOfferModalVisible}"
+                AutomationProperties.Name="Incoming transfer offer request dialog">
+          <StackPanel Spacing="16">
+            <StackPanel Spacing="4">
+              <TextBlock Text="Incoming Transfer Request" Classes="h2" />
+              <TextBlock Text="{Binding OfferPeerName, StringFormat='{}{0} wants to send you files:'}"
+                         FontWeight="SemiBold" Classes="body" />
+              <TextBlock Text="{Binding OfferSummaryText}" Classes="secondary" />
+            </StackPanel>
+
+            <Border Background="{DynamicResource SurfaceRaisedBrush}" CornerRadius="8" Padding="12">
+              <StackPanel Spacing="4">
+                <TextBlock Text="Destination folder:" Classes="small" />
+                <TextBlock Text="{Binding DownloadDirectory}" Classes="body" TextTrimming="CharacterEllipsis" />
+              </StackPanel>
+            </Border>
+
+            <Grid ColumnDefinitions="*,*" Margin="0,8,0,0">
+              <Button Grid.Column="0" Content="Decline" Command="{Binding DeclineOfferCommand}"
+                      Classes="danger" Margin="0,0,6,0" HorizontalAlignment="Stretch"
+                      AutomationProperties.Name="Decline incoming transfer" />
+              <Button Grid.Column="1" Content="Accept Transfer" Command="{Binding AcceptOfferCommand}"
+                      Classes="primary" Margin="6,0,0,0" HorizontalAlignment="Stretch"
+                      AutomationProperties.Name="Accept incoming transfer" />
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <!-- 3. Recipient Confirmation Modal (LUI-08) -->
+        <Border Classes="card" BorderBrush="{DynamicResource BorderFocusBrush}"
+                BorderThickness="1.5" MaxWidth="460" Width="440"
+                IsVisible="{Binding IsRecipientModalVisible}"
+                AutomationProperties.Name="Confirm transfer recipient dialog">
+          <StackPanel Spacing="16">
+            <StackPanel Spacing="4">
+              <TextBlock Text="Confirm Recipient" Classes="h2" />
+              <TextBlock Text="{Binding RecipientPeerName, StringFormat='{}Send selected files to {0}?'}"
+                         FontWeight="SemiBold" Classes="body" />
+              <TextBlock Text="Verify this is the device you intended to send to before transmitting files."
+                         Classes="secondary" TextWrapping="Wrap" />
+            </StackPanel>
+
+            <Grid ColumnDefinitions="*,*" Margin="0,8,0,0">
+              <Button Grid.Column="0" Content="Cancel" Command="{Binding DeclineRecipientCommand}"
+                      Classes="secondary" Margin="0,0,6,0" HorizontalAlignment="Stretch"
+                      AutomationProperties.Name="Cancel sending to recipient" />
+              <Button Grid.Column="1" Content="Confirm Recipient" Command="{Binding AcceptRecipientCommand}"
+                      Classes="primary" Margin="6,0,0,0" HorizontalAlignment="Stretch"
+                      AutomationProperties.Name="Confirm recipient and send files" />
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <!-- 4. Quick Share Active QR Code Modal (LUI-08) -->
+        <Border Classes="card" BorderBrush="{DynamicResource AccentPrimaryBrush}"
+                BorderThickness="1.5" MaxWidth="460" Width="440"
+                IsVisible="{Binding IsQuickShareActive}"
+                AutomationProperties.Name="Quick share one-time QR code dialog">
+          <StackPanel Spacing="14" HorizontalAlignment="Center">
+            <TextBlock Text="Scan to Receive Files" Classes="h2" HorizontalAlignment="Center" />
+            <TextBlock Text="Scan this one-time code in Glide on the receiving device. You will confirm the recipient before files begin sending."
+                       Classes="secondary" TextWrapping="Wrap" TextAlignment="Center" />
+
+            <Border Background="White" Padding="12" CornerRadius="10" HorizontalAlignment="Center">
+              <Image Source="{Binding PairingQrImage}" Width="220" Height="220" Stretch="Uniform"
+                     AutomationProperties.Name="One-time QR code for sending files" />
+            </Border>
+
+            <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center" Margin="0,6,0,0">
+              <Button Content="Refresh code" Command="{Binding RefreshInvitationCommand}"
+                      Classes="secondary"
+                      AutomationProperties.Name="Refresh QR code" />
+              <Button Content="Cancel quick share" Command="{Binding CancelQuickShareCommand}"
+                      Classes="danger"
+                      AutomationProperties.Name="Cancel quick share" />
+            </StackPanel>
+          </StackPanel>
+        </Border>
+
+      </Grid>
+    </ScrollViewer>
+  </Grid>
+
+</UserControl>

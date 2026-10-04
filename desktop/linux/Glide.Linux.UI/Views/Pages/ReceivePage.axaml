@@ -1,0 +1,110 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Glide.Linux.UI.ViewModels"
+             x:Class="Glide.Linux.UI.Views.Pages.ReceivePage"
+             x:DataType="vm:LinuxMainViewModel">
+
+  <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <StackPanel Spacing="20" Margin="0,0,8,0">
+
+      <!-- Header -->
+      <StackPanel Spacing="4">
+        <TextBlock Text="Receive Files" Classes="h1" />
+        <TextBlock Text="Accept incoming file transfers directly over your local network." Classes="secondary" />
+      </StackPanel>
+
+      <!-- Primary Receiver Status & Sharing Card (LUI-07) -->
+      <Border Classes="card">
+        <StackPanel Spacing="18">
+
+          <!-- Listener Header & Toggle -->
+          <Grid ColumnDefinitions="*,Auto">
+            <StackPanel Grid.Column="0" Spacing="4">
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <Ellipse Classes="status-dot" Classes.active="{Binding IsListening}" VerticalAlignment="Center" />
+                <TextBlock Text="{Binding ReceivingStatusText}" Classes="h2" VerticalAlignment="Center" />
+              </StackPanel>
+              <TextBlock Text="{Binding ReceivingStatusDetail}" Classes="secondary" />
+            </StackPanel>
+
+            <Button Grid.Column="1" Content="{Binding ReceivingButtonText}"
+                    Command="{Binding ToggleListenerCommand}"
+                    Classes="primary" VerticalAlignment="Center"
+                    AutomationProperties.Name="Toggle receiving files" />
+          </Grid>
+
+          <!-- Destination Directory & Device Name -->
+          <Border Background="{DynamicResource SurfaceRaisedBrush}" CornerRadius="8" Padding="14">
+            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+              <StackPanel Grid.Row="0" Grid.Column="0" Spacing="2">
+                <TextBlock Text="Device name" Classes="small" />
+                <TextBlock Text="{Binding DeviceName}" Classes="body" FontWeight="SemiBold" />
+              </StackPanel>
+
+              <StackPanel Grid.Row="1" Grid.Column="0" Spacing="2" Margin="0,10,0,0">
+                <TextBlock Text="Saving files to:" Classes="small" />
+                <TextBlock Text="{Binding DownloadDirectory}" Classes="body" TextTrimming="CharacterEllipsis" />
+              </StackPanel>
+
+              <Button Grid.Row="1" Grid.Column="1" x:Name="ChangeFolderButton" Content="Change folder..."
+                      Classes="secondary" VerticalAlignment="Bottom"
+                      AutomationProperties.Name="Change download destination folder" />
+            </Grid>
+          </Border>
+
+          <!-- When Receiving is ON: QR Code and Link Details -->
+          <StackPanel Spacing="14" IsVisible="{Binding IsListening}">
+            <TextBlock Text="Share this one-time code or link with the sender:" Classes="h3" />
+
+            <Grid ColumnDefinitions="Auto,*" Margin="0,4">
+              <!-- QR Code Container -->
+              <Border Grid.Column="0" Background="White" Padding="12" CornerRadius="10"
+                      HorizontalAlignment="Left" VerticalAlignment="Top" Margin="0,0,20,0">
+                <Image Source="{Binding PairingQrImage}" Width="160" Height="160" Stretch="Uniform"
+                       AutomationProperties.Name="One-time QR code for receiving files" />
+              </Border>
+
+              <!-- Link Details & Actions -->
+              <StackPanel Grid.Column="1" Spacing="10" VerticalAlignment="Center">
+                <TextBlock Text="One-time link URI:" Classes="small" />
+                <TextBox Text="{Binding CurrentInvitationUri}" IsReadOnly="True" TextWrapping="Wrap"
+                         Classes="body" FontFamily="{DynamicResource FontFamilyMonospace}"
+                         Background="{DynamicResource SurfaceOverlayBrush}" />
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <Button x:Name="CopyLinkButton" Content="Copy link" Classes="secondary"
+                          AutomationProperties.Name="Copy receiving link to clipboard" />
+                  <Button Content="Refresh link" Command="{Binding RefreshInvitationCommand}" Classes="secondary"
+                          AutomationProperties.Name="Generate a new one-time link" />
+                </StackPanel>
+                <TextBlock Text="Link expires in 2 minutes for security. You will review and approve any incoming file offer."
+                           Classes="muted" TextWrapping="Wrap" />
+              </StackPanel>
+            </Grid>
+          </StackPanel>
+
+        </StackPanel>
+      </Border>
+
+      <!-- Secondary Focused Panel: Receive From Sender Invitation (LUI-07) -->
+      <Border Classes="card">
+        <StackPanel Spacing="12">
+          <TextBlock Text="Connect to Sender's Invitation" Classes="h3" />
+          <TextBlock Text="If another device provided a Glide invitation link, paste it below to connect and receive files:"
+                     Classes="secondary" TextWrapping="Wrap" />
+
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBox Grid.Column="0" Text="{Binding InvitationInput}"
+                     PlaceholderText="glide://pair/v1#..."
+                     Classes="body" Margin="0,0,10,0" />
+            <Button Grid.Column="1" Content="Connect &amp; Receive"
+                    Command="{Binding ReceiveFromInvitationCommand}"
+                    Classes="primary"
+                    AutomationProperties.Name="Connect and receive from invitation" />
+          </Grid>
+        </StackPanel>
+      </Border>
+
+    </StackPanel>
+  </ScrollViewer>
+
+</UserControl>

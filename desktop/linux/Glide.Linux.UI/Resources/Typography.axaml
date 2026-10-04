@@ -1,0 +1,15 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <FontFamily x:Key="FontFamilySans">Inter, Cantarell, Ubuntu, -apple-system, Segoe UI, sans-serif</FontFamily>
+  <FontFamily x:Key="FontFamilyMonospace">JetBrains Mono, Ubuntu Mono, DejaVu Sans Mono, Consolas, monospace</FontFamily>
+
+  <x:Double x:Key="FontSizeH1">22</x:Double>
+  <x:Double x:Key="FontSizeH2">18</x:Double>
+  <x:Double x:Key="FontSizeH3">16</x:Double>
+  <x:Double x:Key="FontSizeBody">14</x:Double>
+  <x:Double x:Key="FontSizeSecondary">13</x:Double>
+  <x:Double x:Key="FontSizeSmall">12</x:Double>
+  <x:Double x:Key="FontSizeMicro">11</x:Double>
+
+</ResourceDictionary>

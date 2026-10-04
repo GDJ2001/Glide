@@ -1,0 +1,141 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Glide.Linux.UI.ViewModels"
+             x:Class="Glide.Linux.UI.Views.Pages.SettingsPage"
+             x:DataType="vm:LinuxMainViewModel">
+
+  <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <StackPanel Spacing="24" Margin="0,0,8,0">
+
+      <!-- Header -->
+      <StackPanel Spacing="4">
+        <TextBlock Text="Settings" Classes="h1" />
+        <TextBlock Text="Manage device identity, download preferences, appearance, and saved peers."
+                   Classes="secondary" />
+      </StackPanel>
+
+      <!-- Section 1: Appearance (LUI-04) -->
+      <Border Classes="card">
+        <StackPanel Spacing="14">
+          <TextBlock Text="Appearance" Classes="h3" />
+          <TextBlock Text="Choose application theme. By default, Glide follows your GNOME/Ubuntu system dark/light mode preference."
+                     Classes="secondary" TextWrapping="Wrap" />
+
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Content="Follow System" Command="{Binding SetThemeCommand}" CommandParameter="System"
+                    Classes="method-tab"
+                    AutomationProperties.Name="Theme: Follow system appearance" />
+            <Button Content="Light" Command="{Binding SetThemeCommand}" CommandParameter="Light"
+                    Classes="method-tab"
+                    AutomationProperties.Name="Theme: Light mode" />
+            <Button Content="Dark" Command="{Binding SetThemeCommand}" CommandParameter="Dark"
+                    Classes="method-tab"
+                    AutomationProperties.Name="Theme: Dark mode" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
+      <!-- Section 2: Receiving & Storage -->
+      <Border Classes="card">
+        <StackPanel Spacing="16">
+          <TextBlock Text="Receiving &amp; Storage" Classes="h3" />
+
+          <!-- Device Name -->
+          <StackPanel Spacing="6">
+            <TextBlock Text="Device Name" FontWeight="Medium" Classes="body" />
+            <TextBlock Text="The name shown to other devices on your local network during transfers:" Classes="muted" />
+            <TextBox Text="{Binding DeviceName}" Classes="body" />
+          </StackPanel>
+
+          <!-- Download Directory -->
+          <StackPanel Spacing="6">
+            <TextBlock Text="Download Directory" FontWeight="Medium" Classes="body" />
+            <TextBlock Text="Inbound files are staged in private quarantine and verified before moving here:" Classes="muted" />
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBox Grid.Column="0" Text="{Binding DownloadDirectory}" Classes="body" Margin="0,0,10,0" />
+              <Button Grid.Column="1" x:Name="BrowseDownloadDirButton" Content="Browse..."
+                      Classes="secondary"
+                      AutomationProperties.Name="Browse download destination folder" />
+            </Grid>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
+      <!-- Section 3: Trusted Devices -->
+      <Border Classes="card">
+        <StackPanel Spacing="14">
+          <TextBlock Text="Trusted Devices" Classes="h3" />
+          <TextBlock Text="Saved devices with verified cryptographic identities. Trust verifies identity; each incoming transfer offer still requires your explicit approval."
+                     Classes="secondary" TextWrapping="Wrap" />
+
+          <Border Background="{DynamicResource SurfaceRaisedBrush}" CornerRadius="8" Padding="8">
+            <StackPanel Spacing="6">
+              <ListBox ItemsSource="{Binding TrustedPeers}" SelectedItem="{Binding SelectedTrustedPeer}"
+                       MaxHeight="150" Background="Transparent" BorderThickness="0">
+                <ListBox.ItemTemplate>
+                  <DataTemplate>
+                    <Grid ColumnDefinitions="Auto,*,Auto" Margin="4,2">
+                      <PathIcon Grid.Column="0" Data="{StaticResource IconPair}" Width="18" Height="18"
+                                Foreground="{DynamicResource AccentPrimaryBrush}" VerticalAlignment="Center"
+                                Margin="0,0,12,0" />
+                      <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" Classes="body" />
+                        <TextBlock Text="{Binding FingerprintHex}" Classes="muted"
+                                   FontFamily="{DynamicResource FontFamilyMonospace}" />
+                      </StackPanel>
+                      <TextBlock Grid.Column="2" Text="Saved" Classes="small" VerticalAlignment="Center"
+                                 Foreground="{DynamicResource StatusSuccessBrush}" />
+                    </Grid>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+
+              <TextBlock Text="No trusted devices saved yet." Classes="muted"
+                         IsVisible="{Binding !TrustedPeers.Count}" HorizontalAlignment="Center" Margin="12" />
+            </StackPanel>
+          </Border>
+
+          <Button Content="Revoke selected trusted device"
+                  Command="{Binding RevokeTrustedPeerCommand}"
+                  Classes="danger" HorizontalAlignment="Left"
+                  AutomationProperties.Name="Revoke selected saved trusted device" />
+        </StackPanel>
+      </Border>
+
+      <!-- Section 4: Advanced Connection Settings -->
+      <Border Classes="card">
+        <StackPanel Spacing="14">
+          <TextBlock Text="Advanced Connection Settings" Classes="h3" />
+
+          <StackPanel Spacing="6">
+            <TextBlock Text="Listening Port" FontWeight="Medium" Classes="body" />
+            <TextBlock Text="The TCP port used for native TLS peer-to-peer transfers (default 53319):" Classes="muted" />
+            <TextBox Text="{Binding ListeningPort}" Width="140" HorizontalAlignment="Left" Classes="body" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
+      <!-- Section 5: About Glide (LUI-09: derived version, no hard-coded label) -->
+      <Border Classes="card">
+        <StackPanel Spacing="12">
+          <Grid ColumnDefinitions="Auto,*">
+            <Border Grid.Column="0" Background="{DynamicResource AccentPrimaryBrush}"
+                    CornerRadius="10" Width="44" Height="44" Margin="0,0,16,0" VerticalAlignment="Center">
+              <PathIcon Data="{StaticResource IconGlide}" Width="24" Height="24" Foreground="#FFFFFF"
+                        HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+              <TextBlock Text="Glide for Linux" Classes="h2" />
+              <TextBlock Text="{Binding AppVersionText, StringFormat='{}Version {0}'}" Classes="secondary" />
+            </StackPanel>
+          </Grid>
+
+          <TextBlock Text="Offline, peer-to-peer, zero-cloud file transfer system. Features TLS 1.3 transport security, pinned SHA-256 identity certificates, atomic quarantine staging, and strict path sanitization."
+                     Classes="secondary" TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+
+    </StackPanel>
+  </ScrollViewer>
+
+</UserControl>

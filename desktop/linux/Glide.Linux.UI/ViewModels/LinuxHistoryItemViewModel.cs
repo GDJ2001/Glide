@@ -9,6 +9,7 @@ public sealed class LinuxHistoryItemViewModel : ViewModelBase
     public int FileCount { get; }
     public long TotalBytes { get; }
     public string Status { get; }
+    public string? ItemName { get; }
     public string? ErrorMessage { get; }
 
     public string FormattedTimestamp => Timestamp.ToString("MMM dd, yyyy HH:mm");
@@ -22,7 +23,8 @@ public sealed class LinuxHistoryItemViewModel : ViewModelBase
         int fileCount,
         long totalBytes,
         string status,
-        string? errorMessage = null)
+        string? errorMessage = null,
+        string? itemName = null)
     {
         Id = id;
         Timestamp = timestamp;
@@ -32,6 +34,7 @@ public sealed class LinuxHistoryItemViewModel : ViewModelBase
         TotalBytes = totalBytes;
         Status = status;
         ErrorMessage = errorMessage;
+        ItemName = itemName;
     }
 
     private static string FormatBytes(long bytes)

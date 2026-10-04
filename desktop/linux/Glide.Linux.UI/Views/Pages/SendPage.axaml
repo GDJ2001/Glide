@@ -1,0 +1,232 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Glide.Linux.UI.ViewModels"
+             x:Class="Glide.Linux.UI.Views.Pages.SendPage"
+             x:DataType="vm:LinuxMainViewModel">
+
+  <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <StackPanel Spacing="20" Margin="0,0,8,0">
+
+      <!-- Page Header -->
+      <StackPanel Spacing="4">
+        <TextBlock Text="Send Files" Classes="h1" />
+        <TextBlock Text="Select files or folders, choose a sharing method, and send securely peer-to-peer."
+                   Classes="secondary" />
+      </StackPanel>
+
+      <!-- TRANSFORMING FILE QUEUE (LUI-06) -->
+      <!-- Empty Drop State -->
+      <Border Classes="drop-target" IsVisible="{Binding HasNoStagedItems}">
+        <StackPanel Spacing="14" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="12">
+          <PathIcon Data="{StaticResource IconFolder}" Width="48" Height="48"
+                    Foreground="{DynamicResource AccentPrimaryBrush}" HorizontalAlignment="Center" />
+          <StackPanel Spacing="4" HorizontalAlignment="Center">
+            <TextBlock Text="Drag and drop files or folders here" Classes="h2" HorizontalAlignment="Center" />
+            <TextBlock Text="Files are transferred directly over your local network. No cloud servers are used."
+                       Classes="secondary" HorizontalAlignment="Center" TextAlignment="Center" />
+          </StackPanel>
+          <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center" Margin="0,8,0,0">
+            <Button x:Name="AddFilesEmptyButton" Content="Add files..." Classes="primary"
+                    AutomationProperties.Name="Add files to send" />
+            <Button x:Name="AddFolderEmptyButton" Content="Add folder..." Classes="secondary"
+                    AutomationProperties.Name="Add folder to send" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
+      <!-- Staged Items List State -->
+      <Border Classes="card" IsVisible="{Binding HasStagedItems}">
+        <Grid RowDefinitions="Auto,*,Auto">
+          <!-- Queue Header -->
+          <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,14">
+            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+              <TextBlock Classes="h3">
+                <TextBlock.Text>
+                  <MultiBinding StringFormat="{}{0} item(s) staged ({1})">
+                    <Binding Path="StagedCount" />
+                    <Binding Path="FormattedTotalStagedBytes" />
+                  </MultiBinding>
+                </TextBlock.Text>
+              </TextBlock>
+              <TextBlock Text="Files ready to be sent" Classes="small" />
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+              <Button x:Name="AddFilesStagedButton" Content="Add files..." Classes="secondary"
+                      AutomationProperties.Name="Add more files" />
+              <Button x:Name="AddFolderStagedButton" Content="Add folder..." Classes="secondary"
+                      AutomationProperties.Name="Add more folders" />
+              <Button Content="Clear all" Command="{Binding ClearStagedItemsCommand}" Classes="secondary"
+                      AutomationProperties.Name="Clear all staged files" />
+            </StackPanel>
+          </Grid>
+
+          <!-- Staged Items Scroll List -->
+          <ScrollViewer Grid.Row="1" MaxHeight="200" VerticalScrollBarVisibility="Auto">
+            <ItemsControl ItemsSource="{Binding StagedItems}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Border BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="0,0,0,1"
+                          Padding="10,8">
+                    <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                      <PathIcon Grid.Column="0" Data="{StaticResource IconFile}" Width="18" Height="18"
+                                Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"
+                                Margin="0,0,12,0" />
+                      <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Classes="body" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding FullPath}" Classes="muted" TextTrimming="CharacterEllipsis" />
+                      </StackPanel>
+                      <TextBlock Grid.Column="2" Text="{Binding FormattedSize}" VerticalAlignment="Center"
+                                 Margin="16,0" Classes="secondary" />
+                      <Button Grid.Column="3" Content="✕"
+                              Command="{Binding $parent[Window].((vm:LinuxMainViewModel)DataContext).RemoveStagedItemCommand}"
+                              CommandParameter="{Binding}"
+                              Background="Transparent" BorderThickness="0"
+                              Foreground="{DynamicResource StatusErrorBrush}" Padding="8,4"
+                              ToolTip.Tip="Remove item"
+                              AutomationProperties.Name="Remove staged item" />
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+        </Grid>
+      </Border>
+
+      <!-- SENDING METHOD SELECTION (LUI-06: Three mutually exclusive methods) -->
+      <Border Classes="card">
+        <StackPanel Spacing="16">
+          <TextBlock Text="Choose Sending Method" Classes="h3" />
+
+          <!-- Method Segmented Buttons -->
+          <Grid ColumnDefinitions="*,*,*">
+            <Button Grid.Column="0" Content="Quick share with QR"
+                    Command="{Binding SelectSendMethodCommand}" CommandParameter="QuickShareQr"
+                    Classes="method-tab" Classes.selected="{Binding IsQuickShareMethodSelected}"
+                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="0,0,4,0"
+                    AutomationProperties.Name="Send method: Quick share with QR code" />
+            <Button Grid.Column="1" Content="Nearby device"
+                    Command="{Binding SelectSendMethodCommand}" CommandParameter="NearbyDevice"
+                    Classes="method-tab" Classes.selected="{Binding IsNearbyMethodSelected}"
+                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="4,0,4,0"
+                    AutomationProperties.Name="Send method: Nearby discovered device" />
+            <Button Grid.Column="2" Content="Saved device"
+                    Command="{Binding SelectSendMethodCommand}" CommandParameter="SavedDevice"
+                    Classes="method-tab" Classes.selected="{Binding IsSavedMethodSelected}"
+                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="4,0,0,0"
+                    AutomationProperties.Name="Send method: Saved trusted device" />
+          </Grid>
+
+          <!-- Method 1: Quick Share with QR -->
+          <StackPanel Spacing="12" IsVisible="{Binding IsQuickShareMethodSelected}">
+            <TextBlock Text="Quick share creates an instant one-time QR code. The receiving device scans the code in Glide to connect. You will confirm the recipient's device name before any files are transmitted."
+                       Classes="secondary" TextWrapping="Wrap" />
+            <Button Content="Start quick share with QR"
+                    Command="{Binding StartQuickShareCommand}"
+                    Classes="primary" HorizontalAlignment="Left"
+                    AutomationProperties.Name="Start quick share with QR code" />
+          </StackPanel>
+
+          <!-- Method 2: Nearby Device -->
+          <StackPanel Spacing="14" IsVisible="{Binding IsNearbyMethodSelected}">
+            <TextBlock Text="Devices found on your local network. Discovery indicates network availability; a fresh one-time pairing link is required to authenticate."
+                       Classes="secondary" TextWrapping="Wrap" />
+
+            <!-- Nearby Peers List -->
+            <Border Background="{DynamicResource SurfaceRaisedBrush}" CornerRadius="8" Padding="8">
+              <StackPanel Spacing="6">
+                <ListBox ItemsSource="{Binding DiscoveredPeers}" SelectedItem="{Binding SelectedPeer}"
+                         MaxHeight="140" Background="Transparent" BorderThickness="0">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate>
+                      <Grid ColumnDefinitions="Auto,*,Auto" Margin="4,2">
+                        <PathIcon Grid.Column="0" Data="{StaticResource IconDevice}" Width="20" Height="20"
+                                  Foreground="{DynamicResource AccentPrimaryBrush}" VerticalAlignment="Center"
+                                  Margin="0,0,12,0" />
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                          <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" Classes="body" />
+                          <TextBlock Text="{Binding EndpointText}" Classes="muted" />
+                        </StackPanel>
+                        <TextBlock Grid.Column="2" Text="Nearby" Classes="small" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource StatusSuccessBrush}" />
+                      </Grid>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+                <TextBlock Text="No nearby devices found yet. Ensure Wi-Fi is active and the other device is running Glide."
+                           Classes="muted" IsVisible="{Binding !DiscoveredPeers.Count}"
+                           HorizontalAlignment="Center" Margin="12" />
+              </StackPanel>
+            </Border>
+
+            <!-- Invitation Input -->
+            <StackPanel Spacing="6">
+              <TextBlock Text="Receiver's one-time pairing link:" FontWeight="Medium" Classes="body" />
+              <TextBox Text="{Binding InvitationInput}"
+                       PlaceholderText="Paste the receiving device's current Glide pairing link (glide://pair/v1#...)"
+                       Classes="body" />
+              <TextBlock Text="Open 'Receive' on the destination device to view its current link."
+                         Classes="muted" />
+            </StackPanel>
+
+            <Button Content="Send files to nearby device"
+                    Command="{Binding SendFilesCommand}"
+                    Classes="primary" HorizontalAlignment="Left"
+                    AutomationProperties.Name="Send files to selected nearby device" />
+          </StackPanel>
+
+          <!-- Method 3: Saved Device -->
+          <StackPanel Spacing="14" IsVisible="{Binding IsSavedMethodSelected}">
+            <TextBlock Text="Saved devices have a verified cryptographic identity. Each transfer still requires a fresh one-time link to guarantee mutual consent."
+                       Classes="secondary" TextWrapping="Wrap" />
+
+            <!-- Saved Peers List -->
+            <Border Background="{DynamicResource SurfaceRaisedBrush}" CornerRadius="8" Padding="8">
+              <StackPanel Spacing="6">
+                <ListBox ItemsSource="{Binding TrustedPeers}" SelectedItem="{Binding SelectedTrustedPeer}"
+                         MaxHeight="140" Background="Transparent" BorderThickness="0">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate>
+                      <Grid ColumnDefinitions="Auto,*,Auto" Margin="4,2">
+                        <PathIcon Grid.Column="0" Data="{StaticResource IconPair}" Width="20" Height="20"
+                                  Foreground="{DynamicResource AccentPrimaryBrush}" VerticalAlignment="Center"
+                                  Margin="0,0,12,0" />
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                          <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" Classes="body" />
+                          <TextBlock Text="{Binding FingerprintHex}" Classes="muted" FontFamily="{DynamicResource FontFamilyMonospace}" />
+                        </StackPanel>
+                        <TextBlock Grid.Column="2" Text="Verified" Classes="small" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource StatusSuccessBrush}" />
+                      </Grid>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+                <TextBlock Text="No saved devices yet. Connect with a device and accept pairing to save its identity."
+                           Classes="muted" IsVisible="{Binding !TrustedPeers.Count}"
+                           HorizontalAlignment="Center" Margin="12" />
+              </StackPanel>
+            </Border>
+
+            <!-- Invitation Input -->
+            <StackPanel Spacing="6">
+              <TextBlock Text="Receiver's one-time pairing link:" FontWeight="Medium" Classes="body" />
+              <TextBox Text="{Binding InvitationInput}"
+                       PlaceholderText="Paste the receiving device's current Glide pairing link (glide://pair/v1#...)"
+                       Classes="body" />
+              <TextBlock Text="Open 'Receive' on the destination device to view its current link."
+                         Classes="muted" />
+            </StackPanel>
+
+            <Button Content="Send files to saved device"
+                    Command="{Binding SendFilesCommand}"
+                    Classes="primary" HorizontalAlignment="Left"
+                    AutomationProperties.Name="Send files to selected saved device" />
+          </StackPanel>
+
+        </StackPanel>
+      </Border>
+
+    </StackPanel>
+  </ScrollViewer>
+
+</UserControl>
