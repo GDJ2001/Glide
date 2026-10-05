@@ -29,7 +29,8 @@ sealed interface GlideRoute : NavKey {
     @Serializable
     data class QrScanner(
         val batchId: String? = null,
-        val purpose: QrScanPurpose = QrScanPurpose.SEND_TO_RECEIVER
+        val purpose: QrScanPurpose = QrScanPurpose.SEND_TO_RECEIVER,
+        val scanAttemptId: String = ""
     ) : GlideRoute
 }
 

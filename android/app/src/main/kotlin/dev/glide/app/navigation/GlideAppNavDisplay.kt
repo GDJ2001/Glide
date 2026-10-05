@@ -548,6 +548,9 @@ fun GlideAppNavDisplay(
                     onCancelTransfer = { viewModel.cancelTransfer() },
                     onConfirmMatch = { peerId -> viewModel.confirmPairing(peerId) },
                     onRejectMatch = { peerId -> viewModel.rejectPairing(peerId) },
+                    onScanNewCode = {
+                        restartQrScanAfterPairingFailure(backStack, route)
+                    },
                     onApproveTrust = { viewModel.approvePendingTrust() },
                     onRejectTrust = { viewModel.rejectPendingTrust() },
                     onOpenFile = { viewModel.openReceivedFile(context) },
@@ -727,7 +730,7 @@ fun GlideAppNavDisplay(
                     }
                 }
 
-                androidx.compose.runtime.LaunchedEffect(Unit) {
+                androidx.compose.runtime.LaunchedEffect(viewModel, route.scanAttemptId) {
                     viewModel.startScanning()
                 }
 

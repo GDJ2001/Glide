@@ -79,6 +79,7 @@ fun PairingVerificationCard(
     state: PairingUiState,
     onConfirmMatch: (PeerId) -> Unit,
     onRejectMatch: (PeerId) -> Unit,
+    onScanNewCode: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val breathingAlpha by dev.glide.app.ui.motion.rememberTonalBreathingAlpha(
@@ -543,7 +544,11 @@ fun PairingVerificationCard(
                                         context.startActivity(intent)
                                     } catch (_: Exception) {}
                                 }
-                                state.onPrimaryAction?.invoke()
+                                if (state.primaryActionLabel == "Scan new code") {
+                                    onScanNewCode()
+                                } else {
+                                    state.onPrimaryAction?.invoke()
+                                }
                             },
                             shape = PrimaryButtonShape,
                             modifier = Modifier
@@ -556,7 +561,13 @@ fun PairingVerificationCard(
 
                     if (state.secondaryActionLabel != null) {
                         OutlinedButton(
-                            onClick = { state.onSecondaryAction?.invoke() },
+                            onClick = {
+                                if (state.secondaryActionLabel == "Scan new code") {
+                                    onScanNewCode()
+                                } else {
+                                    state.onSecondaryAction?.invoke()
+                                }
+                            },
                             shape = PrimaryButtonShape,
                             modifier = Modifier
                                 .fillMaxWidth()

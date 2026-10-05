@@ -24,7 +24,7 @@
           <x:String>avares://Glide.Linux.UI/Assets/glide-logo-horizontal-inverse-256.png</x:String>
         </x:Arguments>
       </local:AssetBitmap>
-      
+
       <SolidColorBrush x:Key="TextPrimaryBrush" Color="#F8FAFC" />
       <SolidColorBrush x:Key="TextSecondaryBrush" Color="#94A3B8" />
       <SolidColorBrush x:Key="TextMutedBrush" Color="#64748B" />

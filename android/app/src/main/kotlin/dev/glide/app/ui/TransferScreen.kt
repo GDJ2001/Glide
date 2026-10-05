@@ -66,6 +66,7 @@ fun TransferScreen(
     pairingState: PairingUiState = PairingUiState.Idle,
     onConfirmMatch: (PeerId) -> Unit = {},
     onRejectMatch: (PeerId) -> Unit = {},
+    onScanNewCode: () -> Unit = {},
     onRetryTransfer: () -> Unit = {},
     onShareFile: () -> Unit = {},
     onOpenItem: (VerifiedItemUiState) -> Unit = { onOpenFile() },
@@ -150,7 +151,8 @@ fun TransferScreen(
             PairingVerificationCard(
                 state = pairingState,
                 onConfirmMatch = onConfirmMatch,
-                onRejectMatch = onRejectMatch
+                onRejectMatch = onRejectMatch,
+                onScanNewCode = onScanNewCode
             )
         } else {
             // Main Transfer Phase State Presentation

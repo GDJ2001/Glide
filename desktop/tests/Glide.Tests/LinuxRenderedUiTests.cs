@@ -472,6 +472,56 @@ public sealed class LinuxRenderedUiTests
         }, CancellationToken.None);
     }
 
+    [Theory]
+    [InlineData("Send")]
+    [InlineData("Receive")]
+    public async Task NatGuidance_WrapsAtMinimumWindowWidth(string pageName)
+    {
+        var session = HeadlessSetup.GetSession();
+        await session.Dispatch(async () =>
+        {
+            var testProvider = new TestNetworkSnapshotProvider();
+            testProvider.SetInterfaces(new List<Glide.Desktop.Network.DesktopNetworkInterface>
+            {
+                new(
+                    Id: "eth0",
+                    Name: "eth0",
+                    InterfaceType: NetworkInterfaceType.Ethernet,
+                    OperationalStatus: OperationalStatus.Up,
+                    UnicastAddresses: new[]
+                    {
+                        new Glide.Desktop.Network.DesktopUnicastAddress(System.Net.IPAddress.Parse("10.0.2.15"), System.Net.IPAddress.Parse("255.255.255.0"), 24)
+                    },
+                    GatewayAddresses: new[] { System.Net.IPAddress.Parse("10.0.2.2") }
+                )
+            });
+
+            using var vm = new LinuxMainViewModel(networkSnapshotProvider: testProvider);
+            var window = new MainWindow { DataContext = vm, Width = 760, Height = 520 };
+            window.Show();
+
+            if (pageName == "Receive")
+            {
+                vm.SwitchTabCommand.Execute("Receive");
+                await vm.ToggleListenerCommand.ExecuteAsync(null);
+            }
+            window.UpdateLayout();
+
+            var banner = window.GetVisualDescendants()
+                .OfType<Border>()
+                .Single(b => b.IsVisible && AutomationProperties.GetName(b) == "Network reachability warning");
+            var guidance = banner.GetVisualDescendants()
+                .OfType<TextBlock>()
+                .Single(t => t.Text == vm.NetworkGuidanceMessage);
+
+            Assert.True(guidance.Bounds.Height >= 36, $"{pageName} guidance did not wrap at 760 DIP.");
+            Assert.True(guidance.Bounds.Width <= banner.Bounds.Width - 40,
+                $"{pageName} guidance exceeded its warning banner width.");
+
+            window.Close();
+        }, CancellationToken.None);
+    }
+
     [Fact]
     public async Task ReceivePage_ReadyState_DisplaysQrAndConnectionDetails()
     {

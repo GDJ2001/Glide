@@ -125,12 +125,12 @@
                     BorderBrush="{DynamicResource StatusWarningBrush}" BorderThickness="1"
                     CornerRadius="8" Padding="12" IsVisible="{Binding !IsNetworkReady}"
                     AutomationProperties.Name="Network reachability warning">
-              <StackPanel Orientation="Horizontal" Spacing="10">
-                <PathIcon Data="{StaticResource IconWarning}" Width="20" Height="20"
-                          Foreground="{DynamicResource StatusWarningBrush}" VerticalAlignment="Top" />
-                <TextBlock Text="{Binding NetworkGuidanceMessage}" Classes="body" TextWrapping="Wrap"
-                           VerticalAlignment="Center" />
-              </StackPanel>
+              <Grid ColumnDefinitions="Auto,*">
+                <PathIcon Grid.Column="0" Data="{StaticResource IconWarning}" Width="20" Height="20"
+                          Margin="0,0,10,0" Foreground="{DynamicResource StatusWarningBrush}" VerticalAlignment="Top" />
+                <TextBlock Grid.Column="1" Text="{Binding NetworkGuidanceMessage}" Classes="body"
+                           TextWrapping="Wrap" VerticalAlignment="Center" />
+              </Grid>
             </Border>
 
             <TextBlock Text="Quick share creates an instant one-time QR code. The receiving device scans the code in Glide to connect. You will confirm the recipient's device name before any files are transmitted."

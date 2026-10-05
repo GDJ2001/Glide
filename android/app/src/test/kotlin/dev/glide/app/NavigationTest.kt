@@ -1,7 +1,10 @@
 package dev.glide.app
 
 import androidx.navigation3.runtime.NavBackStack
+import androidx.navigation3.runtime.NavKey
 import dev.glide.app.navigation.GlideRoute
+import dev.glide.app.navigation.QrScanPurpose
+import dev.glide.app.navigation.restartQrScanAfterPairingFailure
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.polymorphic
@@ -22,6 +25,7 @@ class NavigationTest {
                 subclass(GlideRoute.Transfer::class)
                 subclass(GlideRoute.History::class)
                 subclass(GlideRoute.Settings::class)
+                subclass(GlideRoute.QrScanner::class)
             }
         }
     }
@@ -91,5 +95,51 @@ class NavigationTest {
         assertEquals(transferRoute, popped)
         assertEquals(1, backStack.size)
         assertEquals(GlideRoute.Home, backStack.last())
+    }
+
+    @Test
+    fun qrScannerRoute_preservesPurposeBatchAndFreshAttempt() {
+        val original = GlideRoute.QrScanner(
+            batchId = "batch-1",
+            purpose = QrScanPurpose.SEND_TO_RECEIVER,
+            scanAttemptId = "new-attempt"
+        )
+        val serialized = json.encodeToString(GlideRoute.serializer(), original)
+        val deserialized = json.decodeFromString(GlideRoute.serializer(), serialized)
+        assertEquals(original, deserialized)
+    }
+
+    @Test
+    fun failedSenderQrPairing_opensFreshScannerAndKeepsSelectedBatch() {
+        val previousScanner = GlideRoute.QrScanner(batchId = "batch-1")
+        val failedTransfer = GlideRoute.Transfer(sessionId = "send-lan-failed", batchId = "batch-1")
+        val backStack = NavBackStack<NavKey>(GlideRoute.Home)
+        backStack.add(GlideRoute.Selection())
+        backStack.add(previousScanner)
+        backStack.add(failedTransfer)
+
+        val restarted = restartQrScanAfterPairingFailure(backStack, failedTransfer, "new-attempt")
+
+        assertEquals(3, backStack.size)
+        assertEquals(restarted, backStack.last())
+        assertEquals("batch-1", restarted?.batchId)
+        assertEquals(QrScanPurpose.SEND_TO_RECEIVER, restarted?.purpose)
+        assertEquals("new-attempt", restarted?.scanAttemptId)
+    }
+
+    @Test
+    fun failedReceiverQrPairing_keepsReceivePurposeAndDiscardsOldScanner() {
+        val previousScanner = GlideRoute.QrScanner(purpose = QrScanPurpose.RECEIVE_FROM_SENDER)
+        val failedTransfer = GlideRoute.Transfer(sessionId = "receive-lan-failed")
+        val backStack = NavBackStack<NavKey>(GlideRoute.Home)
+        backStack.add(previousScanner)
+        backStack.add(failedTransfer)
+
+        val restarted = restartQrScanAfterPairingFailure(backStack, failedTransfer, "retry-receive")
+
+        assertEquals(2, backStack.size)
+        assertEquals(restarted, backStack.last())
+        assertEquals(QrScanPurpose.RECEIVE_FROM_SENDER, restarted?.purpose)
+        assertEquals("retry-receive", restarted?.scanAttemptId)
     }
 }
