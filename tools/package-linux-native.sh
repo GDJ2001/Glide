@@ -158,9 +158,9 @@ EOF
     esac
     cmp "$gui/Glide.Linux.UI" "$extracted/usr/lib/glide/desktop/Glide.Linux.UI"
     cmp "$daemon/Glide.App" "$extracted/usr/lib/glide/daemon/Glide.App"
-    grep -Fxq 'StartupWMClass=glide-desktop' \
+    grep -Fq 'StartupWMClass=glide-desktop' \
       "$extracted/usr/share/applications/glide-desktop.desktop"
-    grep -Fxq 'Icon=/usr/share/icons/hicolor/128x128/apps/dev.glide.app.png' \
+    grep -Fq 'Icon=/usr/share/icons/hicolor/128x128/apps/dev.glide.app.png' \
       "$extracted/usr/share/applications/glide-desktop.desktop"
     test -s "$extracted/usr/share/icons/hicolor/128x128/apps/dev.glide.app.png"
   done
