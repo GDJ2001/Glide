@@ -15,6 +15,9 @@ $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = (Resolve-Path (Join-Path $scriptRoot "..")).Path
 $androidDir = Join-Path $repoRoot "android"
 $gradlew = Join-Path $androidDir "gradlew.bat"
+$wrapper = Get-Content (Join-Path $androidDir 'gradle\wrapper\gradle-wrapper.properties') -Raw
+$gradleVersion = [regex]::Match($wrapper, 'gradle-([0-9.]+)-').Groups[1].Value
+if (-not $gradleVersion) { throw 'Cannot identify the Gradle wrapper version.' }
 $outputDir = Join-Path $repoRoot "build\distributions\android"
 
 New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
@@ -23,7 +26,7 @@ Write-Host "Building Android debug APK and AAB via Gradle..." -ForegroundColor C
 
 Push-Location $androidDir
 try {
-    & $gradlew :android:app:assembleDebug :android:app:bundleDebug --no-daemon --console=plain
+    & $gradlew :android:app:assembleDebug :android:app:bundleDebug "-Pglide.versionName=$Version" --no-daemon --console=plain
     if ($LASTEXITCODE -ne 0) {
         throw "Gradle build failed with exit code $LASTEXITCODE"
     }
@@ -63,7 +66,7 @@ $manifestFile = Join-Path $outputDir "BUILD-MANIFEST.txt"
 @"
 source_commit=$commit
 build_utc=$((Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ'))
-toolchain=$javaVersion, Gradle 9.4.1, AGP 9.4.1, compileSdk 37, minSdk 26
+toolchain=$javaVersion, Gradle $gradleVersion, AGP 9.4.1, compileSdk 37, minSdk 26
 package_version=$Version
 apk_artifact=app-debug.apk
 aab_artifact=app-debug.aab
