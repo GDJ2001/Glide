@@ -28,3 +28,16 @@ The package was produced in WSL2, not on a native Ubuntu 26 build host as A5 spe
 ## Next verification sequence
 
 Remove findings 1–2, rebuild a new package and manifest from the corrected commit, update Graphify, and rerun architecture plus targeted tests. Then install that package in Ubuntu 26.04.1 and run V1/V2/V4 through the actual desktop launcher. Finally perform V3 manually against Windows and Android on a documented LAN, record consent screens and source/destination SHA-256, and keep each unavailable case open.
+
+## Recovery follow-up
+
+The original audit above is retained as historical evidence. Candidate `86894bd341ec8c266364ec269250caee4e364d45` contains the recovery changes merged into `main`:
+
+- Production auto-confirm and mock-modal command-line paths are removed, as is the predictable live-invitation temporary file. The obsolete `tools/test_two_way_transfers.py` bypass harness is removed. Explicit recipient, offer, and trust decisions remain separate; cancellation declines pending dialogs and disposal is idempotent.
+- Avalonia compiled bindings are enabled. Initial wrapping changes in `238fefd` did not resolve all 760×520 clipping in the VM. `installed-238fefd-clipping.png` records that failed attempt. `53681ff` additionally constrains horizontal scrolling, stretches the QR tab's content, and wraps selected-file actions. That later native visual result is **not yet verified**.
+- Windows automated suites passed 310 desktop/core plus 1 Windows UI test. WSL Ubuntu 24.04 passed all 310 desktop/core tests. The 7 architecture checks passed. Headless layout assertions are supporting evidence, not a substitute for native text rendering.
+- The code graph was refreshed through Graphify; AXAML/XML files are not supported by its AST extractor and remain source-review evidence.
+- The VM installed and launched candidate `238fefd` from `/usr/lib/glide`. Final candidate installation and its source-marker readback are documented in the [handoff report](MERGE_AND_UI_HANDOFF_2026-10-05.md).
+- At the user's request, further UI inspection is reserved for human testing in the Ubuntu VM. Builds and automated checks run on Windows/WSL. WSL packaging is now the explicitly selected workflow; it is not evidence of a native Ubuntu 26 build.
+
+V1's full theme/window/text matrix, V2 accessibility, V3 physical transfers, and V4 full install/upgrade/uninstall/retained-data lifecycle remain open. Neither merge nor package generation clears them.
