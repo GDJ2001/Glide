@@ -67,8 +67,9 @@ for rid in "$@"; do
     "$root/usr/lib/glide/daemon/Glide.App"
   ln -s ../lib/glide/desktop/Glide.Linux.UI "$root/usr/bin/glide-desktop"
   ln -s ../lib/glide/daemon/Glide.App "$root/usr/bin/glide"
+  # GNOME matches the desktop-file ID to the window's glide-desktop WM_CLASS.
   install -m 0644 "$repo/desktop/linux/glide.desktop" \
-    "$root/usr/share/applications/glide.desktop"
+    "$root/usr/share/applications/glide-desktop.desktop"
   install -m 0644 "$repo/desktop/linux/glide.service" \
     "$root/usr/lib/systemd/user/glide.service"
   for size in 16 32 64 128 256 512; do
@@ -138,7 +139,7 @@ cp -a "$root/usr" %{buildroot}/
 /usr/lib/glide
 /usr/bin/glide
 /usr/bin/glide-desktop
-/usr/share/applications/glide.desktop
+/usr/share/applications/glide-desktop.desktop
 /usr/share/icons/hicolor/*/apps/dev.glide.app.png
 /usr/lib/systemd/user/glide.service
 EOF
@@ -157,6 +158,11 @@ EOF
     esac
     cmp "$gui/Glide.Linux.UI" "$extracted/usr/lib/glide/desktop/Glide.Linux.UI"
     cmp "$daemon/Glide.App" "$extracted/usr/lib/glide/daemon/Glide.App"
+    grep -Fxq 'StartupWMClass=glide-desktop' \
+      "$extracted/usr/share/applications/glide-desktop.desktop"
+    grep -Fxq 'Icon=/usr/share/icons/hicolor/128x128/apps/dev.glide.app.png' \
+      "$extracted/usr/share/applications/glide-desktop.desktop"
+    test -s "$extracted/usr/share/icons/hicolor/128x128/apps/dev.glide.app.png"
   done
 
   for artifact in "$portable" "$deb" "$rpm"; do test -s "$artifact"; done

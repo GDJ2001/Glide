@@ -3,6 +3,7 @@ Name=Glide
 Comment=High-Speed Zero-Cloud Local File Sharing
 Exec=glide-desktop %F
 Icon=/usr/share/icons/hicolor/128x128/apps/dev.glide.app.png
+StartupWMClass=glide-desktop
 Terminal=false
 Type=Application
 Categories=Network;FileTransfer;Utility;

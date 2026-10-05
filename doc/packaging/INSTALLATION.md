@@ -87,8 +87,10 @@ tar -xzf build/distributions/runs/<commit>-<timestamp>/linux/glide-1.0.0-linux-x
 ln -sf ~/.local/opt/glide/usr/lib/glide/desktop/Glide.Linux.UI ~/.local/bin/glide-desktop
 ln -sf ~/.local/opt/glide/usr/lib/glide/daemon/Glide.App ~/.local/bin/glide
 
-# Register desktop entry
-cp ~/.local/opt/glide/usr/share/applications/glide.desktop ~/.local/share/applications/
+# Register desktop entry with an icon path that matches this portable location.
+sed "s|/usr/share/icons/hicolor/128x128/apps/dev.glide.app.png|$HOME/.local/opt/glide/usr/share/icons/hicolor/128x128/apps/dev.glide.app.png|" \
+  ~/.local/opt/glide/usr/share/applications/glide-desktop.desktop \
+  > ~/.local/share/applications/glide-desktop.desktop
 update-desktop-database ~/.local/share/applications/ 2>/dev/null || true
 
 # The packaged systemd unit uses /usr/bin/glide; it belongs to the .deb/.rpm install.
@@ -97,7 +99,7 @@ update-desktop-database ~/.local/share/applications/ 2>/dev/null || true
 
 ### Uninstallation (Portable)
 ```bash
-rm -rf ~/.local/opt/glide ~/.local/bin/glide ~/.local/bin/glide-desktop ~/.local/share/applications/glide.desktop
+rm -rf ~/.local/opt/glide ~/.local/bin/glide ~/.local/bin/glide-desktop ~/.local/share/applications/glide-desktop.desktop
 # User data remains in ~/.local/share/glide and ~/.config/glide.
 ```
 
