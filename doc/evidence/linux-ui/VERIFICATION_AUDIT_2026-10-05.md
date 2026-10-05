@@ -37,7 +37,7 @@ The original audit above is retained as historical evidence. Candidate `86894bd3
 - Avalonia compiled bindings are enabled. Initial wrapping changes in `238fefd` did not resolve all 760×520 clipping in the VM. `installed-238fefd-clipping.png` records that failed attempt. `53681ff` additionally constrains horizontal scrolling, stretches the QR tab's content, and wraps selected-file actions. That later native visual result is **not yet verified**.
 - Windows automated suites passed 310 desktop/core plus 1 Windows UI test. WSL Ubuntu 24.04 passed all 310 desktop/core tests. The 7 architecture checks passed. Headless layout assertions are supporting evidence, not a substitute for native text rendering.
 - The code graph was refreshed through Graphify; AXAML/XML files are not supported by its AST extractor and remain source-review evidence.
-- The VM installed and launched candidate `238fefd` from `/usr/lib/glide`. Final candidate installation and its source-marker readback are documented in the [handoff report](MERGE_AND_UI_HANDOFF_2026-10-05.md).
+- The VM installed and launched candidate `238fefd` from `/usr/lib/glide`. Final candidate `86894bd` was subsequently reinstalled, and its package/source-marker readback is documented in the [handoff report](MERGE_AND_UI_HANDOFF_2026-10-05.md).
 - At the user's request, further UI inspection is reserved for human testing in the Ubuntu VM. Builds and automated checks run on Windows/WSL. WSL packaging is now the explicitly selected workflow; it is not evidence of a native Ubuntu 26 build.
 
 V1's full theme/window/text matrix, V2 accessibility, V3 physical transfers, and V4 full install/upgrade/uninstall/retained-data lifecycle remain open. Neither merge nor package generation clears them.

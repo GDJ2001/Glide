@@ -42,6 +42,6 @@ Target: VirtualBox `ubuntu-26.04.1`. Final `.deb` is staged at `/home/gdj/Downlo
 
 Expected SHA-256: `cfe49d0d6d566f3fff939069d084d126cbfbdc7eb19c33e1b6ce35805ee71351`.
 
-Installation uses normal `sudo apt install` authentication. Final installation/source readback is pending until the VM owner completes the password prompt. No password is collected by the repository or chat.
+Installation completed through normal `sudo apt install --reinstall` authentication. `dpkg-query` reports `glide 1.0.0`, and `/usr/lib/glide/SOURCE_COMMIT` reports `86894bd341ec8c266364ec269250caee4e364d45`. The reinstall was required because the earlier candidate used the same package version. `installed-86894bd-package-proof.png` records the terminal result. No password was collected by the repository or chat.
 
 At the user's request, the VM is reserved for their human UI tests. The final candidate's native responsive appearance, keyboard/Orca walkthrough, physical transfers, and full install lifecycle remain unverified. Its current NAT adapter is suitable for downloading packages; cross-PC/phone discovery tests need the LAN setup in the runbook, normally Bridged Adapter. No VM network setting was changed during final installation preparation.
