@@ -11,19 +11,19 @@
       <StackPanel Spacing="4">
         <TextBlock Text="Send Files" Classes="h1" />
         <TextBlock Text="Select files or folders, choose a sharing method, and send securely peer-to-peer."
-                   Classes="secondary" />
+                   Classes="secondary" TextWrapping="Wrap" />
       </StackPanel>
 
       <!-- TRANSFORMING FILE QUEUE (LUI-06) -->
       <!-- Empty Drop State -->
       <Border Classes="drop-target" IsVisible="{Binding HasNoStagedItems}">
-        <StackPanel Spacing="14" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="12">
+        <StackPanel Spacing="14" HorizontalAlignment="Stretch" VerticalAlignment="Center" Margin="12">
           <PathIcon Data="{StaticResource IconFolder}" Width="48" Height="48"
                     Foreground="{DynamicResource AccentPrimaryBrush}" HorizontalAlignment="Center" />
-          <StackPanel Spacing="4" HorizontalAlignment="Center">
-            <TextBlock Text="Drag and drop files or folders here" Classes="h2" HorizontalAlignment="Center" />
+          <StackPanel Spacing="4" HorizontalAlignment="Stretch">
+            <TextBlock Text="Drag and drop files or folders here" Classes="h2" HorizontalAlignment="Stretch" TextAlignment="Center" TextWrapping="Wrap" />
             <TextBlock Text="Files are transferred directly over your local network. No cloud servers are used."
-                       Classes="secondary" HorizontalAlignment="Center" TextAlignment="Center" />
+                       Classes="secondary" HorizontalAlignment="Stretch" TextAlignment="Center" TextWrapping="Wrap" />
           </StackPanel>
           <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center" Margin="0,8,0,0">
             <Button x:Name="AddFilesEmptyButton" Content="Add files..." Classes="primary"
@@ -99,11 +99,13 @@
 
           <!-- Method Segmented Buttons -->
           <Grid ColumnDefinitions="*,*,*">
-            <Button Grid.Column="0" Content="Quick share with QR"
+            <Button Grid.Column="0"
                     Command="{Binding SelectSendMethodCommand}" CommandParameter="QuickShareQr"
                     Classes="method-tab" Classes.selected="{Binding IsQuickShareMethodSelected}"
                     HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="0,0,4,0"
-                    AutomationProperties.Name="Send method: Quick share with QR code" />
+                    AutomationProperties.Name="Send method: Quick share with QR code">
+              <TextBlock Text="Quick share with QR" TextWrapping="Wrap" TextAlignment="Center" />
+            </Button>
             <Button Grid.Column="1" Content="Nearby device"
                     Command="{Binding SelectSendMethodCommand}" CommandParameter="NearbyDevice"
                     Classes="method-tab" Classes.selected="{Binding IsNearbyMethodSelected}"

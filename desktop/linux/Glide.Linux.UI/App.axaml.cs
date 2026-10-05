@@ -1,8 +1,6 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
-using Glide.Core.Security;
-using Glide.Desktop;
 using Glide.Linux.UI.ViewModels;
 using Glide.Linux.UI.Views;
 
@@ -31,23 +29,7 @@ public partial class App : Application
                 for (int i = 0; i < desktop.Args.Length; i++)
                 {
                     string arg = desktop.Args[i];
-                    if (arg == "--test-modal-sas")
-                    {
-                        _ = viewModel.ConfirmPeerEnrollmentAsync(
-                            new VerifiedDesktopPeerIdentity("peer-1", "MacBook Pro", "A1B2C3D4E5F67890123456789ABCDEF0"),
-                            CancellationToken.None);
-                    }
-                    else if (arg == "--test-modal-offer")
-                    {
-                        _ = viewModel.ConfirmOfferAsync(
-                            new DesktopOffer("batch-1", "Pixel 8 Pro", new[] { new DesktopOfferItem("item-1", "presentation.pdf", 4194304, "presentation.pdf") }, 4194304),
-                            CancellationToken.None);
-                    }
-                    else if (arg == "--test-modal-recipient")
-                    {
-                        _ = viewModel.ConfirmRecipientAsync("Ubuntu Studio 26.04", CancellationToken.None);
-                    }
-                    else if (arg == "--tab" && i + 1 < desktop.Args.Length)
+                    if (arg == "--tab" && i + 1 < desktop.Args.Length)
                     {
                         viewModel.SwitchTabCommand.Execute(desktop.Args[++i]);
                     }
@@ -64,10 +46,6 @@ public partial class App : Application
                     {
                         mainWindow.Height = h;
                         i++;
-                    }
-                    else if (arg == "--auto-confirm")
-                    {
-                        viewModel.AutoConfirmForTesting = true;
                     }
                     else if (arg == "--pair" && i + 1 < desktop.Args.Length)
                     {

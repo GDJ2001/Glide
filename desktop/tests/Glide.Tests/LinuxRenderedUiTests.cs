@@ -174,6 +174,43 @@ public sealed class LinuxRenderedUiTests
     }
 
     [Fact]
+    public async Task InteractiveConsent_RequiresExplicitDecision_AndCancellationDeclines()
+    {
+        var session = HeadlessSetup.GetSession();
+        await session.Dispatch(async () =>
+        {
+            using var vm = new LinuxMainViewModel();
+
+            using var recipientCancellation = new CancellationTokenSource();
+            var recipient = vm.ConfirmRecipientAsync("Another device", recipientCancellation.Token);
+            Assert.False(recipient.IsCompleted);
+            Assert.True(vm.IsRecipientModalVisible);
+            recipientCancellation.Cancel();
+            Assert.False(await recipient);
+            Assert.False(vm.IsRecipientModalVisible);
+
+            using var offerCancellation = new CancellationTokenSource();
+            var offer = vm.ConfirmOfferAsync(
+                new DesktopOffer("batch-1", "Another device", [], 0), offerCancellation.Token);
+            Assert.False(offer.IsCompleted);
+            Assert.True(vm.IsOfferModalVisible);
+            offerCancellation.Cancel();
+            Assert.False(await offer);
+            Assert.False(vm.IsOfferModalVisible);
+
+            using var trustCancellation = new CancellationTokenSource();
+            var trust = vm.ConfirmPeerEnrollmentAsync(
+                new VerifiedDesktopPeerIdentity("peer-1", "Another device", "A1B2C3D4E5F67890123456789ABCDEF0"),
+                trustCancellation.Token);
+            Assert.False(trust.IsCompleted);
+            Assert.True(vm.IsSasModalVisible);
+            trustCancellation.Cancel();
+            Assert.False(await trust);
+            Assert.False(vm.IsSasModalVisible);
+        }, CancellationToken.None);
+    }
+
+    [Fact]
     public async Task MainWindow_EscapeKey_DismissesActiveModal()
     {
         var session = HeadlessSetup.GetSession();
@@ -305,5 +342,25 @@ public sealed class LinuxRenderedUiTests
             }
         }
     }
-}
 
+    [Fact]
+    public async Task SendPage_AtMinimumWindowWidth_DoesNotRequireHorizontalScrolling()
+    {
+        var session = HeadlessSetup.GetSession();
+        await session.Dispatch(() =>
+        {
+            var vm = new LinuxMainViewModel();
+            var window = new MainWindow { DataContext = vm, Width = 760, Height = 520 };
+            window.Show();
+            window.UpdateLayout();
+
+            var sendPage = window.GetVisualDescendants().OfType<SendPage>().Single();
+            var scrollViewer = sendPage.GetVisualDescendants().OfType<ScrollViewer>().First();
+            var content = Assert.IsType<StackPanel>(scrollViewer.Content);
+            Assert.True(content.Bounds.Width <= scrollViewer.Bounds.Width + 1,
+                $"Send content exceeds the available width: {content.Bounds.Width} > {scrollViewer.Bounds.Width}");
+
+            window.Close();
+        }, CancellationToken.None);
+    }
+}

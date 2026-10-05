@@ -48,6 +48,7 @@ public enum AppThemePreference
 
 public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteraction, IDisposable
 {
+    private int _disposeState;
     private LinuxPage _activePage = LinuxPage.Send;
     private SendMethod _selectedSendMethod = SendMethod.QuickShareQr;
     private ActivityFilter _selectedActivityFilter = ActivityFilter.All;
@@ -178,8 +179,6 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
 
     public bool HasStagedItems => StagedItems.Count > 0;
     public bool HasNoStagedItems => StagedItems.Count == 0;
-
-    public bool AutoConfirmForTesting { get; set; }
 
     public string DeviceName
     {
@@ -1009,7 +1008,6 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
         {
             var invitation = _invitationManager.CreateReceiverInvitation(listener, DeviceName, listener.BoundPort);
             CurrentInvitationUri = DesktopInvitationManager.EncodeInvitation(invitation);
-            try { File.WriteAllText(Path.Combine(Path.GetTempPath(), "glide_active_invitation.uri"), CurrentInvitationUri); } catch { }
             _mdnsDiscovery.StartAdvertising(DeviceName, listener.BoundPort, invitation.Presence);
             if (_hostedSendRequest != null)
                 _hostedSendRequest = _hostedSendRequest with { Invitation = invitation };
@@ -1112,12 +1110,15 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
             RecipientPeerName = peerName;
             IsRecipientModalVisible = true;
             _recipientTcs = prompt;
-            if (AutoConfirmForTesting)
-            {
-                _ = Task.Delay(1000).ContinueWith(_ => Dispatcher.UIThread.InvokeAsync(() => ResolveRecipient(true)));
-            }
         });
-        using var registration = cancellationToken.Register(() => prompt.TrySetResult(false));
+        using var registration = cancellationToken.Register(() =>
+        {
+            prompt.TrySetResult(false);
+            OnUi(() =>
+            {
+                if (ReferenceEquals(_recipientTcs, prompt)) ResolveRecipient(false);
+            });
+        });
         return await prompt.Task;
     }
 
@@ -1130,12 +1131,15 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
             OfferSummaryText = $"{offer.Items.Count} file(s), total {FormatBytes(offer.TotalBytes)}";
             IsOfferModalVisible = true;
             _offerTcs = prompt;
-            if (AutoConfirmForTesting)
-            {
-                _ = Task.Delay(1000).ContinueWith(_ => Dispatcher.UIThread.InvokeAsync(() => ResolveOffer(true)));
-            }
         });
-        using var registration = cancellationToken.Register(() => prompt.TrySetResult(false));
+        using var registration = cancellationToken.Register(() =>
+        {
+            prompt.TrySetResult(false);
+            OnUi(() =>
+            {
+                if (ReferenceEquals(_offerTcs, prompt)) ResolveOffer(false);
+            });
+        });
         return await prompt.Task;
     }
 
@@ -1153,12 +1157,15 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
                     Math.Min(8, peer.FingerprintHex.Length - i * 8)).ToUpperInvariant()));
             IsSasModalVisible = true;
             _sasTcs = prompt;
-            if (AutoConfirmForTesting)
-            {
-                _ = Task.Delay(1000).ContinueWith(_ => Dispatcher.UIThread.InvokeAsync(() => ResolveSas(true)));
-            }
         });
-        using var registration = cancellationToken.Register(() => prompt.TrySetResult(false));
+        using var registration = cancellationToken.Register(() =>
+        {
+            prompt.TrySetResult(false);
+            OnUi(() =>
+            {
+                if (ReferenceEquals(_sasTcs, prompt)) ResolveSas(false);
+            });
+        });
         return await prompt.Task;
     }
 
@@ -1265,6 +1272,13 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
 
     public void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposeState, 1) != 0) return;
+        OnUi(() =>
+        {
+            ResolveRecipient(false);
+            ResolveOffer(false);
+            ResolveSas(false);
+        });
         _lifetimeCts.Cancel();
         _activeTransferCts?.Cancel();
         _listenerSupervisor.Dispose();
