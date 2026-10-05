@@ -223,5 +223,38 @@ class LanTransferTransportTest {
         }
     }
 
+    @Test
+    fun testOffLinkDestinationRejectionThrowsTypedFailure(): Unit = runBlocking {
+        val senderScope = LanNetworkScopeStub()
+        // allowLoopbackForTesting = false ensures 10.0.2.15 is rejected as off-link
+        val senderTransport = LanTransferTransport(
+            networkScope = senderScope,
+            allowLoopbackForTesting = false
+        )
+        val authority = InvitationAuthority()
+        val offLinkInvitation = authority.mintInvitation(
+            endpoints = listOf(LanEndpoint(address = "10.0.2.15", port = 45123)),
+            spkiSha256 = "1".repeat(64),
+            deviceName = "Linux VM",
+            platform = "linux"
+        )
+        val peerId = PeerId("peer-offlink")
+        senderTransport.registerPendingInvitation(peerId, offLinkInvitation)
+
+        try {
+            var threwOffLink = false
+            try {
+                senderTransport.initiateConnection(peerId, "Local Phone")
+            } catch (e: LanConnectionException) {
+                if (e.failure is LanConnectionFailure.OffLinkDestination) {
+                    threwOffLink = true
+                }
+            }
+            assertTrue("Expected LanConnectionException with OffLinkDestination", threwOffLink)
+        } finally {
+            senderTransport.close()
+        }
+    }
+
     private class LanNetworkScopeStub : LanNetworkScope(context = null, connectivityManager = null)
 }

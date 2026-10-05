@@ -480,6 +480,7 @@ fun PairingVerificationCard(
         }
 
         is PairingUiState.Failed -> {
+            val context = androidx.compose.ui.platform.LocalContext.current
             Card(
                 shape = MaterialTheme.shapes.large,
                 colors = CardDefaults.cardColors(
@@ -516,6 +517,54 @@ fun PairingVerificationCard(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onErrorContainer
                     )
+
+                    if (!state.troubleshootingHint.isNullOrBlank()) {
+                        Surface(
+                            shape = MaterialTheme.shapes.small,
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = state.troubleshootingHint,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.padding(10.dp)
+                            )
+                        }
+                    }
+
+                    if (state.primaryActionLabel != null) {
+                        Button(
+                            onClick = {
+                                if (state.primaryActionLabel == "Open Wi-Fi settings") {
+                                    try {
+                                        val intent = android.content.Intent(android.provider.Settings.ACTION_WIFI_SETTINGS)
+                                        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        context.startActivity(intent)
+                                    } catch (_: Exception) {}
+                                }
+                                state.onPrimaryAction?.invoke()
+                            },
+                            shape = PrimaryButtonShape,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                        ) {
+                            Text(state.primaryActionLabel)
+                        }
+                    }
+
+                    if (state.secondaryActionLabel != null) {
+                        OutlinedButton(
+                            onClick = { state.onSecondaryAction?.invoke() },
+                            shape = PrimaryButtonShape,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                        ) {
+                            Text(state.secondaryActionLabel)
+                        }
+                    }
                 }
             }
         }

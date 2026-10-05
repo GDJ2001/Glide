@@ -345,8 +345,15 @@ class TransferRuntime private constructor(
                     terminalCallback?.invoke()
                 }
             },
-            onFailure = { reason ->
-                failPairing("LAN connection failed", reason)
+            onFailureTyped = { failure ->
+                val actionable = dev.glide.app.ui.failure.ActionableErrorMapper.fromLanConnectionFailure(failure)
+                failPairing(
+                    title = actionable.title,
+                    message = actionable.userWording,
+                    primaryActionLabel = actionable.primaryActionLabel,
+                    secondaryActionLabel = actionable.secondaryActionLabel,
+                    troubleshootingHint = actionable.troubleshootingHint
+                )
                 terminalCallback?.invoke()
             }
         )
@@ -428,8 +435,15 @@ class TransferRuntime private constructor(
                     terminalCallback?.invoke()
                 }
             },
-            onFailure = { reason ->
-                failPairing("LAN connection failed", reason)
+            onFailureTyped = { failure ->
+                val actionable = dev.glide.app.ui.failure.ActionableErrorMapper.fromLanConnectionFailure(failure)
+                failPairing(
+                    title = actionable.title,
+                    message = actionable.userWording,
+                    primaryActionLabel = actionable.primaryActionLabel,
+                    secondaryActionLabel = actionable.secondaryActionLabel,
+                    troubleshootingHint = actionable.troubleshootingHint
+                )
                 terminalCallback?.invoke()
             }
         )
@@ -525,8 +539,26 @@ class TransferRuntime private constructor(
         }
     }
 
-    private fun failPairing(title: String, message: String): Boolean {
-        _pairingState.value = PairingUiState.Failed(title = title, message = message)
+    private fun failPairing(
+        title: String,
+        message: String,
+        primaryActionLabel: String? = null,
+        secondaryActionLabel: String? = null,
+        troubleshootingHint: String? = null,
+        onPrimaryAction: (() -> Unit)? = null,
+        onSecondaryAction: (() -> Unit)? = null
+    ): Boolean {
+        _pairingState.value = PairingUiState.Failed(
+            title = dev.glide.app.ui.failure.ActionableErrorMapper.sanitizeText(title),
+            message = dev.glide.app.ui.failure.ActionableErrorMapper.sanitizeText(message),
+            primaryActionLabel = primaryActionLabel,
+            secondaryActionLabel = secondaryActionLabel,
+            troubleshootingHint = troubleshootingHint?.let {
+                dev.glide.app.ui.failure.ActionableErrorMapper.sanitizeText(it)
+            },
+            onPrimaryAction = onPrimaryAction,
+            onSecondaryAction = onSecondaryAction
+        )
         return false
     }
 

@@ -6,6 +6,7 @@
         x:Class="Glide.Linux.UI.Views.MainWindow"
         x:DataType="vm:LinuxMainViewModel"
         Title="Glide"
+        Icon="avares://Glide.Linux.UI/Assets/glide-128.png"
         Width="1040" Height="720"
         MinWidth="760" MinHeight="520"
         WindowStartupLocation="CenterScreen"
@@ -24,15 +25,12 @@
 
           <!-- App Brand Header -->
           <StackPanel Grid.Row="0" Margin="20,20,20,16" Spacing="8">
-            <StackPanel Orientation="Horizontal" Spacing="10">
-              <Border Background="{DynamicResource AccentPrimaryBrush}" CornerRadius="8"
-                      Width="32" Height="32">
-                <PathIcon Data="{StaticResource IconGlide}" Width="18" Height="18" Foreground="#FFFFFF"
-                          HorizontalAlignment="Center" VerticalAlignment="Center" />
-              </Border>
-              <TextBlock Text="GLIDE" Classes="h2" LetterSpacing="2" VerticalAlignment="Center"
-                         Foreground="{DynamicResource AccentPrimaryBrush}" />
-            </StackPanel>
+            <Image Source="{DynamicResource GlideLogoHorizontal}"
+                   Width="124"
+                   Stretch="Uniform"
+                   HorizontalAlignment="Left"
+                   VerticalAlignment="Center"
+                   AutomationProperties.Name="Glide" />
             <TextBlock Text="Peer-to-Peer Local Sharing" Classes="muted" />
           </StackPanel>
 

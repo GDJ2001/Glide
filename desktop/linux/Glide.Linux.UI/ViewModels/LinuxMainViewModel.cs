@@ -9,6 +9,7 @@ using Glide.Core.Pairing;
 using Glide.Core.Security;
 using Glide.Core.Storage;
 using Glide.Desktop;
+using Glide.Desktop.Network;
 using Glide.Desktop.Services;
 using Glide.Linux.UI.Services;
 using Glide.Transport.Discovery;
@@ -99,10 +100,13 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
     private readonly MdnsDiscoveryService _mdnsDiscovery = new();
     private readonly DesktopListenerSupervisor _listenerSupervisor = new();
     private DesktopListenerOwnership? _listenerOwner;
-    private readonly DesktopInvitationManager _invitationManager = new();
+    private readonly DesktopInvitationManager _invitationManager;
     private readonly CancellationTokenSource _lifetimeCts = new();
-    private readonly DesktopStateStore _stateStore = new(Path.Combine(LinuxEnvironment.DataHome, "desktop-state.json"));
+    private readonly DesktopStateStore _stateStore;
     private readonly DesktopPersistentTrustManager? _trustManager;
+
+    private DesktopInvitationReadiness _networkReadiness;
+    private string _connectionDetailsText = "";
 
     public ObservableCollection<LinuxTransferItemViewModel> StagedItems { get; } = [];
     public ObservableCollection<LinuxDiscoveredPeerViewModel> DiscoveredPeers { get; } = [];
@@ -297,7 +301,7 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
         }
     }
 
-    public string AppVersionText => typeof(LinuxMainViewModel).Assembly.GetName().Version?.ToString(3) ?? "0.1.0";
+    public string AppVersionText => typeof(LinuxMainViewModel).Assembly.GetName().Version?.ToString(3) ?? "1.0.1";
 
     public bool IsAnyModalVisible => IsSasModalVisible || IsOfferModalVisible || IsRecipientModalVisible || IsQuickShareActive;
 
@@ -454,6 +458,40 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
 
     public bool IsQuickShareActive => _hostedSendRequest != null;
 
+    public DesktopInvitationReadiness NetworkReadiness
+    {
+        get => _networkReadiness;
+        private set
+        {
+            if (SetProperty(ref _networkReadiness, value))
+            {
+                OnPropertyChanged(nameof(IsNetworkReady));
+                OnPropertyChanged(nameof(IsVirtualMachineNatOnly));
+                OnPropertyChanged(nameof(NetworkGuidanceMessage));
+                StartQuickShareCommand?.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public bool IsNetworkReady => _networkReadiness?.IsReady ?? false;
+    public bool IsVirtualMachineNatOnly => _networkReadiness?.Status == DesktopInvitationReadinessStatus.VirtualMachineNatOnly;
+
+    public string NetworkGuidanceMessage =>
+        _networkReadiness?.Status switch
+        {
+            DesktopInvitationReadinessStatus.VirtualMachineNatOnly =>
+                DesktopInvitationManager.VirtualMachineNatGuidance,
+            DesktopInvitationReadinessStatus.NoUsableIpv4 =>
+                "No local network connection is available. Connect this computer to Wi-Fi or Ethernet to share files.",
+            _ => ""
+        };
+
+    public string ConnectionDetailsText
+    {
+        get => _connectionDetailsText;
+        private set => SetProperty(ref _connectionDetailsText, value);
+    }
+
     public int StagedCount => StagedItems.Count;
     public long TotalStagedBytes => StagedItems.Sum(item => item.Size);
     public string FormattedTotalStagedBytes => FormatBytes(TotalStagedBytes);
@@ -483,8 +521,22 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
     public RelayCommand SelectActivityFilterCommand { get; }
     public RelayCommand SetThemeCommand { get; }
 
-    public LinuxMainViewModel()
+    public LinuxMainViewModel(
+        DesktopStateStore? store = null,
+        IDesktopNetworkSnapshotProvider? networkSnapshotProvider = null)
     {
+        _stateStore = store ?? new DesktopStateStore(Path.Combine(LinuxEnvironment.DataHome, "desktop-state.json"));
+        _invitationManager = new DesktopInvitationManager(networkSnapshotProvider);
+        _networkReadiness = _invitationManager.AssessReadiness();
+        try
+        {
+            _invitationManager.SnapshotProvider.NetworkAddressChanged += OnNetworkAddressChanged;
+        }
+        catch
+        {
+            // Ignore if platform does not support network change events
+        }
+
         HistoryItems.CollectionChanged += (_, _) => OnPropertyChanged(nameof(FilteredHistoryItems));
 
         DismissActiveModalCommand = new RelayCommand(() =>
@@ -568,7 +620,7 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
         DeclineRecipientCommand = new RelayCommand(() => ResolveRecipient(false));
         RefreshInvitationCommand = new RelayCommand(RefreshInvitation);
         StartQuickShareCommand = new AsyncRelayCommand(ExecuteStartQuickShareAsync,
-            () => StagedItems.Count > 0 && !IsTransferActive);
+            () => StagedItems.Count > 0 && !IsTransferActive && IsNetworkReady);
         CancelQuickShareCommand = new RelayCommand(() =>
         {
             _hostedSendRequest = null;
@@ -909,6 +961,13 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
 
     private async Task ExecuteStartQuickShareAsync()
     {
+        RefreshNetworkReadiness();
+        if (!IsNetworkReady)
+        {
+            StatusMessage = NetworkGuidanceMessage;
+            return;
+        }
+
         BatchPreparationResult prep;
         try
         {
@@ -956,14 +1015,25 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
             _mdnsDiscovery.StopAdvertising();
             _invitationManager.RevokeActive();
             CurrentInvitationUri = "";
+            ConnectionDetailsText = "";
             IsListening = false;
             StatusMessage = "Listening stopped.";
         }
         else
         {
+            RefreshNetworkReadiness();
+            if (!IsNetworkReady)
+            {
+                StatusMessage = NetworkGuidanceMessage;
+                return;
+            }
+
             try
             {
-                _listenerOwner = DesktopListenerOwnership.AcquireLinux();
+                if (OperatingSystem.IsLinux())
+                {
+                    _listenerOwner = DesktopListenerOwnership.AcquireLinux();
+                }
                 await Task.Run(() =>
                 {
                     var store = new QuarantineStagingStore(destinationRoot: DownloadDirectory);
@@ -994,31 +1064,80 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
                 _mdnsDiscovery.StopAdvertising();
                 _invitationManager.RevokeActive();
                 CurrentInvitationUri = "";
+                ConnectionDetailsText = "";
                 StatusMessage = $"Failed to start listener: {ex.Message}";
             }
         }
     }
 
-    private void RefreshInvitation()
+    public void RefreshNetworkReadiness()
+    {
+        NetworkReadiness = _invitationManager.AssessReadiness();
+    }
+
+    private void OnNetworkAddressChanged(object? sender, EventArgs e)
+    {
+        OnUi(() =>
+        {
+            RefreshNetworkReadiness();
+            if (IsListening)
+            {
+                _invitationManager.RevokeActive();
+                if (IsNetworkReady)
+                {
+                    RefreshInvitation();
+                }
+                else
+                {
+                    _mdnsDiscovery.StopAdvertising();
+                    CurrentInvitationUri = "";
+                    ConnectionDetailsText = "";
+                    StatusMessage = NetworkGuidanceMessage;
+                }
+            }
+            if (_hostedSendRequest != null && !IsNetworkReady)
+            {
+                _hostedSendRequest = null;
+                OnPropertyChanged(nameof(IsQuickShareActive));
+                OnPropertyChanged(nameof(IsAnyModalVisible));
+                StatusMessage = NetworkGuidanceMessage;
+            }
+        });
+    }
+
+    public void RefreshInvitation()
     {
         var listener = _listenerSupervisor.Listener;
         if (listener == null) return;
+
+        RefreshNetworkReadiness();
+        if (!IsNetworkReady)
+        {
+            _invitationManager.RevokeActive();
+            _mdnsDiscovery.StopAdvertising();
+            CurrentInvitationUri = "";
+            ConnectionDetailsText = "";
+            StatusMessage = NetworkGuidanceMessage;
+            return;
+        }
 
         try
         {
             var invitation = _invitationManager.CreateReceiverInvitation(listener, DeviceName, listener.BoundPort);
             CurrentInvitationUri = DesktopInvitationManager.EncodeInvitation(invitation);
+            ConnectionDetailsText = $"Available on {string.Join(", ", invitation.Endpoints.Select(e => $"{e.Address}:{e.Port}"))}";
             _mdnsDiscovery.StartAdvertising(DeviceName, listener.BoundPort, invitation.Presence);
             if (_hostedSendRequest != null)
                 _hostedSendRequest = _hostedSendRequest with { Invitation = invitation };
             StatusMessage = "A new one-time receiving link is ready. It expires after two minutes.";
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             _invitationManager.RevokeActive();
             _mdnsDiscovery.StopAdvertising();
             CurrentInvitationUri = "";
-            StatusMessage = "Could not create a reachable receiving link. Check your local network.";
+            ConnectionDetailsText = "";
+            StatusMessage = !string.IsNullOrWhiteSpace(ex.Message) ? ex.Message : "Could not create a reachable receiving link. Check your local network.";
         }
     }
 
@@ -1286,6 +1405,14 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
         _listenerOwner = null;
         _mdnsDiscovery.StopAdvertising();
         _invitationManager.RevokeActive();
+        try
+        {
+            _invitationManager.SnapshotProvider.NetworkAddressChanged -= OnNetworkAddressChanged;
+        }
+        catch
+        {
+            // Ignore
+        }
         _mdnsDiscovery.Dispose();
         _lifetimeCts.Dispose();
     }

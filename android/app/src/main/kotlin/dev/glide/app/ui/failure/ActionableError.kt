@@ -28,6 +28,7 @@ object ActionableErrorMapper {
 
     private val IPV4_REGEX = Regex("""\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b""")
     private val FILE_PATH_REGEX = Regex("""(/[a-zA-Z0-9_.\-]+)+|([a-zA-Z]:\\[a-zA-Z0-9_.\-\\]+)""")
+    private val REJECTED_REGEX = Regex("""(?:LanAddressValidationResult\.)?Rejected\([^)]*\)""")
 
     /**
      * Sanitizes any dynamic text by stripping out IP addresses, file paths, and raw exception class names.
@@ -36,6 +37,10 @@ object ActionableErrorMapper {
         return input
             .replace(IPV4_REGEX, "[local network address]")
             .replace(FILE_PATH_REGEX, "[file location]")
+            .replace(REJECTED_REGEX, "connection rejected")
+            .replace("OFF_LINK_REJECTED", "different local networks")
+            .replace("LOOPBACK_REJECTED", "loopback address rejected")
+            .replace("MULTICAST_REJECTED", "multicast address rejected")
             .replace("java.net.", "")
             .replace("java.io.", "")
             .replace("SocketTimeoutException", "Connection timed out")
@@ -192,11 +197,70 @@ object ActionableErrorMapper {
                 category = FailureCategory.Environment,
                 isRecoverable = true
             )
+            is QrScanErrorReason.OffLinkDestination -> ActionableError(
+                title = "Devices are on different local networks",
+                userWording = "Connect this phone and the other device to the same Wi-Fi or local network, then create a new QR code.",
+                primaryActionLabel = "Open Wi-Fi settings",
+                secondaryActionLabel = "Scan new code",
+                troubleshootingHint = "If Glide is running in VirtualBox, set its network adapter to Bridged Adapter.",
+                category = FailureCategory.Link,
+                isRecoverable = true
+            )
             is QrScanErrorReason.Custom -> ActionableError(
                 title = "Pairing error",
                 userWording = sanitizeText(reason.message).ifBlank { "Could not complete pairing. Please try again." },
                 primaryActionLabel = "Try again",
                 secondaryActionLabel = "Paste invitation",
+                category = FailureCategory.System,
+                isRecoverable = true
+            )
+        }
+    }
+
+    /**
+     * Maps a typed [dev.glide.transport.lan.LanConnectionFailure] into an [ActionableError].
+     */
+    fun fromLanConnectionFailure(failure: dev.glide.transport.lan.LanConnectionFailure): ActionableError {
+        return when (failure) {
+            is dev.glide.transport.lan.LanConnectionFailure.OffLinkDestination -> ActionableError(
+                title = "Devices are on different local networks",
+                userWording = "Connect this phone and the other device to the same Wi-Fi or local network, then create a new QR code.",
+                primaryActionLabel = "Open Wi-Fi settings",
+                secondaryActionLabel = "Scan new code",
+                troubleshootingHint = "If Glide is running in VirtualBox, set its network adapter to Bridged Adapter.",
+                category = FailureCategory.Link,
+                isRecoverable = true
+            )
+            is dev.glide.transport.lan.LanConnectionFailure.Timeout -> ActionableError(
+                title = "Connection timed out",
+                userWording = "Connection timed out; check receiver and network isolation",
+                primaryActionLabel = "Retry",
+                secondaryActionLabel = "Scan new code",
+                troubleshootingHint = "Many guest Wi-Fi networks and office routers enable 'AP Isolation' or 'Client Isolation', which blocks direct device-to-device communication. Ensure both devices are on a private Wi-Fi network.",
+                category = FailureCategory.Lifecycle,
+                isRecoverable = true
+            )
+            is dev.glide.transport.lan.LanConnectionFailure.AuthenticationFailed -> ActionableError(
+                title = "Verification failed",
+                userWording = "Could not verify this device. Scan a new code from its screen",
+                primaryActionLabel = "Scan new code",
+                category = FailureCategory.Security,
+                isRecoverable = true
+            )
+            is dev.glide.transport.lan.LanConnectionFailure.NetworkUnavailable -> ActionableError(
+                title = "No local network available",
+                userWording = "Connect both devices to a reachable local network; Retry",
+                primaryActionLabel = "Open Wi-Fi settings",
+                secondaryActionLabel = "Retry",
+                troubleshootingHint = "Ensure both devices are connected to the same Wi-Fi router or personal hotspot.",
+                category = FailureCategory.Environment,
+                isRecoverable = true
+            )
+            is dev.glide.transport.lan.LanConnectionFailure.Other -> ActionableError(
+                title = "Connection failed",
+                userWording = sanitizeText(failure.message).ifBlank { "Could not connect to the other device. Please try again." },
+                primaryActionLabel = "Try again",
+                secondaryActionLabel = "Scan new code",
                 category = FailureCategory.System,
                 isRecoverable = true
             )

@@ -253,6 +253,22 @@ class LanTransferTransport(
             if (isValidOnLink) 0 else 1
         }
 
+        val allOffLink = invitation.endpoints.all { ep ->
+            val addr = runCatching { InetAddress.getByName(ep.address) }.getOrNull()
+            val validation = if (addr != null) {
+                dev.glide.transport.lan.network.LanAddressValidator.validateAddress(
+                    address = addr,
+                    activeSubnets = activeSubnets,
+                    allowLoopbackForTesting = allowLoopbackForTesting
+                )
+            } else null
+            validation is dev.glide.transport.lan.network.LanAddressValidationResult.Rejected &&
+                validation.code == dev.glide.transport.lan.network.LanAddressRejectionCode.OFF_LINK_REJECTED
+        }
+        if (allOffLink && invitation.endpoints.isNotEmpty()) {
+            throw LanConnectionException(LanConnectionFailure.OffLinkDestination())
+        }
+
         var sslSocket: SSLSocket? = null
         var lastError: Throwable? = null
 
@@ -271,6 +287,7 @@ class LanTransferTransport(
         }
 
         if (sslSocket == null) {
+            if (lastError is LanConnectionException) throw lastError
             throw (lastError ?: IOException("Failed to connect to any invitation endpoint"))
         }
 

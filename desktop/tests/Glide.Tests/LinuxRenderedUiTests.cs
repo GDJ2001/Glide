@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
@@ -13,9 +14,19 @@ using Glide.Linux.UI.ViewModels;
 using Glide.Linux.UI.Views;
 using Glide.Linux.UI.Views.Controls;
 using Glide.Linux.UI.Views.Pages;
+using System.Net.NetworkInformation;
 using Xunit;
 
+[assembly: AvaloniaTestApplication(typeof(Glide.Tests.GlideTestAppBuilder))]
+
 namespace Glide.Tests;
+
+public static class GlideTestAppBuilder
+{
+    public static AppBuilder BuildAvaloniaApp() =>
+        AppBuilder.Configure<Glide.Linux.UI.App>()
+            .UseHeadless(new AvaloniaHeadlessPlatformOptions());
+}
 
 public static class HeadlessSetup
 {
@@ -26,7 +37,7 @@ public static class HeadlessSetup
     {
         lock (_lock)
         {
-            return _session ??= HeadlessUnitTestSession.GetOrStartForAssembly(typeof(Glide.Linux.UI.App).Assembly);
+            return _session ??= HeadlessUnitTestSession.GetOrStartForAssembly(typeof(LinuxRenderedUiTests).Assembly);
         }
     }
 }
@@ -364,5 +375,161 @@ public sealed class LinuxRenderedUiTests
 
             window.Close();
         }, CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task MainWindow_BrandHeader_UsesCommittedGlideLogo()
+    {
+        var session = HeadlessSetup.GetSession();
+        await session.Dispatch(() =>
+        {
+            var vm = new LinuxMainViewModel();
+            var window = new MainWindow { DataContext = vm };
+            window.Show();
+            window.UpdateLayout();
+
+            var logoImage = window.GetVisualDescendants()
+                .OfType<Image>()
+                .FirstOrDefault(img => AutomationProperties.GetName(img) == "Glide");
+
+            Assert.NotNull(logoImage);
+            Assert.True(logoImage.Width >= 120 && logoImage.Width <= 128);
+            Assert.NotNull(logoImage.Source);
+
+            window.Close();
+        }, CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task ThemeSwitch_ResolvesThemeSpecificLogoAsset()
+    {
+        var session = HeadlessSetup.GetSession();
+        await session.Dispatch(() =>
+        {
+            var app = Application.Current;
+            Assert.NotNull(app);
+
+            // Test Dark Theme resource
+            app.RequestedThemeVariant = ThemeVariant.Dark;
+            bool foundDark = app.TryFindResource("GlideLogoHorizontal", out var darkLogo);
+            Assert.True(foundDark);
+            Assert.NotNull(darkLogo);
+
+            // Test Light Theme resource
+            app.RequestedThemeVariant = ThemeVariant.Light;
+            bool foundLight = app.TryFindResource("GlideLogoHorizontal", out var lightLogo);
+            Assert.True(foundLight);
+            Assert.NotNull(lightLogo);
+
+            // Reset
+            app.RequestedThemeVariant = ThemeVariant.Dark;
+        }, CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task ReceivePage_NatOnlyState_DisplaysGuidanceAndDisablesQr()
+    {
+        var session = HeadlessSetup.GetSession();
+        await session.Dispatch(() =>
+        {
+            var testProvider = new TestNetworkSnapshotProvider();
+            testProvider.SetInterfaces(new List<Glide.Desktop.Network.DesktopNetworkInterface>
+            {
+                new(
+                    Id: "eth0",
+                    Name: "eth0",
+                    InterfaceType: NetworkInterfaceType.Ethernet,
+                    OperationalStatus: OperationalStatus.Up,
+                    UnicastAddresses: new[]
+                    {
+                        new Glide.Desktop.Network.DesktopUnicastAddress(System.Net.IPAddress.Parse("10.0.2.15"), System.Net.IPAddress.Parse("255.255.255.0"), 24)
+                    },
+                    GatewayAddresses: new[] { System.Net.IPAddress.Parse("10.0.2.2") }
+                )
+            });
+
+            var vm = new LinuxMainViewModel(networkSnapshotProvider: testProvider);
+            var window = new MainWindow { DataContext = vm };
+            window.Show();
+
+            vm.SwitchTabCommand.Execute("Receive");
+            window.UpdateLayout();
+
+            Assert.False(vm.IsNetworkReady);
+            Assert.True(vm.IsVirtualMachineNatOnly);
+            Assert.Contains("Bridged Adapter", vm.NetworkGuidanceMessage);
+
+            // Receive page must show warning banner
+            var receivePage = window.GetVisualDescendants().OfType<ReceivePage>().Single();
+            var warningBanners = receivePage.GetVisualDescendants()
+                .OfType<Border>()
+                .Where(b => AutomationProperties.GetName(b) == "Network reachability warning")
+                .ToList();
+
+            Assert.NotEmpty(warningBanners);
+
+            window.Close();
+        }, CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task ReceivePage_ReadyState_DisplaysQrAndConnectionDetails()
+    {
+        var session = HeadlessSetup.GetSession();
+        await session.Dispatch(async () =>
+        {
+            var testProvider = new TestNetworkSnapshotProvider();
+            testProvider.SetInterfaces(new List<Glide.Desktop.Network.DesktopNetworkInterface>
+            {
+                new(
+                    Id: "eth0",
+                    Name: "eth0",
+                    InterfaceType: NetworkInterfaceType.Ethernet,
+                    OperationalStatus: OperationalStatus.Up,
+                    UnicastAddresses: new[]
+                    {
+                        new Glide.Desktop.Network.DesktopUnicastAddress(System.Net.IPAddress.Parse("192.168.0.55"), System.Net.IPAddress.Parse("255.255.255.0"), 24)
+                    },
+                    GatewayAddresses: new[] { System.Net.IPAddress.Parse("192.168.0.1") }
+                )
+            });
+
+            var vm = new LinuxMainViewModel(networkSnapshotProvider: testProvider);
+            var window = new MainWindow { DataContext = vm };
+            window.Show();
+
+            vm.SwitchTabCommand.Execute("Receive");
+            window.UpdateLayout();
+
+            Assert.True(vm.IsNetworkReady);
+            Assert.False(vm.IsVirtualMachineNatOnly);
+
+            // Toggle listener on
+            await vm.ToggleListenerCommand.ExecuteAsync(null);
+            window.UpdateLayout();
+
+            Assert.True(vm.IsListening);
+            Assert.Contains("192.168.0.55", vm.ConnectionDetailsText);
+
+            var receivePage = window.GetVisualDescendants().OfType<ReceivePage>().Single();
+            var expanders = receivePage.GetVisualDescendants().OfType<Expander>().ToList();
+            Assert.Contains(expanders, e => e.Header?.ToString() == "Connection details");
+
+            window.Close();
+        }, CancellationToken.None);
+    }
+
+    private sealed class TestNetworkSnapshotProvider : Glide.Desktop.Network.IDesktopNetworkSnapshotProvider
+    {
+        private List<Glide.Desktop.Network.DesktopNetworkInterface> _interfaces = new();
+        public event EventHandler? NetworkAddressChanged;
+
+        public void SetInterfaces(List<Glide.Desktop.Network.DesktopNetworkInterface> interfaces)
+        {
+            _interfaces = interfaces;
+        }
+
+        public void FireNetworkAddressChanged() => NetworkAddressChanged?.Invoke(this, EventArgs.Empty);
+        public IReadOnlyList<Glide.Desktop.Network.DesktopNetworkInterface> GetSnapshot() => _interfaces;
     }
 }

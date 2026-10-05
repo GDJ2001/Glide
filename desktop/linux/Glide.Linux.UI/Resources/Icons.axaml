@@ -1,8 +1,6 @@
 <ResourceDictionary xmlns="https://github.com/avaloniaui"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-  <!-- Glide Logo -->
-  <StreamGeometry x:Key="IconGlide">M2.5 12.5L21.5 2.5L12.5 21.5L10.5 13.5L2.5 12.5Z</StreamGeometry>
 
   <!-- Navigation & Feature Icons -->
   <!-- Send (Paper Plane) -->

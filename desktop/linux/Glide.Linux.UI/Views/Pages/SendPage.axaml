@@ -120,6 +120,19 @@
 
           <!-- Method 1: Quick Share with QR -->
           <StackPanel Spacing="12" IsVisible="{Binding IsQuickShareMethodSelected}">
+            <!-- Network Guidance / NAT warning banner when not ready -->
+            <Border Classes="card" Background="{DynamicResource StatusWarningBackgroundBrush}"
+                    BorderBrush="{DynamicResource StatusWarningBrush}" BorderThickness="1"
+                    CornerRadius="8" Padding="12" IsVisible="{Binding !IsNetworkReady}"
+                    AutomationProperties.Name="Network reachability warning">
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <PathIcon Data="{StaticResource IconWarning}" Width="20" Height="20"
+                          Foreground="{DynamicResource StatusWarningBrush}" VerticalAlignment="Top" />
+                <TextBlock Text="{Binding NetworkGuidanceMessage}" Classes="body" TextWrapping="Wrap"
+                           VerticalAlignment="Center" />
+              </StackPanel>
+            </Border>
+
             <TextBlock Text="Quick share creates an instant one-time QR code. The receiving device scans the code in Glide to connect. You will confirm the recipient's device name before any files are transmitted."
                        Classes="secondary" TextWrapping="Wrap" />
             <Button Content="Start quick share with QR"

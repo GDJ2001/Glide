@@ -90,6 +90,35 @@ class ActionableErrorMapperTest {
         val busy = ActionableErrorMapper.fromQrScanErrorReason(QrScanErrorReason.PeerBusy)
         assertEquals("Device is busy", busy.title)
         assertEquals("Device is already transferring; try again when it finishes", busy.userWording)
+
+        val offLink = ActionableErrorMapper.fromQrScanErrorReason(QrScanErrorReason.OffLinkDestination)
+        assertEquals("Devices are on different local networks", offLink.title)
+        assertEquals("Connect this phone and the other device to the same Wi-Fi or local network, then create a new QR code.", offLink.userWording)
+        assertEquals("Open Wi-Fi settings", offLink.primaryActionLabel)
+        assertEquals("Scan new code", offLink.secondaryActionLabel)
+        assertEquals("If Glide is running in VirtualBox, set its network adapter to Bridged Adapter.", offLink.troubleshootingHint)
+    }
+
+    @Test
+    fun lanConnectionFailure_mapsAccuratelyToSection20Wording() {
+        val offLink = ActionableErrorMapper.fromLanConnectionFailure(dev.glide.transport.lan.LanConnectionFailure.OffLinkDestination())
+        assertEquals("Devices are on different local networks", offLink.title)
+        assertEquals("Connect this phone and the other device to the same Wi-Fi or local network, then create a new QR code.", offLink.userWording)
+        assertEquals("Open Wi-Fi settings", offLink.primaryActionLabel)
+        assertEquals("Scan new code", offLink.secondaryActionLabel)
+        assertEquals("If Glide is running in VirtualBox, set its network adapter to Bridged Adapter.", offLink.troubleshootingHint)
+
+        val timeout = ActionableErrorMapper.fromLanConnectionFailure(dev.glide.transport.lan.LanConnectionFailure.Timeout())
+        assertEquals("Connection timed out", timeout.title)
+        assertEquals("Connection timed out; check receiver and network isolation", timeout.userWording)
+
+        val auth = ActionableErrorMapper.fromLanConnectionFailure(dev.glide.transport.lan.LanConnectionFailure.AuthenticationFailed())
+        assertEquals("Verification failed", auth.title)
+        assertEquals("Could not verify this device. Scan a new code from its screen", auth.userWording)
+
+        val network = ActionableErrorMapper.fromLanConnectionFailure(dev.glide.transport.lan.LanConnectionFailure.NetworkUnavailable())
+        assertEquals("No local network available", network.title)
+        assertEquals("Connect both devices to a reachable local network; Retry", network.userWording)
     }
 
     @Test
@@ -142,6 +171,12 @@ class ActionableErrorMapperTest {
         val sanitizedWinPath = ActionableErrorMapper.sanitizeText(rawWindowsPath)
         assertFalse("Must not contain Windows user path", sanitizedWinPath.contains("Administrator"))
         assertTrue("Contains safe file location placeholder", sanitizedWinPath.contains("[file location]"))
+
+        val rawRejected = "Destination address validation failed: Rejected(code=OFF_LINK_REJECTED, reason=Target 10.0.2.15 is off-link)"
+        val sanitizedRejected = ActionableErrorMapper.sanitizeText(rawRejected)
+        assertFalse("Must not contain raw IP", sanitizedRejected.contains("10.0.2.15"))
+        assertFalse("Must not contain Rejected(...)", sanitizedRejected.contains("Rejected("))
+        assertFalse("Must not contain OFF_LINK_REJECTED", sanitizedRejected.contains("OFF_LINK_REJECTED"))
     }
 
     @Test

@@ -1,18 +1,73 @@
 <ResourceDictionary xmlns="https://github.com/avaloniaui"
-                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:local="using:Glide.Linux.UI">
 
   <!-- Shared Universal Tokens -->
   <Color x:Key="GlideBlueColor">#2457E6</Color>
   <SolidColorBrush x:Key="GlideBlueBrush" Color="{StaticResource GlideBlueColor}" />
+  <local:AssetBitmap x:Key="GlideAppIcon">
+    <x:Arguments>
+      <x:String>avares://Glide.Linux.UI/Assets/glide-128.png</x:String>
+    </x:Arguments>
+  </local:AssetBitmap>
 
   <ResourceDictionary.ThemeDictionaries>
     <!-- Dark Theme (Default) -->
+    <ResourceDictionary x:Key="Dark">
+      <SolidColorBrush x:Key="AppBackgroundBrush" Color="#0F172A" />
+      <SolidColorBrush x:Key="SurfaceBrush" Color="#1E293B" />
+      <SolidColorBrush x:Key="SurfaceRaisedBrush" Color="#334155" />
+      <SolidColorBrush x:Key="SurfaceOverlayBrush" Color="#0F172A" />
+      <SolidColorBrush x:Key="SurfaceActiveBrush" Color="#2563EB" />
+      <local:AssetBitmap x:Key="GlideLogoHorizontal">
+        <x:Arguments>
+          <x:String>avares://Glide.Linux.UI/Assets/glide-logo-horizontal-inverse-256.png</x:String>
+        </x:Arguments>
+      </local:AssetBitmap>
+      
+      <SolidColorBrush x:Key="TextPrimaryBrush" Color="#F8FAFC" />
+      <SolidColorBrush x:Key="TextSecondaryBrush" Color="#94A3B8" />
+      <SolidColorBrush x:Key="TextMutedBrush" Color="#64748B" />
+      <SolidColorBrush x:Key="TextOnAccentBrush" Color="#FFFFFF" />
+
+      <SolidColorBrush x:Key="BorderSubtleBrush" Color="#334155" />
+      <SolidColorBrush x:Key="BorderStrongBrush" Color="#475569" />
+      <SolidColorBrush x:Key="BorderFocusBrush" Color="#38BDF8" />
+
+      <SolidColorBrush x:Key="AccentPrimaryBrush" Color="#2457E6" />
+      <SolidColorBrush x:Key="AccentHoverBrush" Color="#1D4ED8" />
+      <SolidColorBrush x:Key="AccentPressedBrush" Color="#1E40AF" />
+      <SolidColorBrush x:Key="AccentSubtleBrush" Color="#1E3A8A" />
+
+      <SolidColorBrush x:Key="StatusSuccessBrush" Color="#10B981" />
+      <SolidColorBrush x:Key="StatusSuccessBackgroundBrush" Color="#064E3B" />
+      <SolidColorBrush x:Key="StatusWarningBrush" Color="#F59E0B" />
+      <SolidColorBrush x:Key="StatusWarningBackgroundBrush" Color="#78350F" />
+      <SolidColorBrush x:Key="StatusErrorBrush" Color="#EF4444" />
+      <SolidColorBrush x:Key="StatusErrorBackgroundBrush" Color="#7F1D1D" />
+      <SolidColorBrush x:Key="StatusIdleBrush" Color="#64748B" />
+
+      <SolidColorBrush x:Key="NavButtonHoverBrush" Color="#2D3748" />
+      <SolidColorBrush x:Key="NavButtonSelectedBrush" Color="#1E3A8A" />
+      <SolidColorBrush x:Key="NavButtonSelectedBorderBrush" Color="#38BDF8" />
+      <SolidColorBrush x:Key="DropTargetBackgroundBrush" Color="#162032" />
+      <SolidColorBrush x:Key="DropTargetHoverBrush" Color="#1E2E4A" />
+
+      <SolidColorBrush x:Key="ModalScrimBrush" Color="#CC000000" />
+    </ResourceDictionary>
+
+    <!-- Default Theme (Fallback to Dark) -->
     <ResourceDictionary x:Key="Default">
       <SolidColorBrush x:Key="AppBackgroundBrush" Color="#0F172A" />
       <SolidColorBrush x:Key="SurfaceBrush" Color="#1E293B" />
       <SolidColorBrush x:Key="SurfaceRaisedBrush" Color="#334155" />
       <SolidColorBrush x:Key="SurfaceOverlayBrush" Color="#0F172A" />
       <SolidColorBrush x:Key="SurfaceActiveBrush" Color="#2563EB" />
+      <local:AssetBitmap x:Key="GlideLogoHorizontal">
+        <x:Arguments>
+          <x:String>avares://Glide.Linux.UI/Assets/glide-logo-horizontal-inverse-256.png</x:String>
+        </x:Arguments>
+      </local:AssetBitmap>
       
       <SolidColorBrush x:Key="TextPrimaryBrush" Color="#F8FAFC" />
       <SolidColorBrush x:Key="TextSecondaryBrush" Color="#94A3B8" />
@@ -52,6 +107,11 @@
       <SolidColorBrush x:Key="SurfaceRaisedBrush" Color="#F1F5F9" />
       <SolidColorBrush x:Key="SurfaceOverlayBrush" Color="#E2E8F0" />
       <SolidColorBrush x:Key="SurfaceActiveBrush" Color="#DBEAFE" />
+      <local:AssetBitmap x:Key="GlideLogoHorizontal">
+        <x:Arguments>
+          <x:String>avares://Glide.Linux.UI/Assets/glide-logo-horizontal-color-256.png</x:String>
+        </x:Arguments>
+      </local:AssetBitmap>
 
       <SolidColorBrush x:Key="TextPrimaryBrush" Color="#0F172A" />
       <SolidColorBrush x:Key="TextSecondaryBrush" Color="#475569" />

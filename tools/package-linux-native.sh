@@ -3,7 +3,7 @@
 set -euo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-version="${GLIDE_PACKAGE_VERSION:-1.0.0}"
+version="${GLIDE_PACKAGE_VERSION:-1.0.1}"
 case "$version" in
   *[!0-9.]*|.*|*.) echo "Invalid numeric package version" >&2; exit 2 ;;
 esac
@@ -47,7 +47,7 @@ for rid in "$@"; do
   root="$work/$rid/root"
   mkdir -p "$gui" "$daemon" "$root/usr/lib/glide/desktop" \
     "$root/usr/lib/glide/daemon" "$root/usr/bin" \
-    "$root/usr/share/applications" "$root/usr/share/icons/hicolor/96x96/apps" \
+    "$root/usr/share/applications" \
     "$root/usr/lib/systemd/user" "$root/DEBIAN"
 
   dotnet publish "$repo/desktop/linux/Glide.Linux.UI/Glide.Linux.UI.csproj" \
@@ -71,8 +71,11 @@ for rid in "$@"; do
     "$root/usr/share/applications/glide.desktop"
   install -m 0644 "$repo/desktop/linux/glide.service" \
     "$root/usr/lib/systemd/user/glide.service"
-  install -m 0644 "$repo/assets/icons/blue/glide-symbol-blue-96.png" \
-    "$root/usr/share/icons/hicolor/96x96/apps/dev.glide.app.png"
+  for size in 16 32 64 128 256 512; do
+    mkdir -p "$root/usr/share/icons/hicolor/${size}x${size}/apps"
+    install -m 0644 "$repo/assets/platforms/desktop/glide-${size}.png" \
+      "$root/usr/share/icons/hicolor/${size}x${size}/apps/dev.glide.app.png"
+  done
 
   # Detect libicu dependency (libicu78 on Ubuntu 26.04+, libicu74 on Ubuntu 24.04).
   deb_icu="libicu78 | libicu74"
@@ -136,7 +139,7 @@ cp -a "$root/usr" %{buildroot}/
 /usr/bin/glide
 /usr/bin/glide-desktop
 /usr/share/applications/glide.desktop
-/usr/share/icons/hicolor/96x96/apps/dev.glide.app.png
+/usr/share/icons/hicolor/*/apps/dev.glide.app.png
 /usr/lib/systemd/user/glide.service
 EOF
   rpmbuild -bb --define "_topdir $rpm_top" --target "$rpm_arch" "$spec"

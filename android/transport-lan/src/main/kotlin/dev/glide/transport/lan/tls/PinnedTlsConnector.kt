@@ -2,6 +2,9 @@ package dev.glide.transport.lan.tls
 
 import android.os.Build
 import androidx.annotation.RequiresApi
+import dev.glide.transport.lan.LanConnectionException
+import dev.glide.transport.lan.LanConnectionFailure
+import dev.glide.transport.lan.network.LanAddressRejectionCode
 import dev.glide.transport.lan.network.LanAddressValidationResult
 import dev.glide.transport.lan.network.LanAddressValidator
 import dev.glide.transport.lan.network.LanNetworkScope
@@ -43,6 +46,7 @@ class PinnedTlsConnector(
     /**
      * Connects to [address] and [port], performing strict pinned TLS handshake.
      *
+     * @throws LanConnectionException if the destination is off-link or connection fails with typed failure.
      * @throws SecurityException if the destination address is not on-link or is forbidden.
      * @throws IOException if network connection, TLS handshake, pin verification, or ALPN negotiation fails.
      */
@@ -65,6 +69,11 @@ class PinnedTlsConnector(
             allowLoopbackForTesting = allowLoopbackForTesting
         )
         if (validation !is LanAddressValidationResult.Valid) {
+            if (validation is LanAddressValidationResult.Rejected &&
+                validation.code == LanAddressRejectionCode.OFF_LINK_REJECTED
+            ) {
+                throw LanConnectionException(LanConnectionFailure.OffLinkDestination())
+            }
             throw SecurityException("Destination address validation failed: $validation")
         }
 
@@ -141,6 +150,13 @@ class PinnedTlsConnector(
         } catch (e: Exception) {
             try { sslSocket?.close() } catch (_: Exception) {}
             try { rawSocket.close() } catch (_: Exception) {}
+            if (e is LanConnectionException) throw e
+            if (e is java.net.SocketTimeoutException) {
+                throw LanConnectionException(LanConnectionFailure.Timeout(), e)
+            }
+            if (e is javax.net.ssl.SSLHandshakeException) {
+                throw LanConnectionException(LanConnectionFailure.AuthenticationFailed(), e)
+            }
             if (e is IOException) throw e
             if (e is SecurityException) throw e
             throw IOException("TLS connection failed: ${e.message}", e)

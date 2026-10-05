@@ -622,6 +622,7 @@ private fun ScanErrorDialog(
     onRetry: () -> Unit,
     onPasteClicked: () -> Unit
 ) {
+    val context = LocalContext.current
     val error = dev.glide.app.ui.failure.ActionableErrorMapper.fromQrScanErrorReason(reason)
 
     AlertDialog(
@@ -654,7 +655,16 @@ private fun ScanErrorDialog(
         },
         confirmButton = {
             Button(
-                onClick = if (reason is QrScanErrorReason.CameraUnavailable) onPasteClicked else onRetry,
+                onClick = {
+                    if (error.primaryActionLabel == "Open Wi-Fi settings") {
+                        try {
+                            val intent = android.content.Intent(android.provider.Settings.ACTION_WIFI_SETTINGS)
+                            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                            context.startActivity(intent)
+                        } catch (_: Exception) {}
+                    }
+                    if (reason is QrScanErrorReason.CameraUnavailable) onPasteClicked() else onRetry()
+                },
                 shape = PrimaryButtonShape,
                 modifier = Modifier.heightIn(min = 48.dp)
             ) {
@@ -664,7 +674,15 @@ private fun ScanErrorDialog(
         dismissButton = {
             if (error.secondaryActionLabel != null) {
                 TextButton(
-                    onClick = if (reason is QrScanErrorReason.CameraUnavailable) onRetry else onPasteClicked,
+                    onClick = {
+                        if (error.secondaryActionLabel == "Scan new code") {
+                            onRetry()
+                        } else if (reason is QrScanErrorReason.CameraUnavailable) {
+                            onRetry()
+                        } else {
+                            onPasteClicked()
+                        }
+                    },
                     modifier = Modifier.heightIn(min = 48.dp)
                 ) {
                     Text(error.secondaryActionLabel)

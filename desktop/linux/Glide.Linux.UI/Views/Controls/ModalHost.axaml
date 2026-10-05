@@ -105,7 +105,7 @@
                 BorderThickness="1.5" MaxWidth="460" Width="440"
                 IsVisible="{Binding IsQuickShareActive}"
                 AutomationProperties.Name="Quick share one-time QR code dialog">
-          <StackPanel Spacing="14" HorizontalAlignment="Center">
+          <StackPanel Spacing="14">
             <TextBlock Text="Scan to Receive Files" Classes="h2" HorizontalAlignment="Center" />
             <TextBlock Text="Scan this one-time code in Glide on the receiving device. You will confirm the recipient before files begin sending."
                        Classes="secondary" TextWrapping="Wrap" TextAlignment="Center" />
@@ -114,6 +114,16 @@
               <Image Source="{Binding PairingQrImage}" Width="220" Height="220" Stretch="Uniform"
                      AutomationProperties.Name="One-time QR code for sending files" />
             </Border>
+
+            <Expander Header="Connection details" IsExpanded="False" HorizontalAlignment="Stretch">
+              <StackPanel Spacing="6" Margin="0,4,0,0">
+                <TextBlock Text="{Binding ConnectionDetailsText}" Classes="body" FontWeight="Medium" />
+                <TextBlock Text="One-time link URI:" Classes="small" />
+                <TextBox Text="{Binding CurrentInvitationUri}" IsReadOnly="True" TextWrapping="Wrap"
+                         Classes="body" FontFamily="{DynamicResource FontFamilyMonospace}"
+                         Background="{DynamicResource SurfaceOverlayBrush}" />
+              </StackPanel>
+            </Expander>
 
             <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center" Margin="0,6,0,0">
               <Button Content="Refresh code" Command="{Binding RefreshInvitationCommand}"

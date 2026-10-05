@@ -319,10 +319,28 @@ class ProductionLanController private constructor(
         bootstrapRole: String = dev.glide.core.transport.lan.LanBootstrapMessage.ROLE_SENDER,
         onConnected: (LanTransferTransport, PeerDevice) -> Unit,
         onFailure: (String) -> Unit
+    ): Boolean = startSender(
+        ownerScope = ownerScope,
+        invitation = invitation,
+        localDeviceName = localDeviceName,
+        bootstrapRole = bootstrapRole,
+        onConnected = onConnected,
+        onFailureTyped = { failure -> onFailure(failure.message) }
+    )
+
+    @JvmName("startSenderTyped")
+    @SuppressLint("NewApi")
+    fun startSender(
+        ownerScope: CoroutineScope,
+        invitation: LanInvitation,
+        localDeviceName: String,
+        bootstrapRole: String = dev.glide.core.transport.lan.LanBootstrapMessage.ROLE_SENDER,
+        onConnected: (LanTransferTransport, PeerDevice) -> Unit,
+        onFailureTyped: (dev.glide.transport.lan.LanConnectionFailure) -> Unit
     ): Boolean {
         val readinessError = readinessError()
         if (readinessError != null) {
-            onFailure(readinessError)
+            onFailureTyped(dev.glide.transport.lan.LanConnectionFailure.NetworkUnavailable(readinessError))
             return false
         }
 
@@ -337,8 +355,8 @@ class ProductionLanController private constructor(
             try {
                 networkScope = networkScopeFactory()
                 if (awaitAvailableNetwork(networkScope) == null) {
-                    throw IllegalStateException(
-                        "No eligible local Wi-Fi/Ethernet network is available."
+                    throw dev.glide.transport.lan.LanConnectionException(
+                        dev.glide.transport.lan.LanConnectionFailure.NetworkUnavailable()
                     )
                 }
 
@@ -357,9 +375,9 @@ class ProductionLanController private constructor(
                             is ConnectionEvent.Connected ->
                                 onConnected(activeTransport, event.peer)
                             is ConnectionEvent.Failed ->
-                                onFailure(event.reason)
+                                onFailureTyped(dev.glide.transport.lan.LanConnectionFailure.Other(event.reason))
                             is ConnectionEvent.Rejected ->
-                                onFailure("LAN pairing was rejected.")
+                                onFailureTyped(dev.glide.transport.lan.LanConnectionFailure.Other("LAN pairing was rejected."))
                             is ConnectionEvent.Disconnected,
                             is ConnectionEvent.Initiated -> Unit
                         }
@@ -389,7 +407,20 @@ class ProductionLanController private constructor(
                 runCatching { networkScope?.close() }
                 transportScope?.cancel()
                 if (!isCurrentGeneration(generation)) return@launch
-                onFailure(error.message ?: "Unable to connect to LAN invitation.")
+                val failure = when (error) {
+                    is dev.glide.transport.lan.LanConnectionException -> error.failure
+                    is java.net.SocketTimeoutException -> dev.glide.transport.lan.LanConnectionFailure.Timeout()
+                    is javax.net.ssl.SSLHandshakeException -> dev.glide.transport.lan.LanConnectionFailure.AuthenticationFailed()
+                    else -> {
+                        val msg = error.message ?: ""
+                        if (msg.contains("OFF_LINK", ignoreCase = true) || msg.contains("off-link", ignoreCase = true)) {
+                            dev.glide.transport.lan.LanConnectionFailure.OffLinkDestination()
+                        } else {
+                            dev.glide.transport.lan.LanConnectionFailure.Other(msg.ifBlank { "Unable to connect to LAN invitation." })
+                        }
+                    }
+                }
+                onFailureTyped(failure)
             }
         }
         return true
@@ -413,6 +444,23 @@ class ProductionLanController private constructor(
         bootstrapRole = dev.glide.core.transport.lan.LanBootstrapMessage.ROLE_RECEIVER,
         onConnected = onConnected,
         onFailure = onFailure
+    )
+
+    @JvmName("startReceiverViaInvitationTyped")
+    @SuppressLint("NewApi")
+    fun startReceiverViaInvitation(
+        ownerScope: CoroutineScope,
+        invitation: LanInvitation,
+        localDeviceName: String,
+        onConnected: (LanTransferTransport, PeerDevice) -> Unit,
+        onFailureTyped: (dev.glide.transport.lan.LanConnectionFailure) -> Unit
+    ): Boolean = startSender(
+        ownerScope = ownerScope,
+        invitation = invitation,
+        localDeviceName = localDeviceName,
+        bootstrapRole = dev.glide.core.transport.lan.LanBootstrapMessage.ROLE_RECEIVER,
+        onConnected = onConnected,
+        onFailureTyped = onFailureTyped
     )
 
     @SuppressLint("NewApi")

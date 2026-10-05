@@ -33,6 +33,11 @@ sealed interface PairingUiState {
 
     data class Failed(
         val title: String,
-        val message: String
+        val message: String,
+        val primaryActionLabel: String? = null,
+        val secondaryActionLabel: String? = null,
+        val troubleshootingHint: String? = null,
+        val onPrimaryAction: (() -> Unit)? = null,
+        val onSecondaryAction: (() -> Unit)? = null
     ) : PairingUiState
 }

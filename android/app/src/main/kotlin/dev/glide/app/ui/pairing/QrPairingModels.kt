@@ -77,6 +77,9 @@ sealed interface QrScanErrorReason {
     /** Device has no active local network or Wi-Fi connection */
     data object NoLocalNetwork : QrScanErrorReason
 
+    /** Target endpoint is off-link / on a different local network */
+    data object OffLinkDestination : QrScanErrorReason
+
     /** Specific error message (sanitized before display) */
     data class Custom(val message: String) : QrScanErrorReason
 }
