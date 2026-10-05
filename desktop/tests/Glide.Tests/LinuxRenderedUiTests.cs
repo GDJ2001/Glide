@@ -356,6 +356,8 @@ public sealed class LinuxRenderedUiTests
 
             var sendPage = window.GetVisualDescendants().OfType<SendPage>().Single();
             var scrollViewer = sendPage.GetVisualDescendants().OfType<ScrollViewer>().First();
+            Assert.Equal(Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
+                scrollViewer.HorizontalScrollBarVisibility);
             var content = Assert.IsType<StackPanel>(scrollViewer.Content);
             Assert.True(content.Bounds.Width <= scrollViewer.Bounds.Width + 1,
                 $"Send content exceeds the available width: {content.Bounds.Width} > {scrollViewer.Bounds.Width}");
