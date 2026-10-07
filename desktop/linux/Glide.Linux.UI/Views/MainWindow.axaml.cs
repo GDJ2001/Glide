@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Platform.Storage;
@@ -10,6 +11,14 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        UpdateWindowSurfaceCorners();
+        PropertyChanged += (_, e) =>
+        {
+            if (e.Property == WindowStateProperty)
+            {
+                UpdateWindowSurfaceCorners();
+            }
+        };
         Closed += (_, _) => (DataContext as LinuxMainViewModel)?.Dispose();
         AddHandler(DragDrop.DropEvent, OnDrop);
         AddHandler(KeyDownEvent, (sender, e) =>
@@ -20,6 +29,13 @@ public partial class MainWindow : Window
                 e.Handled = true;
             }
         }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+    }
+
+    private void UpdateWindowSurfaceCorners()
+    {
+        WindowSurface.CornerRadius = WindowState == WindowState.Normal
+            ? new CornerRadius(0, 0, 12, 12)
+            : new CornerRadius(0);
     }
 
     private async void OnDrop(object? sender, DragEventArgs e)

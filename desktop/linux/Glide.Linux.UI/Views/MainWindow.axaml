@@ -10,10 +10,15 @@
         Width="1040" Height="720"
         MinWidth="760" MinHeight="520"
         WindowStartupLocation="CenterScreen"
-        Background="{DynamicResource AppBackgroundBrush}"
+        TransparencyLevelHint="Transparent"
+        Background="Transparent"
         Foreground="{DynamicResource TextPrimaryBrush}"
         DragDrop.AllowDrop="True">
 
+  <Border x:Name="WindowSurface"
+          Background="{DynamicResource AppBackgroundBrush}"
+          CornerRadius="0,0,12,12"
+          ClipToBounds="True">
   <Grid>
     <!-- Shell Layout: Left Nav Rail (240 DIP), Right Main Content -->
     <Grid ColumnDefinitions="240,*">
@@ -133,4 +138,5 @@
     <controls:ModalHost />
 
   </Grid>
+  </Border>
 </Window>
