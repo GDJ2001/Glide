@@ -146,6 +146,11 @@ EOF
   rpmbuild -bb --define "_topdir $rpm_top" --target "$rpm_arch" "$spec"
   cp "$rpm_top/RPMS/$rpm_arch/glide-${version}-1.${rpm_arch}.rpm" "$rpm"
 
+  # Universal self-extracting installer built from the same portable payload.
+  installer="$out/glide-${version}-${rid}-installer.run"
+  bash "$repo/desktop/linux/installer/make-installer.sh" "$portable" "$installer" \
+    "$version" "$commit" "$rpm_arch"
+
   # Check the packaged executable bytes against the compiler output before
   # generating a manifest. This inspects payloads; it does not install packages.
   for format in portable deb rpm; do
@@ -165,9 +170,18 @@ EOF
     test -s "$extracted/usr/share/icons/hicolor/128x128/apps/dev.glide.app.png"
   done
 
-  for artifact in "$portable" "$deb" "$rpm"; do test -s "$artifact"; done
-  (cd "$out" && sha256sum "$(basename "$portable")" "$(basename "$deb")" "$(basename "$rpm")") \
-    > "$out/SHA256SUMS-${rid}.txt"
+  # The installer's embedded payload must match the portable archive, and the
+  # installer must complete a sandboxed install/upgrade/uninstall cycle.
+  "$installer" --verify
+  installer_extract="$work/$rid/extracted-installer"
+  "$installer" --extract "$installer_extract" >/dev/null
+  cmp "$gui/Glide.Linux.UI" "$installer_extract/usr/lib/glide/desktop/Glide.Linux.UI"
+  cmp "$daemon/Glide.App" "$installer_extract/usr/lib/glide/daemon/Glide.App"
+  bash "$repo/tools/test-linux-installer.sh" "$installer"
+
+  for artifact in "$portable" "$deb" "$rpm" "$installer"; do test -s "$artifact"; done
+  (cd "$out" && sha256sum "$(basename "$portable")" "$(basename "$deb")" "$(basename "$rpm")" \
+    "$(basename "$installer")") > "$out/SHA256SUMS-${rid}.txt"
 done
 
 cat > "$out/BUILD-MANIFEST.txt" <<EOF
