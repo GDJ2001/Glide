@@ -147,15 +147,19 @@ do_uninstall() {
   if [[ "$scope" == user ]] && command -v systemctl >/dev/null 2>&1; then
     systemctl --user disable --now glide.service >/dev/null 2>&1 || true
   fi
-  local entry
+  local entry i
+  # The manifest lists itself, so read it fully before deleting anything.
+  local -a entries
+  mapfile -t entries <"$manifest"
   # Files (and symlinks) first, then the directories this installer created,
   # deepest first. Non-empty directories are left alone.
-  while IFS= read -r entry; do
+  for entry in "${entries[@]}"; do
     if [[ "$entry" == "F "* ]]; then rm -f -- "${entry#F }"; fi
-  done <"$manifest"
-  while IFS= read -r entry; do
+  done
+  for ((i = ${#entries[@]} - 1; i >= 0; i--)); do
+    entry="${entries[i]}"
     if [[ "$entry" == "D "* ]]; then rmdir -- "${entry#D }" 2>/dev/null || true; fi
-  done < <(awk '{a[NR]=$0} END{for(i=NR;i>0;i--)print a[i]}' "$manifest")
+  done
   rm -f -- "$manifest"
   rmdir "$lib_dir" 2>/dev/null || true
   refresh_caches
