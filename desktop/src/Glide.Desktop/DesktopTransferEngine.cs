@@ -22,6 +22,10 @@ namespace Glide.Desktop;
 /// </summary>
 public sealed class DesktopTransferEngine : IDesktopTransferExecutor
 {
+    // A person must be able to inspect and accept an incoming offer. The
+    // protocol gives that decision 120 seconds; the generic 30-second control
+    // timeout is only suitable for machine-to-machine responses.
+    private static readonly TimeSpan OfferDecisionTimeout = TimeSpan.FromSeconds(120);
     private const int MaxOfferPageItems = 32;
     private const int SafeOfferPagePayloadBytes = 14_000;
     private const int StreamBufferBytes = 65_520;
@@ -653,7 +657,8 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                 channel,
                 MessageTypes.OfferDecision,
                 sessionId,
-                cancellationToken);
+                cancellationToken,
+                timeout: OfferDecisionTimeout);
         RequireExactString(
             offerDecision,
             "batchId",

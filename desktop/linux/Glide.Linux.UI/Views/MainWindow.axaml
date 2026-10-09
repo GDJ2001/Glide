@@ -104,7 +104,9 @@
                 <TextBlock Text="{Binding ReceivingStatusText}" Classes="small" FontWeight="SemiBold"
                            VerticalAlignment="Center" />
               </StackPanel>
-              <TextBlock Text="{Binding StatusMessage}" Classes="muted" TextTrimming="CharacterEllipsis" />
+              <TextBlock Text="{Binding StatusMessage}" Classes="muted"
+                         TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis"
+                         ToolTip.Tip="{Binding StatusMessage}" />
             </StackPanel>
           </Border>
 

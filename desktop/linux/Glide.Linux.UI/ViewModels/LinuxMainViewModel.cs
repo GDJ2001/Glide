@@ -1175,7 +1175,6 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
             }
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
-                StatusMessage = result.Message;
                 IsTransferActive = _runtime.Snapshot.IsActive;
                 if (hosted != null)
                 {
@@ -1192,6 +1191,10 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
                 // The invitation is single-use, including a declined offer. A fresh link
                 // is needed before another device can connect.
                 if (IsListening) RefreshInvitation();
+                // Keep the session outcome visible after preparing the next invitation.
+                // RefreshInvitation updates StatusMessage with link guidance, which used
+                // to hide the actual transfer failure before it could be inspected.
+                StatusMessage = result.Message;
             });
         }
     }
