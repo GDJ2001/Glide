@@ -10,7 +10,7 @@ SetCompressor /SOLID lzma
 !include "FileFunc.nsh"
 
 !ifndef APP_VERSION
-  !define APP_VERSION "0.1.0"
+  !define APP_VERSION "1.0.0"
 !endif
 !ifndef STAGE_DIR
   !error "STAGE_DIR must point to the published Glide payload."

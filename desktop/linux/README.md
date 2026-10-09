@@ -29,10 +29,10 @@ During the later installation phase, install a matching architecture package wit
 For distributions without `.deb`/`.rpm` support, or for a no-root install, use the self-extracting installer:
 
 ```sh
-chmod +x glide-1.0.1-linux-x64-installer.run
-./glide-1.0.1-linux-x64-installer.run            # per-user, under ~/.local
-sudo ./glide-1.0.1-linux-x64-installer.run       # all users, under /usr/local
-./glide-1.0.1-linux-x64-installer.run --help     # all options
+chmod +x glide-1.0.0-linux-x64-installer.run
+./glide-1.0.0-linux-x64-installer.run            # per-user, under ~/.local
+sudo ./glide-1.0.0-linux-x64-installer.run       # all users, under /usr/local
+./glide-1.0.0-linux-x64-installer.run --help     # all options
 ```
 
 It verifies its embedded SHA-256 payload, checks the CPU architecture and native libraries (printing the right install command for apt, dnf, zypper or pacman if any are missing), installs the GUI, CLI/daemon, launcher entry and hicolor icons with absolute paths, and records every file it creates. It refuses `/usr` so it never collides with a packaged install. Re-running it upgrades in place. `--enable-service` additionally installs the systemd user unit, which is never enabled automatically. Remove it with `glide-uninstall`; settings and received files are kept. `--verify`, `--extract DIR` and `--info` support inspection without installing.

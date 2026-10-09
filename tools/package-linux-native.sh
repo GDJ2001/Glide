@@ -3,7 +3,7 @@
 set -euo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-version="${GLIDE_PACKAGE_VERSION:-1.0.1}"
+version="${GLIDE_PACKAGE_VERSION:-1.0.0}"
 case "$version" in
   *[!0-9.]*|.*|*.) echo "Invalid numeric package version" >&2; exit 2 ;;
 esac

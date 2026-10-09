@@ -17,7 +17,7 @@ xcode_version="$(xcodebuild -version)"
 [[ "$xcode_version" == *"Xcode 26.6"* ]] || {
   echo "Xcode 26.6 is required for the baseline build." >&2; exit 2;
 }
-version="${GLIDE_PACKAGE_VERSION:-0.1.0}"
+version="${GLIDE_PACKAGE_VERSION:-1.0.0}"
 [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
   echo "GLIDE_PACKAGE_VERSION must use major.minor.patch." >&2; exit 2;
 }

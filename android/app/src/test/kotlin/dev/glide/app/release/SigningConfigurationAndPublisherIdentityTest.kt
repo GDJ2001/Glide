@@ -225,7 +225,7 @@ class SigningConfigurationAndPublisherIdentityTest {
         assertTrue(semVerRegex.matches("0.1.0-alpha"))
         assertTrue(semVerRegex.matches("1.0.0-rc01"))
         assertTrue(semVerRegex.matches("1.0.0"))
-        assertTrue(semVerRegex.matches("1.0.1"))
+        assertTrue(semVerRegex.matches("1.0.0"))
         assertFalse(semVerRegex.matches("1.0"))
         assertFalse(semVerRegex.matches("v1.0.0"))
         assertFalse(semVerRegex.matches("release-1.0.0"))

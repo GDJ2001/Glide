@@ -10,7 +10,7 @@
 #>
 param(
     [string]$Commit = '',
-    [string]$Version = '0.1.0',
+    [string]$Version = '1.0.0',
     [string]$ArtifactsDir = '',
     [switch]$AllowDirty,
     [switch]$AllowMissing

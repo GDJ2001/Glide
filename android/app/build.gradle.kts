@@ -23,7 +23,7 @@ android {
 
     val customVersionName = providers.environmentVariable("GLIDE_VERSION_NAME")
         .orElse(providers.gradleProperty("glide.versionName"))
-        .getOrElse("1.0.1")
+        .getOrElse("1.0.0")
 
     val releaseKeystorePath = providers.environmentVariable("GLIDE_RELEASE_KEYSTORE_PATH")
         .orElse(providers.gradleProperty("glide.release.keystorePath"))

@@ -115,12 +115,11 @@ $$\text{versionCode} = (\text{Major} \times 10{,}000) + (\text{Minor} \times 100
 | **Initial RC** | `1.0.0-rc01` | `10000` | First release candidate submission |
 | **Patch / RC Fix** | `1.0.0-rc02` | `10001` | Second release candidate |
 | **V1.0.0 Production** | `1.0.0` | `10002` | Final General Availability release |
-| **Maintenance V1.0.1**| `1.0.1` | `10100` | Maintenance patch |
 
 ### 5.2 Build Configuration Binding
 In `app/build.gradle.kts`:
-- `defaultConfig.versionCode` defaults to `1` for local debug builds, but dynamically binds to `GLIDE_VERSION_CODE` / `glide.versionCode`.
-- `defaultConfig.versionName` defaults to `"0.1.0-alpha"`, but dynamically binds to `GLIDE_VERSION_NAME` / `glide.versionName`.
+- `defaultConfig.versionCode` defaults to `2` for local debug builds, but dynamically binds to `GLIDE_VERSION_CODE` / `glide.versionCode`.
+- `defaultConfig.versionName` defaults to `"1.0.0"`, but dynamically binds to `GLIDE_VERSION_NAME` / `glide.versionName`.
 
 ---
 

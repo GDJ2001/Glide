@@ -301,7 +301,7 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
         }
     }
 
-    public string AppVersionText => typeof(LinuxMainViewModel).Assembly.GetName().Version?.ToString(3) ?? "1.0.1";
+    public string AppVersionText => typeof(LinuxMainViewModel).Assembly.GetName().Version?.ToString(3) ?? "1.0.0";
 
     public bool IsAnyModalVisible => IsSasModalVisible || IsOfferModalVisible || IsRecipientModalVisible || IsQuickShareActive;
 
