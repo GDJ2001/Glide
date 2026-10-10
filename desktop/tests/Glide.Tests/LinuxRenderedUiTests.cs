@@ -3,6 +3,7 @@ using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
+using Avalonia.Media;
 using Avalonia.Styling;
 using Avalonia.VisualTree;
 using Glide.Core.Models;
@@ -44,6 +45,54 @@ public static class HeadlessSetup
 
 public sealed class LinuxRenderedUiTests
 {
+    [Fact]
+    public async Task MainWindow_TitleBar_FollowsGlideTheme()
+    {
+        var session = HeadlessSetup.GetSession();
+        await session.Dispatch(() =>
+        {
+            using var vm = new LinuxMainViewModel();
+            var window = new MainWindow { DataContext = vm };
+            window.Show();
+            try
+            {
+                var titleBar = window.GetVisualDescendants().OfType<Border>()
+                    .Single(border => border.Name == "GlideTitleBar");
+                Assert.InRange(titleBar.Bounds.Height, 35, 37);
+                Assert.Equal(WindowDecorations.None, window.WindowDecorations);
+
+                vm.CurrentThemePreference = AppThemePreference.Dark;
+                window.UpdateLayout();
+                Assert.Equal(Color.Parse("#1E293B"), ((ISolidColorBrush)titleBar.Background!).Color);
+
+                vm.CurrentThemePreference = AppThemePreference.Light;
+                window.UpdateLayout();
+                Assert.Equal(Color.Parse("#FFFFFF"), ((ISolidColorBrush)titleBar.Background!).Color);
+
+                Assert.Equal(3, window.GetVisualDescendants().OfType<Button>()
+                    .Count(button => button.Classes.Contains("window-control")));
+
+                var maximize = window.GetVisualDescendants().OfType<Button>()
+                    .Single(button => button.Name == "MaximizeWindowButton");
+                maximize.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+                Assert.Equal(WindowState.Maximized, window.WindowState);
+                Assert.Equal("Restore Glide", AutomationProperties.GetName(maximize));
+                maximize.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+                Assert.Equal(WindowState.Normal, window.WindowState);
+
+                var minimize = window.GetVisualDescendants().OfType<Button>()
+                    .Single(button => button.Name == "MinimizeWindowButton");
+                minimize.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+                Assert.Equal(WindowState.Minimized, window.WindowState);
+            }
+            finally
+            {
+                window.Close();
+                Application.Current!.RequestedThemeVariant = ThemeVariant.Default;
+            }
+        }, CancellationToken.None);
+    }
+
     [Fact]
     public async Task MainWindow_DefaultState_ShowsSendPageOnly()
     {

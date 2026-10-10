@@ -41,6 +41,30 @@
   </Style>
 
   <!-- Navigation Buttons (LUI-02) -->
+  <Style Selector="Button.window-control">
+    <Setter Property="Width" Value="40" />
+    <Setter Property="Height" Value="35" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="CornerRadius" Value="0" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+
+  <Style Selector="Button.window-control:pointerover">
+    <Setter Property="Background" Value="{DynamicResource NavButtonHoverBrush}" />
+  </Style>
+
+  <Style Selector="Button.window-control:focus-visible">
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderFocusBrush}" />
+  </Style>
+
+  <Style Selector="Button.window-close:pointerover">
+    <Setter Property="Background" Value="{DynamicResource StatusErrorBrush}" />
+  </Style>
+
   <Style Selector="Button.nav">
     <Setter Property="HorizontalAlignment" Value="Stretch" />
     <Setter Property="HorizontalContentAlignment" Value="Left" />

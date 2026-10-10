@@ -34,9 +34,23 @@ public partial class MainWindow : Window
     private void UpdateWindowSurfaceCorners()
     {
         WindowSurface.CornerRadius = WindowState == WindowState.Normal
-            ? new CornerRadius(0, 0, 12, 12)
+            ? new CornerRadius(12)
             : new CornerRadius(0);
+        bool maximized = WindowState == WindowState.Maximized;
+        MaximizeWindowIcon.IsVisible = !maximized;
+        RestoreWindowIcon.IsVisible = maximized;
+        Avalonia.Automation.AutomationProperties.SetName(MaximizeWindowButton,
+            maximized ? "Restore Glide" : "Maximize Glide");
     }
+
+    private void OnMinimizeWindow(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+        => WindowState = WindowState.Minimized;
+
+    private void OnMaximizeWindow(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+        => WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+
+    private void OnCloseWindow(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+        => Close();
 
     private async void OnDrop(object? sender, DragEventArgs e)
     {

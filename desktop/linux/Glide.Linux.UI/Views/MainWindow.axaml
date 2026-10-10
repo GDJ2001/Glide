@@ -10,6 +10,8 @@
         Width="1040" Height="720"
         MinWidth="760" MinHeight="520"
         WindowStartupLocation="CenterScreen"
+        WindowDecorations="None"
+        ExtendClientAreaToDecorationsHint="True"
         TransparencyLevelHint="Transparent"
         Background="Transparent"
         Foreground="{DynamicResource TextPrimaryBrush}"
@@ -17,9 +19,43 @@
 
   <Border x:Name="WindowSurface"
           Background="{DynamicResource AppBackgroundBrush}"
-          CornerRadius="0,0,12,12"
+          CornerRadius="12"
           ClipToBounds="True">
-  <Grid>
+  <Grid RowDefinitions="36,*">
+    <Border x:Name="GlideTitleBar" Grid.Row="0"
+            Background="{DynamicResource SurfaceBrush}"
+            BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="0,0,0,1"
+            WindowDecorationProperties.ElementRole="TitleBar">
+      <Grid ColumnDefinitions="*,Auto,*">
+        <TextBlock Grid.Column="1" Text="Glide" VerticalAlignment="Center"
+                   Foreground="{DynamicResource TextPrimaryBrush}" FontWeight="SemiBold"
+                   IsHitTestVisible="False" />
+        <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right">
+          <Button x:Name="MinimizeWindowButton" Classes="window-control"
+                  WindowDecorationProperties.ElementRole="MinimizeButton"
+                  Click="OnMinimizeWindow" AutomationProperties.Name="Minimize Glide">
+            <Path Data="M 4,10 L 14,10" Stroke="{DynamicResource TextPrimaryBrush}" StrokeThickness="1.5" />
+          </Button>
+          <Button x:Name="MaximizeWindowButton" Classes="window-control"
+                  WindowDecorationProperties.ElementRole="MaximizeButton"
+                  Click="OnMaximizeWindow" AutomationProperties.Name="Maximize Glide">
+            <Grid Width="16" Height="16">
+              <Path x:Name="MaximizeWindowIcon" Data="M 4,4 L 12,4 L 12,12 L 4,12 Z"
+                    Stroke="{DynamicResource TextPrimaryBrush}" StrokeThickness="1.5" />
+              <Path x:Name="RestoreWindowIcon" Data="M 4,6 L 10,6 L 10,12 L 4,12 Z M 6,4 L 12,4 L 12,10"
+                    Stroke="{DynamicResource TextPrimaryBrush}" StrokeThickness="1.5" IsVisible="False" />
+            </Grid>
+          </Button>
+          <Button x:Name="CloseWindowButton" Classes="window-control window-close"
+                  WindowDecorationProperties.ElementRole="CloseButton"
+                  Click="OnCloseWindow" AutomationProperties.Name="Close Glide">
+            <Path Data="M 4,4 L 12,12 M 12,4 L 4,12" Stroke="{DynamicResource TextPrimaryBrush}" StrokeThickness="1.5" />
+          </Button>
+        </StackPanel>
+      </Grid>
+    </Border>
+
+  <Grid Grid.Row="1">
     <!-- Shell Layout: Left Nav Rail (240 DIP), Right Main Content -->
     <Grid ColumnDefinitions="240,*">
 
@@ -139,6 +175,7 @@
     <!-- ACCESSIBLE MODAL HOST OVERLAY (LUI-08) -->
     <controls:ModalHost />
 
+  </Grid>
   </Grid>
   </Border>
 </Window>

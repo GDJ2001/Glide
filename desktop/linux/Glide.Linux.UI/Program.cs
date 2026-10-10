@@ -19,8 +19,11 @@ sealed class Program
     }
 
     public static AppBuilder BuildAvaloniaApp()
+#pragma warning disable AVALONIA_X11_CSD // Avalonia 12 draws Linux resize grips for our themed title bar.
         => AppBuilder.Configure<App>()
             .UsePlatformDetect()
+            .With(new X11PlatformOptions { EnableDrawnDecorations = true })
             .WithInterFont()
             .LogToTrace();
+#pragma warning restore AVALONIA_X11_CSD
 }
