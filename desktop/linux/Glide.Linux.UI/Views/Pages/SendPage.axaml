@@ -52,10 +52,13 @@
             </StackPanel>
             <WrapPanel Grid.Row="1" Margin="0,10,0,0">
               <Button x:Name="AddFilesStagedButton" Content="Add files..." Classes="secondary"
+                      Margin="0,0,8,8"
                       AutomationProperties.Name="Add more files" />
               <Button x:Name="AddFolderStagedButton" Content="Add folder..." Classes="secondary"
+                      Margin="0,0,8,8"
                       AutomationProperties.Name="Add more folders" />
               <Button Content="Clear all" Command="{Binding ClearStagedItemsCommand}" Classes="secondary"
+                      Margin="0,0,8,8"
                       AutomationProperties.Name="Clear all staged files" />
             </WrapPanel>
           </Grid>

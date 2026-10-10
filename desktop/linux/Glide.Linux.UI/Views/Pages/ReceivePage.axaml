@@ -71,11 +71,17 @@
 
             <Grid ColumnDefinitions="Auto,*" Margin="0,4" IsVisible="{Binding IsNetworkReady}">
               <!-- QR Code Container -->
-              <Border Grid.Column="0" Background="White" Padding="12" CornerRadius="10"
-                      HorizontalAlignment="Left" VerticalAlignment="Top" Margin="0,0,20,0">
-                <Image Source="{Binding PairingQrImage}" Width="160" Height="160" Stretch="Uniform"
-                       AutomationProperties.Name="One-time QR code for receiving files" />
-              </Border>
+              <StackPanel Grid.Column="0" Spacing="8" HorizontalAlignment="Left" VerticalAlignment="Top"
+                          Margin="0,0,20,0">
+                <Border Background="White" Padding="12" CornerRadius="10">
+                  <Image Source="{Binding PairingQrImage}" Width="160" Height="160" Stretch="Uniform"
+                         AutomationProperties.Name="One-time QR code for receiving files" />
+                </Border>
+                <Button x:Name="EnlargeReceiveQrButton" Content="Enlarge QR"
+                        Command="{Binding OpenReceiveQrCommand}" IsEnabled="{Binding HasActiveInvitation}"
+                        Classes="secondary" HorizontalAlignment="Stretch"
+                        AutomationProperties.Name="Enlarge receiving QR code" />
+              </StackPanel>
 
               <!-- Link Details & Actions -->
               <StackPanel Grid.Column="1" Spacing="10" VerticalAlignment="Center">

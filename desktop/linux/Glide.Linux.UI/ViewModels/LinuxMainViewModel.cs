@@ -93,6 +93,7 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
     private string _invitationInput = "";
     private string _currentInvitationUri = "";
     private Bitmap? _pairingQrImage;
+    private bool _isReceiveQrExpanded;
     private DesktopSendRequest? _hostedSendRequest;
 
     // Services
@@ -303,7 +304,7 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
 
     public string AppVersionText => typeof(LinuxMainViewModel).Assembly.GetName().Version?.ToString(3) ?? "1.0.0";
 
-    public bool IsAnyModalVisible => IsSasModalVisible || IsOfferModalVisible || IsRecipientModalVisible || IsQuickShareActive;
+    public bool IsAnyModalVisible => IsSasModalVisible || IsOfferModalVisible || IsRecipientModalVisible || IsQuickShareActive || IsReceiveQrExpanded;
 
     public string StatusMessage
     {
@@ -391,7 +392,10 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
         set
         {
             if (SetProperty(ref _isOfferModalVisible, value))
+            {
+                if (value) IsReceiveQrExpanded = false;
                 OnPropertyChanged(nameof(IsAnyModalVisible));
+            }
         }
     }
 
@@ -446,7 +450,21 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
                 PairingQrImage?.Dispose();
                 PairingQrImage = string.IsNullOrWhiteSpace(value)
                     ? null : LinuxQrImageHelper.Create(value);
+                OnPropertyChanged(nameof(HasActiveInvitation));
+                if (!HasActiveInvitation) IsReceiveQrExpanded = false;
             }
+        }
+    }
+
+    public bool HasActiveInvitation => !string.IsNullOrWhiteSpace(CurrentInvitationUri);
+
+    public bool IsReceiveQrExpanded
+    {
+        get => _isReceiveQrExpanded;
+        set
+        {
+            if (SetProperty(ref _isReceiveQrExpanded, value))
+                OnPropertyChanged(nameof(IsAnyModalVisible));
         }
     }
 
@@ -511,6 +529,8 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
     public RelayCommand AcceptRecipientCommand { get; }
     public RelayCommand DeclineRecipientCommand { get; }
     public RelayCommand RefreshInvitationCommand { get; }
+    public RelayCommand OpenReceiveQrCommand { get; }
+    public RelayCommand CloseReceiveQrCommand { get; }
     public AsyncRelayCommand StartQuickShareCommand { get; }
     public RelayCommand CancelQuickShareCommand { get; }
     public RelayCommand OpenDownloadsDirectoryCommand { get; }
@@ -544,6 +564,7 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
             if (IsSasModalVisible) ResolveSas(false);
             else if (IsOfferModalVisible) ResolveOffer(false);
             else if (IsRecipientModalVisible) ResolveRecipient(false);
+            else if (IsReceiveQrExpanded) IsReceiveQrExpanded = false;
             else if (IsQuickShareActive)
             {
                 _hostedSendRequest = null;
@@ -619,6 +640,12 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
         AcceptRecipientCommand = new RelayCommand(() => ResolveRecipient(true));
         DeclineRecipientCommand = new RelayCommand(() => ResolveRecipient(false));
         RefreshInvitationCommand = new RelayCommand(RefreshInvitation);
+        OpenReceiveQrCommand = new RelayCommand(() =>
+        {
+            if (IsListening && HasActiveInvitation)
+                IsReceiveQrExpanded = true;
+        });
+        CloseReceiveQrCommand = new RelayCommand(() => IsReceiveQrExpanded = false);
         StartQuickShareCommand = new AsyncRelayCommand(ExecuteStartQuickShareAsync,
             () => StagedItems.Count > 0 && !IsTransferActive && IsNetworkReady);
         CancelQuickShareCommand = new RelayCommand(() =>
@@ -1050,7 +1077,7 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
                     {
                         // Do not revoke a token during bootstrap or an active
                         // authenticated session. Completion creates a new link.
-                        if (!IsTransferActive) RefreshInvitation();
+                        if (!IsTransferActive) RefreshInvitation(announceReady: false);
                     }).GetTask(),
                     _lifetimeCts.Token);
                 IsListening = true;
@@ -1105,7 +1132,9 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
         });
     }
 
-    public void RefreshInvitation()
+    public void RefreshInvitation() => RefreshInvitation(announceReady: true);
+
+    private void RefreshInvitation(bool announceReady)
     {
         var listener = _listenerSupervisor.Listener;
         if (listener == null) return;
@@ -1129,7 +1158,8 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
             _mdnsDiscovery.StartAdvertising(DeviceName, listener.BoundPort, invitation.Presence);
             if (_hostedSendRequest != null)
                 _hostedSendRequest = _hostedSendRequest with { Invitation = invitation };
-            StatusMessage = "A new one-time receiving link is ready. It expires after two minutes.";
+            if (announceReady)
+                StatusMessage = "A new one-time receiving link is ready. It expires after two minutes.";
         }
         catch (Exception ex)
         {

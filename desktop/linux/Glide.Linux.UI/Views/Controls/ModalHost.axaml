@@ -136,6 +136,30 @@
           </StackPanel>
         </Border>
 
+        <!-- 5. Enlarged receiver invitation, bound to the current rotating QR -->
+        <Border Classes="card" BorderBrush="{DynamicResource AccentPrimaryBrush}"
+                BorderThickness="1.5" MaxWidth="460" Width="440"
+                IsVisible="{Binding IsReceiveQrExpanded}"
+                AutomationProperties.Name="Enlarged receiving QR code dialog">
+          <StackPanel Spacing="14">
+            <TextBlock Text="Scan to Connect" Classes="h2" HorizontalAlignment="Center" />
+            <TextBlock Text="Scan this one-time code in Glide on the sending device. You will approve the incoming files before transfer."
+                       Classes="secondary" TextWrapping="Wrap" TextAlignment="Center" />
+            <Border Background="White" Padding="12" CornerRadius="10" HorizontalAlignment="Center">
+              <Image Source="{Binding PairingQrImage}" Width="300" Height="300" Stretch="Uniform"
+                     AutomationProperties.Name="Enlarged one-time QR code for receiving files" />
+            </Border>
+            <TextBlock Text="This code expires after two minutes. Refresh it if your device cannot connect."
+                       Classes="muted" TextWrapping="Wrap" TextAlignment="Center" />
+            <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center">
+              <Button Content="Refresh code" Command="{Binding RefreshInvitationCommand}"
+                      Classes="secondary" AutomationProperties.Name="Refresh receiving QR code" />
+              <Button Content="Close" Command="{Binding CloseReceiveQrCommand}"
+                      Classes="primary" AutomationProperties.Name="Close enlarged receiving QR code" />
+            </StackPanel>
+          </StackPanel>
+        </Border>
+
       </Grid>
     </ScrollViewer>
   </Grid>

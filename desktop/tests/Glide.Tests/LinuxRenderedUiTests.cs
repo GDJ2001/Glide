@@ -565,6 +565,22 @@ public sealed class LinuxRenderedUiTests
             var expanders = receivePage.GetVisualDescendants().OfType<Expander>().ToList();
             Assert.Contains(expanders, e => e.Header?.ToString() == "Connection details");
 
+            var enlargeButton = receivePage.GetVisualDescendants().OfType<Button>()
+                .Single(b => b.Name == "EnlargeReceiveQrButton");
+            Assert.True(enlargeButton.IsEnabled);
+            enlargeButton.Command!.Execute(null);
+            window.UpdateLayout();
+            Assert.True(vm.IsReceiveQrExpanded);
+            Assert.True(vm.IsAnyModalVisible);
+            var enlargedQr = window.GetVisualDescendants().OfType<Image>()
+                .Single(image => AutomationProperties.GetName(image) == "Enlarged one-time QR code for receiving files");
+            Assert.True(enlargedQr.IsVisible);
+            Assert.Equal(300, enlargedQr.Width);
+            Assert.Same(vm.PairingQrImage, enlargedQr.Source);
+
+            vm.DismissActiveModalCommand.Execute(null);
+            Assert.False(vm.IsReceiveQrExpanded);
+
             window.Close();
         }, CancellationToken.None);
     }
