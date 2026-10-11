@@ -38,6 +38,10 @@ class PairOnlyViewModel(
 
     fun start(invitation: LanPairV2Invitation) {
         if (job?.isActive == true) return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            _state.value = PairOnlyUiState.Failure("Couldn’t reach this device — check the local network")
+            return
+        }
         _state.value = PairOnlyUiState.Verifying
         job = viewModelScope.launch {
             val network = LanNetworkScope(appContext.applicationContext)
@@ -74,7 +78,6 @@ class PairOnlyViewModel(
     override fun onCleared() {
         approval?.complete(false)
         job?.cancel()
-        super.onCleared()
     }
 
     companion object {
