@@ -64,6 +64,7 @@ public final class MacTransferViewModel: ObservableObject {
     @Published public var sendMethod: MacSendMethod = .quickShareQr
     @Published public var invitationInput: String = ""
     @Published public var currentInvitationUri: String = ""
+    private var receivePresenceId: String = String(repeating: "0", count: 32)
     @Published public var isListening: Bool = false
     @Published public var listeningPort: UInt16 = 42424
 
@@ -72,6 +73,7 @@ public final class MacTransferViewModel: ObservableObject {
     @Published public var selectedTrustedPeer: PersistentTrustedPeer?
     @Published public var selectedPeerEndpoint: String = ""
     @Published public var discoveredPairPeers: [BonjourPeer] = []
+    @Published public var availablePeers: [BonjourPeer] = []
     @Published public var selectedPairPeer: BonjourPeer?
 
     // Pair-only state machine
@@ -91,6 +93,22 @@ public final class MacTransferViewModel: ObservableObject {
     private var activePairWindow: PairReadyWindowAuthority?
     private var pairTimer: Timer?
     private var pairApprovalContinuation: CheckedContinuation<Bool, Never>?
+    private var pairStartPending = false
+    private var pairSessionActive = false
+    private var pairTask: Task<Void, Never>?
+    private lazy var pairBrowser = MacPairBrowser { [weak self] peers in
+        Task { @MainActor in
+            guard let self else { return }
+            self.availablePeers = peers
+            self.discoveredPairPeers = peers.filter {
+                $0.isPairReady && $0.presenceToken != self.activePairWindow?.presenceId
+            }
+            if self.pairingPhase == .scanning || self.pairingPhase == .empty ||
+                self.pairingPhase == .peersFound {
+                self.pairingPhase = self.discoveredPairPeers.isEmpty ? .empty : .peersFound
+            }
+        }
+    }
 
     // Active transfer
     @Published public var isTransferActive: Bool = false
@@ -125,6 +143,7 @@ public final class MacTransferViewModel: ObservableObject {
     public init() {
         refreshTrustedPeers()
         generateLocalInvitation()
+        pairBrowser.start()
     }
 
     public var pairingExpiryText: String {
@@ -150,6 +169,8 @@ public final class MacTransferViewModel: ObservableObject {
     public func beginFindDevices() {
         cancelPairWindowOnly()
         selectedPairPeer = nil
+        discoveredPairPeers = []
+        pairBrowser.start()
         pairingPhase = .scanning
         pairingMessage = "Looking for Glide devices…"
         pairingDiagnostic = ""
@@ -173,13 +194,24 @@ public final class MacTransferViewModel: ObservableObject {
         selectedPairPeer = nil
         isPairQrVisible = false
 
+        guard !isTransferActive && !pairSessionActive else {
+            failPairing(message: "This device is busy — try again",
+                        diagnostic: "An operation is already active.", action: "Try again")
+            return
+        }
+        if !listener.isListening {
+            pairStartPending = true
+            pairingPhase = .verifying
+            pairingMessage = "Starting pairing…"
+            generateLocalInvitation()
+            return
+        }
+
         do {
-            if !listener.isListening {
-                generateLocalInvitation()
-            }
             let identity = try KeychainIdentityManager.shared.getOrCreateTlsIdentity()
             let spkiHex = try AppleCertificateSpki.extractSpkiSha256Hex(from: identity)
             let endpoints = AppleInvitationManager.localEndpoints(port: listeningPort)
+            guard !endpoints.isEmpty else { throw ApplePairSessionError.unreachable }
             var presenceBytes = [UInt8](repeating: 0, count: 16)
             for i in 0..<16 { presenceBytes[i] = UInt8.random(in: 0...255) }
             let presenceHex = presenceBytes.map { String(format: "%02x", $0) }.joined()
@@ -188,10 +220,12 @@ public final class MacTransferViewModel: ObservableObject {
                 presenceId: presenceHex,
                 deviceName: deviceName,
                 platform: "macos",
-                endpoints: endpoints.isEmpty ? [LanEndpoint(address: "192.168.1.10", port: Int(listeningPort))] : endpoints,
+                endpoints: endpoints,
                 serverSpkiSha256Hex: spkiHex
             )
             activePairWindow = window
+            listener.updateAdvertisement(name: deviceName, presenceTokenHex: window.presenceId,
+                                         isPairReady: true)
             pairingCodeDisplay = window.formattedPinDisplay
             pairingExpirySeconds = Profile2Constants.defaultPairWindowSeconds
             pairingQrUri = window.qrInvitationUri
@@ -268,8 +302,38 @@ public final class MacTransferViewModel: ObservableObject {
             )
             return
         }
+        let parts = endpoint.split(separator: ":", omittingEmptySubsequences: false)
+        guard parts.count == 2, let port = UInt16(parts[1]), port > 0 else {
+            failPairing(message: "Couldn’t reach this device — check the local network",
+                        diagnostic: "Use a local address and port, for example 192.168.1.20:42424.",
+                        action: "Try again")
+            return
+        }
+        let host = String(parts[0])
+        let presence = selectedPairPeer?.presenceToken
         pairingPhase = .verifying
         pairingMessage = "Verifying…"
+        pairTask = Task {
+            do {
+                let saved = try await AppleProfile2PairingSession.initiatePin(
+                    host: host, port: port, expectedPresence: presence, pin: cleanPin,
+                    localDeviceName: deviceName, platform: "macos",
+                    trustStore: engine.trustStore,
+                    approve: { [weak self] name in
+                        guard let self else { return false }
+                        return await self.requestPairApproval(name: name)
+                    })
+                refreshTrustedPeers()
+                pairingPeerName = saved.displayName
+                pairingMessage = "Paired with \(saved.displayName)"
+                pairingPhase = .success
+                pairingPinInput = ""
+            } catch {
+                failPairing(message: error.localizedDescription,
+                            diagnostic: "Pairing did not complete.", action: "Try again")
+            }
+            pairTask = nil
+        }
     }
 
     public func submitPairLink() {
@@ -288,6 +352,26 @@ public final class MacTransferViewModel: ObservableObject {
             pairingPeerName = inv.name
             pairingPhase = .verifying
             pairingMessage = "Verifying…"
+            pairTask = Task {
+                do {
+                    let saved = try await AppleProfile2PairingSession.initiateQr(
+                        invitation: inv, localDeviceName: deviceName, platform: "macos",
+                        trustStore: engine.trustStore,
+                        approve: { [weak self] name in
+                            guard let self else { return false }
+                            return await self.requestPairApproval(name: name)
+                        })
+                    refreshTrustedPeers()
+                    pairingPeerName = saved.displayName
+                    pairingMessage = "Paired with \(saved.displayName)"
+                    pairingPhase = .success
+                    pairingLinkInput = ""
+                } catch {
+                    failPairing(message: error.localizedDescription,
+                                diagnostic: "Pairing did not complete.", action: "Try again")
+                }
+                pairTask = nil
+            }
         } catch {
             failPairing(
                 message: "Code expired — get a new code",
@@ -315,6 +399,9 @@ public final class MacTransferViewModel: ObservableObject {
     }
 
     public func cancelPairing() {
+        pairTask?.cancel()
+        pairTask = nil
+        pairStartPending = false
         cancelPairWindowOnly()
         pairApprovalContinuation?.resume(returning: false)
         pairApprovalContinuation = nil
@@ -328,8 +415,26 @@ public final class MacTransferViewModel: ObservableObject {
     private func cancelPairWindowOnly() {
         pairTimer?.invalidate()
         pairTimer = nil
+        let hadWindow = activePairWindow != nil
         activePairWindow?.cancel()
         activePairWindow = nil
+        if hadWindow && listener.isListening {
+            if isListening {
+                listener.updateAdvertisement(name: deviceName,
+                    presenceTokenHex: receivePresenceId, isPairReady: false)
+            } else {
+                listener.stop()
+            }
+        }
+    }
+
+    private func requestPairApproval(name: String) async -> Bool {
+        pairingPeerName = name
+        pairingPhase = .targetApproval
+        pairingMessage = ""
+        return await withCheckedContinuation { continuation in
+            pairApprovalContinuation = continuation
+        }
     }
 
     private func failPairing(message: String, diagnostic: String, action: String) {
@@ -382,15 +487,23 @@ public final class MacTransferViewModel: ObservableObject {
                         Task { @MainActor in
                             guard let self = self else { return }
                             self.listeningPort = port
+                            if self.pairStartPending {
+                                self.pairStartPending = false
+                                self.startReadyToPair()
+                                return
+                            }
                             self.isListening = true
                             do {
-                                let (_, uri) = try AppleInvitationManager.publish(
+                                let (invitation, uri) = try AppleInvitationManager.publish(
                                     listener: self.listener,
                                     authority: self.authority,
                                     deviceName: self.deviceName,
                                     platform: "macos"
                                 )
                                 self.currentInvitationUri = uri
+                                self.receivePresenceId = invitation.presence
+                                self.listener.updateAdvertisement(name: self.deviceName,
+                                    presenceTokenHex: invitation.presence, isPairReady: false)
                                 self.transferStatusText = "Ready to receive"
                             } catch {
                                 self.transferStatusText = "Could not publish invitation: \(error.localizedDescription)"
@@ -400,6 +513,12 @@ public final class MacTransferViewModel: ObservableObject {
                     onFailure: { [weak self] error in
                         Task { @MainActor in
                             self?.isListening = false
+                            if self?.pairStartPending == true {
+                                self?.pairStartPending = false
+                                self?.failPairing(message: "Couldn’t reach this device — check the local network",
+                                                  diagnostic: error.localizedDescription,
+                                                  action: "Try again")
+                            }
                             self?.transferStatusText = "Listener error: \(error.localizedDescription)"
                         }
                     },
@@ -410,13 +529,18 @@ public final class MacTransferViewModel: ObservableObject {
                     }
                 )
             } else {
-                let (_, uri) = try AppleInvitationManager.publish(
+                let (invitation, uri) = try AppleInvitationManager.publish(
                     listener: listener,
                     authority: authority,
                     deviceName: deviceName,
                     platform: "macos"
                 )
                 currentInvitationUri = uri
+                receivePresenceId = invitation.presence
+                listener.updateAdvertisement(name: deviceName,
+                    presenceTokenHex: activePairWindow?.presenceId ?? invitation.presence,
+                    isPairReady: activePairWindow != nil)
+                isListening = true
                 transferStatusText = "Ready to receive"
             }
         } catch {
@@ -426,25 +550,77 @@ public final class MacTransferViewModel: ObservableObject {
     }
 
     private func handleIncomingConnection(_ connection: NWConnection) {
-        guard !isTransferActive else {
+        guard !isTransferActive && !pairSessionActive else {
             connection.cancel()
             return
         }
-        isTransferActive = true
+        pairSessionActive = true
         transferProgress = 0.0
-        transferStatusText = "Receiving from connected peer..."
-        updateDockBadge(text: "↓")
 
         Task {
+            let channel = LanRecordChannel(connection: connection)
+            defer {
+                pairSessionActive = false
+                isTransferActive = false
+                updateDockBadge(text: nil)
+                Task { await channel.close() }
+            }
             do {
-                let count = try await engine.receiveInboundConnection(
-                    connection: connection,
-                    authority: authority,
+                let kind = try await channel.inspectSessionPreamble()
+                if kind == .profile2Gld2 {
+                    let openData = try await channel.readProfile2MessageData()
+                    let open = try JSONDecoder().decode(Profile2SessionOpen.self, from: openData)
+                    guard open.v == 1, open.type == "SESSION_OPEN" else {
+                        throw ApplePairSessionError.invalidMessage
+                    }
+                    if open.purpose == Profile2Constants.purposePairOnly {
+                        let saved = try await AppleProfile2PairingSession.respond(
+                            channel: channel, open: open, window: activePairWindow,
+                            isBusy: activePairWindow == nil,
+                            localDeviceName: deviceName, platform: "macos",
+                            trustStore: engine.trustStore,
+                            approve: { [weak self] name in
+                                guard let self else { return false }
+                                return await self.requestPairApproval(name: name)
+                            })
+                        cancelPairWindowOnly()
+                        refreshTrustedPeers()
+                        pairingPeerName = saved.displayName
+                        pairingMessage = "Paired with \(saved.displayName)"
+                        pairingPhase = .success
+                        return
+                    }
+                    guard open.purpose == Profile2Constants.purposeTrustedSend,
+                          isListening else { throw ApplePairSessionError.invalidMessage }
+                    isTransferActive = true
+                    transferStatusText = "Receiving from paired device…"
+                    updateDockBadge(text: "↓")
+                    let count = try await engine.receiveTrustedInboundConnection(
+                        channel: channel, open: open,
+                        destinationDirectory: downloadDirectory,
+                        localDeviceName: deviceName,
+                        onConsent: { [weak self] peer, count, totalBytes in
+                            guard let self else { return false }
+                            return await self.requestOfferConsent(peer: peer, count: count,
+                                                                  totalBytes: totalBytes)
+                        })
+                    recordReceived(count: count)
+                    return
+                }
+                guard kind == .profile1LanRecord, isListening else {
+                    throw ApplePairSessionError.invalidMessage
+                }
+                isTransferActive = true
+                transferStatusText = "Receiving from connected peer..."
+                updateDockBadge(text: "↓")
+                let count = try await engine.receiveInboundChannel(
+                    channel: channel, authority: authority,
                     destinationDirectory: downloadDirectory,
                     localDeviceName: deviceName,
                     onConsent: { [weak self] peer, count, totalBytes in
-                        guard let self = self else { return false }
-                        return await self.requestOfferConsent(peer: peer, count: count, totalBytes: totalBytes)
+                        guard let self else { return false }
+                        return await self.requestOfferConsent(peer: peer, count: count,
+                                                              totalBytes: totalBytes)
                     },
                     onProgress: { [weak self] progress, bytesDone, totalBytes, filename in
                         Task { @MainActor in
@@ -452,8 +628,21 @@ public final class MacTransferViewModel: ObservableObject {
                             self?.currentFileName = filename
                             self?.transferredBytesText = "\(ByteCountFormatter.string(fromByteCount: bytesDone, countStyle: .file)) / \(ByteCountFormatter.string(fromByteCount: totalBytes, countStyle: .file))"
                         }
-                    }
-                )
+                    })
+                recordReceived(count: count)
+                generateLocalInvitation()
+            } catch {
+                if pairingPhase == .targetReady || pairingPhase == .targetApproval {
+                    failPairing(message: error.localizedDescription,
+                                diagnostic: "Pairing did not complete.", action: "Try again")
+                } else {
+                    transferStatusText = "Receive failed: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    private func recordReceived(count: Int) {
                 transferStatusText = "Received \(count) file(s)!"
                 historyItems.insert(MacHistoryItem(
                     id: UUID().uuidString,
@@ -465,13 +654,6 @@ public final class MacTransferViewModel: ObservableObject {
                     status: "Completed",
                     destinationUrl: downloadDirectory
                 ), at: 0)
-            } catch {
-                transferStatusText = "Receive failed: \(error.localizedDescription)"
-            }
-            isTransferActive = false
-            updateDockBadge(text: nil)
-            generateLocalInvitation()
-        }
     }
 
     public func sendStagedFiles() {
@@ -549,7 +731,12 @@ public final class MacTransferViewModel: ObservableObject {
 
     public func sendToPairedDevice() {
         guard !stagedUrls.isEmpty, let peer = selectedTrustedPeer else { return }
-        let parts = selectedPeerEndpoint.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: ":")
+        let selectedAddress = selectedPeerEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        let discoveredAddress = availablePeers.first {
+            $0.supportsTrustedReconnect && $0.name == peer.displayName
+        }?.endpoint ?? ""
+        let parts = (selectedAddress.isEmpty ? discoveredAddress : selectedAddress)
+            .split(separator: ":")
         let host = parts.first.map(String.init) ?? ""
         let port = parts.count > 1 ? (Int(parts[1]) ?? Int(NetworkTransportConfig.defaultPort)) : Int(NetworkTransportConfig.defaultPort)
         guard !host.isEmpty else {
@@ -681,9 +868,10 @@ public final class MacTransferViewModel: ObservableObject {
 
     public func toggleListener() {
         if isListening {
-            listener.stop()
+            authority.revokeActive()
             isListening = false
             currentInvitationUri = ""
+            if activePairWindow == nil { listener.stop() }
             transferStatusText = "Listener stopped"
         } else {
             generateLocalInvitation()
@@ -708,3 +896,65 @@ public final class MacTransferViewModel: ObservableObject {
         #endif
     }
 }
+
+#if os(macOS)
+/// Resolves Bonjour services to actual local host:port routing hints. TXT data
+/// never authenticates a peer; the Profile 2 exchange verifies its identity.
+private final class MacPairBrowser: NSObject, NetServiceBrowserDelegate, NetServiceDelegate {
+    private let browser = NetServiceBrowser()
+    private var services = Set<NetService>()
+    private var peers: [NetService: BonjourPeer] = [:]
+    private let onChange: ([BonjourPeer]) -> Void
+
+    init(onChange: @escaping ([BonjourPeer]) -> Void) {
+        self.onChange = onChange
+        super.init()
+        browser.delegate = self
+    }
+
+    func start() {
+        stop()
+        browser.searchForServices(ofType: "_glide._tcp.", inDomain: "local.")
+    }
+
+    func stop() {
+        browser.stop()
+        for service in services { service.stop() }
+        services.removeAll()
+        peers.removeAll()
+        onChange([])
+    }
+
+    func netServiceBrowser(_ browser: NetServiceBrowser, didFind service: NetService,
+                           moreComing: Bool) {
+        services.insert(service)
+        service.delegate = self
+        service.resolve(withTimeout: 4)
+    }
+
+    func netServiceBrowser(_ browser: NetServiceBrowser, didRemove service: NetService,
+                           moreComing: Bool) {
+        services.remove(service)
+        peers.removeValue(forKey: service)
+        onChange(Array(peers.values))
+    }
+
+    func netServiceDidResolveAddress(_ service: NetService) {
+        guard let rawHost = service.hostName, service.port > 0,
+              let txt = service.txtRecordData() else { return }
+        let host = rawHost.trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        let values = NetService.dictionary(fromTXTRecord: txt).compactMapValues {
+            String(data: $0, encoding: .utf8)
+        }
+        guard let peer = try? BonjourService.parseTxtRecord(
+            values, endpoint: "\(host):\(service.port)") else { return }
+        peers[service] = peer
+        onChange(Array(peers.values))
+    }
+
+    func netService(_ service: NetService, didNotResolve errorDict: [String: NSNumber]) {
+        peers.removeValue(forKey: service)
+        onChange(Array(peers.values))
+    }
+}
+#endif

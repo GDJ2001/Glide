@@ -48,6 +48,7 @@ public abstract record Profile2Message(int V, string Type, string SessionId)
         string InitiatorIdentityPublicKey,
         string? ExpectedPresenceId = null,
         string? InvitationId = null,
+        string? ExpectedPeerIdentityFingerprint = null,
         int V = Profile2Constants.WireVersion)
         : Profile2Message(V, "SESSION_OPEN", SessionId);
 
@@ -121,6 +122,7 @@ public static class Profile2WireCodec
                 obj["initiatorIdentityPublicKey"] = open.InitiatorIdentityPublicKey;
                 if (open.ExpectedPresenceId != null) obj["expectedPresenceId"] = open.ExpectedPresenceId;
                 if (open.InvitationId != null) obj["invitationId"] = open.InvitationId;
+                if (open.ExpectedPeerIdentityFingerprint != null) obj["expectedPeerIdentityFingerprint"] = open.ExpectedPeerIdentityFingerprint;
                 break;
 
             case Profile2Message.SessionOpenAck ack:
@@ -218,6 +220,26 @@ public static class Profile2WireCodec
                 "Profile 2 sessionId must be a canonical lowercase UUIDv4.");
         }
 
+        string[] allowedFields = type switch
+        {
+            "SESSION_OPEN" => ["v", "type", "sessionId", "purpose", "authMethod", "initiatorNonce", "initiatorDeviceName", "initiatorPlatform", "initiatorIdentityPublicKey", "expectedPresenceId", "invitationId", "expectedPeerIdentityFingerprint"],
+            "SESSION_OPEN_ACK" => ["v", "type", "sessionId", "accepted", "errorCode", "message", "responderNonce", "responderDeviceName", "responderPlatform", "responderIdentityPublicKey", "advertisedPresenceId"],
+            "PAIR_MSG" => ["v", "type", "sessionId", "role", "spakePublicValue", "invitationHash"],
+            "PAIR_CONFIRM" => ["v", "type", "sessionId", "role", "keyConfirmationMac", "identitySignature"],
+            "PAIR_APPROVAL" => ["v", "type", "sessionId", "role", "approved", "reason"],
+            "PAIR_RESULT" => ["v", "type", "sessionId", "paired", "errorCode", "message"],
+            _ => throw new ProtocolViolationException(Profile2Constants.ErrorProtocolOrder,
+                $"Unexpected or forbidden Profile 2 message type '{type}'.")
+        };
+        foreach (string field in obj.Select(pair => pair.Key))
+        {
+            if (!allowedFields.Contains(field, StringComparer.Ordinal))
+            {
+                throw new ProtocolViolationException(WireErrorCodes.MalformedMessage,
+                    $"Unknown Profile 2 field '{field}'.");
+            }
+        }
+
         return type switch
         {
             "SESSION_OPEN" => new Profile2Message.SessionOpen(
@@ -230,6 +252,7 @@ public static class Profile2WireCodec
                 InitiatorIdentityPublicKey: GetRequiredString(obj, "initiatorIdentityPublicKey"),
                 ExpectedPresenceId: GetOptionalString(obj, "expectedPresenceId"),
                 InvitationId: GetOptionalString(obj, "invitationId"),
+                ExpectedPeerIdentityFingerprint: GetOptionalString(obj, "expectedPeerIdentityFingerprint"),
                 V: v),
 
             "SESSION_OPEN_ACK" => new Profile2Message.SessionOpenAck(

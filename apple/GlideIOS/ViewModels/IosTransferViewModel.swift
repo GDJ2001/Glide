@@ -154,9 +154,18 @@ public final class IosTransferViewModel: ObservableObject {
         }
         pairStage = .verifying
         Task { @MainActor in
-            self.pendingPairInvitation = nil
-            self.pairStage = .success(inv.name)
-            self.refreshTrustedPeers()
+            defer { self.pendingPairInvitation = nil }
+            do {
+                let saved = try await AppleProfile2PairingSession.initiateQr(
+                    invitation: inv, localDeviceName: deviceName, platform: "ios",
+                    trustStore: engine.trustStore, approve: { _ in true })
+                self.refreshTrustedPeers()
+                self.pairStage = .success(saved.displayName)
+                self.pairDiagnostic = ""
+            } catch {
+                self.pairStage = .failed(error.localizedDescription)
+                self.pairDiagnostic = "Pairing did not complete."
+            }
         }
     }
 
@@ -328,23 +337,43 @@ public final class IosTransferViewModel: ObservableObject {
 
         Task {
             do {
-                let count = try await engine.receiveInboundConnection(
-                    connection: connection,
-                    authority: authority,
-                    destinationDirectory: docsDir,
-                    localDeviceName: deviceName,
-                    onConsent: { [weak self] peer, count, totalBytes in
-                        guard let self = self else { return false }
-                        return await self.requestOfferConsent(peer: peer, count: count, totalBytes: totalBytes)
-                    },
-                    onProgress: { [weak self] progress, bytesDone, totalBytes, filename in
-                        Task { @MainActor in
-                            self?.transferProgress = progress
-                            self?.currentFileName = filename
-                            self?.transferredBytesText = "\(ByteCountFormatter.string(fromByteCount: bytesDone, countStyle: .file)) / \(ByteCountFormatter.string(fromByteCount: totalBytes, countStyle: .file))"
-                        }
+                let channel = LanRecordChannel(connection: connection)
+                let kind = try await channel.inspectSessionPreamble()
+                let progress: @Sendable (Double, Int64, Int64, String) -> Void = {
+                    [weak self] value, bytesDone, totalBytes, filename in
+                    Task { @MainActor in
+                        self?.transferProgress = value
+                        self?.currentFileName = filename
+                        self?.transferredBytesText = "\(ByteCountFormatter.string(fromByteCount: bytesDone, countStyle: .file)) / \(ByteCountFormatter.string(fromByteCount: totalBytes, countStyle: .file))"
                     }
-                )
+                }
+                let consent: @Sendable (String, Int, Int64) async -> Bool = {
+                    [weak self] peer, count, totalBytes in
+                    guard let self else { return false }
+                    return await self.requestOfferConsent(peer: peer, count: count,
+                                                          totalBytes: totalBytes)
+                }
+                let count: Int
+                switch kind {
+                case .profile1LanRecord:
+                    count = try await engine.receiveInboundChannel(
+                        channel: channel, authority: authority,
+                        destinationDirectory: docsDir, localDeviceName: deviceName,
+                        onConsent: consent, onProgress: progress)
+                case .profile2Gld2:
+                    let openData = try await channel.readProfile2MessageData()
+                    let open = try JSONDecoder().decode(Profile2SessionOpen.self, from: openData)
+                    guard open.v == 1, open.type == "SESSION_OPEN",
+                          open.purpose == Profile2Constants.purposeTrustedSend else {
+                        throw ApplePairSessionError.invalidMessage
+                    }
+                    count = try await engine.receiveTrustedInboundConnection(
+                        channel: channel, open: open,
+                        destinationDirectory: docsDir, localDeviceName: deviceName,
+                        onConsent: consent, onProgress: progress)
+                case .invalid:
+                    throw ApplePairSessionError.invalidMessage
+                }
                 transferStatusText = "Received \(count) file(s)!"
                 historyItems.insert(IosHistoryItem(
                     id: UUID().uuidString,

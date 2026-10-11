@@ -7,6 +7,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import dev.glide.core.protocol.StrictJsonParser
 import java.io.ByteArrayOutputStream
 import java.io.EOFException
 import java.io.InputStream
@@ -198,8 +199,7 @@ object Profile2WireCodec {
             "Profile 2 control message size ${utf8Json.size} is out of bounds"
         }
         val text = String(utf8Json, StandardCharsets.UTF_8)
-        val obj = json.parseToJsonElement(text) as? JsonObject
-            ?: throw IllegalArgumentException("Profile 2 control message root must be a JSON object")
+        val obj = StrictJsonParser(text, maxDepth = 4).parse()
 
         val v = obj["v"]?.jsonPrimitive?.intOrNull
             ?: throw IllegalArgumentException("Missing 'v' field")
@@ -209,6 +209,18 @@ object Profile2WireCodec {
 
         val type = obj.reqString("type")
         val sessionId = obj.reqString("sessionId")
+        val allowedFields = when (type) {
+            Profile2Constants.TYPE_SESSION_OPEN -> setOf("v", "type", "sessionId", "purpose", "authMethod", "initiatorNonce", "initiatorDeviceName", "initiatorPlatform", "initiatorIdentityPublicKey", "expectedPresenceId", "expectedPeerIdentityFingerprint", "invitationId")
+            Profile2Constants.TYPE_SESSION_OPEN_ACK -> setOf("v", "type", "sessionId", "accepted", "errorCode", "message", "responderNonce", "responderDeviceName", "responderPlatform", "responderIdentityPublicKey", "advertisedPresenceId")
+            Profile2Constants.TYPE_PAIR_MSG -> setOf("v", "type", "sessionId", "role", "spakePublicValue", "invitationHash")
+            Profile2Constants.TYPE_PAIR_CONFIRM -> setOf("v", "type", "sessionId", "role", "keyConfirmationMac", "identitySignature")
+            Profile2Constants.TYPE_PAIR_APPROVAL -> setOf("v", "type", "sessionId", "role", "approved", "reason")
+            Profile2Constants.TYPE_PAIR_RESULT -> setOf("v", "type", "sessionId", "paired", "errorCode", "message")
+            else -> throw IllegalArgumentException("Unknown Profile 2 message type '$type'")
+        }
+        require(obj.keys.all { it in allowedFields }) {
+            "Profile 2 message contains an unknown field"
+        }
 
         return when (type) {
             Profile2Constants.TYPE_SESSION_OPEN -> Profile2Message.SessionOpen(

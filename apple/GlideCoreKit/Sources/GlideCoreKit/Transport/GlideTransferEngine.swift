@@ -215,6 +215,21 @@ public final class GlideTransferEngine: @unchecked Sendable {
         onProgress: (@Sendable (Double, Int64, Int64, String) -> Void)? = nil
     ) async throws -> Int {
         let channel = LanRecordChannel(connection: connection)
+        return try await receiveInboundChannel(
+            channel: channel, authority: authority,
+            destinationDirectory: destinationDirectory,
+            localDeviceName: localDeviceName, onConsent: onConsent,
+            onProgress: onProgress)
+    }
+
+    public func receiveInboundChannel(
+        channel: LanRecordChannel,
+        authority: LanInvitationAuthority,
+        destinationDirectory: URL,
+        localDeviceName: String = "",
+        onConsent: @escaping @Sendable (String, Int, Int64) async -> Bool,
+        onProgress: (@Sendable (Double, Int64, Int64, String) -> Void)? = nil
+    ) async throws -> Int {
         return try await runReceiverSession(
             channel: channel,
             invitation: nil,
@@ -404,7 +419,9 @@ public final class GlideTransferEngine: @unchecked Sendable {
         onProgress: (@Sendable (Double, Int64, Int64, String) -> Void)? = nil
     ) async throws -> Int {
         guard open.purpose == Profile2Constants.purposeTrustedSend,
-              open.authMethod == Profile2Constants.authMethodIdentityV1 else {
+              open.authMethod == Profile2Constants.authMethodIdentityV1,
+              open.v == Profile2Constants.wireVersion,
+              open.type == "SESSION_OPEN" else {
             let ack = Profile2SessionOpenAck(
                 sessionId: open.sessionId,
                 accepted: false,
@@ -447,6 +464,15 @@ public final class GlideTransferEngine: @unchecked Sendable {
         }
 
         let localSpki = try KeychainIdentityManager.shared.getPublicKeySpkiData()
+        if let expected = open.expectedPeerIdentityFingerprint,
+           expected != SHA256.hash(data: localSpki).map({ String(format: "%02x", $0) }).joined() {
+            let rejection = Profile2SessionOpenAck(
+                sessionId: open.sessionId, accepted: false,
+                errorCode: "IDENTITY_CHANGED")
+            try? await channel.writeProfile2Message(rejection)
+            await channel.close()
+            throw TransferError.identityChanged
+        }
         var nonceBytes = [UInt8](repeating: 0, count: 32)
         for i in 0..<32 { nonceBytes[i] = UInt8.random(in: 0...255) }
 

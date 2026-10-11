@@ -34,6 +34,7 @@ import dev.glide.transport.lan.tls.LanListener
 import dev.glide.transport.lan.tls.PinnedTlsConnector
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -114,6 +115,8 @@ class LanTransferTransport(
     private val pendingInvitations = ConcurrentHashMap<PeerId, PendingInvitation>()
     private val pendingTrustedPeers = ConcurrentHashMap<PeerId, PendingTrustedPeer>()
     private val activeConnections = ConcurrentHashMap<PeerId, ActiveConnection>()
+    private val inboundSessionReserved = java.util.concurrent.atomic.AtomicBoolean(false)
+    @Volatile private var inboundAcceptedSocket: SSLSocket? = null
     private val markedReadyStreams = Collections.synchronizedSet(mutableSetOf<BulkRef>())
 
     private var inboundAcceptJob: Job? = null
@@ -163,6 +166,7 @@ class LanTransferTransport(
         socket: SSLSocket,
         invitationAuthority: InvitationAuthority
     ) {
+        var ownsInboundReservation = false
         try {
             val rawInput = java.io.PushbackInputStream(socket.inputStream, 4)
             val outputStream = socket.outputStream
@@ -177,6 +181,28 @@ class LanTransferTransport(
                     return
                 }
                 readCount += r
+            }
+
+            ownsInboundReservation = inboundSessionReserved.compareAndSet(false, true)
+            if (!ownsInboundReservation) {
+                if (preamble.contentEquals(dev.glide.core.pairing.Profile2Constants.GLD2_MAGIC_BYTES)) {
+                    val open = runCatching {
+                        dev.glide.core.pairing.Profile2WireCodec.readMessage(rawInput)
+                            as? dev.glide.core.pairing.Profile2Message.SessionOpen
+                    }.getOrNull()
+                    if (open != null) {
+                        dev.glide.core.pairing.Profile2WireCodec.writeMessage(
+                            outputStream,
+                            dev.glide.core.pairing.Profile2Message.SessionOpenAck(
+                                sessionId = open.sessionId,
+                                accepted = false,
+                                errorCode = dev.glide.core.pairing.Profile2Constants.ERROR_BUSY
+                            )
+                        )
+                    }
+                }
+                socket.close()
+                return
             }
 
             if (preamble.contentEquals(dev.glide.core.pairing.Profile2Constants.GLD2_MAGIC_BYTES)) {
@@ -225,7 +251,7 @@ class LanTransferTransport(
             )
 
             socket.soTimeout = 0
-            val readerJob = coroutineScope.launch {
+            val readerJob = coroutineScope.launch(start = CoroutineStart.LAZY) {
                 readLoop(peerId, socket, rawInput)
             }
 
@@ -245,11 +271,17 @@ class LanTransferTransport(
                     channelBindingHex = serverSpki
                 )
             )
+            inboundAcceptedSocket = socket
+            readerJob.start()
 
             _connectionEvents.emit(ConnectionEvent.Connected(peerDevice))
         } catch (e: Exception) {
-            safeLogE("LanTransferTransport", "handleInboundClientSocket error: ${e.message}", e)
+            safeLogE("LanTransferTransport", "Inbound LAN connection failed (${e.javaClass.simpleName})")
             try { socket.close() } catch (_: Exception) {}
+        } finally {
+            if (ownsInboundReservation && inboundAcceptedSocket !== socket) {
+                inboundSessionReserved.set(false)
+            }
         }
     }
 
@@ -308,7 +340,7 @@ class LanTransferTransport(
         val peerDevice = PeerDevice(id = peerId, displayName = open.initiatorDeviceName)
         val writer = LanRecordWriter(output)
         socket.soTimeout = 0
-        val readerJob = coroutineScope.launch { readLoop(peerId, socket, input) }
+        val readerJob = coroutineScope.launch(start = CoroutineStart.LAZY) { readLoop(peerId, socket, input) }
         activeConnections[peerId] = ActiveConnection(
             peerId = peerId,
             socket = socket,
@@ -319,6 +351,8 @@ class LanTransferTransport(
                 channelBindingHex = serverSpki
             )
         )
+        inboundAcceptedSocket = socket
+        readerJob.start()
         _connectionEvents.emit(ConnectionEvent.Connected(peerDevice))
     }
 
@@ -479,6 +513,16 @@ class LanTransferTransport(
         for (endpoint in trustedPeer.endpoints) {
             try {
                 val inetAddress = InetAddress.getByName(endpoint.address)
+                val subnets = (networkScope.networkState.value as? LanNetworkState.Available)?.subnets
+                    ?: emptyList()
+                val addressResult = dev.glide.transport.lan.network.LanAddressValidator.validateAddress(
+                    address = inetAddress,
+                    activeSubnets = subnets,
+                    allowLoopbackForTesting = allowLoopbackForTesting
+                )
+                if (addressResult !is dev.glide.transport.lan.network.LanAddressValidationResult.Valid) {
+                    continue
+                }
                 sslSocket = connector.connect(
                     address = inetAddress,
                     port = endpoint.port,
@@ -523,6 +567,10 @@ class LanTransferTransport(
             val ack = dev.glide.core.pairing.Profile2WireCodec.readMessage(inputStream)
                 as? dev.glide.core.pairing.Profile2Message.SessionOpenAck
                 ?: throw IOException("Identity changed — pair again")
+
+            if (ack.sessionId != senderSessionId) {
+                throw IOException("Identity changed — pair again")
+            }
 
             if (!ack.accepted) {
                 val mapped = when (ack.errorCode) {
@@ -630,6 +678,10 @@ class LanTransferTransport(
         if (connection != null) {
             connection.readerJob.cancel()
             try { connection.socket.close() } catch (_: Exception) {}
+            if (inboundAcceptedSocket === connection.socket) {
+                inboundAcceptedSocket = null
+                inboundSessionReserved.set(false)
+            }
         }
         _connectionEvents.emit(ConnectionEvent.Disconnected(peerId))
     }
@@ -674,7 +726,7 @@ class LanTransferTransport(
             // record that can be mistaken for an encrypted-channel failure.
             val expectedClose = socket.isClosed || e is CancellationException
             if (!expectedClose) {
-                safeLogE("LanTransferTransport", "readLoop terminated for $peerId: ${e.message}", e)
+                safeLogE("LanTransferTransport", "LAN read loop terminated (${e.javaClass.simpleName})")
             }
             disconnect(peerId)
         }
@@ -694,6 +746,8 @@ class LanTransferTransport(
             try { conn.socket.close() } catch (_: Exception) {}
         }
         activeConnections.clear()
+        inboundAcceptedSocket = null
+        inboundSessionReserved.set(false)
         pendingInvitations.clear()
         nsdDiscoveryAdapter?.close()
         streamBridge.close()

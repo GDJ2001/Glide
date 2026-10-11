@@ -20,6 +20,23 @@ public final class GlideNetworkListener: @unchecked Sendable {
 
     public init() {}
 
+    /// Refreshes the public availability record without replacing the active
+    /// TLS listener or changing its bound port. No PIN, token, or key is published.
+    public func updateAdvertisement(
+        name: String, presenceTokenHex: String,
+        deviceType: String = BonjourService.deviceTypeDesktop,
+        isPairReady: Bool
+    ) {
+        guard let listener, isListening else { return }
+        let values = BonjourService.buildTxtRecord(
+            name: name, presenceTokenHex: presenceTokenHex,
+            deviceType: deviceType, isPairReady: isPairReady)
+        listener.service = NWListener.Service(
+            name: name, type: BonjourService.serviceType,
+            domain: BonjourService.serviceDomain,
+            txtRecord: NWTXTRecord(values))
+    }
+
     /// Starts the TLS 1.3 listener on the preferred port, optionally advertising via Bonjour.
     public func start(
         port: UInt16 = NetworkTransportConfig.defaultPort,
