@@ -131,6 +131,22 @@ public interface IDesktopTransferExecutor
         CancellationToken cancellationToken = default) =>
         Task.FromResult(DesktopTransferResult.Failed(
             "This transfer runtime does not support receiver-initiated pairing."));
+
+    Task<DesktopTransferResult> SendTrustedAsync(
+        DesktopSendRequest request,
+        IDesktopTransferInteraction interaction,
+        CancellationToken cancellationToken = default) =>
+        SendAsync(request, interaction, cancellationToken);
+
+    Task<DesktopTransferResult> ReceiveTrustedAsync(
+        Glide.Transport.Sockets.TlsSocketConnection connection,
+        Profile2Message.SessionOpen open,
+        DesktopReceiveRequest request,
+        IDesktopTransferInteraction interaction,
+        bool isBusy = false,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(DesktopTransferResult.Failed(
+            "This transfer runtime does not support trusted reconnect receiving."));
 }
 
 public abstract class DesktopTransferInteractionBase : IDesktopTransferInteraction
@@ -164,7 +180,9 @@ public sealed record DesktopSendRequest(
     string LocalDeviceName = "",
     DesktopPersistentTrustManager? TrustManager = null,
     string? ExpectedPeerFingerprintHex = null,
-    LanInvitationAuthority? HostedInvitationAuthority = null);
+    LanInvitationAuthority? HostedInvitationAuthority = null,
+    string? ExpectedPresenceId = null,
+    IReadOnlyList<LanEndpoint>? CandidateEndpoints = null);
 
 public sealed record DesktopReceiveRequest(
     QuarantineStagingStore StagingStore,

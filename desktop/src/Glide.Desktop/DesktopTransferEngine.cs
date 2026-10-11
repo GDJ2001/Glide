@@ -51,6 +51,11 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
 
         if (request.Invitation == null)
         {
+            if (!string.IsNullOrWhiteSpace(request.ExpectedPeerFingerprintHex))
+            {
+                return await SendTrustedAsync(request, interaction, cancellationToken);
+            }
+
             return DesktopTransferResult.Failed(
                 "Authenticated pairing invitation required. Scan or paste a current Glide pairing invitation before sending.");
         }
@@ -391,84 +396,506 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
         }
     }
 
+    public async Task<DesktopTransferResult> SendTrustedAsync(
+        DesktopSendRequest request,
+        IDesktopTransferInteraction interaction,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(interaction);
+
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return DesktopTransferResult.CancelledByUser("Transfer cancelled.");
+        }
+
+        if (request.TrustManager == null || string.IsNullOrWhiteSpace(request.ExpectedPeerFingerprintHex))
+        {
+            return DesktopTransferResult.Failed("Identity changed — pair again");
+        }
+
+        request.TrustManager.Initialize();
+        DesktopTrustedPeer? enrolledPeer = request.TrustManager.GetTrustedPeer(request.ExpectedPeerFingerprintHex);
+        if (enrolledPeer == null)
+        {
+            return DesktopTransferResult.Failed("Identity changed — pair again");
+        }
+
+        if (request.Files.Count == 0)
+        {
+            return DesktopTransferResult.Failed("No files were selected for transfer.");
+        }
+
+        if (request.Files.Count > 1_000)
+        {
+            return DesktopTransferResult.Failed("A transfer batch cannot contain more than 1,000 items.");
+        }
+
+        long totalBytes = 0;
+        foreach (DesktopTransferFile file in request.Files)
+        {
+            if (!File.Exists(file.FilePath))
+            {
+                return DesktopTransferResult.Failed($"File not found: '{file.FilePath}'.");
+            }
+
+            long size = file.SizeBytes;
+            if (size < 0 || size > ProtocolCatalog.MaxItemBytes)
+            {
+                return DesktopTransferResult.Failed($"File '{file.Name}' exceeds the protocol item-size limit.");
+            }
+
+            try
+            {
+                totalBytes = checked(totalBytes + size);
+            }
+            catch (OverflowException)
+            {
+                return DesktopTransferResult.Failed("Selected files exceed the protocol batch-size limit.");
+            }
+
+            if (totalBytes > ProtocolCatalog.MaxBatchBytes)
+            {
+                return DesktopTransferResult.Failed("Selected files exceed the protocol batch-size limit.");
+            }
+        }
+
+        IReadOnlyList<LanEndpoint> endpointsToTry;
+        if (request.CandidateEndpoints is { Count: > 0 })
+        {
+            endpointsToTry = request.CandidateEndpoints;
+        }
+        else if (!string.IsNullOrWhiteSpace(request.Host))
+        {
+            endpointsToTry =
+            [
+                new LanEndpoint(
+                    request.Host,
+                    request.Port > 0 ? request.Port : enrolledPeer.LastKnownPort ?? 42424)
+            ];
+        }
+        else if (!string.IsNullOrWhiteSpace(enrolledPeer.LastKnownHost))
+        {
+            endpointsToTry =
+            [
+                new LanEndpoint(
+                    enrolledPeer.LastKnownHost,
+                    enrolledPeer.LastKnownPort ?? 42424)
+            ];
+        }
+        else
+        {
+            return DesktopTransferResult.Failed("Couldn’t reach this device — check the local network");
+        }
+
+        TlsSocketConnection? connectedSocket = null;
+        string? connectedHost = null;
+        int connectedPort = 0;
+        try
+        {
+            var client = new TlsSocketClient();
+            foreach (LanEndpoint endpoint in endpointsToTry)
+            {
+                interaction.OnStatus(
+                    DesktopTransferDirection.Send,
+                    $"Connecting to {enrolledPeer.DisplayName} ({endpoint.Address}:{endpoint.Port})...");
+
+                try
+                {
+                    connectedSocket = await client.ConnectAsync(
+                        endpoint.Address,
+                        endpoint.Port,
+                        expectedSpkiSha256: null,
+                        cancellationToken);
+                    connectedHost = endpoint.Address;
+                    connectedPort = endpoint.Port;
+                    break;
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // Try next candidate endpoint
+                }
+            }
+
+            if (connectedSocket == null)
+            {
+                interaction.OnStatus(
+                    DesktopTransferDirection.Send,
+                    "Couldn’t reach this device — check the local network");
+                return DesktopTransferResult.Failed("Couldn’t reach this device — check the local network");
+            }
+
+            await using TlsSocketConnection connection = connectedSocket;
+
+            await LanSessionPreambleInspector.WriteGld2PreambleAsync(
+                connection.TransportStream,
+                cancellationToken);
+
+            SessionId sessionId = NewSessionId();
+            string localName = string.IsNullOrWhiteSpace(request.LocalDeviceName)
+                ? Environment.MachineName
+                : request.LocalDeviceName;
+
+            var open = new Profile2Message.SessionOpen(
+                SessionId: sessionId.Value,
+                Purpose: Profile2Constants.PurposeTrustedSend,
+                AuthMethod: Profile2Constants.AuthMethodIdentityV1,
+                InitiatorNonce: InvitationCodec.ToUnpaddedBase64Url(RandomNumberGenerator.GetBytes(32)),
+                InitiatorDeviceName: localName,
+                InitiatorPlatform: GetLocalPlatformString(),
+                InitiatorIdentityPublicKey: InvitationCodec.ToUnpaddedBase64Url(request.TrustManager.LocalPublicKeyDer()),
+                ExpectedPresenceId: request.ExpectedPresenceId);
+
+            await Profile2WireCodec.WriteMessageAsync(
+                connection.TransportStream,
+                open,
+                cancellationToken);
+
+            Profile2Message ackRaw = await Profile2WireCodec.ReadMessageAsync(
+                connection.TransportStream,
+                cancellationToken);
+
+            if (ackRaw is not Profile2Message.SessionOpenAck ack ||
+                !string.Equals(ack.SessionId, sessionId.Value, StringComparison.Ordinal))
+            {
+                return DesktopTransferResult.Failed("Identity changed — pair again");
+            }
+
+            if (!ack.Accepted)
+            {
+                string mapped = ack.ErrorCode switch
+                {
+                    Profile2Constants.ErrorBusy => "This device is busy — try again",
+                    Profile2Constants.ErrorIdentityChanged or
+                    Profile2Constants.ErrorUntrustedPeer or
+                    Profile2Constants.ErrorAuthFailed => "Identity changed — pair again",
+                    Profile2Constants.ErrorExpired => "Code expired — get a new code",
+                    _ => Glide.Transport.Pairing.Profile2PairingEngine.MapErrorToUserCopy(
+                        ack.ErrorCode,
+                        enrolledPeer.DisplayName,
+                        ack.Message)
+                };
+                interaction.OnStatus(DesktopTransferDirection.Send, mapped);
+                return DesktopTransferResult.Failed(mapped);
+            }
+
+            byte[] responderSpki = InvitationCodec.FromUnpaddedBase64Url(ack.ResponderIdentityPublicKey ?? string.Empty);
+            string responderFp = Convert.ToHexStringLower(SHA256.HashData(responderSpki));
+            string responderPubHex = Convert.ToHexStringLower(responderSpki);
+
+            if (!string.Equals(responderFp, enrolledPeer.FingerprintHex, StringComparison.Ordinal) ||
+                !string.Equals(responderPubHex, enrolledPeer.PublicKeyDerHex, StringComparison.Ordinal))
+            {
+                interaction.OnStatus(DesktopTransferDirection.Send, "Identity changed — pair again");
+                return DesktopTransferResult.Failed("Identity changed — pair again");
+            }
+
+            DesktopTransferResult result = await RunSenderSessionAsync(
+                connection,
+                request,
+                totalBytes,
+                interaction,
+                cancellationToken,
+                hostedInvitationAuthority: null,
+                preEstablishedTrustedSessionId: sessionId,
+                trustedPeerFallbackName: ack.ResponderDeviceName ?? enrolledPeer.DisplayName);
+
+            if (connectedHost != null)
+            {
+                request.TrustManager.EnrollVerifiedPeer(
+                    new VerifiedDesktopPeerIdentity(
+                        enrolledPeer.FingerprintHex,
+                        enrolledPeer.PublicKeyDerHex,
+                        ack.ResponderDeviceName ?? enrolledPeer.DisplayName,
+                        ack.ResponderPlatform ?? enrolledPeer.Platform,
+                        connectedHost,
+                        connectedPort),
+                    userApproved: true);
+            }
+
+            return result;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            interaction.OnStatus(DesktopTransferDirection.Send, "Transfer cancelled.");
+            return DesktopTransferResult.CancelledByUser("Transfer cancelled.");
+        }
+        catch (CryptographicException)
+        {
+            interaction.OnStatus(DesktopTransferDirection.Send, "Identity changed — pair again");
+            return DesktopTransferResult.Failed("Identity changed — pair again");
+        }
+        catch (ProtocolViolationException ex) when (string.Equals(ex.FailureCode, WireErrorCodes.AuthenticationFailed, StringComparison.Ordinal))
+        {
+            interaction.OnStatus(DesktopTransferDirection.Send, "Identity changed — pair again");
+            return DesktopTransferResult.Failed("Identity changed — pair again");
+        }
+        catch (Exception ex)
+        {
+            interaction.OnStatus(DesktopTransferDirection.Send, $"Send failed: {ex.Message}");
+            return DesktopTransferResult.Failed($"Send failed: {ex.Message}");
+        }
+    }
+
+    public async Task<DesktopTransferResult> ReceiveTrustedAsync(
+        TlsSocketConnection connection,
+        Profile2Message.SessionOpen open,
+        DesktopReceiveRequest request,
+        IDesktopTransferInteraction interaction,
+        bool isBusy = false,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        ArgumentNullException.ThrowIfNull(open);
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(interaction);
+
+        string localName = string.IsNullOrWhiteSpace(request.LocalDeviceName)
+            ? Environment.MachineName
+            : request.LocalDeviceName;
+
+        try
+        {
+            if (!string.Equals(open.Purpose, Profile2Constants.PurposeTrustedSend, StringComparison.Ordinal))
+            {
+                await Profile2WireCodec.WriteMessageAsync(
+                    connection.TransportStream,
+                    new Profile2Message.SessionOpenAck(
+                        SessionId: open.SessionId,
+                        Accepted: false,
+                        ErrorCode: Profile2Constants.ErrorProtocolOrder,
+                        Message: "Invalid session purpose for TRUSTED_SEND",
+                        ResponderDeviceName: localName),
+                    cancellationToken);
+                return DesktopTransferResult.Failed("Invalid session purpose for TRUSTED_SEND.");
+            }
+
+            if (isBusy)
+            {
+                await Profile2WireCodec.WriteMessageAsync(
+                    connection.TransportStream,
+                    new Profile2Message.SessionOpenAck(
+                        SessionId: open.SessionId,
+                        Accepted: false,
+                        ErrorCode: Profile2Constants.ErrorBusy,
+                        Message: "This device is busy — try again",
+                        ResponderDeviceName: localName),
+                    cancellationToken);
+                return DesktopTransferResult.RejectedByPeer("This device is busy — try again");
+            }
+
+            if (!string.Equals(open.AuthMethod, Profile2Constants.AuthMethodIdentityV1, StringComparison.Ordinal))
+            {
+                await Profile2WireCodec.WriteMessageAsync(
+                    connection.TransportStream,
+                    new Profile2Message.SessionOpenAck(
+                        SessionId: open.SessionId,
+                        Accepted: false,
+                        ErrorCode: Profile2Constants.ErrorUnsupportedVersion,
+                        Message: "Update Glide to pair this device",
+                        ResponderDeviceName: localName),
+                    cancellationToken);
+                return DesktopTransferResult.RejectedByPeer("Unsupported trusted send authentication method.");
+            }
+
+            if (request.TrustManager == null)
+            {
+                await Profile2WireCodec.WriteMessageAsync(
+                    connection.TransportStream,
+                    new Profile2Message.SessionOpenAck(
+                        SessionId: open.SessionId,
+                        Accepted: false,
+                        ErrorCode: Profile2Constants.ErrorUntrustedPeer,
+                        Message: "Identity changed — pair again",
+                        ResponderDeviceName: localName),
+                    cancellationToken);
+                return DesktopTransferResult.RejectedByPeer("Trusted reconnect requires a persistent trust manager.");
+            }
+
+            request.TrustManager.Initialize();
+
+            byte[] initiatorSpki;
+            try
+            {
+                initiatorSpki = InvitationCodec.FromUnpaddedBase64Url(open.InitiatorIdentityPublicKey);
+            }
+            catch
+            {
+                await Profile2WireCodec.WriteMessageAsync(
+                    connection.TransportStream,
+                    new Profile2Message.SessionOpenAck(
+                        SessionId: open.SessionId,
+                        Accepted: false,
+                        ErrorCode: Profile2Constants.ErrorAuthFailed,
+                        Message: "Identity changed — pair again",
+                        ResponderDeviceName: localName),
+                    cancellationToken);
+                return DesktopTransferResult.RejectedByPeer("Malformed initiator identity key.");
+            }
+
+            string initiatorFp = Convert.ToHexStringLower(SHA256.HashData(initiatorSpki));
+            string initiatorPubHex = Convert.ToHexStringLower(initiatorSpki);
+            DesktopTrustedPeer? enrolledSender = request.TrustManager.GetTrustedPeer(initiatorFp);
+
+            if (enrolledSender == null)
+            {
+                await Profile2WireCodec.WriteMessageAsync(
+                    connection.TransportStream,
+                    new Profile2Message.SessionOpenAck(
+                        SessionId: open.SessionId,
+                        Accepted: false,
+                        ErrorCode: Profile2Constants.ErrorUntrustedPeer,
+                        Message: "Identity changed — pair again",
+                        ResponderDeviceName: localName),
+                    cancellationToken);
+                return DesktopTransferResult.RejectedByPeer("Trusted reconnect rejected: sender is not enrolled.");
+            }
+
+            if (!string.Equals(enrolledSender.PublicKeyDerHex, initiatorPubHex, StringComparison.Ordinal))
+            {
+                await Profile2WireCodec.WriteMessageAsync(
+                    connection.TransportStream,
+                    new Profile2Message.SessionOpenAck(
+                        SessionId: open.SessionId,
+                        Accepted: false,
+                        ErrorCode: Profile2Constants.ErrorIdentityChanged,
+                        Message: "Identity changed — pair again",
+                        ResponderDeviceName: localName),
+                    cancellationToken);
+                return DesktopTransferResult.RejectedByPeer("Trusted reconnect rejected: sender identity key changed.");
+            }
+
+            await Profile2WireCodec.WriteMessageAsync(
+                connection.TransportStream,
+                new Profile2Message.SessionOpenAck(
+                    SessionId: open.SessionId,
+                    Accepted: true,
+                    ResponderNonce: InvitationCodec.ToUnpaddedBase64Url(RandomNumberGenerator.GetBytes(32)),
+                    ResponderDeviceName: localName,
+                    ResponderPlatform: GetLocalPlatformString(),
+                    ResponderIdentityPublicKey: InvitationCodec.ToUnpaddedBase64Url(request.TrustManager.LocalPublicKeyDer())),
+                cancellationToken);
+
+            DesktopReceiveRequest enforcedRequest = request with
+            {
+                ExpectedPeerFingerprintHex = enrolledSender.FingerprintHex
+            };
+
+            return await RunReceiverSessionAsync(
+                connection,
+                enforcedRequest,
+                interaction,
+                cancellationToken,
+                localEndpointHostsTls: true,
+                preEstablishedTrustedSessionId: new SessionId(open.SessionId));
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            interaction.OnStatus(DesktopTransferDirection.Receive, "Transfer cancelled.");
+            return DesktopTransferResult.CancelledByUser("Transfer cancelled.");
+        }
+        catch (Exception ex)
+        {
+            interaction.OnStatus(DesktopTransferDirection.Receive, $"Receive failed: {ex.Message}");
+            return DesktopTransferResult.Failed($"Receive failed: {ex.Message}");
+        }
+    }
+
+    private static string GetLocalPlatformString()
+    {
+        if (OperatingSystem.IsWindows()) return "windows";
+        if (OperatingSystem.IsLinux()) return "linux";
+        if (OperatingSystem.IsMacOS()) return "macos";
+        return "unknown";
+    }
+
     private static async Task<DesktopTransferResult> RunSenderSessionAsync(
         TlsSocketConnection connection,
         DesktopSendRequest request,
         long totalBytes,
         IDesktopTransferInteraction interaction,
         CancellationToken cancellationToken,
-        LanInvitationAuthority? hostedInvitationAuthority = null)
+        LanInvitationAuthority? hostedInvitationAuthority = null,
+        SessionId? preEstablishedTrustedSessionId = null,
+        string? trustedPeerFallbackName = null)
     {
         await using var channel =
-            new LanRecordChannel(connection.SslStream);
+            new LanRecordChannel(connection.TransportStream);
         var sequence = new DesktopControlSequence();
         SessionId sessionId;
 
-        LanInvitation invitation = request.Invitation
-            ?? throw new InvalidOperationException(
-                "Authenticated pairing invitation is required.");
-
-        LanBootstrapResult bootstrapResult;
-        if (hostedInvitationAuthority == null)
+        if (preEstablishedTrustedSessionId is { } trustedSessionId)
         {
-            sessionId = NewSessionId();
-            var bootstrap = new LanBootstrapMessage(
-                invitationId: invitation.InvitationId,
-                token: invitation.Token,
-                invitationHash: invitation.InvitationHash,
-                sessionId: sessionId.Value,
-                role: LanBootstrapMessage.RoleSender);
-
-            await channel.WriteBootstrapAsync(bootstrap, cancellationToken);
-            bootstrapResult = await DesktopControlSequence.ReadBootstrapResultAsync(
-                channel,
-                cancellationToken);
+            sessionId = trustedSessionId;
         }
         else
         {
-            LanRecord? firstRecord = await DesktopControlSequence.ReadRecordAsync(
-                channel,
-                cancellationToken);
-            if (firstRecord is not LanRecord.Bootstrap bootstrapRecord)
+            LanInvitation invitation = request.Invitation
+                ?? throw new InvalidOperationException(
+                    "Authenticated pairing invitation is required.");
+
+            LanBootstrapResult bootstrapResult;
+            if (hostedInvitationAuthority == null)
             {
-                throw new ProtocolViolationException(
-                    WireErrorCodes.ProtocolOrder,
-                    "Authenticated BOOTSTRAP must be the first LAN record.");
+                sessionId = NewSessionId();
+                var bootstrap = new LanBootstrapMessage(
+                    invitationId: invitation.InvitationId,
+                    token: invitation.Token,
+                    invitationHash: invitation.InvitationHash,
+                    sessionId: sessionId.Value,
+                    role: LanBootstrapMessage.RoleSender);
+
+                await channel.WriteBootstrapAsync(bootstrap, cancellationToken);
+                bootstrapResult = await DesktopControlSequence.ReadBootstrapResultAsync(
+                    channel,
+                    cancellationToken);
+            }
+            else
+            {
+                LanRecord? firstRecord = await DesktopControlSequence.ReadRecordAsync(
+                    channel,
+                    cancellationToken);
+                if (firstRecord is not LanRecord.Bootstrap bootstrapRecord)
+                {
+                    throw new ProtocolViolationException(
+                        WireErrorCodes.ProtocolOrder,
+                        "Authenticated BOOTSTRAP must be the first LAN record.");
+                }
+
+                LanBootstrapMessage bootstrap = LanBootstrapCodec.DecodeBootstrap(
+                    bootstrapRecord.JsonBytes);
+                bootstrapResult = hostedInvitationAuthority.Consume(
+                    bootstrap,
+                    LanBootstrapMessage.RoleReceiver);
+                await channel.WriteBootstrapResultAsync(bootstrapResult, cancellationToken);
+                if (!bootstrapResult.IsAccepted)
+                {
+                    return DesktopTransferResult.RejectedByPeer(
+                        $"Pairing bootstrap rejected: {bootstrapResult.Code}");
+                }
+
+                sessionId = new SessionId(bootstrap.SessionId);
             }
 
-            LanBootstrapMessage bootstrap = LanBootstrapCodec.DecodeBootstrap(
-                bootstrapRecord.JsonBytes);
-            bootstrapResult = hostedInvitationAuthority.Consume(
-                bootstrap,
-                LanBootstrapMessage.RoleReceiver);
-            await channel.WriteBootstrapResultAsync(bootstrapResult, cancellationToken);
             if (!bootstrapResult.IsAccepted)
             {
                 return DesktopTransferResult.RejectedByPeer(
-                    $"Pairing bootstrap rejected: {bootstrapResult.Code}");
+                    $"Pairing bootstrap rejected by peer: {bootstrapResult.Code}");
             }
 
-            sessionId = new SessionId(bootstrap.SessionId);
-        }
+            if (!string.Equals(
+                    bootstrapResult.SessionId,
+                    sessionId.Value,
+                    StringComparison.Ordinal))
+            {
+                throw new ProtocolViolationException(
+                    WireErrorCodes.AuthenticationFailed,
+                    "Accepted bootstrap returned a different sessionId.");
+            }
 
-        if (!bootstrapResult.IsAccepted)
-        {
-            return DesktopTransferResult.RejectedByPeer(
-                $"Pairing bootstrap rejected by peer: {bootstrapResult.Code}");
+            interaction.OnInvitationConsumed(
+                DesktopTransferDirection.Send);
         }
-
-        if (!string.Equals(
-                bootstrapResult.SessionId,
-                sessionId.Value,
-                StringComparison.Ordinal))
-        {
-            throw new ProtocolViolationException(
-                WireErrorCodes.AuthenticationFailed,
-                "Accepted bootstrap returned a different sessionId.");
-        }
-
-        interaction.OnInvitationConsumed(
-            DesktopTransferDirection.Send);
 
         string localName =
             string.IsNullOrWhiteSpace(request.LocalDeviceName)
@@ -534,7 +961,9 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
 
         string peerName =
             helloAck.Body["displayName"]?.ToString()
-            ?? invitation.Name;
+            ?? trustedPeerFallbackName
+            ?? request.Invitation?.Name
+            ?? "Remote Peer";
         interaction.OnPeerIdentified(
             DesktopTransferDirection.Send,
             peerName);
@@ -956,16 +1385,21 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
         DesktopReceiveRequest request,
         IDesktopTransferInteraction interaction,
         CancellationToken cancellationToken,
-        bool localEndpointHostsTls = true)
+        bool localEndpointHostsTls = true,
+        SessionId? preEstablishedTrustedSessionId = null)
     {
         await using var channel =
-            new LanRecordChannel(connection.SslStream);
+            new LanRecordChannel(connection.TransportStream);
 
         LanBootstrapResult bootstrapResult;
         SessionId sessionId;
         var sequence = new DesktopControlSequence();
 
-        if (localEndpointHostsTls)
+        if (preEstablishedTrustedSessionId is { } trustedSessionId)
+        {
+            sessionId = trustedSessionId;
+        }
+        else if (localEndpointHostsTls)
         {
             if (request.InvitationAuthority == null)
             {
@@ -1045,8 +1479,11 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
 
         try
         {
-            interaction.OnInvitationConsumed(
-                DesktopTransferDirection.Receive);
+            if (preEstablishedTrustedSessionId == null)
+            {
+                interaction.OnInvitationConsumed(
+                    DesktopTransferDirection.Receive);
+            }
 
             Envelope hello =
                 await sequence.ReadExpectedAsync(

@@ -93,7 +93,9 @@ internal static class DesktopTrustedSessionAuthenticator
                 channelBinding,
                 negotiatedCapabilities,
                 expectedPeerFingerprintHex,
-                peerDisplayName);
+                peerDisplayName,
+                connection,
+                localEndpointHostsTls);
 
         DesktopAuthenticatedPeer authenticated =
             await FinalizeVerifiedPeerAsync(
@@ -249,7 +251,9 @@ internal static class DesktopTrustedSessionAuthenticator
                 channelBinding,
                 negotiatedCapabilities,
                 expectedSigner,
-                peerDisplayName);
+                peerDisplayName,
+                connection,
+                localEndpointHostsTls);
 
         if (!string.Equals(
                 peer.FingerprintHex,
@@ -357,14 +361,16 @@ internal static class DesktopTrustedSessionAuthenticator
         string channelBinding,
         IReadOnlyCollection<string> negotiatedCapabilities,
         string? expectedSignerFingerprint,
-        string displayName)
+        string displayName,
+        TlsSocketConnection connection,
+        bool localEndpointHostsTls)
     {
         string challengeNonce =
             RequireChallengeField(
                 challenge,
                 "challengeNonceHex");
 
-        return DesktopIdentityProofVerifier.Verify(
+        VerifiedDesktopPeerIdentity verified = DesktopIdentityProofVerifier.Verify(
             new DesktopIdentityProofContext(
                 sessionId.Value,
                 challenge.MessageId.Value,
@@ -388,6 +394,23 @@ internal static class DesktopTrustedSessionAuthenticator
             response.Body["signatureHex"]?.ToString()
                 ?? string.Empty,
             displayName);
+
+        if (connection.TcpClient.Client.RemoteEndPoint is System.Net.IPEndPoint remoteEp)
+        {
+            string host = remoteEp.Address.ToString();
+            int port = localEndpointHostsTls
+                ? Glide.Transport.Discovery.LanDiscoveryConstants.DefaultPort
+                : remoteEp.Port;
+            return new VerifiedDesktopPeerIdentity(
+                verified.FingerprintHex,
+                verified.PublicKeyDerHex,
+                verified.DisplayName,
+                verified.Platform,
+                lastKnownHost: host,
+                lastKnownPort: port);
+        }
+
+        return verified;
     }
 
     private static void ValidateChallenge(

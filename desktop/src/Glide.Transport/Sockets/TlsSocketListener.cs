@@ -11,6 +11,7 @@ public sealed class TlsSocketConnection : IAsyncDisposable
 {
     public TcpClient TcpClient { get; }
     public SslStream SslStream { get; }
+    public Stream TransportStream { get; private set; }
     public byte[] LocalPublicKeyBytes { get; }
     public byte[] RemotePublicKeyBytes { get; }
     public string? LocalSpkiSha256 { get; }
@@ -26,10 +27,17 @@ public sealed class TlsSocketConnection : IAsyncDisposable
     {
         TcpClient = tcpClient;
         SslStream = sslStream;
+        TransportStream = sslStream;
         LocalPublicKeyBytes = localPublicKeyBytes;
         RemotePublicKeyBytes = remotePublicKeyBytes;
         LocalSpkiSha256 = localSpkiSha256;
         RemoteSpkiSha256 = remoteSpkiSha256;
+    }
+
+    public void PrependBytes(ReadOnlySpan<byte> prefix)
+    {
+        if (prefix.IsEmpty) return;
+        TransportStream = new Framing.PrefixedStream(TransportStream, prefix, leaveInnerOpen: true);
     }
 
     public async ValueTask DisposeAsync()

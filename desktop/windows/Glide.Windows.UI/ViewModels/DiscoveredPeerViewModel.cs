@@ -13,7 +13,9 @@ public sealed class DiscoveredPeerViewModel : ViewModelBase
     public string PresenceId => Peer.PresenceId;
     public string DeviceType => Peer.DeviceType;
     public string EndpointText => $"{Peer.Host}:{Peer.Port}";
-    public string CapabilitiesText => "Ready for secure pairing";
+    public string CapabilitiesText => "Available to pair";
+    public bool IsPairReady => Peer.IsPairReady;
+    public bool SupportsTrustedReconnect => Peer.SupportsTrustedReconnect;
 
     public DiscoveredPeerViewModel(DiscoveredPeer peer)
     {

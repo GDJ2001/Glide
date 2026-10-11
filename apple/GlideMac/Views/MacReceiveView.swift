@@ -1,6 +1,10 @@
 import SwiftUI
 import GlideCoreKit
 
+#if os(macOS)
+import AppKit
+#endif
+
 public struct MacReceiveView: View {
     @ObservedObject var viewModel: MacTransferViewModel
 
@@ -58,6 +62,14 @@ public struct MacReceiveView: View {
                         Text("Continuous Nearby Listener")
                             .font(.headline)
                         Spacer()
+                        Button("Copy receive link") {
+                            #if os(macOS)
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(viewModel.currentInvitationUri, forType: .string)
+                            #endif
+                        }
+                        .disabled(viewModel.currentInvitationUri.isEmpty)
+
                         Button(viewModel.isListening ? "Stop Listening" : "Start Listening") {
                             viewModel.toggleListener()
                         }

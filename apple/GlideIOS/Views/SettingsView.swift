@@ -1,4 +1,5 @@
 import SwiftUI
+import GlideCoreKit
 
 public struct SettingsView: View {
     @ObservedObject var viewModel: IosTransferViewModel
@@ -16,6 +17,37 @@ public struct SettingsView: View {
                         Spacer()
                         TextField("Name", text: $viewModel.deviceName)
                             .multilineTextAlignment(.trailing)
+                    }
+                }
+
+                Section(header: Text("Trusted Devices")) {
+                    if viewModel.trustedPeers.isEmpty {
+                        Text("No trusted devices saved yet.")
+                            .foregroundColor(.secondary)
+                    } else {
+                        ForEach(viewModel.trustedPeers, id: \.fingerprintHex) { peer in
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack {
+                                    Text(peer.displayName)
+                                        .fontWeight(.semibold)
+                                    Spacer()
+                                    Button("Revoke", role: .destructive) {
+                                        viewModel.revokeTrustedPeer(peer)
+                                    }
+                                    .buttonStyle(.borderless)
+                                }
+                                DisclosureGroup("Details") {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(peer.fingerprintHex)
+                                            .font(.system(.caption2, design: .monospaced))
+                                            .foregroundColor(.secondary)
+                                        Text("Last verified: \(Date(timeIntervalSince1970: Double(peer.lastSeenAtUnixMs) / 1000.0).formatted())")
+                                            .font(.caption2)
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -42,18 +74,15 @@ public struct SettingsView: View {
                     HStack {
                         Text("Glide Version")
                         Spacer()
-                        Text("1.0.0-ios (Native)")
-                            .foregroundColor(.secondary)
-                    }
-                    HStack {
-                        Text("Protocol")
-                        Spacer()
-                        Text("Profile 1 (LAN-TLS)")
+                        Text("1.0.0")
                             .foregroundColor(.secondary)
                     }
                 }
             }
             .navigationTitle("Settings")
+            .onAppear {
+                viewModel.refreshTrustedPeers()
+            }
         }
     }
 }

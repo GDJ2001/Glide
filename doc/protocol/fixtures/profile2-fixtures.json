@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "description": "Cross-platform golden fixtures for Glide Profile 1 compatibility and Profile 2 pair-only discovery, SPAKE2 transcript binding, and v2 QR/link invitations.",
+  "v1Compatibility": {
+    "validUri": "glide://pair/v1#eyJlbmRwb2ludHMiOlt7ImFkZHJlc3MiOiIxOTIuMTY4LjEuMTAiLCJwb3J0Ijo0MjQyNH1dLCJleHBpcmVzQXQiOiIxODkzNDU2MDAwIiwiaW52aXRhdGlvbklkIjoiNTUwZTg0MDAtZTI5Yi00MWQ0LWE3MTYtNDQ2NjU1NDQwMDAwIiwibmFtZSI6IkFsaWNlIFdpbmRvd3MgUEMiLCJwbGF0Zm9ybSI6IndpbmRvd3MiLCJwcmVzZW5jZSI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwicHJvZmlsZSI6MSwicHJvdG9jb2wiOjEsInNwa2lTaGEyNTYiOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1IiwidG9rZW4iOiJBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBIiwidHJhbnNwb3J0IjoibGFuLXRscyIsInR0bFNlY29uZHMiOjEyMCwidiI6MX0",
+    "expectedInvitationHash": "17ed6021f500beba78b7be24c48c8163c51f0430d5c44ec9c09e64c6c4960ab9",
+    "expectedInvitationId": "550e8400-e29b-41d4-a716-446655440000",
+    "expectedName": "Alice Windows PC",
+    "expectedPlatform": "windows",
+    "expectedPresence": "0123456789abcdef0123456789abcdef",
+    "expectedSpkiSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "expectedToken": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "expectedExpiresAt": "1893456000",
+    "expectedTtlSeconds": 120
+  },
+  "v2PairOnlyInvitation": {
+    "validUri": "glide://pair/v2#eyJlbmRwb2ludHMiOlt7ImFkZHJlc3MiOiIxOTIuMTY4LjEuMjUiLCJwb3J0Ijo0MjQyNH1dLCJleHBpcmVzQXQiOiIxODkzNDU2MDAwIiwiaW52aXRhdGlvbklkIjoiNjYwZTg0MDAtZTI5Yi00MWQ0LWE3MTYtNDQ2NjU1NDQwMDAxIiwibmFtZSI6Ik9mZmljZSBMaW51eCBXb3Jrc3RhdGlvbiIsInBsYXRmb3JtIjoibGludXgiLCJwcmVzZW5jZSI6ImZlZGNiYTk4NzY1NDMyMTBmZWRjYmE5ODc2NTQzMjEwIiwicHJvZmlsZSI6MiwicHJvdG9jb2wiOjEsInB1cnBvc2UiOiJwYWlyLW9ubHkiLCJzcGtpU2hhMjU2IjoiMDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZiIsInRva2VuIjoiQVFJREJBVUdCd2dKQ2dzTURRNFBFQkVTRXhRVkZoY1lHUm9iSEIwZUh5QSIsInRyYW5zcG9ydCI6Imxhbi10bHMiLCJ0dGxTZWNvbmRzIjoxMjAsInYiOjJ9",
+    "expectedInvitationHash": "f3553019ff1ec8656b6c05b5793503360097d6039d8be5eaf9ecfb7fc6ac1cf5",
+    "expectedInvitationId": "660e8400-e29b-41d4-a716-446655440001",
+    "expectedPurpose": "pair-only",
+    "expectedName": "Office Linux Workstation",
+    "expectedPlatform": "linux",
+    "expectedPresence": "fedcba9876543210fedcba9876543210",
+    "expectedSpkiSha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "expectedToken": "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA",
+    "expectedExpiresAt": "1893456000",
+    "expectedTtlSeconds": 120,
+    "invalidCases": [
+      {
+        "name": "duplicate_root_key",
+        "uri": "glide://pair/v2#eyJ2IjoyLCJ2IjoyLCJ0cmFuc3BvcnQiOiJsYW4tdGxzIiwicHJvZmlsZSI6MiwicHJvdG9jb2wiOjEsInB1cnBvc2UiOiJwYWlyLW9ubHkifQ"
+      },
+      {
+        "name": "unknown_root_key",
+        "uri": "glide://pair/v2#eyJlbmRwb2ludHMiOlt7ImFkZHJlc3MiOiIxOTIuMTY4LjEuMjUiLCJwb3J0Ijo0MjQyNH1dLCJleHBpcmVzQXQiOiIxODkzNDU2MDAwIiwiZXh0cmFGaWVsZCI6ImZvcmJpZGRlbiIsImludml0YXRpb25JZCI6IjY2MGU4NDAwLWUyOWItNDFkNC1hNzE2LTQ0NjY1NTQ0MDAwMSIsIm5hbWUiOiJPZmZpY2UgTGludXggV29ya3N0YXRpb24iLCJwbGF0Zm9ybSI6ImxpbnV4IiwicHJlc2VuY2UiOiJmZWRjYmE5ODc2NTQzMjEwZmVkY2JhOTg3NjU0MzIxMCIsInByb2ZpbGUiOjIsInByb3RvY29sIjoxLCJwdXJwb3NlIjoicGFpci1vbmx5Iiwic3BraVNoYTI1NiI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWYiLCJ0b2tlbiI6IkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkIiLCJ0cmFuc3BvcnQiOiJsYW4tdGxzIiwidHRsU2Vjb25kcyI6MTIwLCJ2IjoyfQ"
+      },
+      {
+        "name": "invalid_purpose",
+        "uri": "glide://pair/v2#eyJlbmRwb2ludHMiOlt7ImFkZHJlc3MiOiIxOTIuMTY4LjEuMjUiLCJwb3J0Ijo0MjQyNH1dLCJleHBpcmVzQXQiOiIxODkzNDU2MDAwIiwiaW52aXRhdGlvbklkIjoiNjYwZTg0MDAtZTI5Yi00MWQ0LWE3MTYtNDQ2NjU1NDQwMDAxIiwibmFtZSI6Ik9mZmljZSBMaW51eCBXb3Jrc3RhdGlvbiIsInBsYXRmb3JtIjoibGludXgiLCJwcmVzZW5jZSI6ImZlZGNiYTk4NzY1NDMyMTBmZWRjYmE5ODc2NTQzMjEwIiwicHJvZmlsZSI6MiwicHJvdG9jb2wiOjEsInB1cnBvc2UiOiJmaWxlLXRyYW5zZmVyIiwic3BraVNoYTI1NiI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWYiLCJ0b2tlbiI6IkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkIiLCJ0cmFuc3BvcnQiOiJsYW4tdGxzIiwidHRsU2Vjb25kcyI6MTIwLCJ2IjoyfQ"
+      },
+      {
+        "name": "non_canonical_token_base64url",
+        "uri": "glide://pair/v2#eyJlbmRwb2ludHMiOlt7ImFkZHJlc3MiOiIxOTIuMTY4LjEuMjUiLCJwb3J0Ijo0MjQyNH1dLCJleHBpcmVzQXQiOiIxODkzNDU2MDAwIiwiaW52aXRhdGlvbklkIjoiNjYwZTg0MDAtZTI5Yi00MWQ0LWE3MTYtNDQ2NjU1NDQwMDAxIiwibmFtZSI6Ik9mZmljZSBMaW51eCBXb3Jrc3RhdGlvbiIsInBsYXRmb3JtIjoibGludXgiLCJwcmVzZW5jZSI6ImZlZGNiYTk4NzY1NDMyMTBmZWRjYmE5ODc2NTQzMjEwIiwicHJvZmlsZSI6MiwicHJvdG9jb2wiOjEsInB1cnBvc2UiOiJwYWlyLW9ubHkiLCJzcGtpU2hhMjU2IjoiMDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZiIsInRva2VuIjoiQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQiIsInRyYW5zcG9ydCI6Imxhbi10bHMiLCJ0dGxTZWNvbmRzIjoxMjAsInYiOjJ9"
+      }
+    ]
+  },
+  "dnsSdTxtRecords": {
+    "readyToPairDesktop": {
+      "v": "1",
+      "tv": "1",
+      "q": "1",
+      "p": "fedcba9876543210fedcba9876543210",
+      "dn": "Office Linux Workstation",
+      "dt": "desktop",
+      "pair": "1",
+      "tr": "1"
+    },
+    "standbyTrustedReconnectDesktop": {
+      "v": "1",
+      "tv": "1",
+      "q": "1",
+      "p": "0123456789abcdef0123456789abcdef",
+      "dn": "Alice Windows PC",
+      "dt": "desktop",
+      "tr": "1"
+    },
+    "forbiddenKeys": ["spki", "pin", "token", "trust", "fp"]
+  },
+  "sessionDispatch": {
+    "gld2PreambleAscii": "GLD2",
+    "gld2PreambleHex": "474c4432",
+    "allowedPurposes": ["PAIR_ONLY", "TRUSTED_SEND"],
+    "rejectedPurposes": ["", "FILE_TRANSFER", "UNKNOWN", "pair_only"]
+  },
+  "pairV2Transcript": {
+    "method": "spake2-pin-v1",
+    "sessionId": "770e8400-e29b-41d4-a716-446655440002",
+    "initiatorRole": "initiator",
+    "responderRole": "responder",
+    "initiatorNonceHex": "1111111111111111111111111111111111111111111111111111111111111111",
+    "responderNonceHex": "2222222222222222222222222222222222222222222222222222222222222222",
+    "initiatorFingerprintHex": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "initiatorPublicKeyDerHex": "3059301306072a8648ce3d020106082a8648ce3d0301070342000411",
+    "responderFingerprintHex": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "responderPublicKeyDerHex": "3059301306072a8648ce3d020106082a8648ce3d0301070342000422",
+    "responderPresenceHex": "fedcba9876543210fedcba9876543210",
+    "tlsServerSpkiSha256Hex": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "purpose": "PAIR_ONLY",
+    "expectedTranscriptLength": 606,
+    "expectedTranscriptSha256Hex": "6f385fb559ce6dd373009745daca49fc7d8ef739559e6780e83db503555b3213"
+  }
+}

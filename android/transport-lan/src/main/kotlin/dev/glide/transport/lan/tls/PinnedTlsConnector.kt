@@ -54,7 +54,7 @@ class PinnedTlsConnector(
     fun connect(
         address: InetAddress,
         port: Int,
-        expectedSpkiSha256Hex: String,
+        expectedSpkiSha256Hex: String? = null,
         explicitSubnets: List<SubnetPrefix>? = null
     ): SSLSocket {
         // 1. Destination on-link validation (Section 11, Section 13)

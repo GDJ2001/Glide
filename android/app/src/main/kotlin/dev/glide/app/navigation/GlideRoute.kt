@@ -37,5 +37,6 @@ sealed interface GlideRoute : NavKey {
 @Serializable
 enum class QrScanPurpose {
     SEND_TO_RECEIVER,
-    RECEIVE_FROM_SENDER
+    RECEIVE_FROM_SENDER,
+    PAIR_ONLY
 }

@@ -281,6 +281,15 @@ fun QrScannerScreen(
                 onCancel = onCancelConfirmation
             )
         }
+        if (uiState is QrScannerUiState.PairOnlyConfirmationRequired) {
+            AlertDialog(
+                onDismissRequest = onCancelConfirmation,
+                title = { Text("Pair with ${uiState.invitation.name.isolateBidi()}") },
+                text = { Text("Both devices will ask for approval before pairing is saved.") },
+                confirmButton = { Button(onClick = onConfirmConnection) { Text("Continue") } },
+                dismissButton = { TextButton(onClick = onCancelConfirmation) { Text("Cancel") } }
+            )
+        }
 
         // Error Dialog
         if (uiState is QrScannerUiState.Error) {
@@ -310,6 +319,18 @@ fun QrScannerScreen(
                 ) {
                     CircularProgressIndicator()
                     Text("Connecting to ${uiState.invitation.name.isolateBidi()}")
+                }
+            }
+        }
+        if (uiState is QrScannerUiState.PairOnlyConnecting) {
+            Surface(modifier = Modifier.align(Alignment.Center).padding(24.dp),
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.surface) {
+                Column(modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    CircularProgressIndicator()
+                    Text("Verifying ${uiState.invitation.name.isolateBidi()}")
                 }
             }
         }

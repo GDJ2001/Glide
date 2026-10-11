@@ -25,9 +25,11 @@ public sealed class DesktopInvitationManager
     private void OnNetworkAddressChanged(object? sender, EventArgs e)
     {
         RevokeActive();
+        RevokeActivePairWindow();
     }
 
     public LanInvitation? ActiveInvitation { get; private set; }
+    public PairReadyWindowAuthority? ActivePairWindow { get; private set; }
     public LanInvitationAuthority Authority => _authority;
     public IDesktopNetworkSnapshotProvider SnapshotProvider => _snapshotProvider;
 
@@ -181,6 +183,59 @@ public sealed class DesktopInvitationManager
         LanInvitation canonical = _authority.Publish(invitation);
         ActiveInvitation = canonical;
         return canonical;
+    }
+
+    public PairReadyWindowAuthority CreatePairReadyWindow(
+        TlsSocketListener listener,
+        string deviceName,
+        int listeningPort,
+        TimeSpan? ttl = null,
+        string? fixedPinForTest = null)
+    {
+        ArgumentNullException.ThrowIfNull(listener);
+
+        byte[] spkiHashBytes = SHA256.HashData(
+            listener.ServerCertificate.PublicKey.ExportSubjectPublicKeyInfo());
+        string spkiSha256 = Convert.ToHexString(spkiHashBytes).ToLowerInvariant();
+
+        var readiness = AssessReadiness();
+        if (readiness.Status != DesktopInvitationReadinessStatus.Ready || readiness.CandidateAddresses.Count == 0)
+        {
+            throw new InvalidOperationException(
+                readiness.FailureReason ?? "No reachable local IPv4 address is available for a Glide pairing invitation.");
+        }
+
+        string presence = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
+        var endpoints = readiness.CandidateAddresses
+            .Select(ip => new LanEndpoint(ip, listeningPort))
+            .Take(LanInvitation.MaxEndpoints)
+            .ToList();
+
+        string platformName = OperatingSystem.IsWindows()
+            ? "windows"
+            : OperatingSystem.IsLinux()
+                ? "linux"
+                : OperatingSystem.IsMacOS()
+                    ? "macos"
+                    : "desktop";
+
+        RevokeActivePairWindow();
+        var window = new PairReadyWindowAuthority(
+            presenceId: presence,
+            deviceName: string.IsNullOrWhiteSpace(deviceName) ? Environment.MachineName : deviceName,
+            platform: platformName,
+            endpoints: endpoints,
+            serverSpkiSha256Hex: spkiSha256,
+            ttl: ttl,
+            fixedPinForTest: fixedPinForTest);
+        ActivePairWindow = window;
+        return window;
+    }
+
+    public void RevokeActivePairWindow()
+    {
+        ActivePairWindow?.Dispose();
+        ActivePairWindow = null;
     }
 
     public void RevokeActive()

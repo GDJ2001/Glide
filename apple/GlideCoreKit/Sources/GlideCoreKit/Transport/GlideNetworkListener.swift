@@ -24,8 +24,10 @@ public final class GlideNetworkListener: @unchecked Sendable {
     public func start(
         port: UInt16 = NetworkTransportConfig.defaultPort,
         bonjourName: String? = nil,
-        spkiSha256Hex: String? = nil,
         presenceTokenHex: String? = nil,
+        deviceType: String = BonjourService.deviceTypeDesktop,
+        isPairReady: Bool = false,
+        supportsTrustedReconnect: Bool = true,
         tlsIdentity: SecIdentity? = nil,
         onReady: ((UInt16) -> Void)? = nil,
         onFailure: ((Error) -> Void)? = nil,
@@ -49,12 +51,13 @@ public final class GlideNetworkListener: @unchecked Sendable {
         }
 
         if let name = bonjourName,
-           let spki = spkiSha256Hex,
            let presence = presenceTokenHex {
             let txtDict = BonjourService.buildTxtRecord(
                 name: name,
-                spkiSha256Hex: spki,
-                presenceTokenHex: presence
+                presenceTokenHex: presence,
+                deviceType: deviceType,
+                isPairReady: isPairReady,
+                supportsTrustedReconnect: supportsTrustedReconnect
             )
             let txtRecord = NWTXTRecord(txtDict)
             listener.service = NWListener.Service(

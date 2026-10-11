@@ -73,10 +73,28 @@ public static class LanDiscoveryConstants
     }
 }
 
+public enum LanDiscoveryDiagnosticStatus
+{
+    Healthy,
+    NoEligibleInterfaces,
+    MulticastBlocked
+}
+
+public sealed record LanDiscoveryDiagnostics(
+    LanDiscoveryDiagnosticStatus Status,
+    IReadOnlyList<string> ActiveInterfaceAddresses,
+    string? ErrorMessage = null)
+{
+    public bool IsHealthy => Status == LanDiscoveryDiagnosticStatus.Healthy;
+}
+
 public sealed record DiscoveredPeer(
     string DeviceName,
     string Host,
     int Port,
     string PresenceId,
-    string DeviceType = LanDiscoveryConstants.DeviceTypeUnknown
+    string DeviceType = LanDiscoveryConstants.DeviceTypeUnknown,
+    bool IsPairReady = false,
+    bool SupportsTrustedReconnect = false
 );
+

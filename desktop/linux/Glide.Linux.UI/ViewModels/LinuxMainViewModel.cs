@@ -10,6 +10,7 @@ using Glide.Core.Security;
 using Glide.Core.Storage;
 using Glide.Desktop;
 using Glide.Desktop.Network;
+using Glide.Desktop.Pairing;
 using Glide.Desktop.Services;
 using Glide.Linux.UI.Services;
 using Glide.Transport.Discovery;
@@ -29,6 +30,7 @@ public enum LinuxPage
 public enum SendMethod
 {
     QuickShareQr,
+    // Retained for settings compatibility; no longer exposed on Send.
     NearbyDevice,
     SavedDevice
 }
@@ -102,6 +104,7 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
     private readonly DesktopListenerSupervisor _listenerSupervisor = new();
     private DesktopListenerOwnership? _listenerOwner;
     private readonly DesktopInvitationManager _invitationManager;
+    private readonly DesktopPairingCoordinator _pairing;
     private readonly CancellationTokenSource _lifetimeCts = new();
     private readonly DesktopStateStore _stateStore;
     private readonly DesktopPersistentTrustManager? _trustManager;
@@ -116,17 +119,45 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
 
     private LinuxDiscoveredPeerViewModel? _selectedPeer;
     private DesktopTrustedPeer? _selectedTrustedPeer;
+    private string _pairPin = "";
+    private string _pairAddress = "";
+    private string _pairLink = "";
+    private Bitmap? _pairQrImage;
+    private bool _isPairQrVisible;
+
+    public DesktopPairingSnapshot Pairing => _pairing.Snapshot;
+    public bool IsPairIdle => Pairing.Phase == DesktopPairingPhase.Idle;
+    public bool IsPairEmpty => Pairing.Phase == DesktopPairingPhase.Empty;
+    public bool IsPairReady => Pairing.Phase == DesktopPairingPhase.TargetReady;
+    public bool IsPairApproval => Pairing.Phase == DesktopPairingPhase.TargetApproval;
+    public bool IsPairPinEntry => Pairing.Phase == DesktopPairingPhase.InitiatorPinEntry;
+    public bool IsPairManualEntry => Pairing.Phase == DesktopPairingPhase.ManualEntry;
+    public bool IsPairLinkEntry => Pairing.Phase == DesktopPairingPhase.UseLink;
+    public bool IsPairDiscovery => Pairing.Phase is DesktopPairingPhase.Scanning or DesktopPairingPhase.PeersFound or DesktopPairingPhase.Empty;
+    public bool IsPairVerifying => Pairing.Phase == DesktopPairingPhase.Verifying;
+    public bool IsPairSuccess => Pairing.Phase == DesktopPairingPhase.Success;
+    public bool IsPairFailed => Pairing.Phase == DesktopPairingPhase.Failed;
+    public bool IsPairResult => Pairing.Phase is DesktopPairingPhase.Success or DesktopPairingPhase.Failed or DesktopPairingPhase.Verifying;
+    public bool IsPairQrVisible { get => _isPairQrVisible; set => SetProperty(ref _isPairQrVisible, value); }
+    public string PairPin { get => _pairPin; set => SetProperty(ref _pairPin, value); }
+    public string PairAddress { get => _pairAddress; set => SetProperty(ref _pairAddress, value); }
+    public string PairLink { get => _pairLink; set => SetProperty(ref _pairLink, value); }
+    public Bitmap? PairQrImage { get => _pairQrImage; private set => SetProperty(ref _pairQrImage, value); }
 
     public DesktopTrustedPeer? SelectedTrustedPeer
     {
         get => _selectedTrustedPeer;
-        set => SetProperty(ref _selectedTrustedPeer, value);
+        set { if (SetProperty(ref _selectedTrustedPeer, value)) SendFilesCommand?.RaiseCanExecuteChanged(); }
     }
 
     public LinuxDiscoveredPeerViewModel? SelectedPeer
     {
         get => _selectedPeer;
-        set => SetProperty(ref _selectedPeer, value);
+        set
+        {
+            if (SetProperty(ref _selectedPeer, value) && value?.IsPairReady == true && IsPairDiscovery)
+                _pairing.SelectPeer(value.Peer);
+        }
     }
 
     public LinuxPage ActivePage
@@ -142,6 +173,7 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
                 OnPropertyChanged(nameof(IsPairActive));
                 OnPropertyChanged(nameof(IsActivityActive));
                 OnPropertyChanged(nameof(IsSettingsActive));
+                if (value != LinuxPage.Pair) _pairing.OnPageLeft();
             }
         }
     }
@@ -174,6 +206,7 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
                 OnPropertyChanged(nameof(IsQuickShareMethodSelected));
                 OnPropertyChanged(nameof(IsNearbyMethodSelected));
                 OnPropertyChanged(nameof(IsSavedMethodSelected));
+                SendFilesCommand?.RaiseCanExecuteChanged();
             }
         }
     }
@@ -540,6 +573,19 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
     public RelayCommand SelectSendMethodCommand { get; }
     public RelayCommand SelectActivityFilterCommand { get; }
     public RelayCommand SetThemeCommand { get; }
+    public RelayCommand FindPairDevicesCommand { get; }
+    public AsyncRelayCommand ReadyToPairCommand { get; }
+    public RelayCommand CancelPairCommand { get; }
+    public RelayCommand ChoosePairPeerCommand { get; }
+    public AsyncRelayCommand SubmitPairPinCommand { get; }
+    public RelayCommand ShowPairAddressCommand { get; }
+    public AsyncRelayCommand SubmitPairAddressCommand { get; }
+    public RelayCommand ShowPairLinkCommand { get; }
+    public AsyncRelayCommand SubmitPairLinkCommand { get; }
+    public RelayCommand ShowPairQrCommand { get; }
+    public RelayCommand PairRecoveryCommand { get; }
+    public RelayCommand ApprovePairCommand { get; }
+    public RelayCommand DeclinePairCommand { get; }
 
     public LinuxMainViewModel(
         DesktopStateStore? store = null,
@@ -602,6 +648,33 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
             _trustManager.Initialize();
             RefreshTrustedPeers();
         }
+        _pairing = new DesktopPairingCoordinator(
+            _trustManager, _invitationManager, _mdnsDiscovery, () => DeviceName,
+            EnsurePairListenerAsync, ReleasePairListener,
+            () => IsTransferActive || _runtime.IsBusy);
+        _pairing.Changed += snapshot => OnUi(() =>
+        {
+            if (snapshot.Phase is DesktopPairingPhase.Idle or DesktopPairingPhase.Success or DesktopPairingPhase.Failed)
+                PairPin = "";
+            if (snapshot.Phase != DesktopPairingPhase.TargetReady)
+                IsPairQrVisible = false;
+            PairQrImage?.Dispose();
+            PairQrImage = string.IsNullOrWhiteSpace(snapshot.QrUri) ? null : LinuxQrImageHelper.Create(snapshot.QrUri);
+            OnPropertyChanged(nameof(Pairing));
+            OnPropertyChanged(nameof(IsPairIdle));
+            OnPropertyChanged(nameof(IsPairEmpty));
+            OnPropertyChanged(nameof(IsPairReady));
+            OnPropertyChanged(nameof(IsPairApproval));
+            OnPropertyChanged(nameof(IsPairPinEntry));
+            OnPropertyChanged(nameof(IsPairManualEntry));
+            OnPropertyChanged(nameof(IsPairLinkEntry));
+            OnPropertyChanged(nameof(IsPairDiscovery));
+            OnPropertyChanged(nameof(IsPairVerifying));
+            OnPropertyChanged(nameof(IsPairSuccess));
+            OnPropertyChanged(nameof(IsPairFailed));
+            OnPropertyChanged(nameof(IsPairResult));
+        });
+        _pairing.PeerPaired += _ => OnUi(RefreshTrustedPeers);
         DesktopPersistentState persisted = _stateStore.Load();
         _downloadDirectory = persisted.Settings.ReceiveDirectory;
         _listeningPort = persisted.Settings.ListenerPort;
@@ -612,6 +685,29 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
         {
             if (p is string tab) CurrentTab = tab;
         });
+        FindPairDevicesCommand = new RelayCommand(() => _pairing.BeginFindDevices());
+        ReadyToPairCommand = new AsyncRelayCommand(() => _pairing.StartReadyAsync(_lifetimeCts.Token));
+        CancelPairCommand = new RelayCommand(() => _pairing.Cancel());
+        ChoosePairPeerCommand = new RelayCommand(p =>
+        {
+            if (p is LinuxDiscoveredPeerViewModel peer && peer.IsPairReady)
+                _pairing.SelectPeer(peer.Peer);
+        });
+        SubmitPairPinCommand = new AsyncRelayCommand(() => _pairing.PairWithSelectedPeerAsync(PairPin));
+        ShowPairAddressCommand = new RelayCommand(() => _pairing.ShowManualEntry());
+        SubmitPairAddressCommand = new AsyncRelayCommand(() => _pairing.PairWithAddressAsync(PairAddress, PairPin));
+        ShowPairLinkCommand = new RelayCommand(() => _pairing.ShowLinkEntry());
+        SubmitPairLinkCommand = new AsyncRelayCommand(() => _pairing.PairWithLinkAsync(PairLink));
+        ShowPairQrCommand = new RelayCommand(() => IsPairQrVisible = !IsPairQrVisible);
+        PairRecoveryCommand = new RelayCommand(() =>
+        {
+            if (string.Equals(Pairing.RecoveryAction, "Get a new code", StringComparison.Ordinal))
+                _ = _pairing.StartReadyAsync(_lifetimeCts.Token);
+            else
+                _pairing.BeginFindDevices();
+        });
+        ApprovePairCommand = new RelayCommand(() => _pairing.Approve());
+        DeclinePairCommand = new RelayCommand(() => _pairing.DeclineApproval());
 
         RemoveStagedItemCommand = new RelayCommand(p =>
         {
@@ -628,7 +724,8 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
         });
 
         SendFilesCommand = new AsyncRelayCommand(ExecuteSendAsync,
-            () => StagedItems.Count > 0 && !IsTransferActive && !string.IsNullOrWhiteSpace(InvitationInput));
+            () => StagedItems.Count > 0 && !IsTransferActive &&
+                (SelectedSendMethod == SendMethod.SavedDevice ? SelectedTrustedPeer != null : !string.IsNullOrWhiteSpace(InvitationInput)));
         ReceiveFromInvitationCommand = new AsyncRelayCommand(ExecuteReceiveFromInvitationAsync, () => !string.IsNullOrWhiteSpace(InvitationInput) && !IsTransferActive);
         ToggleListenerCommand = new AsyncRelayCommand(ExecuteToggleListenerAsync);
         CancelTransferCommand = new RelayCommand(ExecuteCancelTransfer);
@@ -806,10 +903,17 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
                 OnUi(() =>
                 {
                     var existing = DiscoveredPeers.FirstOrDefault(p => p.Host == peer.Host && p.Port == peer.Port);
-                    if (existing == null)
-                        DiscoveredPeers.Add(new LinuxDiscoveredPeerViewModel(peer));
+                    if (existing != null) DiscoveredPeers.Remove(existing);
+                    DiscoveredPeers.Add(new LinuxDiscoveredPeerViewModel(peer));
+                    _pairing.NotifyPeerCount(DiscoveredPeers.Count(p => p.IsPairReady));
                 });
             };
+            _mdnsDiscovery.PeerLost += peer => OnUi(() =>
+            {
+                var existing = DiscoveredPeers.FirstOrDefault(p => p.Host == peer.Host && p.Port == peer.Port);
+                if (existing != null) DiscoveredPeers.Remove(existing);
+                _pairing.NotifyPeerCount(DiscoveredPeers.Count(p => p.IsPairReady));
+            });
             _mdnsDiscovery.Start(enableBrowsing: true);
         }
         catch
@@ -840,6 +944,52 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
         }
 
         var destination = SelectedPeer;
+        if (SelectedSendMethod == SendMethod.SavedDevice)
+        {
+            if (SelectedTrustedPeer == null || _trustManager == null)
+            {
+                StatusMessage = "Choose a paired device to send to.";
+                return;
+            }
+
+            IsTransferActive = true;
+            TransferTitle = $"Connecting to {SelectedTrustedPeer.DisplayName}…";
+            TransferProgressFraction = 0;
+            _rateCalculator.Reset();
+            _activeTransferCts = new CancellationTokenSource();
+            try
+            {
+                var peer = SelectedTrustedPeer;
+                var matches = DiscoveredPeers.Where(p =>
+                    p.SupportsTrustedReconnect &&
+                    string.Equals(p.DisplayName, peer.DisplayName, StringComparison.Ordinal) &&
+                    !string.IsNullOrWhiteSpace(p.Host))
+                    .Select(p => new LanEndpoint(p.Host, p.Port)).ToList();
+                var request = new DesktopSendRequest(
+                    Host: peer.LastKnownHost ?? "",
+                    Port: peer.LastKnownPort ?? 0,
+                    Files: prep.Files,
+                    LocalDeviceName: DeviceName,
+                    TrustManager: _trustManager,
+                    ExpectedPeerFingerprintHex: peer.FingerprintHex,
+                    CandidateEndpoints: matches.Count > 0 ? matches : null);
+                DesktopTransferResult result = await _runtime.SendTrustedAsync(request, this, _activeTransferCts.Token);
+                StatusMessage = result.Message;
+                if (result.Success)
+                {
+                    StagedItems.Clear();
+                    NotifyStagingChanged();
+                    RefreshTrustedPeers();
+                }
+            }
+            finally
+            {
+                IsTransferActive = false;
+                _activeTransferCts.Dispose();
+                _activeTransferCts = null;
+            }
+            return;
+        }
         if (string.IsNullOrWhiteSpace(InvitationInput))
         {
             StatusMessage = "Open Receive on the other device and paste its current pairing link. Nearby discovery alone does not authenticate a device.";
@@ -1036,10 +1186,13 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
     {
         if (IsListening)
         {
-            await _listenerSupervisor.StopAsync();
-            _listenerOwner?.Dispose();
-            _listenerOwner = null;
-            _mdnsDiscovery.StopAdvertising();
+            if (!_pairing.IsReadyWindowActive)
+            {
+                await _listenerSupervisor.StopAsync();
+                _listenerOwner?.Dispose();
+                _listenerOwner = null;
+                _mdnsDiscovery.StopAdvertising();
+            }
             _invitationManager.RevokeActive();
             CurrentInvitationUri = "";
             ConnectionDetailsText = "";
@@ -1057,27 +1210,36 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
 
             try
             {
-                if (OperatingSystem.IsLinux())
-                {
-                    _listenerOwner = DesktopListenerOwnership.AcquireLinux();
-                }
                 await Task.Run(() =>
                 {
                     var store = new QuarantineStagingStore(destinationRoot: DownloadDirectory);
                     store.PurgeAbandonedCommitFiles();
                     store.PurgeAbandonedQuarantineSessions();
                 }, _lifetimeCts.Token);
-                int boundPort = _listenerSupervisor.Start(ListeningPort);
+                int boundPort;
+                if (_listenerSupervisor.Listener != null)
+                {
+                    boundPort = _listenerSupervisor.BoundPort;
+                }
+                else
+                {
+                    if (OperatingSystem.IsLinux())
+                        _listenerOwner = DesktopListenerOwnership.AcquireLinux();
+                    boundPort = _listenerSupervisor.Start(ListeningPort);
+                    _listenerSupervisor.StartListenerLoop(
+                        HandleIncomingConnectionAsync, _lifetimeCts.Token,
+                        HandleProfile2ConnectionAsync);
+                }
                 ListeningPort = boundPort;
                 RefreshInvitation();
-                _listenerSupervisor.StartListenerLoop(HandleIncomingConnectionAsync, _lifetimeCts.Token);
                 _listenerSupervisor.StartInvitationRotation(
                     TimeSpan.FromSeconds(105),
                     _ => Dispatcher.UIThread.InvokeAsync(() =>
                     {
                         // Do not revoke a token during bootstrap or an active
                         // authenticated session. Completion creates a new link.
-                        if (!IsTransferActive) RefreshInvitation(announceReady: false);
+                        if (!IsTransferActive && !_pairing.IsReadyWindowActive)
+                            RefreshInvitation(announceReady: false);
                     }).GetTask(),
                     _lifetimeCts.Token);
                 IsListening = true;
@@ -1106,6 +1268,7 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
     {
         OnUi(() =>
         {
+            if (_pairing.IsReadyWindowActive) _pairing.Cancel();
             RefreshNetworkReadiness();
             if (IsListening)
             {
@@ -1155,7 +1318,7 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
             var invitation = _invitationManager.CreateReceiverInvitation(listener, DeviceName, listener.BoundPort);
             CurrentInvitationUri = DesktopInvitationManager.EncodeInvitation(invitation);
             ConnectionDetailsText = $"Available on {string.Join(", ", invitation.Endpoints.Select(e => $"{e.Address}:{e.Port}"))}";
-            _mdnsDiscovery.StartAdvertising(DeviceName, listener.BoundPort, invitation.Presence);
+            _mdnsDiscovery.StartAdvertising(DeviceName, listener.BoundPort, _pairing.ActiveWindowPresenceId ?? invitation.Presence, pairReady: _pairing.IsReadyWindowActive, trustedReconnectSupported: true);
             if (_hostedSendRequest != null)
                 _hostedSendRequest = _hostedSendRequest with { Invitation = invitation };
             if (announceReady)
@@ -1173,6 +1336,11 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
 
     private async Task HandleIncomingConnectionAsync(TlsSocketConnection connection, CancellationToken cancellationToken)
     {
+        if (!IsListening && _hostedSendRequest == null)
+        {
+            await connection.DisposeAsync();
+            return;
+        }
         await using (connection)
         {
             DesktopSendRequest? hosted = _hostedSendRequest;
@@ -1225,6 +1393,72 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
                 // RefreshInvitation updates StatusMessage with link guidance, which used
                 // to hide the actual transfer failure before it could be inspected.
                 StatusMessage = result.Message;
+            });
+        }
+    }
+
+    private Task<TlsSocketListener> EnsurePairListenerAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_listenerSupervisor.Listener is { } existing) return Task.FromResult(existing);
+        if (OperatingSystem.IsLinux()) _listenerOwner = DesktopListenerOwnership.AcquireLinux();
+        try
+        {
+            int boundPort = _listenerSupervisor.Start(ListeningPort);
+            ListeningPort = boundPort;
+            _listenerSupervisor.StartListenerLoop(
+                HandleIncomingConnectionAsync, _lifetimeCts.Token,
+                HandleProfile2ConnectionAsync);
+            return Task.FromResult(_listenerSupervisor.Listener!);
+        }
+        catch
+        {
+            _listenerOwner?.Dispose();
+            _listenerOwner = null;
+            throw;
+        }
+    }
+
+    private void ReleasePairListener()
+    {
+        if (IsListening)
+        {
+            OnUi(() => RefreshInvitation(announceReady: false));
+            return;
+        }
+        _listenerSupervisor.Stop();
+        _listenerOwner?.Dispose();
+        _listenerOwner = null;
+        _mdnsDiscovery.StopAdvertising();
+    }
+
+    private Task HandleProfile2ConnectionAsync(TlsSocketConnection connection, CancellationToken cancellationToken) =>
+        DesktopProfile2Router.RouteAsync(connection, _pairing,
+            IsListening ? HandleTrustedIncomingAsync : null, cancellationToken);
+
+    private async Task HandleTrustedIncomingAsync(
+        TlsSocketConnection connection,
+        Profile2Message.SessionOpen open,
+        CancellationToken cancellationToken)
+    {
+        await using (connection)
+        {
+            var request = new DesktopReceiveRequest(
+                new QuarantineStagingStore(destinationRoot: DownloadDirectory),
+                LocalDeviceName: DeviceName,
+                TrustManager: _trustManager);
+            await OnUiAsync(() =>
+            {
+                IsTransferActive = true;
+                TransferTitle = "Receiving from paired device…";
+            });
+            DesktopTransferResult result = await _runtime.ReceiveTrustedAsync(
+                connection, open, request, this, cancellationToken);
+            await OnUiAsync(() =>
+            {
+                IsTransferActive = _runtime.Snapshot.IsActive;
+                StatusMessage = result.Message;
+                RefreshTrustedPeers();
             });
         }
     }
@@ -1434,6 +1668,8 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
         _lifetimeCts.Cancel();
         _activeTransferCts?.Cancel();
         _listenerSupervisor.Dispose();
+        _pairing.Dispose();
+        PairQrImage?.Dispose();
         _listenerOwner?.Dispose();
         _listenerOwner = null;
         _mdnsDiscovery.StopAdvertising();

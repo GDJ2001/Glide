@@ -11,7 +11,10 @@ public sealed record DesktopTrustedPeer(
     string PublicKeyDerHex,
     string DisplayName,
     long EnrolledAtUnixMs,
-    long LastSeenAtUnixMs)
+    long LastSeenAtUnixMs,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Platform = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? LastKnownHost = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? LastKnownPort = null)
 {
     private static readonly Regex LowerHex64 =
         new(

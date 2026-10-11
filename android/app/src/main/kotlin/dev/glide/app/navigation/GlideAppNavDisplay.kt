@@ -37,6 +37,7 @@ import dev.glide.app.navigation.adaptive.GlideAdaptiveScaffold
 fun GlideAppNavDisplay(
     modifier: Modifier = Modifier,
     transferRuntime: TransferRuntime? = null,
+    persistentTrustManager: dev.glide.core.identity.PersistentTrustManager? = null,
     initialRoute: GlideRoute = GlideRoute.Home,
     incomingRoute: GlideRoute? = null,
     initialUiState: dev.glide.app.ui.transfer.TransferUiState? = null,
@@ -660,6 +661,9 @@ fun GlideAppNavDisplay(
 
                 dev.glide.app.ui.settings.SettingsScreen(
                     viewModel = viewModel,
+                    onPairDevice = {
+                        backStack.add(GlideRoute.QrScanner(purpose = QrScanPurpose.PAIR_ONLY))
+                    },
                     onBack = {
                         if (backStack.size > 1) {
                             backStack.removeAt(backStack.lastIndex)
@@ -671,11 +675,22 @@ fun GlideAppNavDisplay(
                 val viewModel = androidx.lifecycle.viewmodel.compose.viewModel<dev.glide.app.ui.pairing.QrPairingViewModel>()
                 val scannerState by viewModel.scannerState.collectAsStateWithLifecycle()
                 val context = androidx.compose.ui.platform.LocalContext.current
+                val pairOnlyViewModel = if (route.purpose == QrScanPurpose.PAIR_ONLY && persistentTrustManager != null) {
+                    val factory = androidx.compose.runtime.remember(context, persistentTrustManager) {
+                        dev.glide.app.ui.pairing.PairOnlyViewModel.factory(context, persistentTrustManager)
+                    }
+                    androidx.lifecycle.viewmodel.compose.viewModel<dev.glide.app.ui.pairing.PairOnlyViewModel>(factory = factory)
+                } else null
+                val pairOnlyState = pairOnlyViewModel?.state?.collectAsStateWithLifecycle()?.value
+                    ?: dev.glide.app.ui.pairing.PairOnlyUiState.Idle
                 val lanPermissions = androidx.compose.runtime.remember {
                     PermissionPolicy.lanTransferPermissions()
                 }
                 var pendingInvitation by androidx.compose.runtime.remember {
                     androidx.compose.runtime.mutableStateOf<dev.glide.core.pairing.LanInvitation?>(null)
+                }
+                var pendingPairOnly by androidx.compose.runtime.remember {
+                    androidx.compose.runtime.mutableStateOf<dev.glide.core.pairing.LanPairV2Invitation?>(null)
                 }
                 val hasLanPermissions: () -> Boolean = {
                     lanPermissions.all { permission ->
@@ -718,25 +733,41 @@ fun GlideAppNavDisplay(
                     contract = ActivityResultContracts.RequestMultiplePermissions()
                 ) {
                     val invitation = pendingInvitation
+                    val pairInvitation = pendingPairOnly
                     pendingInvitation = null
+                    pendingPairOnly = null
                     if (hasLanPermissions() && invitation != null) {
                         if (route.purpose == QrScanPurpose.RECEIVE_FROM_SENDER) {
                             startLanReceiver(invitation)
                         } else {
                             startLanSender(invitation)
                         }
+                    } else if (hasLanPermissions() && pairInvitation != null) {
+                        pairOnlyViewModel?.start(pairInvitation)
                     } else if (invitation != null) {
                         viewModel.onConnectionBlocked("Local network permission is needed to connect. Allow it in Settings, then try again.")
+                    } else if (pairInvitation != null) {
+                        viewModel.onConnectionBlocked("Local network permission is needed to pair. Allow it in Settings, then try again.")
                     }
                 }
 
-                androidx.compose.runtime.LaunchedEffect(viewModel, route.scanAttemptId) {
-                    viewModel.startScanning()
+                androidx.compose.runtime.LaunchedEffect(viewModel, route.scanAttemptId, route.purpose) {
+                    viewModel.startScanning(pairOnly = route.purpose == QrScanPurpose.PAIR_ONLY)
                 }
 
-                androidx.compose.runtime.LaunchedEffect(viewModel, route.batchId) {
+                androidx.compose.runtime.LaunchedEffect(viewModel, route.batchId, route.purpose, pairOnlyViewModel) {
                     viewModel.events.collect { event ->
                         when (event) {
+                            is dev.glide.app.ui.pairing.QrPairingEvent.PairOnlyConfirmed -> {
+                                if (pairOnlyViewModel == null) {
+                                    viewModel.onConnectionBlocked("Pairing is unavailable. Restart Glide and try again.")
+                                } else if (lanPermissions.isEmpty() || hasLanPermissions()) {
+                                    pairOnlyViewModel.start(event.invitation)
+                                } else {
+                                    pendingPairOnly = event.invitation
+                                    lanPermissionLauncher.launch(lanPermissions.toTypedArray())
+                                }
+                            }
                             is dev.glide.app.ui.pairing.QrPairingEvent.ConnectConfirmed -> {
                                 if (lanPermissions.isEmpty() || hasLanPermissions()) {
                                     if (route.purpose == QrScanPurpose.RECEIVE_FROM_SENDER) {
@@ -778,12 +809,42 @@ fun GlideAppNavDisplay(
                             backStack.removeAt(backStack.lastIndex)
                         }
                     },
-                    scanPurposeLabel = if (route.purpose == QrScanPurpose.RECEIVE_FROM_SENDER) {
-                        "Scan PC QR to receive"
-                    } else {
-                        "Scan receiving device QR"
+                    scanPurposeLabel = when (route.purpose) {
+                        QrScanPurpose.RECEIVE_FROM_SENDER -> "Scan PC QR to receive"
+                        QrScanPurpose.PAIR_ONLY -> "Scan pair-only QR"
+                        else -> "Scan receiving device QR"
                     }
                 )
+                when (val state = pairOnlyState) {
+                    is dev.glide.app.ui.pairing.PairOnlyUiState.Approval ->
+                        androidx.compose.material3.AlertDialog(
+                            onDismissRequest = { pairOnlyViewModel?.decline() },
+                            title = { androidx.compose.material3.Text("Pair with ${state.peerName}?") },
+                            text = { androidx.compose.material3.Text("Save this verified device for future sends?") },
+                            confirmButton = { androidx.compose.material3.Button(onClick = { pairOnlyViewModel?.approve() }) { androidx.compose.material3.Text("Approve") } },
+                            dismissButton = { androidx.compose.material3.TextButton(onClick = { pairOnlyViewModel?.decline() }) { androidx.compose.material3.Text("Decline") } }
+                        )
+                    is dev.glide.app.ui.pairing.PairOnlyUiState.Complete ->
+                        androidx.compose.material3.AlertDialog(
+                            onDismissRequest = { pairOnlyViewModel?.dismiss() },
+                            title = { androidx.compose.material3.Text("Paired with ${state.peerName}") },
+                            confirmButton = { androidx.compose.material3.Button(onClick = {
+                                pairOnlyViewModel?.dismiss()
+                                if (backStack.size > 1) backStack.removeAt(backStack.lastIndex)
+                            }) { androidx.compose.material3.Text("Done") } }
+                        )
+                    is dev.glide.app.ui.pairing.PairOnlyUiState.Failure ->
+                        androidx.compose.material3.AlertDialog(
+                            onDismissRequest = { pairOnlyViewModel?.dismiss(); viewModel.retryScan() },
+                            title = { androidx.compose.material3.Text("Pairing failed") },
+                            text = { androidx.compose.material3.Text(state.message) },
+                            confirmButton = { androidx.compose.material3.Button(onClick = {
+                                pairOnlyViewModel?.dismiss()
+                                viewModel.retryScan()
+                            }) { androidx.compose.material3.Text("Try again") } }
+                        )
+                    else -> Unit
+                }
             }
         }
     )

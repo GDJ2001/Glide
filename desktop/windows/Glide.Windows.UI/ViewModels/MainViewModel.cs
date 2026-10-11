@@ -13,6 +13,9 @@ using Glide.Core.Pairing;
 using Glide.Core.Security;
 using Glide.Core.Storage;
 using Glide.Desktop;
+using Glide.Desktop.Pairing;
+using Glide.Desktop.Services;
+using Glide.Transport.Framing;
 using Glide.Transport.Discovery;
 using Glide.Transport.Sockets;
 using Glide.Windows.UI.Common;
@@ -71,6 +74,32 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     private CancellationTokenSource? _invitationRotationCts;
 
     private readonly MdnsDiscoveryService _mdnsService = new();
+    private readonly DesktopInvitationManager _pairInvitationManager = new();
+    private readonly DesktopPairingCoordinator _pairing;
+    private string _pairPin = "";
+    private string _pairAddress = "";
+    private string _pairOnlyLink = "";
+    private ImageSource? _pairOnlyQrImage;
+    private bool _isPairQrVisible;
+
+    public DesktopPairingSnapshot Pairing => _pairing.Snapshot;
+    public bool IsPairDiscovery => Pairing.Phase is DesktopPairingPhase.Scanning or DesktopPairingPhase.PeersFound or DesktopPairingPhase.Empty;
+    public bool IsPairEmpty => Pairing.Phase == DesktopPairingPhase.Empty;
+    public bool IsPairReady => Pairing.Phase == DesktopPairingPhase.TargetReady;
+    public bool IsPairPinEntry => Pairing.Phase == DesktopPairingPhase.InitiatorPinEntry;
+    public bool IsPairManualEntry => Pairing.Phase == DesktopPairingPhase.ManualEntry;
+    public bool IsPairLinkEntry => Pairing.Phase == DesktopPairingPhase.UseLink;
+    public bool IsPairApproval => Pairing.Phase == DesktopPairingPhase.TargetApproval;
+    public bool IsPairVerifying => Pairing.Phase == DesktopPairingPhase.Verifying;
+    public bool IsPairSuccess => Pairing.Phase == DesktopPairingPhase.Success;
+    public bool IsPairFailed => Pairing.Phase == DesktopPairingPhase.Failed;
+    public bool IsPairResult => Pairing.Phase is DesktopPairingPhase.Success or DesktopPairingPhase.Failed or DesktopPairingPhase.Verifying;
+    public bool HasPairDiagnostic => !string.IsNullOrWhiteSpace(Pairing.Diagnostic);
+    public bool IsPairQrVisible { get => _isPairQrVisible; set => SetProperty(ref _isPairQrVisible, value); }
+    public string PairPin { get => _pairPin; set => SetProperty(ref _pairPin, value); }
+    public string PairAddress { get => _pairAddress; set => SetProperty(ref _pairAddress, value); }
+    public string PairOnlyLink { get => _pairOnlyLink; set => SetProperty(ref _pairOnlyLink, value); }
+    public ImageSource? PairOnlyQrImage { get => _pairOnlyQrImage; private set => SetProperty(ref _pairOnlyQrImage, value); }
     public ObservableCollection<DiscoveredPeerViewModel> DiscoveredPeers { get; } = [];
 
     private bool _isPairModalVisible;
@@ -148,6 +177,20 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     public RelayCommand RefreshQrCommand { get; }
     public RelayCommand ToggleQrZoomCommand { get; }
     public RelayCommand CopyPairingLinkCommand { get; }
+    public RelayCommand FindPairDevicesCommand { get; }
+    public RelayCommand ReadyToPairCommand { get; }
+    public RelayCommand CancelPairCommand { get; }
+    public RelayCommand SelectPairPeerCommand { get; }
+    public RelayCommand SubmitPairPinCommand { get; }
+    public RelayCommand ShowPairAddressCommand { get; }
+    public RelayCommand SubmitPairAddressCommand { get; }
+    public RelayCommand ShowPairLinkCommand { get; }
+    public RelayCommand SubmitPairLinkCommand { get; }
+    public RelayCommand CopyPairOnlyLinkCommand { get; }
+    public RelayCommand ShowPairQrCommand { get; }
+    public RelayCommand PairRecoveryCommand { get; }
+    public RelayCommand ApprovePairCommand { get; }
+    public RelayCommand DeclinePairCommand { get; }
 
     public MainViewModel()
     {
@@ -191,10 +234,66 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
 
         InitializePersistentTrust();
         RefreshTrustedDevices();
+        _pairing = new DesktopPairingCoordinator(
+            _trustManager, _pairInvitationManager, _mdnsService,
+            () => Environment.MachineName, EnsurePairListenerAsync, ReleasePairListener,
+            () => IsTransferActive || _transferRuntime.IsBusy);
+        _pairing.Changed += snapshot => RunOnUi(() =>
+        {
+            if (snapshot.Phase is DesktopPairingPhase.Idle or DesktopPairingPhase.Success or DesktopPairingPhase.Failed)
+                PairPin = "";
+            if (snapshot.Phase != DesktopPairingPhase.TargetReady)
+                IsPairQrVisible = false;
+            PairOnlyQrImage = string.IsNullOrWhiteSpace(snapshot.QrUri)
+                ? null : QrImageHelper.GenerateQrImageSource(snapshot.QrUri);
+            OnPropertyChanged(nameof(Pairing));
+            OnPropertyChanged(nameof(IsPairDiscovery));
+            OnPropertyChanged(nameof(IsPairEmpty));
+            OnPropertyChanged(nameof(IsPairReady));
+            OnPropertyChanged(nameof(IsPairPinEntry));
+            OnPropertyChanged(nameof(IsPairManualEntry));
+            OnPropertyChanged(nameof(IsPairLinkEntry));
+            OnPropertyChanged(nameof(IsPairApproval));
+            OnPropertyChanged(nameof(IsPairVerifying));
+            OnPropertyChanged(nameof(IsPairSuccess));
+            OnPropertyChanged(nameof(IsPairFailed));
+            OnPropertyChanged(nameof(IsPairResult));
+            OnPropertyChanged(nameof(HasPairDiagnostic));
+        });
+        _pairing.PeerPaired += _ => RefreshTrustedDevices();
+        _pairInvitationManager.SnapshotProvider.NetworkAddressChanged += (_, _) =>
+            RunOnUi(() => { if (_pairing.IsReadyWindowActive) _pairing.Cancel(); });
         ActivityItems = CollectionViewSource.GetDefaultView(HistoryItems);
         ActivityItems.Filter = FilterActivity;
 
         SwitchTabCommand = new RelayCommand(param => CurrentTab = param?.ToString() ?? "Send");
+        FindPairDevicesCommand = new RelayCommand(() => _pairing.BeginFindDevices());
+        ReadyToPairCommand = new RelayCommand(() => _ = _pairing.StartReadyAsync());
+        CancelPairCommand = new RelayCommand(() => _pairing.Cancel());
+        SelectPairPeerCommand = new RelayCommand(param =>
+        {
+            if (param is DiscoveredPeerViewModel peer && peer.IsPairReady)
+                _pairing.SelectPeer(peer.Peer);
+        });
+        SubmitPairPinCommand = new RelayCommand(() => _ = _pairing.PairWithSelectedPeerAsync(PairPin));
+        ShowPairAddressCommand = new RelayCommand(() => _pairing.ShowManualEntry());
+        SubmitPairAddressCommand = new RelayCommand(() => _ = _pairing.PairWithAddressAsync(PairAddress, PairPin));
+        ShowPairLinkCommand = new RelayCommand(() => _pairing.ShowLinkEntry());
+        SubmitPairLinkCommand = new RelayCommand(() => _ = _pairing.PairWithLinkAsync(PairOnlyLink));
+        CopyPairOnlyLinkCommand = new RelayCommand(() =>
+        {
+            if (!string.IsNullOrWhiteSpace(Pairing.QrUri)) Clipboard.SetText(Pairing.QrUri);
+        });
+        ShowPairQrCommand = new RelayCommand(() => IsPairQrVisible = !IsPairQrVisible);
+        PairRecoveryCommand = new RelayCommand(() =>
+        {
+            if (string.Equals(Pairing.RecoveryAction, "Get a new code", StringComparison.Ordinal))
+                _ = _pairing.StartReadyAsync();
+            else
+                _pairing.BeginFindDevices();
+        });
+        ApprovePairCommand = new RelayCommand(() => _pairing.Approve());
+        DeclinePairCommand = new RelayCommand(() => _pairing.DeclineApproval());
         AddFilesCommand = new RelayCommand(ExecuteAddFiles);
         AddFolderCommand = new RelayCommand(ExecuteAddFolder);
         RemoveFileCommand = new RelayCommand(param =>
@@ -339,24 +438,17 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             _selectedTrustedDevice = device;
             IsTrustedDevicePickerVisible = false;
             PairInputUri = string.Empty;
-            PairingStatusText = $"Get a current pairing link from {device.DisplayName} to connect securely.";
+            PairingStatusText = $"{device.DisplayName} selected. Glide will verify its saved identity before sending.";
             StatusMessage = PairingStatusText;
             NotifySendState();
             OnPropertyChanged(nameof(SelectedTrustedDeviceName));
             OnPropertyChanged(nameof(PairingSheetTitle));
             OnPropertyChanged(nameof(PairingSheetInstruction));
-            IsSavedDeviceConnectVisible = true;
+            IsSavedDeviceConnectVisible = false;
         });
         ConnectSavedDeviceCommand = new RelayCommand(() =>
         {
             if (_selectedTrustedDevice is null || SelectedFiles.Count == 0 || IsTransferActive)
-                return;
-            if (string.IsNullOrWhiteSpace(PairInputUri))
-            {
-                PairingStatusText = "Paste the current pairing link shown in Receive on the selected device.";
-                return;
-            }
-            if (!TryApplyPairingInvitation(PairInputUri.Trim(), showErrors: true))
                 return;
             IsSavedDeviceConnectVisible = false;
             PairInputUri = string.Empty;
@@ -466,6 +558,13 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                 {
                     DiscoveredPeers.Add(new DiscoveredPeerViewModel(peer));
                 }
+                else
+                {
+                    var existing = DiscoveredPeers.First(p => p.Host == peer.Host && p.Port == peer.Port);
+                    DiscoveredPeers.Remove(existing);
+                    DiscoveredPeers.Add(new DiscoveredPeerViewModel(peer));
+                }
+                _pairing.NotifyPeerCount(DiscoveredPeers.Count(p => p.IsPairReady));
             });
         };
 
@@ -478,6 +577,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                 {
                     DiscoveredPeers.Remove(existing);
                 }
+                _pairing.NotifyPeerCount(DiscoveredPeers.Count(p => p.IsPairReady));
             });
         };
 
@@ -506,6 +606,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                 OnPropertyChanged(nameof(IsActivitySelected));
                 OnPropertyChanged(nameof(IsSettingsSelected));
                 OnPropertyChanged(nameof(IsPairDevicesSelected));
+                if (value != "Pair devices") _pairing.OnPageLeft();
             }
         }
     }
@@ -527,9 +628,8 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     public bool HasTrustedDevices => TrustedDevices.Count > 0;
     public bool IsSendActionVisible =>
         !IsTransferActive && HasSelectedFiles &&
-        SendMethod is SendMethodChoice.Nearby or SendMethodChoice.Trusted &&
-        (SendMethod != SendMethodChoice.Trusted || _selectedTrustedDevice is not null) &&
-        _pairedInvitation is not null && !_pairedInvitation.IsExpired();
+        ((SendMethod == SendMethodChoice.Trusted && _selectedTrustedDevice is not null) ||
+         (SendMethod == SendMethodChoice.Nearby && _pairedInvitation is not null && !_pairedInvitation.IsExpired()));
     public string SelectedSendMethodText => SendMethod switch
     {
         SendMethodChoice.QuickQr => "Quick QR selected. The transfer starts after scan and approval.",
@@ -538,11 +638,9 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         SendMethodChoice.Nearby when _selectedPeer is not null =>
             $"Selected {_selectedPeer.DeviceName}. Complete pairing to enable Send.",
         SendMethodChoice.Nearby => "Find a nearby device, then use its current invitation.",
-        SendMethodChoice.Trusted when _pairedInvitation is not null && _selectedTrustedDevice is not null =>
-            $"Ready for {_selectedTrustedDevice.DisplayName}. Glide will verify its saved identity before sending.",
         SendMethodChoice.Trusted when _selectedTrustedDevice is not null =>
-            $"Selected {_selectedTrustedDevice.DisplayName}. A fresh invitation is still required.",
-        SendMethodChoice.Trusted => "Choose a saved device to continue.",
+            $"Selected {_selectedTrustedDevice.DisplayName}. Glide will verify its identity before sending.",
+        SendMethodChoice.Trusted => "Choose a paired device to continue.",
         _ => "Choose one sending method below."
     };
     public bool IsTrustedDevicePickerVisible
@@ -1160,12 +1258,15 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             _invitationRotationCts?.Cancel();
             _invitationRotationCts?.Dispose();
             _invitationRotationCts = null;
-            _mdnsService.StopAdvertising();
+            if (!_pairing.IsReadyWindowActive) _mdnsService.StopAdvertising();
             _invitationAuthority.RevokeActive();
             ActiveInvitationUri = "";
             _activeInvitation = null;
-            _listener?.Dispose();
-            _listener = null;
+            if (!_pairing.IsReadyWindowActive)
+            {
+                _listener?.Dispose();
+                _listener = null;
+            }
             IsListening = false;
             StatusMessage = "Receiving is off. Turn it on in Receive when you are ready.";
             return;
@@ -1188,13 +1289,11 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             return;
         }
 
-        try
+        bool wasPairListener = _listener != null;
+        if (_listener == null)
         {
-            _listener = new TlsSocketListener(ListenerPortPreference);
-        }
-        catch
-        {
-            _listener = new TlsSocketListener(0);
+            try { _listener = new TlsSocketListener(ListenerPortPreference); }
+            catch { _listener = new TlsSocketListener(0); }
         }
 
         ListeningPort = _listener.BoundPort;
@@ -1210,7 +1309,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             async () =>
                 await RunInvitationRotationLoopAsync(
                     _invitationRotationCts.Token));
-        _ = Task.Run(async () => await RunListenerLoopAsync());
+        if (!wasPairListener) _ = Task.Run(RunListenerLoopAsync);
     }
 
     private async Task RunInvitationRotationLoopAsync(
@@ -1234,7 +1333,8 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                 if (IsListening &&
                     _listener != null &&
                     !IsTransferActive &&
-                    _hostedSendRequest == null)
+                    _hostedSendRequest == null &&
+                    !_pairing.IsReadyWindowActive)
                 {
                     _invitationAuthority.RevokeActive();
                     RefreshReceiverInvitation();
@@ -1246,20 +1346,92 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
 
     private async Task RunListenerLoopAsync()
     {
-        while (IsListening && _listener != null)
+        while (_listener != null)
         {
             try
             {
                 var conn = await _listener.AcceptConnectionAsync();
-                await HandleInboundTransferAsync(conn);
+                LanSessionDispatchKind kind = await LanSessionPreambleInspector.InspectAndPrepareAsync(conn);
+                if (kind == LanSessionDispatchKind.Profile2Gld2)
+                {
+                    await DesktopProfile2Router.RouteAsync(
+                        conn, _pairing, IsListening ? HandleTrustedIncomingAsync : null,
+                        CancellationToken.None);
+                }
+                else if (kind == LanSessionDispatchKind.Profile1LanRecord &&
+                         (IsListening || _hostedSendRequest != null))
+                {
+                    await HandleInboundTransferAsync(conn);
+                }
+                else
+                {
+                    await conn.DisposeAsync();
+                }
             }
             catch (Exception ex)
             {
-                if (!IsListening || _listener == null)
+                if (_listener == null)
                 {
                     break;
                 }
                 RunOnUi(() => StatusMessage = $"Inbound connection failed: {ex.Message}. Listening on port {ListeningPort}...");
+            }
+        }
+    }
+
+    private Task<TlsSocketListener> EnsurePairListenerAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_listener is { } existing) return Task.FromResult(existing);
+        try { _listener = new TlsSocketListener(ListenerPortPreference); }
+        catch { _listener = new TlsSocketListener(0); }
+        ListeningPort = _listener.BoundPort;
+        _ = Task.Run(RunListenerLoopAsync);
+        return Task.FromResult(_listener);
+    }
+
+    private void ReleasePairListener()
+    {
+        if (IsListening)
+        {
+            RunOnUi(RefreshReceiverInvitation);
+            return;
+        }
+        _mdnsService.StopAdvertising();
+        _listener?.Dispose();
+        _listener = null;
+    }
+
+    private async Task HandleTrustedIncomingAsync(
+        TlsSocketConnection connection,
+        Profile2Message.SessionOpen open,
+        CancellationToken cancellationToken)
+    {
+        await using (connection)
+        {
+            RunOnUi(() =>
+            {
+                CurrentTab = "Receive";
+                IsTransferActive = true;
+                TransferTitle = "Receiving from paired device…";
+            });
+            try
+            {
+                var request = new DesktopReceiveRequest(
+                    new QuarantineStagingStore(destinationRoot: ReceiveDirectory),
+                    LocalDeviceName: Environment.MachineName,
+                    TrustManager: _trustManager);
+                DesktopTransferResult result = await _transferRuntime.ReceiveTrustedAsync(
+                    connection, open, request, this, cancellationToken);
+                RunOnUi(() => StatusMessage = result.Message);
+            }
+            finally
+            {
+                RunOnUi(() =>
+                {
+                    IsTransferActive = _transferRuntime.Snapshot.IsActive;
+                    RefreshTrustedDevices();
+                });
             }
         }
     }
@@ -1336,6 +1508,11 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     private async Task ExecuteSendFilesAsync()
     {
         if (SelectedFiles.Count == 0) return;
+        if (SendMethod == SendMethodChoice.Trusted)
+        {
+            await ExecuteTrustedSendAsync();
+            return;
+        }
         if (SendMethod is not (SendMethodChoice.Nearby or SendMethodChoice.Trusted) ||
             _pairedInvitation == null ||
             (SendMethod == SendMethodChoice.Trusted && _selectedTrustedDevice is null))
@@ -1389,6 +1566,56 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             // connection attempt. Never present a stale invitation as ready for another send.
             _pairedInvitation = null;
             PairingStatusText = "Transfer finished. Use a fresh invitation to send again.";
+            NotifySendState();
+        }
+    }
+
+    private async Task ExecuteTrustedSendAsync()
+    {
+        TrustedDeviceViewModel? peer = _selectedTrustedDevice;
+        if (peer == null || _trustManager == null)
+        {
+            StatusMessage = "Choose a paired device to send to.";
+            return;
+        }
+
+        _activeTransferCts?.Dispose();
+        _activeTransferCts = new CancellationTokenSource();
+        try
+        {
+            IsTransferActive = true;
+            TransferTitle = $"Connecting to {peer.DisplayName}…";
+            TotalProgress = 0;
+            _transferStopwatch.Restart();
+
+            var candidates = DiscoveredPeers
+                .Where(p => p.SupportsTrustedReconnect &&
+                    string.Equals(p.DeviceName, peer.DisplayName, StringComparison.Ordinal))
+                .Select(p => new LanEndpoint(p.Host, p.Port))
+                .ToList();
+            var files = SelectedFiles
+                .Select(item => new DesktopTransferFile(item.FilePath, item.Name))
+                .ToList();
+            var request = new DesktopSendRequest(
+                Host: peer.LastKnownHost ?? "",
+                Port: peer.LastKnownPort ?? 0,
+                Files: files,
+                LocalDeviceName: Environment.MachineName,
+                TrustManager: _trustManager,
+                ExpectedPeerFingerprintHex: peer.FingerprintHex,
+                CandidateEndpoints: candidates.Count > 0 ? candidates : null);
+            DesktopTransferResult result = await _transferRuntime.SendTrustedAsync(
+                request, this, _activeTransferCts.Token);
+            StatusMessage = result.Message;
+            if (result.Success) RefreshTrustedDevices();
+        }
+        finally
+        {
+            _transferStopwatch.Stop();
+            IsTransferActive = false;
+            IsOfferModalVisible = false;
+            _activeTransferCts?.Dispose();
+            _activeTransferCts = null;
             NotifySendState();
         }
     }
@@ -2198,7 +2425,9 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                 Environment.MachineName,
             port: ListeningPort,
             presenceId:
-                canonicalInvitation.Presence);
+                _pairing.ActiveWindowPresenceId ?? canonicalInvitation.Presence,
+            pairReady: _pairing.IsReadyWindowActive,
+            trustedReconnectSupported: true);
     }
 
     private void ExecuteOpenDownloads()

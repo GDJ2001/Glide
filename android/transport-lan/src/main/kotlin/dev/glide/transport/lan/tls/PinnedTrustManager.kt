@@ -20,16 +20,18 @@ import javax.net.ssl.X509ExtendedTrustManager
  */
 @SuppressLint("CustomX509TrustManager")
 class PinnedTrustManager(
-    private val expectedSpkiSha256Hex: String
+    private val expectedSpkiSha256Hex: String? = null
 ) : X509ExtendedTrustManager() {
 
     init {
-        require(expectedSpkiSha256Hex.length == 64 && expectedSpkiSha256Hex.matches(Regex("^[0-9a-fA-F]{64}$"))) {
-            "Invalid SPKI SHA-256 hex string: length must be 64 hexadecimal characters"
+        if (expectedSpkiSha256Hex != null) {
+            require(expectedSpkiSha256Hex.length == 64 && expectedSpkiSha256Hex.matches(Regex("^[0-9a-fA-F]{64}$"))) {
+                "Invalid SPKI SHA-256 hex string: length must be 64 hexadecimal characters"
+            }
         }
     }
 
-    private val normalizedExpectedHex = expectedSpkiSha256Hex.lowercase()
+    private val normalizedExpectedHex = expectedSpkiSha256Hex?.lowercase()
 
     @Throws(CertificateException::class)
     override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {
@@ -58,19 +60,26 @@ class PinnedTrustManager(
             throw CertificateException("Server certificate self-signature verification failed", e)
         }
 
-        // 4. Constant-time SPKI SHA-256 pin verification
-        val spkiBytes = leaf.publicKey.encoded
-        val md = MessageDigest.getInstance("SHA-256")
-        val computedDigest = md.digest(spkiBytes)
-        val computedHex = computedDigest.joinToString("") { "%02x".format(it) }
+        // 4. Constant-time SPKI SHA-256 pin verification when pinned
+        val computedHex = computeSpkiSha256Hex(leaf)
+        if (normalizedExpectedHex != null) {
+            val matches = MessageDigest.isEqual(
+                computedHex.toByteArray(Charsets.US_ASCII),
+                normalizedExpectedHex.toByteArray(Charsets.US_ASCII)
+            )
 
-        val matches = MessageDigest.isEqual(
-            computedHex.toByteArray(Charsets.US_ASCII),
-            normalizedExpectedHex.toByteArray(Charsets.US_ASCII)
-        )
+            if (!matches) {
+                throw CertificateException("Pinned SPKI mismatch: expected $normalizedExpectedHex, got $computedHex")
+            }
+        }
+    }
 
-        if (!matches) {
-            throw CertificateException("Pinned SPKI mismatch: expected $normalizedExpectedHex, got $computedHex")
+    companion object {
+        fun computeSpkiSha256Hex(certificate: X509Certificate): String {
+            val spkiBytes = certificate.publicKey.encoded
+            val md = MessageDigest.getInstance("SHA-256")
+            val computedDigest = md.digest(spkiBytes)
+            return computedDigest.joinToString("") { "%02x".format(it) }
         }
     }
 

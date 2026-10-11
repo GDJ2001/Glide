@@ -158,4 +158,45 @@ class LanTxtCodecTest {
         )
         assertNull(LanTxtCodec.decode(incompleteMap))
     }
+
+    @Test
+    fun testPairReadyAndTrustedReconnectRoundTrip() {
+        val record = LanTxtRecord(
+            v = 1,
+            tv = 1,
+            q = 1,
+            p = validPresence,
+            dn = "Office PC",
+            dt = LanTxtRecord.DEVICE_TYPE_DESKTOP,
+            isPairReady = true,
+            supportsTrustedReconnect = true
+        )
+
+        val encoded = LanTxtCodec.encode(record)
+        val decoded = LanTxtCodec.decode(encoded)
+
+        assertNotNull(decoded)
+        assertTrue(decoded!!.isPairReady)
+        assertTrue(decoded.supportsTrustedReconnect)
+    }
+
+    @Test
+    fun testForbiddenKeysRejectedInDecode() {
+        val base = LanTxtCodec.encode(
+            LanTxtRecord(
+                v = 1,
+                tv = 1,
+                q = 1,
+                p = validPresence,
+                dn = "Office PC",
+                dt = LanTxtRecord.DEVICE_TYPE_DESKTOP
+            )
+        )
+
+        for (forbiddenKey in listOf("spki", "pin", "token", "trust", "fp")) {
+            val mutated = base.toMutableMap()
+            mutated[forbiddenKey] = "secret".toByteArray(StandardCharsets.US_ASCII)
+            assertNull("Expected $forbiddenKey to be rejected", LanTxtCodec.decode(mutated))
+        }
+    }
 }

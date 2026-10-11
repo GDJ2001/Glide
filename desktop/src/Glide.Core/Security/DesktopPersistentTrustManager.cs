@@ -20,16 +20,25 @@ public sealed class VerifiedDesktopPeerIdentity
     public VerifiedDesktopPeerIdentity(
         string fingerprintHex,
         string publicKeyDerHex,
-        string displayName)
+        string displayName,
+        string? platform = null,
+        string? lastKnownHost = null,
+        int? lastKnownPort = null)
     {
         FingerprintHex = fingerprintHex;
         PublicKeyDerHex = publicKeyDerHex;
         DisplayName = displayName;
+        Platform = platform;
+        LastKnownHost = lastKnownHost;
+        LastKnownPort = lastKnownPort;
     }
 
     public string FingerprintHex { get; }
     public string PublicKeyDerHex { get; }
     public string DisplayName { get; }
+    public string? Platform { get; }
+    public string? LastKnownHost { get; }
+    public int? LastKnownPort { get; }
 }
 
 public static class DesktopIdentityProofVerifier
@@ -327,7 +336,10 @@ public sealed class DesktopPersistentTrustManager
                     LastSeenAtUnixMs =
                         Math.Max(
                             existing.LastSeenAtUnixMs,
-                            now)
+                            now),
+                    Platform = peer.Platform ?? existing.Platform,
+                    LastKnownHost = peer.LastKnownHost ?? existing.LastKnownHost,
+                    LastKnownPort = peer.LastKnownPort ?? existing.LastKnownPort
                 };
             int index =
                 document.Peers.FindIndex(
@@ -345,7 +357,10 @@ public sealed class DesktopPersistentTrustManager
                     peer.PublicKeyDerHex,
                     peer.DisplayName,
                     now,
-                    now);
+                    now,
+                    peer.Platform,
+                    peer.LastKnownHost,
+                    peer.LastKnownPort);
             record.Validate();
             document.Peers.Add(
                 record);

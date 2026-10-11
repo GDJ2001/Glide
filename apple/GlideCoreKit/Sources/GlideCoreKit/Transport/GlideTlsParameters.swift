@@ -8,16 +8,19 @@ public enum GlideTlsParameters {
     public enum TlsIdentityError: Error { case invalidIdentity }
 
     /// Creates TLS parameters for an outbound client connection, enforcing TLS 1.3 and pinning
-    /// the server's certificate against `expectedSpkiSha256`.
-    public static func createClientParameters(expectedSpkiSha256: String) -> NWParameters {
+    /// the server's certificate against `expectedSpkiSha256` (when provided) while capturing the remote SPKI SHA-256.
+    public static func createClientParameters(
+        expectedSpkiSha256: String? = nil,
+        onRemoteSpkiSha256Captured: (@Sendable (String) -> Void)? = nil
+    ) -> NWParameters {
         let tlsOptions = NWProtocolTLS.Options()
         let secOptions = tlsOptions.securityProtocolOptions
 
         sec_protocol_options_set_min_tls_protocol_version(secOptions, .TLSv13)
         sec_protocol_options_set_max_tls_protocol_version(secOptions, .TLSv13)
 
-        // Custom certificate verification block for SPKI SHA-256 pinning
-        let cleanExpectedHash = expectedSpkiSha256.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        // Custom certificate verification block for SPKI SHA-256 pinning or channel binding capture
+        let cleanExpectedHash = expectedSpkiSha256?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         sec_protocol_options_set_verify_block(
             secOptions,
             { (_, secTrust, completion) in
@@ -35,14 +38,21 @@ public enum GlideTlsParameters {
                     return
                 }
 
-                do {
-                    let isValid = try SpkiPinningValidator.verify(
-                        spkiData: spkiData,
-                        expectedSha256Hex: cleanExpectedHash
-                    )
-                    completion(isValid)
-                } catch {
-                    completion(false)
+                let actualSha256Hex = SHA256.hash(data: spkiData).map { String(format: "%02x", $0) }.joined()
+                onRemoteSpkiSha256Captured?(actualSha256Hex)
+
+                if let expected = cleanExpectedHash, !expected.isEmpty {
+                    do {
+                        let isValid = try SpkiPinningValidator.verify(
+                            spkiData: spkiData,
+                            expectedSha256Hex: expected
+                        )
+                        completion(isValid)
+                    } catch {
+                        completion(false)
+                    }
+                } else {
+                    completion(!actualSha256Hex.isEmpty)
                 }
             },
             DispatchQueue.global(qos: .userInitiated)

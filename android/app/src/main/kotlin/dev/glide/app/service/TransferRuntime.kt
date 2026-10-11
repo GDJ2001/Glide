@@ -363,6 +363,7 @@ class TransferRuntime private constructor(
         command: TransferRuntimeCommand.StartLanReceiver
     ): Boolean {
         val controller = lanController ?: return false
+        controller.configureTrustedReceive(persistentTrustManager)
         val scope = synchronized(lock) { serviceScope } ?: return false
 
         discoveryController?.stopAdvertising()

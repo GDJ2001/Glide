@@ -18,98 +18,297 @@ public struct MacPairView: View {
 
     public var body: some View {
         ScrollView {
-            VStack(spacing: 24) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Device Pairing")
-                            .font(.title2)
-                            .fontWeight(.bold)
-                        Text("Pair with other devices using QR codes or direct invitation links.")
+            VStack(alignment: .leading, spacing: 16) {
+                // Compact Header: Find devices and Ready to pair
+                HStack(spacing: 12) {
+                    Text("Pair devices")
+                        .font(.title2)
+                        .fontWeight(.bold)
+
+                    Spacer()
+
+                    Button("Find devices") {
+                        viewModel.beginFindDevices()
+                    }
+                    .buttonStyle(.borderedProminent)
+
+                    Button("Ready to pair") {
+                        viewModel.startReadyToPair()
+                        generateQr()
+                    }
+                    .buttonStyle(.bordered)
+                }
+
+                // Single Active Panel whose content changes with its state
+                VStack(alignment: .leading, spacing: 12) {
+                    switch viewModel.pairingPhase {
+                    case .idle, .scanning:
+                        HStack(spacing: 10) {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("Looking for Glide devices…")
+                                .font(.headline)
+                        }
+
+                    case .peersFound:
+                        ForEach(viewModel.discoveredPairPeers) { peer in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(peer.name)
+                                        .fontWeight(.semibold)
+                                        .lineLimit(1)
+                                        .help(peer.name)
+                                    Text("Available to pair")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                                Button("Select") {
+                                    viewModel.selectPairPeer(peer)
+                                }
+                            }
+                            .padding(8)
+                        }
+
+                    case .empty:
+                        Text("Open Glide on the other computer and choose Ready to pair.")
+                            .font(.body)
+                        HStack(spacing: 10) {
+                            Button("Try again") {
+                                viewModel.beginFindDevices()
+                            }
+                            .buttonStyle(.borderedProminent)
+
+                            Button("Can’t find your device?") {
+                                viewModel.showManualPairEntry()
+                            }
+                            .buttonStyle(.bordered)
+                        }
+
+                    case .targetReady:
+                        Text("Pairing code")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
-                    }
-                    Spacer()
-                }
+                        Text(viewModel.pairingCodeDisplay)
+                            .font(.system(size: 32, weight: .bold, design: .monospaced))
+                            .accessibilityLabel("Pairing code \(viewModel.pairingCodeDisplay)")
+                        Text("Enter this code on the other computer.")
+                            .font(.body)
+                        Text(viewModel.pairingExpiryText)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
 
-                // QR Code Display Card
-                VStack(spacing: 16) {
-                    Text("This Mac's Pairing QR Code")
-                        .font(.headline)
-
-                    if let qr = qrImage {
-                        qr
-                            .interpolation(.none)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 200, height: 200)
-                            .padding()
-                            .background(Color.white)
-                            .cornerRadius(12)
-                    } else {
-                        Rectangle()
-                            .fill(Color.gray.opacity(0.1))
-                            .frame(width: 200, height: 200)
-                            .cornerRadius(12)
-                    }
-
-                    HStack(spacing: 16) {
-                        Button("Copy Pairing Link") {
-                            #if os(macOS)
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(viewModel.currentInvitationUri, forType: .string)
-                            #endif
+                        if viewModel.isPairQrVisible, let qr = qrImage {
+                            qr
+                                .interpolation(.none)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 180, height: 180)
+                                .padding(10)
+                                .background(Color.white)
+                                .cornerRadius(10)
                         }
 
-                        Button("Refresh QR") {
-                            viewModel.generateLocalInvitation()
-                            generateQr()
+                        if !viewModel.pairingDiagnostic.isEmpty {
+                            DisclosureGroup("Connection details") {
+                                Text(viewModel.pairingDiagnostic)
+                                    .font(.system(.caption, design: .monospaced))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+
+                        HStack(spacing: 10) {
+                            Button("Show QR") {
+                                generateQr()
+                                viewModel.isPairQrVisible.toggle()
+                            }
+                            Button("Copy link") {
+                                #if os(macOS)
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(viewModel.pairingQrUri, forType: .string)
+                                #endif
+                            }
+                            Button("Cancel") {
+                                viewModel.cancelPairing()
+                            }
+                        }
+
+                    case .initiatorPinEntry:
+                        Text("Pair with \(viewModel.pairingPeerName)")
+                            .font(.headline)
+                        Text("Six-digit pairing code")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        TextField("000000", text: $viewModel.pairingPinInput)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 180)
+                            .font(.system(.title3, design: .monospaced))
+                        HStack(spacing: 10) {
+                            Button("Pair") {
+                                viewModel.submitInitiatorPinPairing()
+                            }
+                            .buttonStyle(.borderedProminent)
+                            Button("Cancel") {
+                                viewModel.cancelPairing()
+                            }
+                        }
+
+                    case .manualEntry:
+                        Text("Local address (IP:port)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        TextField("192.168.1.20:42424", text: $viewModel.pairingManualEndpointInput)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 240)
+                        Text("Six-digit pairing code")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        TextField("000000", text: $viewModel.pairingPinInput)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 180)
+                        HStack(spacing: 10) {
+                            Button("Pair") {
+                                viewModel.submitInitiatorPinPairing()
+                            }
+                            .buttonStyle(.borderedProminent)
+                            Button("Use QR or link") {
+                                viewModel.showPairLinkEntry()
+                            }
+                            Button("Cancel") {
+                                viewModel.cancelPairing()
+                            }
+                        }
+
+                    case .useLink:
+                        Text("Pair-only link")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        TextField("glide://pair/v2#...", text: $viewModel.pairingLinkInput)
+                            .textFieldStyle(.roundedBorder)
+                        HStack(spacing: 10) {
+                            Button("Pair") {
+                                viewModel.submitPairLink()
+                            }
+                            .buttonStyle(.borderedProminent)
+                            Button("Cancel") {
+                                viewModel.cancelPairing()
+                            }
+                        }
+
+                    case .targetApproval:
+                        Text("\(viewModel.pairingPeerName) wants to pair")
+                            .font(.headline)
+                        HStack(spacing: 10) {
+                            Button("Approve") {
+                                viewModel.approveIncomingPair(accept: true)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            Button("Decline") {
+                                viewModel.approveIncomingPair(accept: false)
+                            }
+                        }
+
+                    case .verifying:
+                        HStack(spacing: 10) {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("Verifying…")
+                                .font(.headline)
+                        }
+
+                    case .success:
+                        Text("Paired with \(viewModel.pairingPeerName)")
+                            .font(.headline)
+                            .foregroundColor(.green)
+
+                    case .failed:
+                        Text(viewModel.pairingMessage)
+                            .font(.headline)
+                            .foregroundColor(.red)
+                        if !viewModel.pairingDiagnostic.isEmpty {
+                            DisclosureGroup("Diagnostic details") {
+                                Text(viewModel.pairingDiagnostic)
+                                    .font(.system(.caption, design: .monospaced))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        HStack(spacing: 10) {
+                            Button(viewModel.pairingRecoveryAction) {
+                                viewModel.executePairRecovery()
+                            }
+                            .buttonStyle(.borderedProminent)
+                            Button("Can’t find your device?") {
+                                viewModel.showManualPairEntry()
+                            }
                         }
                     }
+
+                    // Secondary actions
+                    HStack(spacing: 12) {
+                        Button("Use QR or link") {
+                            viewModel.showPairLinkEntry()
+                        }
+                        .buttonStyle(.link)
+                        Button("Can’t find your device?") {
+                            viewModel.showManualPairEntry()
+                        }
+                        .buttonStyle(.link)
+                    }
+                    .padding(.top, 4)
                 }
                 .padding()
-                .frame(maxWidth: .infinity)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color(NSColor.controlBackgroundColor))
                 .cornerRadius(8)
 
-                // Manual Connect Card
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Connect to Peer Invitation")
+                // Paired devices list
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Paired devices")
                         .font(.headline)
-                    Text("Paste an invitation URI from another device:")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
 
-                    HStack {
-                        TextField("glide://pair/v1#...", text: $viewModel.invitationInput)
-                            .textFieldStyle(.roundedBorder)
-
-                        Button("Connect") {
-                            viewModel.receiveFromInvitation()
+                    if viewModel.trustedPeers.isEmpty {
+                        Text("No paired devices saved yet.")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    } else {
+                        ForEach(viewModel.trustedPeers, id: \.fingerprintHex) { peer in
+                            HStack {
+                                Text(peer.displayName)
+                                    .fontWeight(.medium)
+                                    .lineLimit(1)
+                                    .help(peer.displayName)
+                                Spacer()
+                                Text("Paired")
+                                    .font(.caption)
+                                    .foregroundColor(.green)
+                            }
+                            .padding(.vertical, 4)
                         }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(viewModel.invitationInput.isEmpty)
                     }
                 }
                 .padding()
-                .frame(maxWidth: .infinity)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color(NSColor.controlBackgroundColor))
                 .cornerRadius(8)
             }
             .padding()
         }
         .onAppear {
-            generateQr()
+            viewModel.refreshTrustedPeers()
+            if viewModel.pairingPhase == .idle {
+                viewModel.beginFindDevices()
+            }
         }
     }
 
     private func generateQr() {
-        guard !viewModel.currentInvitationUri.isEmpty else { return }
-        filter.message = Data(viewModel.currentInvitationUri.utf8)
+        guard !viewModel.pairingQrUri.isEmpty else { return }
+        filter.message = Data(viewModel.pairingQrUri.utf8)
 
         if let outputImage = filter.outputImage,
            let cgimg = context.createCGImage(outputImage, from: outputImage.extent) {
             #if os(macOS)
-            let nsImage = NSImage(cgImage: cgimg, size: NSSize(width: 200, height: 200))
+            let nsImage = NSImage(cgImage: cgimg, size: NSSize(width: 180, height: 180))
             qrImage = Image(nsImage: nsImage)
             #endif
         }

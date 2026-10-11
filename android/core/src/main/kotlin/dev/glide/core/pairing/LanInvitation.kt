@@ -140,3 +140,93 @@ data class LanInvitation(
         val EXPIRES_AT_REGEX = Regex("^[1-9][0-9]*$")
     }
 }
+
+/**
+ * Immutable validated Profile 2 pair-only QR/link invitation (`glide://pair/v2#...`).
+ * Enforces `v = 2`, `purpose = "pair-only"`, `profile = 2`, 120-second max TTL,
+ * canonical 32-byte base64url token encoding, and redacts secrets in [toString].
+ */
+data class LanPairV2Invitation(
+    val v: Int = 2,
+    val purpose: String = REQUIRED_PURPOSE,
+    val transport: String = "lan-tls",
+    val profile: Int = 2,
+    val protocol: Int = 1,
+    val invitationId: String,
+    val presence: String,
+    val name: String,
+    val platform: String,
+    val endpoints: List<LanEndpoint>,
+    val spkiSha256: String,
+    val token: String,
+    val expiresAt: String,
+    val ttlSeconds: Int = MAX_TTL_SECONDS,
+    val invitationHash: String = ""
+) {
+    init {
+        require(v == 2) { "Unsupported pair-only invitation version $v, expected 2" }
+        require(purpose == REQUIRED_PURPOSE) { "Unsupported invitation purpose '$purpose', expected '$REQUIRED_PURPOSE'" }
+        require(transport == "lan-tls") { "Unsupported transport '$transport', expected 'lan-tls'" }
+        require(profile == 2) { "Unsupported LAN profile $profile, expected 2" }
+        require(protocol == 1) { "Unsupported protocol version $protocol, expected 1" }
+        require(isValidUuidV4(invitationId)) { "invitationId must be a canonical lowercase UUIDv4, got: '$invitationId'" }
+        require(LanInvitation.PRESENCE_REGEX.matches(presence)) { "presence must be 32 lowercase hex characters, got: '$presence'" }
+        require(name.isNotBlank()) { "name must not be blank" }
+        require(name.codePointCount(0, name.length) <= LanInvitation.MAX_NAME_CODE_POINTS) {
+            "name exceeds maximum ${LanInvitation.MAX_NAME_CODE_POINTS} code points"
+        }
+        require(name.toByteArray(StandardCharsets.UTF_8).size <= LanInvitation.MAX_NAME_UTF8_BYTES) {
+            "name exceeds maximum ${LanInvitation.MAX_NAME_UTF8_BYTES} UTF-8 bytes"
+        }
+        require(platform in ALLOWED_PLATFORMS) {
+            "platform '$platform' is not allowed, must be one of $ALLOWED_PLATFORMS"
+        }
+        require(endpoints.isNotEmpty() && endpoints.size <= LanInvitation.MAX_ENDPOINTS) {
+            "endpoints must contain 1..${LanInvitation.MAX_ENDPOINTS} items, got: ${endpoints.size}"
+        }
+        require(endpoints.distinct().size == endpoints.size) {
+            "endpoints must be unique, duplicate found"
+        }
+        require(isValidSha256(spkiSha256)) {
+            "spkiSha256 must be 64 lowercase hex characters, got: '$spkiSha256'"
+        }
+        require(LanInvitation.TOKEN_REGEX.matches(token)) {
+            "token must be 43 unpadded base64url characters encoding 32 bytes"
+        }
+        val decodedToken = try {
+            java.util.Base64.getUrlDecoder().decode(token)
+        } catch (e: Exception) {
+            throw IllegalArgumentException("Invalid base64url token", e)
+        }
+        val reencodedToken = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(decodedToken)
+        require(decodedToken.size == 32 && reencodedToken == token) {
+            "token must be canonically encoded 32-byte base64url without trailing bit residue"
+        }
+        require(LanInvitation.EXPIRES_AT_REGEX.matches(expiresAt)) {
+            "expiresAt must be a positive decimal epoch seconds string, got: '$expiresAt'"
+        }
+        require(ttlSeconds in 1..MAX_TTL_SECONDS) { "ttlSeconds must be in 1..$MAX_TTL_SECONDS, got: $ttlSeconds" }
+        require(invitationHash.isEmpty() || isValidSha256(invitationHash)) {
+            "invitationHash must be 64 lowercase hex characters if present, got: '$invitationHash'"
+        }
+    }
+
+    override fun toString(): String {
+        return "LanPairV2Invitation(v=$v, purpose='$purpose', transport='$transport', profile=$profile, protocol=$protocol, " +
+            "invitationId=[REDACTED], presence=[REDACTED], name=[REDACTED], platform='$platform', " +
+            "endpoints=[REDACTED], spkiSha256=[REDACTED], token=[REDACTED], expiresAt='$expiresAt', " +
+            "ttlSeconds=$ttlSeconds, invitationHash=[REDACTED])"
+    }
+
+    companion object {
+        const val REQUIRED_PURPOSE = "pair-only"
+        const val MAX_TTL_SECONDS = 120
+        val ALLOWED_PLATFORMS = setOf("android", "windows", "macos", "ios", "linux", "unknown")
+    }
+}
+
+sealed interface ParsedGlideInvitation {
+    data class TransferV1(val invitation: LanInvitation) : ParsedGlideInvitation
+    data class PairOnlyV2(val invitation: LanPairV2Invitation) : ParsedGlideInvitation
+}
+

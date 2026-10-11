@@ -71,6 +71,7 @@ import java.util.Locale
 fun SettingsScreen(
     viewModel: SettingsViewModel,
     onBack: () -> Unit,
+    onPairDevice: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -174,6 +175,7 @@ fun SettingsScreen(
             // 4. Trusted Devices Section
             TrustedDevicesSection(
                 trustedPeerCount = uiState.trustedPeers.size,
+                onPairDevice = onPairDevice,
                 onManageClick = {
                     haptics.performSelection()
                     viewModel.showTrustedDevicesDialog()
@@ -1015,6 +1017,7 @@ private fun LicenseItem(
 @Composable
 private fun TrustedDevicesSection(
     trustedPeerCount: Int,
+    onPairDevice: () -> Unit,
     onManageClick: () -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -1077,6 +1080,12 @@ private fun TrustedDevicesSection(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Manage trusted devices")
+                }
+                OutlinedButton(
+                    onClick = onPairDevice,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                ) {
+                    Text("Pair with another device")
                 }
             }
         }

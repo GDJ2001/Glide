@@ -17,7 +17,7 @@ public enum MacMenuAction: Equatable, Sendable {
     case resumeReceiving
     case showHistory
     case toggleLaunchAtLogin
-    case selectPeer(spkiFingerprint: String)
+    case selectPeer(presenceToken: String)
     case quit
 }
 
@@ -266,13 +266,13 @@ public final class MacCompanionCoordinator: @unchecked Sendable {
         } else {
             items.append(MacMenuItem(id: "peers_header", title: "Nearby Devices (\(discoveredPeers.count)):", isEnabled: false))
             for peer in discoveredPeers {
-                let presenceSuffix = !peer.presenceToken.isEmpty ? " (Ready)" : ""
+                let presenceSuffix = peer.isPairReady ? " (Available to pair)" : (!peer.presenceToken.isEmpty ? " (Ready)" : "")
                 let title = "  • \(peer.name)\(presenceSuffix)"
                 items.append(MacMenuItem(
-                    id: "peer_\(peer.spkiSha256)",
+                    id: "peer_\(peer.presenceToken)",
                     title: title,
                     isEnabled: true,
-                    action: .selectPeer(spkiFingerprint: peer.spkiSha256)
+                    action: .selectPeer(presenceToken: peer.presenceToken)
                 ))
             }
         }
