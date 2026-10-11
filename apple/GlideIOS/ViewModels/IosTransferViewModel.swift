@@ -370,6 +370,7 @@ public final class IosTransferViewModel: ObservableObject {
                     count = try await engine.receiveTrustedInboundConnection(
                         channel: channel, open: open,
                         destinationDirectory: docsDir, localDeviceName: deviceName,
+                        localPlatform: "ios",
                         onConsent: consent, onProgress: progress)
                 case .invalid:
                     throw ApplePairSessionError.invalidMessage
@@ -485,7 +486,8 @@ public final class IosTransferViewModel: ObservableObject {
                     fileUrls: stagedUrls,
                     peerFingerprintHex: peer.fingerprintHex,
                     endpoints: [LanEndpoint(address: host, port: port)],
-                    localDeviceName: deviceName
+                    localDeviceName: deviceName,
+                    localPlatform: "ios"
                 ) { [weak self] progress, bytesDone, totalBytes, filename in
                     Task { @MainActor in
                         self?.transferProgress = progress

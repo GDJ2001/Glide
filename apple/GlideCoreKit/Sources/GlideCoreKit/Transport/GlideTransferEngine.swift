@@ -288,6 +288,7 @@ public final class GlideTransferEngine: @unchecked Sendable {
         endpoints: [LanEndpoint],
         expectedPresenceId: String? = nil,
         localDeviceName: String = "",
+        localPlatform: String = "macos",
         onProgress: (@Sendable (Double, Int64, Int64, String) -> Void)? = nil
     ) async throws -> Int {
         guard !fileUrls.isEmpty else {
@@ -329,9 +330,10 @@ public final class GlideTransferEngine: @unchecked Sendable {
 
         for endpoint in endpoints {
             do {
+                guard let port = UInt16(exactly: endpoint.port), port > 0 else { continue }
                 connectedChannel = try await client.connect(
                     host: endpoint.address,
-                    port: UInt16(endpoint.port),
+                    port: port,
                     expectedSpkiSha256Hex: nil,
                     timeoutSeconds: 3.0
                 )
@@ -356,7 +358,7 @@ public final class GlideTransferEngine: @unchecked Sendable {
             authMethod: Profile2Constants.authMethodIdentityV1,
             initiatorNonce: InvitationCodec.toUnpaddedBase64Url(Data(nonceBytes)),
             initiatorDeviceName: localDeviceName.isEmpty ? "Apple Device" : localDeviceName,
-            initiatorPlatform: "macos",
+            initiatorPlatform: localPlatform,
             initiatorIdentityPublicKey: InvitationCodec.toUnpaddedBase64Url(localSpki),
             expectedPresenceId: expectedPresenceId,
             expectedPeerIdentityFingerprint: enrolledPeer.fingerprintHex
@@ -403,6 +405,7 @@ public final class GlideTransferEngine: @unchecked Sendable {
             localDeviceName: localDeviceName,
             isHostedSender: false,
             preEstablishedTrustedSessionId: sessionId,
+            trustedPeer: enrolledPeer,
             onConfirmRecipient: nil,
             onProgress: onProgress
         )
@@ -415,6 +418,7 @@ public final class GlideTransferEngine: @unchecked Sendable {
         open: Profile2SessionOpen,
         destinationDirectory: URL,
         localDeviceName: String = "",
+        localPlatform: String = "macos",
         onConsent: @escaping @Sendable (String, Int, Int64) async -> Bool,
         onProgress: (@Sendable (Double, Int64, Int64, String) -> Void)? = nil
     ) async throws -> Int {
@@ -481,7 +485,7 @@ public final class GlideTransferEngine: @unchecked Sendable {
             accepted: true,
             responderNonce: InvitationCodec.toUnpaddedBase64Url(Data(nonceBytes)),
             responderDeviceName: localDeviceName.isEmpty ? "Apple Receiver" : localDeviceName,
-            responderPlatform: "macos",
+            responderPlatform: localPlatform,
             responderIdentityPublicKey: InvitationCodec.toUnpaddedBase64Url(localSpki)
         )
         try await channel.writeProfile2Message(ack)
@@ -494,6 +498,7 @@ public final class GlideTransferEngine: @unchecked Sendable {
             localDeviceName: localDeviceName,
             isConnectingToHostedSender: false,
             preEstablishedTrustedSessionId: open.sessionId.lowercased(),
+            trustedPeer: enrolledSender,
             onConsent: onConsent,
             onProgress: onProgress
         )
@@ -510,6 +515,7 @@ public final class GlideTransferEngine: @unchecked Sendable {
         localDeviceName: String,
         isHostedSender: Bool,
         preEstablishedTrustedSessionId: String? = nil,
+        trustedPeer: PersistentTrustedPeer? = nil,
         onConfirmRecipient: (@Sendable (String) async -> Bool)?,
         onProgress: (@Sendable (Double, Int64, Int64, String) -> Void)?
     ) async throws -> Int {
@@ -586,7 +592,9 @@ public final class GlideTransferEngine: @unchecked Sendable {
         let helloBody: [String: AnySendable] = [
             "supportedMajors": .array([.int(1)]),
             "requiredCapabilities": .array([.string("stream-v1"), .string("sha256")]),
-            "optionalCapabilities": .array([.string("folder-v1")]),
+            "optionalCapabilities": .array(trustedPeer == nil
+                ? [.string("folder-v1")]
+                : [.string("folder-v1"), .string("identity-v1")]),
             "role": .string("sender"),
             "ephemeralPeerId": .string(UUID().uuidString.lowercased()),
             "displayName": .string(name)
@@ -600,6 +608,22 @@ public final class GlideTransferEngine: @unchecked Sendable {
 
         let helloAck = try await sequence.readEnvelope(from: channel, expectedType: LanMessageTypes.helloAck, sessionId: sessionId)
         let peerName = helloAck.body["displayName"]?.stringValue ?? "Peer Device"
+
+        if let trustedPeer {
+            guard let raw = helloAck.body["capabilities"]?.arrayValue else {
+                throw TransferError.identityChanged
+            }
+            let negotiated = raw.compactMap { $0.stringValue }
+            guard negotiated.count == raw.count,
+                  Set(negotiated).count == negotiated.count,
+                  Set(AppleTrustedSessionAuthenticator.capabilities).isSubset(of: Set(negotiated)),
+                  Set(negotiated).isSubset(of: Set(["stream-v1", "sha256", "folder-v1", "identity-v1"])) else {
+                throw TransferError.identityChanged
+            }
+            try await AppleTrustedSessionAuthenticator.authenticateSender(
+                channel: channel, sequence: sequence, sessionId: sessionId,
+                peer: trustedPeer, negotiatedCapabilities: negotiated)
+        }
 
         if isHostedSender, let onConfirm = onConfirmRecipient {
             let confirmed = await onConfirm(peerName)
@@ -801,6 +825,7 @@ public final class GlideTransferEngine: @unchecked Sendable {
         localDeviceName: String,
         isConnectingToHostedSender: Bool,
         preEstablishedTrustedSessionId: String? = nil,
+        trustedPeer: PersistentTrustedPeer? = nil,
         onConsent: @escaping @Sendable (String, Int, Int64) async -> Bool,
         onProgress: (@Sendable (Double, Int64, Int64, String) -> Void)?
     ) async throws -> Int {
@@ -874,9 +899,15 @@ public final class GlideTransferEngine: @unchecked Sendable {
         let peerName = hello.body["displayName"]?.stringValue ?? "Peer Device"
 
         let name = localDeviceName.isEmpty ? "Apple Receiver" : localDeviceName
+        if trustedPeer != nil {
+            let offered = hello.body["optionalCapabilities"]?.arrayValue?.compactMap { $0.stringValue } ?? []
+            guard offered.contains("identity-v1") else { throw TransferError.identityChanged }
+        }
+        let negotiated = trustedPeer == nil
+            ? ["sha256", "stream-v1"] : AppleTrustedSessionAuthenticator.capabilities
         let helloAckBody: [String: AnySendable] = [
             "selectedMajor": .int(1),
-            "capabilities": .array([.string("stream-v1"), .string("sha256")]),
+            "capabilities": .array(negotiated.map { .string($0) }),
             "role": .string("receiver"),
             "ephemeralPeerId": .string(UUID().uuidString.lowercased()),
             "displayName": .string(name),
@@ -893,6 +924,14 @@ public final class GlideTransferEngine: @unchecked Sendable {
             body: helloAckBody
         )
         try await channel.writeRecord(helloAckRecord)
+
+        if let trustedPeer {
+            let serverSpki = try KeychainIdentityManager.shared.getTlsCertificateSpkiSha256Hex()
+            try await AppleTrustedSessionAuthenticator.authenticateReceiver(
+                channel: channel, sequence: sequence, sessionId: sessionId,
+                peer: trustedPeer, localServerSpkiHex: serverSpki,
+                negotiatedCapabilities: negotiated)
+        }
 
         // 3. Paged OFFERS
         let offerBegin = try await sequence.readEnvelope(from: channel, expectedType: LanMessageTypes.offerBegin, sessionId: sessionId)

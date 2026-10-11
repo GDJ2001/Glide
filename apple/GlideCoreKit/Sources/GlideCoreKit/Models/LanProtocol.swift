@@ -19,6 +19,8 @@ public enum LanMessageTypes {
     public static let error = "ERROR"
     public static let ping = "PING"
     public static let pong = "PONG"
+    public static let identityChallenge = "IDENTITY_CHALLENGE"
+    public static let identityResponse = "IDENTITY_RESPONSE"
 
     public static let all: Set<String> = [
         hello, helloAck,
@@ -26,7 +28,7 @@ public enum LanMessageTypes {
         itemStart, itemReady, itemEnd, itemResult,
         batchEnd, batchResult,
         cancel, cancelAck,
-        error, ping, pong
+        error, ping, pong, identityChallenge, identityResponse
     ]
 }
 
