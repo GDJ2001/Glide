@@ -74,18 +74,24 @@
                        MaxHeight="150" Background="Transparent" BorderThickness="0">
                 <ListBox.ItemTemplate>
                   <DataTemplate>
-                    <Grid ColumnDefinitions="Auto,*,Auto" Margin="4,2">
-                      <PathIcon Grid.Column="0" Data="{StaticResource IconPair}" Width="18" Height="18"
-                                Foreground="{DynamicResource AccentPrimaryBrush}" VerticalAlignment="Center"
-                                Margin="0,0,12,0" />
-                      <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                        <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" Classes="body" />
-                        <TextBlock Text="{Binding FingerprintHex}" Classes="muted"
-                                   FontFamily="{DynamicResource FontFamilyMonospace}" />
-                      </StackPanel>
-                      <TextBlock Grid.Column="2" Text="Saved" Classes="small" VerticalAlignment="Center"
-                                 Foreground="{DynamicResource StatusSuccessBrush}" />
-                    </Grid>
+                    <StackPanel Margin="4,2" Spacing="4">
+                      <Grid ColumnDefinitions="Auto,*,Auto">
+                        <PathIcon Grid.Column="0" Data="{StaticResource IconPair}" Width="18" Height="18"
+                                  Foreground="{DynamicResource AccentPrimaryBrush}" VerticalAlignment="Center"
+                                  Margin="0,0,12,0" />
+                        <TextBlock Grid.Column="1" Text="{Binding DisplayName}" ToolTip.Tip="{Binding DisplayName}"
+                                   TextTrimming="CharacterEllipsis" FontWeight="SemiBold" Classes="body" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="2" Text="Saved" Classes="small" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource StatusSuccessBrush}" />
+                      </Grid>
+                      <Expander Header="Details" HorizontalAlignment="Stretch">
+                        <StackPanel Spacing="2" Margin="0,4,0,0">
+                          <TextBlock Text="{Binding FingerprintHex}" Classes="muted"
+                                     FontFamily="{DynamicResource FontFamilyMonospace}" TextWrapping="Wrap" />
+                          <TextBlock Text="{Binding LastSeenAtUnixMs, StringFormat='{}Last verified (ms): {0}'}" Classes="muted" />
+                        </StackPanel>
+                      </Expander>
+                    </StackPanel>
                   </DataTemplate>
                 </ListBox.ItemTemplate>
               </ListBox>

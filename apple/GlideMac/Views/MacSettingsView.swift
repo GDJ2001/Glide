@@ -1,4 +1,5 @@
 import SwiftUI
+import GlideCoreKit
 
 #if os(macOS)
 import AppKit
@@ -41,6 +42,50 @@ public struct MacSettingsView: View {
                 .background(Color(NSColor.controlBackgroundColor))
                 .cornerRadius(8)
 
+                // Trusted Devices Section: verified identity and last verification in Details, not in primary row
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Trusted Devices")
+                        .font(.headline)
+
+                    if viewModel.trustedPeers.isEmpty {
+                        Text("No trusted devices saved yet.")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    } else {
+                        ForEach(viewModel.trustedPeers, id: \.fingerprintHex) { peer in
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack {
+                                    Text(peer.displayName)
+                                        .fontWeight(.semibold)
+                                        .lineLimit(1)
+                                        .help(peer.displayName)
+                                    Spacer()
+                                    Button("Revoke") {
+                                        viewModel.revokeTrustedPeer(peer)
+                                    }
+                                    .buttonStyle(.bordered)
+                                }
+                                DisclosureGroup("Details") {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(peer.fingerprintHex)
+                                            .font(.system(.caption, design: .monospaced))
+                                            .foregroundColor(.secondary)
+                                        Text("Last verified: \(Date(timeIntervalSince1970: Double(peer.lastSeenAtUnixMs) / 1000.0).formatted())")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .padding(.top, 4)
+                                }
+                            }
+                            .padding(.vertical, 4)
+                        }
+                    }
+                }
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(NSColor.controlBackgroundColor))
+                .cornerRadius(8)
+
                 // Storage Section
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Storage & Downloads")
@@ -73,14 +118,7 @@ public struct MacSettingsView: View {
                     HStack {
                         Text("Version:")
                             .frame(width: 140, alignment: .leading)
-                        Text("1.0.0-macos (Native SwiftUI)")
-                            .foregroundColor(.secondary)
-                    }
-
-                    HStack {
-                        Text("Protocol:")
-                            .frame(width: 140, alignment: .leading)
-                        Text("Profile 1 (TLS 1.3 / TCP)")
+                        Text("1.0.0")
                             .foregroundColor(.secondary)
                     }
 
@@ -97,6 +135,9 @@ public struct MacSettingsView: View {
                 .cornerRadius(8)
             }
             .padding()
+        }
+        .onAppear {
+            viewModel.refreshTrustedPeers()
         }
     }
 

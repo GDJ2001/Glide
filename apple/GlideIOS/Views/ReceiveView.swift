@@ -1,6 +1,10 @@
 import SwiftUI
 import GlideCoreKit
 
+#if os(iOS)
+import UIKit
+#endif
+
 public struct ReceiveView: View {
     @ObservedObject var viewModel: IosTransferViewModel
 
@@ -48,6 +52,13 @@ public struct ReceiveView: View {
                             Text("Ready to Receive Nearby")
                                 .font(.headline)
                             Spacer()
+                            Button("Copy receive link") {
+                                #if os(iOS)
+                                UIPasteboard.general.string = viewModel.currentInvitationUri
+                                #endif
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(viewModel.currentInvitationUri.isEmpty)
                         }
 
                         Text("Devices on the same local Wi-Fi network can discover and send files to this device.")

@@ -10,6 +10,7 @@ import dev.glide.app.config.LanFeatureConfig
 import dev.glide.app.permission.PermissionPolicy
 import dev.glide.core.domain.PeerDevice
 import dev.glide.core.domain.PeerId
+import dev.glide.core.identity.PersistentTrustManager
 import dev.glide.core.pairing.LanEndpoint
 import dev.glide.core.pairing.LanInvitation
 import dev.glide.core.ports.ConnectionEvent
@@ -79,6 +80,11 @@ class ProductionLanController private constructor(
         CoroutineScope
     ) -> LanListener
 ) {
+    @Volatile private var trustedReceiveManager: PersistentTrustManager? = null
+
+    fun configureTrustedReceive(manager: PersistentTrustManager?) {
+        trustedReceiveManager = manager
+    }
 
     @Inject
     constructor(
@@ -160,6 +166,7 @@ class ProductionLanController private constructor(
 
         val existing = synchronized(lock) { receiverResources }
         if (existing != null) {
+            existing.transport.configureTrustedReceive(trustedReceiveManager, deviceName)
             val available = existing.networkScope.networkState.value as? LanNetworkState.Available
             val port = runCatching { existing.listener.localPort }.getOrDefault(-1)
             if (available != null && port > 0) {
@@ -218,6 +225,7 @@ class ProductionLanController private constructor(
                     activeTransportScope
                 )
                 transport = activeTransport
+                activeTransport.configureTrustedReceive(trustedReceiveManager, deviceName)
 
                 val authority = InvitationAuthority()
                 activeTransport.attachServerListener(activeListener, authority)

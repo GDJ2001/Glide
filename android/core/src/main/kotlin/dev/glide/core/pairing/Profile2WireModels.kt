@@ -19,7 +19,8 @@ import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
 object Profile2Constants {
-    const val WIRE_VERSION = 2
+    // The invitation URI is v2; the Profile 2 control envelope itself is wire v1.
+    const val WIRE_VERSION = 1
     const val PURPOSE_PAIR_ONLY = "PAIR_ONLY"
     const val PURPOSE_TRUSTED_SEND = "TRUSTED_SEND"
 

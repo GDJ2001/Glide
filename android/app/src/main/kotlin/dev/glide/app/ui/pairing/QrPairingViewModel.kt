@@ -53,6 +53,7 @@ class QrPairingViewModel(
     private var countdownJob: Job? = null
     private var externalInvitationRevoker: (() -> Unit)? = null
     private var deviceHasFlashlight: Boolean = false
+    private var pairOnlyMode: Boolean = false
 
     // -------------------------------------------------------------------------
     // Receiver Flow (Minting, Countdown, Refresh, Revocation)
@@ -239,7 +240,8 @@ class QrPairingViewModel(
     // Sender Flow (Camera Scan, Paste, Confirmation, Replay Check)
     // -------------------------------------------------------------------------
 
-    fun startScanning(hasFlashlight: Boolean = false) {
+    fun startScanning(hasFlashlight: Boolean = false, pairOnly: Boolean = pairOnlyMode) {
+        pairOnlyMode = pairOnly
         this.deviceHasFlashlight = hasFlashlight || this.deviceHasFlashlight
         val current = _scannerState.value
         val torch = if (current is QrScannerUiState.Scanning) current.torchEnabled else false
@@ -277,8 +279,25 @@ class QrPairingViewModel(
 
     private fun processInvitationText(rawText: String) {
         val normalizedText = rawText.trim().let { trimmed ->
-            val prefixIdx = trimmed.indexOf(InvitationCodec.URI_PREFIX)
+            val prefixIdx = trimmed.indexOf("glide://pair/")
             if (prefixIdx > 0) trimmed.substring(prefixIdx).trim() else trimmed
+        }
+        if (pairOnlyMode || normalizedText.startsWith(InvitationCodec.URI_PREFIX_V2)) {
+            val parsed = runCatching { InvitationCodec.decodeAny(normalizedText) }.getOrNull()
+            val pair = parsed as? dev.glide.core.pairing.ParsedGlideInvitation.PairOnlyV2
+            if (pair == null) {
+                _scannerState.value = QrScannerUiState.Error(QrScanErrorReason.InvalidFormat)
+                return
+            }
+            val currentEpochSec = clock.epochMillis() / 1000L
+            val clockSkewGraceSec = if (clock === AuthorityClock.SYSTEM) 300L else 0L
+            val expiresAtSec = pair.invitation.expiresAt.toLongOrNull()
+            if (expiresAtSec != null && currentEpochSec >= expiresAtSec + clockSkewGraceSec) {
+                _scannerState.value = QrScannerUiState.Error(QrScanErrorReason.Expired)
+                return
+            }
+            _scannerState.value = QrScannerUiState.PairOnlyConfirmationRequired(pair.invitation)
+            return
         }
         val invitation: LanInvitation = try {
             InvitationCodec.decode(normalizedText)
@@ -333,6 +352,9 @@ class QrPairingViewModel(
         if (current is QrScannerUiState.ConfirmationRequired) {
             _scannerState.value = QrScannerUiState.Connecting(current.invitation)
             _events.tryEmit(QrPairingEvent.ConnectConfirmed(current.invitation))
+        } else if (current is QrScannerUiState.PairOnlyConfirmationRequired) {
+            _scannerState.value = QrScannerUiState.PairOnlyConnecting(current.invitation)
+            _events.tryEmit(QrPairingEvent.PairOnlyConfirmed(current.invitation))
         }
     }
 
@@ -361,7 +383,8 @@ class QrPairingViewModel(
     }
 
     fun onConnectionBlocked(message: String) {
-        if (_scannerState.value is QrScannerUiState.Connecting) {
+        if (_scannerState.value is QrScannerUiState.Connecting ||
+            _scannerState.value is QrScannerUiState.PairOnlyConnecting) {
             _scannerState.value = QrScannerUiState.Error(QrScanErrorReason.Custom(message))
         }
     }

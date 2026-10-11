@@ -65,8 +65,14 @@ public struct SendView: View {
                     }
                 }
 
-                // Bottom Action Bar
+                // Bottom Action Bar: Only Quick share with QR and Paired device
                 VStack(spacing: 12) {
+                    Picker("Send Method", selection: $viewModel.sendMethod) {
+                        Text("Quick share with QR").tag(IosSendMethod.quickShareQr)
+                        Text("Paired device").tag(IosSendMethod.pairedDevice)
+                    }
+                    .pickerStyle(.segmented)
+
                     HStack(spacing: 16) {
                         Button {
                             isFileImporterPresented = true
@@ -88,22 +94,52 @@ public struct SendView: View {
                     }
 
                     if !viewModel.stagedUrls.isEmpty {
-                        Button {
-                            if viewModel.invitationInput.isEmpty {
-                                viewModel.isScannerPresented = true
+                        if viewModel.sendMethod == .quickShareQr {
+                            Button {
+                                if viewModel.invitationInput.isEmpty {
+                                    viewModel.isScannerPresented = true
+                                } else {
+                                    viewModel.sendStagedFiles()
+                                }
+                            } label: {
+                                HStack {
+                                    Image(systemName: "qrcode.viewfinder")
+                                    Text("Quick share with QR")
+                                        .fontWeight(.semibold)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                            }
+                            .buttonStyle(.borderedProminent)
+                        } else {
+                            if viewModel.trustedPeers.isEmpty {
+                                Text("No paired devices saved yet.")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
                             } else {
-                                viewModel.sendStagedFiles()
+                                Picker("Paired device", selection: $viewModel.selectedTrustedPeer) {
+                                    ForEach(viewModel.trustedPeers, id: \.fingerprintHex) { peer in
+                                        Text(peer.displayName).tag(Optional(peer))
+                                    }
+                                }
+                                TextField("Local address (e.g. 192.168.1.20:42424)", text: $viewModel.selectedPeerEndpoint)
+                                    .textFieldStyle(.roundedBorder)
+
+                                Button {
+                                    viewModel.sendToPairedDevice()
+                                } label: {
+                                    HStack {
+                                        Image(systemName: "paperplane.fill")
+                                        Text("Send to Paired device")
+                                            .fontWeight(.semibold)
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 14)
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .disabled(viewModel.selectedTrustedPeer == nil)
                             }
-                        } label: {
-                            HStack {
-                                Image(systemName: "paperplane.fill")
-                                Text(viewModel.invitationInput.isEmpty ? "Scan QR & Send" : "Send to Peer")
-                                    .fontWeight(.semibold)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
                         }
-                        .buttonStyle(.borderedProminent)
                     }
                 }
                 .padding()
@@ -124,6 +160,9 @@ public struct SendView: View {
                 }
             }
             .navigationTitle("Glide Send")
+            .onAppear {
+                viewModel.refreshTrustedPeers()
+            }
             .fileImporter(
                 isPresented: $isFileImporterPresented,
                 allowedContentTypes: [.item],
@@ -146,7 +185,9 @@ public struct SendView: View {
                 #if os(iOS)
                 QrScannerView { code in
                     viewModel.handleScannedCode(code)
-                    viewModel.sendStagedFiles()
+                    if !code.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix(InvitationCodec.pairV2UriPrefix) {
+                        viewModel.sendStagedFiles()
+                    }
                 }
                 #endif
             }

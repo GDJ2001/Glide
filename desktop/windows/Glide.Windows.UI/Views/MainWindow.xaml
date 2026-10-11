@@ -157,11 +157,8 @@
                                 <RadioButton Style="{StaticResource SendMethodCardStyle}" GroupName="SendMethod" IsChecked="{Binding IsQuickQrSelected, Mode=OneWay}" IsEnabled="{Binding HasSelectedFiles}" Command="{Binding SelectSendMethodCommand}" CommandParameter="QuickQr" AutomationProperties.Name="Quick share with QR code" Margin="0,0,0,8">
                                     <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><Path Data="{StaticResource IconPhone}" Fill="{DynamicResource PrimaryBrush}" Width="22" Height="22" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,12,0" /><StackPanel Grid.Column="1"><TextBlock Text="Quick share with QR" Foreground="{DynamicResource TextPrimaryBrush}" FontWeight="SemiBold" /><TextBlock Text="Show a code now. Sending starts after scan and your approval." Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" TextWrapping="Wrap" /></StackPanel></Grid>
                                 </RadioButton>
-                                <RadioButton Style="{StaticResource SendMethodCardStyle}" GroupName="SendMethod" IsChecked="{Binding IsNearbySelected, Mode=OneWay}" IsEnabled="{Binding HasSelectedFiles}" Command="{Binding SelectSendMethodCommand}" CommandParameter="Nearby" AutomationProperties.Name="Nearby device" Margin="0,0,0,8">
-                                    <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><Path Data="{StaticResource IconLaptop}" Fill="{DynamicResource PrimaryBrush}" Width="22" Height="22" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,12,0" /><StackPanel Grid.Column="1"><TextBlock Text="Nearby device" Foreground="{DynamicResource TextPrimaryBrush}" FontWeight="SemiBold" /><TextBlock Text="Find a device and use its current pairing invitation." Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" TextWrapping="Wrap" /></StackPanel></Grid>
-                                </RadioButton>
-                                <RadioButton Style="{StaticResource SendMethodCardStyle}" GroupName="SendMethod" IsChecked="{Binding IsTrustedSelected, Mode=OneWay}" IsEnabled="{Binding HasSelectedFiles}" Command="{Binding SelectSendMethodCommand}" CommandParameter="Trusted" AutomationProperties.Name="Saved device">
-                                    <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><Path Data="{StaticResource IconActivity}" Fill="{DynamicResource PrimaryBrush}" Width="22" Height="22" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,12,0" /><StackPanel Grid.Column="1"><TextBlock Text="Saved device" Foreground="{DynamicResource TextPrimaryBrush}" FontWeight="SemiBold" /><TextBlock Text="Choose a trusted device. Glide verifies it again for this send." Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" TextWrapping="Wrap" /></StackPanel></Grid>
+                                <RadioButton Style="{StaticResource SendMethodCardStyle}" GroupName="SendMethod" IsChecked="{Binding IsTrustedSelected, Mode=OneWay}" IsEnabled="{Binding HasSelectedFiles}" Command="{Binding SelectSendMethodCommand}" CommandParameter="Trusted" AutomationProperties.Name="Paired device">
+                                    <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><Path Data="{StaticResource IconActivity}" Fill="{DynamicResource PrimaryBrush}" Width="22" Height="22" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,12,0" /><StackPanel Grid.Column="1"><TextBlock Text="Paired device" Foreground="{DynamicResource TextPrimaryBrush}" FontWeight="SemiBold" /><TextBlock Text="Choose a paired device to send." Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" TextWrapping="Wrap" /></StackPanel></Grid>
                                 </RadioButton>
                                 <TextBlock Text="{Binding SelectedSendMethodText}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,14,0,0" AutomationProperties.LiveSetting="Polite" />
                                 <Button x:Name="SendChosenDeviceButton" Style="{StaticResource PrimaryButtonStyle}" Content="{Binding SendActionText}" Command="{Binding SendFilesCommand}" Visibility="{Binding IsSendActionVisible, Converter={StaticResource BoolToVis}}" HorizontalAlignment="Right" Margin="0,14,0,0" AutomationProperties.Name="Send selected files to chosen device" />
@@ -173,55 +170,83 @@
                 <!-- Pair devices -->
                 <ScrollViewer x:Name="PairDevicesPage" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Visibility="{Binding IsPairDevicesSelected, Converter={StaticResource BoolToVis}}">
                     <StackPanel>
-                        <TextBlock Text="Choose how the two devices connect. You approve each transfer; saving a device is optional after verification." Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,0,0,20" />
                         <Border Style="{StaticResource CardStyle}">
                             <StackPanel>
-                                <TextBlock Text="Connect with QR or link" FontWeight="SemiBold" FontSize="16" />
-                                <TextBlock Text="Choose where the one-time code is shown." Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="0,4,0,0" />
-                                <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
-                                    <RadioButton x:Name="UseDeviceInvitationTab" Style="{StaticResource PairDirectionTabStyle}" GroupName="PairDirection" Content="Use device invitation" IsChecked="{Binding IsUseInvitationSelected, Mode=OneWay}" Command="{Binding SelectPairDirectionCommand}" CommandParameter="UseInvitation" AutomationProperties.Name="Use invitation from another device" Margin="0,0,8,0" />
-                                    <RadioButton x:Name="ShowThisPcQrTab" Style="{StaticResource PairDirectionTabStyle}" GroupName="PairDirection" Content="Show this PC's QR" IsChecked="{Binding IsShowThisPcQrSelected, Mode=OneWay}" Command="{Binding SelectPairDirectionCommand}" CommandParameter="ShowThisPcQr" AutomationProperties.Name="Show this PC QR code" />
+                                <TextBlock Text="Pair devices" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,12" />
+                                <WrapPanel>
+                                    <Button Style="{StaticResource PrimaryButtonStyle}" Content="Find devices" Command="{Binding FindPairDevicesCommand}" Margin="0,0,8,8" AutomationProperties.Name="Find pair-ready Glide devices" />
+                                    <Button Style="{StaticResource SecondaryButtonStyle}" Content="Ready to pair" Command="{Binding ReadyToPairCommand}" Margin="0,0,8,8" AutomationProperties.Name="Show pairing code for this PC" />
+                                </WrapPanel>
+                                <StackPanel Visibility="{Binding IsPairDiscovery, Converter={StaticResource BoolToVis}}" Margin="0,12,0,0">
+                                    <TextBlock Text="{Binding Pairing.Message}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+                                    <ItemsControl ItemsSource="{Binding DiscoveredPeers}" Margin="0,10,0,0">
+                                        <ItemsControl.ItemTemplate><DataTemplate>
+                                            <Button Style="{StaticResource SecondaryButtonStyle}" Command="{Binding DataContext.SelectPairPeerCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" IsEnabled="{Binding IsPairReady}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Margin="0,0,0,8" ToolTip="{Binding DeviceName}" AutomationProperties.Name="Select pair-ready device">
+                                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBlock Text="{Binding DeviceName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip="{Binding DeviceName}" /><TextBlock Grid.Column="1" Text="{Binding CapabilitiesText}" Foreground="{DynamicResource TextSecondaryBrush}" Margin="12,0,0,0" /></Grid>
+                                            </Button>
+                                        </DataTemplate></ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <WrapPanel Visibility="{Binding IsPairEmpty, Converter={StaticResource BoolToVis}}" Margin="0,8,0,0">
+                                        <Button Style="{StaticResource PrimaryButtonStyle}" Content="Try again" Command="{Binding FindPairDevicesCommand}" Margin="0,0,8,8" />
+                                        <Button Style="{StaticResource SecondaryButtonStyle}" Content="Can’t find your device?" Command="{Binding ShowPairAddressCommand}" Margin="0,0,0,8" />
+                                    </WrapPanel>
                                 </StackPanel>
-                                <StackPanel x:Name="UseDeviceInvitationPanel" Visibility="{Binding IsUseInvitationSelected, Converter={StaticResource BoolToVis}}" Margin="0,16,0,0">
-                                    <TextBlock Text="On the receiving device, open Receive and copy its current Glide pairing link. The link is also in that device's QR code." Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" FontSize="12" Margin="0,0,0,12" />
-                                    <TextBox Style="{StaticResource ModernTextBoxStyle}" Text="{Binding PairInputUri, UpdateSourceTrigger=PropertyChanged}" TextWrapping="Wrap" MinHeight="56" AutomationProperties.Name="Receiving device pairing link" />
-                                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
-                                        <Button Style="{StaticResource SecondaryButtonStyle}" Content="Paste link" Command="{Binding PastePairingLinkCommand}" Margin="0,0,8,0" />
-                                        <Button Style="{StaticResource PrimaryButtonStyle}" Content="Use invitation" Command="{Binding SubmitPairModalCommand}" />
-                                    </StackPanel>
-                                    <TextBlock Text="{Binding PairingStatusText}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,12,0,0" AutomationProperties.LiveSetting="Polite" />
+                                <StackPanel Visibility="{Binding IsPairReady, Converter={StaticResource BoolToVis}}" Margin="0,12,0,0">
+                                    <TextBlock Text="Pairing code" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding Pairing.Code}" FontSize="32" FontWeight="Bold" Margin="0,6,0,0" AutomationProperties.Name="Six-digit pairing code" />
+                                    <TextBlock Text="{Binding Pairing.ExpiryText}" Foreground="{DynamicResource TextSecondaryBrush}" AutomationProperties.LiveSetting="Polite" />
+                                    <TextBlock Text="Enter this code on the other computer." Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,0" TextWrapping="Wrap" />
+                                    <Border Background="White" CornerRadius="10" Padding="10" HorizontalAlignment="Left" Margin="0,12,0,0" Visibility="{Binding IsPairQrVisible, Converter={StaticResource BoolToVis}}"><Image Source="{Binding PairOnlyQrImage}" Width="200" Height="200" Stretch="Uniform" RenderOptions.BitmapScalingMode="NearestNeighbor" AutomationProperties.Name="Pair-only QR code" /></Border>
+                                    <WrapPanel Margin="0,12,0,0">
+                                        <Button Style="{StaticResource SecondaryButtonStyle}" Content="Show QR" Command="{Binding ShowPairQrCommand}" Margin="0,0,8,8" />
+                                        <Button Style="{StaticResource SecondaryButtonStyle}" Content="Copy link" Command="{Binding CopyPairOnlyLinkCommand}" Margin="0,0,8,8" />
+                                        <Button Style="{StaticResource SecondaryButtonStyle}" Content="Cancel" Command="{Binding CancelPairCommand}" Margin="0,0,0,8" />
+                                    </WrapPanel>
+                                    <Expander Header="Connection details" Margin="0,8,0,0">
+                                        <TextBlock Text="{Binding Pairing.Diagnostic, StringFormat='Local address: {0}'}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,6,0,0" />
+                                    </Expander>
                                 </StackPanel>
-                                <StackPanel x:Name="ShowThisPcQrPanel" Visibility="{Binding IsShowThisPcQrSelected, Converter={StaticResource BoolToVis}}" Margin="0,16,0,0">
-                                    <TextBlock Text="The other device scans this PC's one-time QR code. You confirm the recipient before files are sent." Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" FontSize="12" Margin="0,0,0,12" />
-                                    <Button x:Name="ShowPairingQrButton" Style="{StaticResource PrimaryButtonStyle}" Content="Show one-time QR code" Command="{Binding ShowQuickShareQrCommand}" HorizontalAlignment="Left" AutomationProperties.Name="Show one-time QR code for selected files" />
-                                    <TextBlock Text="Choose files on Send to enable QR sharing." Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="0,10,0,0">
-                                        <TextBlock.Style><Style TargetType="TextBlock"><Style.Triggers><DataTrigger Binding="{Binding HasSelectedFiles}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger></Style.Triggers></Style></TextBlock.Style>
-                                    </TextBlock>
+                                <StackPanel Visibility="{Binding IsPairPinEntry, Converter={StaticResource BoolToVis}}" Margin="0,12,0,0">
+                                    <TextBlock Text="{Binding Pairing.PeerName, StringFormat='Pair with {0}'}" FontWeight="SemiBold" FontSize="16" TextTrimming="CharacterEllipsis" ToolTip="{Binding Pairing.PeerName}" />
+                                    <TextBlock Text="Six-digit pairing code" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,8,0,6" />
+                                    <TextBox Style="{StaticResource ModernTextBoxStyle}" Text="{Binding PairPin, UpdateSourceTrigger=PropertyChanged}" MaxLength="6" Width="180" HorizontalAlignment="Left" AutomationProperties.Name="Six-digit pairing code" />
+                                    <WrapPanel Margin="0,12,0,0"><Button Style="{StaticResource PrimaryButtonStyle}" Content="Pair" Command="{Binding SubmitPairPinCommand}" Margin="0,0,8,8" /><Button Style="{StaticResource SecondaryButtonStyle}" Content="Cancel" Command="{Binding CancelPairCommand}" Margin="0,0,0,8" /></WrapPanel>
                                 </StackPanel>
+                                <StackPanel Visibility="{Binding IsPairManualEntry, Converter={StaticResource BoolToVis}}" Margin="0,12,0,0">
+                                    <TextBlock Text="Local address" FontWeight="SemiBold" />
+                                    <TextBox Style="{StaticResource ModernTextBoxStyle}" Text="{Binding PairAddress, UpdateSourceTrigger=PropertyChanged}" Margin="0,6,0,8" AutomationProperties.Name="Other computer local IP address and port" />
+                                    <TextBlock Text="Six-digit pairing code" FontWeight="SemiBold" />
+                                    <TextBox Style="{StaticResource ModernTextBoxStyle}" Text="{Binding PairPin, UpdateSourceTrigger=PropertyChanged}" MaxLength="6" Width="180" HorizontalAlignment="Left" Margin="0,6,0,0" AutomationProperties.Name="Six-digit pairing code" />
+                                    <WrapPanel Margin="0,12,0,0"><Button Style="{StaticResource PrimaryButtonStyle}" Content="Pair" Command="{Binding SubmitPairAddressCommand}" Margin="0,0,8,8" /><Button Style="{StaticResource SecondaryButtonStyle}" Content="Cancel" Command="{Binding CancelPairCommand}" Margin="0,0,0,8" /></WrapPanel>
+                                </StackPanel>
+                                <StackPanel Visibility="{Binding IsPairLinkEntry, Converter={StaticResource BoolToVis}}" Margin="0,12,0,0">
+                                    <TextBlock Text="Use QR or link" FontWeight="SemiBold" />
+                                    <TextBox Style="{StaticResource ModernTextBoxStyle}" Text="{Binding PairOnlyLink, UpdateSourceTrigger=PropertyChanged}" Margin="0,8,0,8" AutomationProperties.Name="Pair-only invitation link" />
+                                    <WrapPanel><Button Style="{StaticResource PrimaryButtonStyle}" Content="Pair" Command="{Binding SubmitPairLinkCommand}" Margin="0,0,8,8" /><Button Style="{StaticResource SecondaryButtonStyle}" Content="Cancel" Command="{Binding CancelPairCommand}" Margin="0,0,0,8" /></WrapPanel>
+                                </StackPanel>
+                                <StackPanel Visibility="{Binding IsPairApproval, Converter={StaticResource BoolToVis}}" Margin="0,12,0,0">
+                                    <TextBlock Text="{Binding Pairing.PeerName, StringFormat='{}{0} wants to pair'}" FontWeight="SemiBold" FontSize="18" TextTrimming="CharacterEllipsis" ToolTip="{Binding Pairing.PeerName}" AutomationProperties.LiveSetting="Polite" />
+                                    <WrapPanel Margin="0,12,0,0"><Button Style="{StaticResource PrimaryButtonStyle}" Content="Approve" Command="{Binding ApprovePairCommand}" Margin="0,0,8,8" /><Button Style="{StaticResource SecondaryButtonStyle}" Content="Decline" Command="{Binding DeclinePairCommand}" Margin="0,0,0,8" /></WrapPanel>
+                                </StackPanel>
+                                <StackPanel Visibility="{Binding IsPairResult, Converter={StaticResource BoolToVis}}" Margin="0,12,0,0">
+                                    <TextBlock Text="{Binding Pairing.Message}" FontWeight="SemiBold" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+                                    <WrapPanel Margin="0,12,0,0">
+                                        <Button Style="{StaticResource PrimaryButtonStyle}" Content="{Binding Pairing.RecoveryAction}" Command="{Binding PairRecoveryCommand}" Visibility="{Binding IsPairFailed, Converter={StaticResource BoolToVis}}" Margin="0,0,8,8" />
+                                        <Button Style="{StaticResource SecondaryButtonStyle}" Content="Done" Command="{Binding CancelPairCommand}" Visibility="{Binding IsPairSuccess, Converter={StaticResource BoolToVis}}" Margin="0,0,0,8" />
+                                    </WrapPanel>
+                                    <Expander Header="Diagnostic details" Visibility="{Binding IsPairFailed, Converter={StaticResource BoolToVis}}" Margin="0,8,0,0">
+                                        <TextBlock Text="{Binding Pairing.Diagnostic}" Foreground="{DynamicResource TextSecondaryBrush}" FontFamily="Consolas" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0" />
+                                    </Expander>
+                                </StackPanel>
+                                <WrapPanel Margin="0,12,0,0">
+                                    <Button Style="{StaticResource SecondaryButtonStyle}" Content="Use QR or link" Command="{Binding ShowPairLinkCommand}" Margin="0,0,8,8" />
+                                    <Button Style="{StaticResource SecondaryButtonStyle}" Content="Can’t find your device?" Command="{Binding ShowPairAddressCommand}" Margin="0,0,0,8" />
+                                </WrapPanel>
                             </StackPanel>
                         </Border>
-                        <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0">
-                            <StackPanel>
-                                <TextBlock Text="Find a nearby device" FontWeight="SemiBold" FontSize="16" />
-                                <TextBlock Text="Discovery shows availability. Select a device, then use its current invitation to authenticate it." Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,4,0,12" />
-                                <TextBlock Text="No nearby devices found. Open Glide on the other device, turn on Receive, then refresh." Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,0,0,12">
-                                    <TextBlock.Style><Style TargetType="TextBlock"><Style.Triggers><DataTrigger Binding="{Binding HasDiscoveredPeers}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger></Style.Triggers></Style></TextBlock.Style>
-                                </TextBlock>
-                                <ItemsControl ItemsSource="{Binding DiscoveredPeers}">
-                                    <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
-                                    <ItemsControl.ItemTemplate><DataTemplate>
-                                        <Button Style="{StaticResource SecondaryButtonStyle}" Command="{Binding DataContext.SelectPeerCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" Margin="0,0,8,8" MinWidth="190" AutomationProperties.Name="Select nearby device">
-                                            <StackPanel Orientation="Horizontal"><Path Data="{StaticResource IconLaptop}" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Width="20" Height="20" Stretch="Uniform" Margin="0,0,10,0" /><StackPanel><TextBlock Text="{Binding DeviceName}" Foreground="{DynamicResource TextPrimaryBrush}" FontWeight="SemiBold" MaxWidth="180" TextTrimming="CharacterEllipsis" ToolTip="{Binding DeviceName}" /><TextBlock Text="Invitation needed" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" /></StackPanel></StackPanel>
-                                        </Button>
-                                    </DataTemplate></ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                                <Button Style="{StaticResource SecondaryButtonStyle}" Content="Refresh nearby devices" Command="{Binding RefreshPeersCommand}" HorizontalAlignment="Left" Margin="0,6,0,0" />
-                            </StackPanel>
-                        </Border>
-                        <Button Style="{StaticResource SecondaryButtonStyle}" Content="Back to Send" Command="{Binding SwitchTabCommand}" CommandParameter="Send" HorizontalAlignment="Left" Margin="0,16,0,8" />
+                        <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0"><StackPanel><TextBlock Text="Paired devices" FontWeight="SemiBold" FontSize="16" /><ItemsControl ItemsSource="{Binding TrustedDevices}" Margin="0,10,0,0"><ItemsControl.ItemTemplate><DataTemplate><TextBlock Text="{Binding DisplayName}" ToolTip="{Binding DisplayName}" TextTrimming="CharacterEllipsis" Margin="0,4,0,4" /></DataTemplate></ItemsControl.ItemTemplate></ItemsControl></StackPanel></Border>
                     </StackPanel>
                 </ScrollViewer>
-
                 <!-- Receive -->
                 <ScrollViewer x:Name="ReceivePage" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Visibility="{Binding IsReceiveSelected, Converter={StaticResource BoolToVis}}">
                     <StackPanel>
@@ -245,7 +270,7 @@
                                     </Border>
                                     <StackPanel x:Name="ReceiveQrActions" Margin="20,4,0,0" VerticalAlignment="Center">
                                         <Button x:Name="ReceiveShowQrButton" Style="{StaticResource PrimaryButtonStyle}" Content="Show larger code" Command="{Binding ToggleQrZoomCommand}" Width="192" HorizontalAlignment="Left" Margin="0,0,0,8" />
-                                        <Button x:Name="ReceiveCopyLinkButton" Style="{StaticResource SecondaryButtonStyle}" Content="Copy pairing link" Command="{Binding CopyPairingLinkCommand}" Width="192" HorizontalAlignment="Left" Margin="0,0,0,8" />
+                                        <Button x:Name="ReceiveCopyLinkButton" Style="{StaticResource SecondaryButtonStyle}" Content="Copy receive link" Command="{Binding CopyPairingLinkCommand}" Width="192" HorizontalAlignment="Left" Margin="0,0,0,8" />
                                         <Button x:Name="ReceiveRefreshQrButton" Style="{StaticResource SecondaryButtonStyle}" Content="Refresh code" Command="{Binding RefreshQrCommand}" Width="192" HorizontalAlignment="Left" />
                                     </StackPanel>
                                 </StackPanel>
@@ -330,7 +355,7 @@
                         </Border>
                         <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0">
                             <StackPanel><TextBlock Text="Trusted devices" FontWeight="SemiBold" /><TextBlock Text="{Binding TrustedDevicesSummary}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="0,4,0,12" />
-                                <ItemsControl ItemsSource="{Binding TrustedDevices}"><ItemsControl.ItemTemplate><DataTemplate><Grid Margin="0,5"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><StackPanel><TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" /><TextBlock Text="{Binding FingerprintShort}" Foreground="{DynamicResource TextSecondaryBrush}" FontFamily="Consolas" FontSize="11" /><TextBlock Text="{Binding LastSeenText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" /></StackPanel><Button Grid.Column="1" Style="{StaticResource SecondaryButtonStyle}" Content="Remove" Command="{Binding DataContext.RevokeTrustedDeviceCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" VerticalAlignment="Center" /></Grid></DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+                                <ItemsControl ItemsSource="{Binding TrustedDevices}"><ItemsControl.ItemTemplate><DataTemplate><StackPanel Margin="0,5"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBlock Text="{Binding DisplayName}" ToolTip="{Binding DisplayName}" TextTrimming="CharacterEllipsis" FontWeight="SemiBold" VerticalAlignment="Center" /><Button Grid.Column="1" Style="{StaticResource SecondaryButtonStyle}" Content="Remove" Command="{Binding DataContext.RevokeTrustedDeviceCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" VerticalAlignment="Center" /></Grid><Expander Header="Details" Margin="0,4,0,0"><StackPanel Margin="0,4,0,0"><TextBlock Text="{Binding FingerprintHex}" Foreground="{DynamicResource TextSecondaryBrush}" FontFamily="Consolas" FontSize="11" TextWrapping="Wrap" /><TextBlock Text="{Binding LastSeenText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" Margin="0,2,0,0" /></StackPanel></Expander></StackPanel></DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
                             </StackPanel>
                         </Border>
                     </StackPanel>
@@ -357,7 +382,7 @@
                             </DataTemplate></ItemsControl.ItemTemplate>
                         </ItemsControl>
                     </ScrollViewer>
-                    <TextBlock Text="A fresh invitation is required for each send. Glide checks the saved identity before transfer." Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,16" />
+                    <TextBlock Text="Glide verifies the selected device before each transfer." Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,16" />
                     <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><Button Grid.Column="0" Style="{StaticResource SecondaryButtonStyle}" Content="Pair a new device" Command="{Binding ShowPairModalCommand}" HorizontalAlignment="Left" /><Button x:Name="CloseTrustedDevicePickerButton" Grid.Column="1" Style="{StaticResource SecondaryButtonStyle}" Content="Close" Command="{Binding CloseTrustedDevicePickerCommand}" /></Grid>
                 </StackPanel>
             </Border>

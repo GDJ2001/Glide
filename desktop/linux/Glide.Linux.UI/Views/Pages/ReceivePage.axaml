@@ -95,7 +95,7 @@
                   </StackPanel>
                 </Expander>
                 <StackPanel Orientation="Horizontal" Spacing="8">
-                  <Button x:Name="CopyLinkButton" Content="Copy link" Classes="secondary"
+                  <Button x:Name="CopyLinkButton" Content="Copy receive link" Classes="secondary"
                           AutomationProperties.Name="Copy receiving link to clipboard" />
                   <Button Content="Refresh link" Command="{Binding RefreshInvitationCommand}" Classes="secondary"
                           AutomationProperties.Name="Generate a new one-time link" />

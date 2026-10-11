@@ -285,12 +285,12 @@ fun QrInvitationSheet(
                                 .heightIn(min = 48.dp)
                                 .semantics {
                                     role = Role.Button
-                                    contentDescription = "Copy invitation link to clipboard"
+                                    contentDescription = "Copy receive link to clipboard"
                                 }
                         ) {
                             Icon(imageVector = Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text(text = "Copy invite", style = MaterialTheme.typography.labelLarge)
+                            Text(text = "Copy receive link", style = MaterialTheme.typography.labelLarge)
                         }
                     }
                 }

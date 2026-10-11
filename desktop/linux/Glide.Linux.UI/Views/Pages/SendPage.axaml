@@ -95,13 +95,13 @@
         </Grid>
       </Border>
 
-      <!-- SENDING METHOD SELECTION (LUI-06: Three mutually exclusive methods) -->
+      <!-- Two sending methods: one-time QR or saved identity. -->
       <Border Classes="card">
         <StackPanel Spacing="16">
           <TextBlock Text="Choose Sending Method" Classes="h3" />
 
           <!-- Method Segmented Buttons -->
-          <Grid ColumnDefinitions="*,*,*">
+          <Grid ColumnDefinitions="*,*">
             <Button Grid.Column="0"
                     Command="{Binding SelectSendMethodCommand}" CommandParameter="QuickShareQr"
                     Classes="method-tab" Classes.selected="{Binding IsQuickShareMethodSelected}"
@@ -109,16 +109,11 @@
                     AutomationProperties.Name="Send method: Quick share with QR code">
               <TextBlock Text="Quick share with QR" TextWrapping="Wrap" TextAlignment="Center" />
             </Button>
-            <Button Grid.Column="1" Content="Nearby device"
-                    Command="{Binding SelectSendMethodCommand}" CommandParameter="NearbyDevice"
-                    Classes="method-tab" Classes.selected="{Binding IsNearbyMethodSelected}"
-                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="4,0,4,0"
-                    AutomationProperties.Name="Send method: Nearby discovered device" />
-            <Button Grid.Column="2" Content="Saved device"
+            <Button Grid.Column="1" Content="Paired device"
                     Command="{Binding SelectSendMethodCommand}" CommandParameter="SavedDevice"
                     Classes="method-tab" Classes.selected="{Binding IsSavedMethodSelected}"
                     HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="4,0,0,0"
-                    AutomationProperties.Name="Send method: Saved trusted device" />
+                    AutomationProperties.Name="Send method: Paired device" />
           </Grid>
 
           <!-- Method 1: Quick Share with QR -->
@@ -144,58 +139,8 @@
                     AutomationProperties.Name="Start quick share with QR code" />
           </StackPanel>
 
-          <!-- Method 2: Nearby Device -->
-          <StackPanel Spacing="14" IsVisible="{Binding IsNearbyMethodSelected}">
-            <TextBlock Text="Devices found on your local network. Discovery indicates network availability; a fresh one-time pairing link is required to authenticate."
-                       Classes="secondary" TextWrapping="Wrap" />
-
-            <!-- Nearby Peers List -->
-            <Border Background="{DynamicResource SurfaceRaisedBrush}" CornerRadius="8" Padding="8">
-              <StackPanel Spacing="6">
-                <ListBox ItemsSource="{Binding DiscoveredPeers}" SelectedItem="{Binding SelectedPeer}"
-                         MaxHeight="140" Background="Transparent" BorderThickness="0">
-                  <ListBox.ItemTemplate>
-                    <DataTemplate>
-                      <Grid ColumnDefinitions="Auto,*,Auto" Margin="4,2">
-                        <PathIcon Grid.Column="0" Data="{StaticResource IconDevice}" Width="20" Height="20"
-                                  Foreground="{DynamicResource AccentPrimaryBrush}" VerticalAlignment="Center"
-                                  Margin="0,0,12,0" />
-                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                          <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" Classes="body" />
-                          <TextBlock Text="{Binding EndpointText}" Classes="muted" />
-                        </StackPanel>
-                        <TextBlock Grid.Column="2" Text="Nearby" Classes="small" VerticalAlignment="Center"
-                                   Foreground="{DynamicResource StatusSuccessBrush}" />
-                      </Grid>
-                    </DataTemplate>
-                  </ListBox.ItemTemplate>
-                </ListBox>
-                <TextBlock Text="No nearby devices found yet. Ensure Wi-Fi is active and the other device is running Glide."
-                           Classes="muted" IsVisible="{Binding !DiscoveredPeers.Count}"
-                           HorizontalAlignment="Center" Margin="12" />
-              </StackPanel>
-            </Border>
-
-            <!-- Invitation Input -->
-            <StackPanel Spacing="6">
-              <TextBlock Text="Receiver's one-time pairing link:" FontWeight="Medium" Classes="body" />
-              <TextBox Text="{Binding InvitationInput}"
-                       PlaceholderText="Paste the receiving device's current Glide pairing link (glide://pair/v1#...)"
-                       Classes="body" />
-              <TextBlock Text="Open 'Receive' on the destination device to view its current link."
-                         Classes="muted" />
-            </StackPanel>
-
-            <Button Content="Send files to nearby device"
-                    Command="{Binding SendFilesCommand}"
-                    Classes="primary" HorizontalAlignment="Left"
-                    AutomationProperties.Name="Send files to selected nearby device" />
-          </StackPanel>
-
-          <!-- Method 3: Saved Device -->
+          <!-- Method 2: Paired Device -->
           <StackPanel Spacing="14" IsVisible="{Binding IsSavedMethodSelected}">
-            <TextBlock Text="Saved devices have a verified cryptographic identity. Each transfer still requires a fresh one-time link to guarantee mutual consent."
-                       Classes="secondary" TextWrapping="Wrap" />
 
             <!-- Saved Peers List -->
             <Border Background="{DynamicResource SurfaceRaisedBrush}" CornerRadius="8" Padding="8">
@@ -210,7 +155,6 @@
                                   Margin="0,0,12,0" />
                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
                           <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" Classes="body" />
-                          <TextBlock Text="{Binding FingerprintHex}" Classes="muted" FontFamily="{DynamicResource FontFamilyMonospace}" />
                         </StackPanel>
                         <TextBlock Grid.Column="2" Text="Verified" Classes="small" VerticalAlignment="Center"
                                    Foreground="{DynamicResource StatusSuccessBrush}" />
@@ -224,17 +168,7 @@
               </StackPanel>
             </Border>
 
-            <!-- Invitation Input -->
-            <StackPanel Spacing="6">
-              <TextBlock Text="Receiver's one-time pairing link:" FontWeight="Medium" Classes="body" />
-              <TextBox Text="{Binding InvitationInput}"
-                       PlaceholderText="Paste the receiving device's current Glide pairing link (glide://pair/v1#...)"
-                       Classes="body" />
-              <TextBlock Text="Open 'Receive' on the destination device to view its current link."
-                         Classes="muted" />
-            </StackPanel>
-
-            <Button Content="Send files to saved device"
+            <Button Content="Send to paired device"
                     Command="{Binding SendFilesCommand}"
                     Classes="primary" HorizontalAlignment="Left"
                     AutomationProperties.Name="Send files to selected saved device" />

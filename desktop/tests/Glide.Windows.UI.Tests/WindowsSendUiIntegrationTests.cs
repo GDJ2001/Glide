@@ -231,49 +231,15 @@ public sealed class WindowsSendUiIntegrationTests
                 window.UpdateLayout();
                 viewModel.CurrentTab = "Pair devices";
                 window.UpdateLayout();
-                var invitationPanel = Assert.IsType<StackPanel>(window.FindName("UseDeviceInvitationPanel"));
-                var pcQrPanel = Assert.IsType<StackPanel>(window.FindName("ShowThisPcQrPanel"));
-                var pcQrTab = Assert.IsType<RadioButton>(window.FindName("ShowThisPcQrTab"));
-                var invitationTab = Assert.IsType<RadioButton>(window.FindName("UseDeviceInvitationTab"));
-                var showPairingQr = Assert.IsType<Button>(window.FindName("ShowPairingQrButton"));
-                Assert.Same(ContainingCard(invitationPanel), ContainingCard(pcQrPanel));
-                Assert.Equal(Visibility.Visible, invitationPanel.Visibility);
-                Assert.Equal(Visibility.Collapsed, pcQrPanel.Visibility);
-                pcQrTab.Command.Execute(pcQrTab.CommandParameter);
-                window.UpdateLayout();
-                Assert.Equal(Visibility.Collapsed, invitationPanel.Visibility);
-                Assert.Equal(Visibility.Visible, pcQrPanel.Visibility);
-                Assert.True(showPairingQr.IsEnabled);
-                showPairingQr.Command.Execute(null);
-                PumpDispatcherUntil(() => viewModel.IsPairModalVisible, TimeSpan.FromSeconds(5));
-                Assert.True(viewModel.IsHostedSendQrVisible);
-                viewModel.CancelPairModalCommand.Execute(null);
-                invitationTab.Command.Execute(invitationTab.CommandParameter);
-                window.UpdateLayout();
-                Assert.Equal(Visibility.Visible, invitationPanel.Visibility);
-                Assert.Equal(Visibility.Collapsed, pcQrPanel.Visibility);
-
+                Assert.Contains(Descendants(window).OfType<Button>(), button =>
+                    AutomationProperties.GetName(button) == "Find pair-ready Glide devices");
+                Assert.Contains(Descendants(window).OfType<Button>(), button =>
+                    AutomationProperties.GetName(button) == "Show pairing code for this PC");
                 viewModel.CurrentTab = "Send";
-                RadioButton nearby = Descendants(window).OfType<RadioButton>()
-                    .Single(button => AutomationProperties.GetName(button) == "Nearby device");
-                nearby.Command.Execute(nearby.CommandParameter);
-                window.UpdateLayout();
-                Assert.Equal(SendMethodChoice.Nearby, viewModel.SendMethod);
-                Assert.Equal("Pair devices", viewModel.CurrentTab);
-                Assert.False(viewModel.IsSendActionVisible);
-
-                viewModel.PairInputUri = viewModel.ActiveInvitationUri;
-                viewModel.SubmitPairModalCommand.Execute(null);
-                window.UpdateLayout();
-                Assert.Equal("Send", viewModel.CurrentTab);
-                Assert.True(viewModel.IsSendActionVisible);
-                Assert.Equal(Visibility.Visible, sendButton.Visibility);
-                viewModel.ClearPairingCommand.Execute(null);
-                Assert.False(viewModel.IsSendActionVisible);
-
-                viewModel.CurrentTab = "Send";
+                Assert.DoesNotContain(Descendants(window).OfType<RadioButton>(), button =>
+                    AutomationProperties.GetName(button) == "Nearby device");
                 RadioButton trusted = Descendants(window).OfType<RadioButton>()
-                    .Single(button => AutomationProperties.GetName(button) == "Saved device");
+                    .Single(button => AutomationProperties.GetName(button) == "Paired device");
                 trusted.Command.Execute(trusted.CommandParameter);
                 window.Width = 500;
                 window.Height = 480;
@@ -289,27 +255,10 @@ public sealed class WindowsSendUiIntegrationTests
                 window.UpdateLayout();
                 Assert.Equal("Send", viewModel.CurrentTab);
                 Assert.False(viewModel.IsTrustedDevicePickerVisible);
-                Assert.True(viewModel.IsSavedDeviceConnectVisible);
-                Assert.Equal(Visibility.Visible,
-                    Assert.IsType<TextBox>(window.FindName("SavedDeviceInvitationInput")).Visibility);
-                var savedLinkInput = Assert.IsType<TextBox>(window.FindName("SavedDeviceInvitationInput"));
-                Assert.True(savedLinkInput.TranslatePoint(new Point(savedLinkInput.ActualWidth, 0), window).X <= window.ActualWidth);
-                Assert.False(viewModel.IsSendActionVisible);
-                viewModel.ConnectSavedDeviceCommand.Execute(null);
-                Assert.True(viewModel.IsSavedDeviceConnectVisible);
-                Assert.Contains("current pairing link", viewModel.PairingStatusText);
-                viewModel.CloseSavedDeviceConnectCommand.Execute(null);
                 Assert.False(viewModel.IsSavedDeviceConnectVisible);
-                viewModel.PairInputUri = viewModel.ActiveInvitationUri;
-                viewModel.SubmitPairModalCommand.Execute(null);
-                window.UpdateLayout();
                 Assert.True(viewModel.IsSendActionVisible);
                 Assert.Equal(Visibility.Visible, sendButton.Visibility);
-                viewModel.SelectTrustedDeviceCommand.Execute(savedDevice);
-                Assert.False(viewModel.IsSendActionVisible);
-                Assert.True(viewModel.IsSavedDeviceConnectVisible);
-                viewModel.ClearPairingCommand.Execute(null);
-                Assert.False(viewModel.IsSendActionVisible);
+                Assert.Equal(string.Empty, viewModel.PairInputUri);
                 window.Width = 820;
                 window.Height = 560;
                 window.Dispatcher.Invoke(() => { }, DispatcherPriority.Background);
@@ -332,10 +281,11 @@ public sealed class WindowsSendUiIntegrationTests
                 Assert.Equal(Visibility.Visible, emptyFileState.Visibility);
                 Assert.Equal(Visibility.Collapsed, selectedFileState.Visibility);
                 viewModel.CurrentTab = "Pair devices";
-                pcQrTab.Command.Execute(pcQrTab.CommandParameter);
+                viewModel.FindPairDevicesCommand.Execute(null);
                 window.UpdateLayout();
-                Assert.Equal(Visibility.Visible, pcQrPanel.Visibility);
-                Assert.False(showPairingQr.IsEnabled);
+                Assert.True(viewModel.IsPairDiscovery);
+                Assert.False(viewModel.HasSelectedFiles);
+                viewModel.CancelPairCommand.Execute(null);
             }
             catch (Exception ex)
             {

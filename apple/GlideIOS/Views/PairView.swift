@@ -1,5 +1,4 @@
 import SwiftUI
-import CoreImage.CIFilterBuiltins
 import GlideCoreKit
 
 #if os(iOS)
@@ -8,9 +7,6 @@ import UIKit
 
 public struct PairView: View {
     @ObservedObject var viewModel: IosTransferViewModel
-    @State private var qrImage: Image?
-    private let context = CIContext()
-    private let filter = CIFilter.qrCodeGenerator()
 
     public init(viewModel: IosTransferViewModel) {
         self.viewModel = viewModel
@@ -19,98 +15,123 @@ public struct PairView: View {
     public var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 24) {
-                    // Local QR Code Card
-                    VStack(spacing: 16) {
-                        Text("Share This Device")
+                VStack(alignment: .leading, spacing: 20) {
+                    // Single active pair-only panel (QR/link intake, peer approval, and result — no desktop PIN page)
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text("Pair with a computer")
                             .font(.headline)
-                        Text("Show this QR code to another device to connect.")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                            .multilineTextAlignment(.center)
 
-                        if let qr = qrImage {
-                            qr
-                                .interpolation(.none)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 220, height: 220)
-                                .padding()
-                                .background(Color.white)
-                                .cornerRadius(16)
-                                .shadow(radius: 4)
-                        } else {
-                            Rectangle()
-                                .fill(Color.gray.opacity(0.2))
-                                .frame(width: 220, height: 220)
-                                .cornerRadius(16)
-                        }
+                        switch viewModel.pairStage {
+                        case .idle:
+                            Text("Scan a pair-only QR code on the computer or paste its pairing link.")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
 
-                        HStack(spacing: 16) {
-                            Button {
-                                #if os(iOS)
-                                UIPasteboard.general.string = viewModel.currentInvitationUri
-                                #endif
-                            } label: {
-                                Label("Copy Link", systemImage: "doc.on.doc")
+                            HStack {
+                                TextField("glide://pair/v2#...", text: $viewModel.pairLinkInput)
+                                    .textFieldStyle(.roundedBorder)
+
+                                Button {
+                                    viewModel.isScannerPresented = true
+                                } label: {
+                                    Image(systemName: "qrcode.viewfinder")
+                                        .font(.title2)
+                                }
+                            }
+
+                            Button("Use QR or link") {
+                                viewModel.submitPairOnlyInvitation(viewModel.pairLinkInput)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(viewModel.pairLinkInput.isEmpty)
+
+                        case .approvalRequired(let peerName):
+                            Text("Pair with \(peerName)")
+                                .font(.headline)
+                            HStack(spacing: 12) {
+                                Button("Approve") {
+                                    viewModel.confirmPairOnlyApproval(approved: true)
+                                }
+                                .buttonStyle(.borderedProminent)
+
+                                Button("Decline") {
+                                    viewModel.confirmPairOnlyApproval(approved: false)
+                                }
+                                .buttonStyle(.bordered)
+                            }
+
+                        case .verifying:
+                            HStack(spacing: 10) {
+                                ProgressView()
+                                Text("Verifying…")
+                                    .font(.headline)
+                            }
+
+                        case .success(let peerName):
+                            Text("Paired with \(peerName)")
+                                .font(.headline)
+                                .foregroundColor(.green)
+                            Button("Done") {
+                                viewModel.resetPairOnlyState()
                             }
                             .buttonStyle(.bordered)
 
-                            Button {
-                                viewModel.generateLocalInvitation()
-                                generateQrCode()
-                            } label: {
-                                Label("Refresh", systemImage: "arrow.clockwise")
+                        case .failed(let message):
+                            Text(message)
+                                .font(.headline)
+                                .foregroundColor(.red)
+                            if !viewModel.pairDiagnostic.isEmpty {
+                                DisclosureGroup("Diagnostic details") {
+                                    Text(viewModel.pairDiagnostic)
+                                        .font(.system(.caption, design: .monospaced))
+                                        .foregroundColor(.secondary)
+                                }
                             }
-                            .buttonStyle(.bordered)
+                            Button("Try again") {
+                                viewModel.resetPairOnlyState()
+                            }
+                            .buttonStyle(.borderedProminent)
                         }
                     }
                     .padding(20)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color(uiColor: .secondarySystemBackground))
                     .cornerRadius(16)
 
-                    // Connect to Peer Card
+                    // Paired devices list
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("Connect with Code")
+                        Text("Paired devices")
                             .font(.headline)
-                        Text("Scan or paste a pair URI from another Glide device:")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
 
-                        HStack {
-                            TextField("glide://pair/v1#...", text: $viewModel.invitationInput)
-                                .textFieldStyle(.roundedBorder)
-
-                            Button {
-                                viewModel.isScannerPresented = true
-                            } label: {
-                                Image(systemName: "qrcode.viewfinder")
-                                    .font(.title2)
+                        if viewModel.trustedPeers.isEmpty {
+                            Text("No paired devices saved yet.")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        } else {
+                            ForEach(viewModel.trustedPeers, id: \.fingerprintHex) { peer in
+                                HStack {
+                                    Text(peer.displayName)
+                                        .fontWeight(.medium)
+                                        .lineLimit(1)
+                                    Spacer()
+                                    Text("Paired")
+                                        .font(.caption)
+                                        .foregroundColor(.green)
+                                }
+                                .padding(.vertical, 4)
                             }
                         }
-
-                        Button {
-                            viewModel.receiveFromInvitation()
-                        } label: {
-                            HStack {
-                                Image(systemName: "link")
-                                Text("Connect to Peer")
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(viewModel.invitationInput.isEmpty)
                     }
                     .padding(20)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color(uiColor: .secondarySystemBackground))
                     .cornerRadius(16)
                 }
                 .padding()
             }
-            .navigationTitle("Device Pairing")
+            .navigationTitle("Pair devices")
             .onAppear {
-                generateQrCode()
+                viewModel.refreshTrustedPeers()
             }
             .sheet(isPresented: $viewModel.isScannerPresented) {
                 #if os(iOS)
@@ -119,19 +140,6 @@ public struct PairView: View {
                 }
                 #endif
             }
-        }
-    }
-
-    private func generateQrCode() {
-        guard !viewModel.currentInvitationUri.isEmpty else { return }
-        filter.message = Data(viewModel.currentInvitationUri.utf8)
-
-        if let outputImage = filter.outputImage,
-           let cgimg = context.createCGImage(outputImage, from: outputImage.extent) {
-            #if os(iOS)
-            let uiImage = UIImage(cgImage: cgimg)
-            qrImage = Image(uiImage: uiImage)
-            #endif
         }
     }
 }

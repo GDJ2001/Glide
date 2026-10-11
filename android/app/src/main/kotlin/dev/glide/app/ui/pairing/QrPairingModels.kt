@@ -105,9 +105,17 @@ sealed interface QrScannerUiState {
         val invitation: LanInvitation
     ) : QrScannerUiState
 
+    data class PairOnlyConfirmationRequired(
+        val invitation: dev.glide.core.pairing.LanPairV2Invitation
+    ) : QrScannerUiState
+
     /** Outbound connection initiated after explicit confirmation */
     data class Connecting(
         val invitation: LanInvitation
+    ) : QrScannerUiState
+
+    data class PairOnlyConnecting(
+        val invitation: dev.glide.core.pairing.LanPairV2Invitation
     ) : QrScannerUiState
 
     /** Connection handshake succeeded */
@@ -127,4 +135,5 @@ sealed interface QrScannerUiState {
 sealed interface QrPairingEvent {
     data object InvitationCopied : QrPairingEvent
     data class ConnectConfirmed(val invitation: LanInvitation) : QrPairingEvent
+    data class PairOnlyConfirmed(val invitation: dev.glide.core.pairing.LanPairV2Invitation) : QrPairingEvent
 }

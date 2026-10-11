@@ -91,33 +91,66 @@ public struct MacSendView: View {
 
             Divider()
 
-            // Footer
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("\(viewModel.stagedUrls.count) items staged")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                    Text("Total: \(ByteCountFormatter.string(fromByteCount: viewModel.stagedSize, countStyle: .file))")
+            // Footer: Only Quick share with QR and Paired device
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 12) {
+                    Picker("Send Method", selection: $viewModel.sendMethod) {
+                        Text("Quick share with QR").tag(MacSendMethod.quickShareQr)
+                        Text("Paired device").tag(MacSendMethod.pairedDevice)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 340)
+
+                    Spacer()
+
+                    Text("\(viewModel.stagedUrls.count) items staged (\(ByteCountFormatter.string(fromByteCount: viewModel.stagedSize, countStyle: .file)))")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
 
-                Spacer()
+                if viewModel.sendMethod == .quickShareQr {
+                    HStack(spacing: 12) {
+                        TextField("Peer Invitation URI...", text: $viewModel.invitationInput)
+                            .textFieldStyle(.roundedBorder)
 
-                HStack(spacing: 12) {
-                    TextField("Peer Invitation URI...", text: $viewModel.invitationInput)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 240)
-
-                    Button("Send Files") {
-                        viewModel.sendStagedFiles()
+                        Button("Send Files") {
+                            viewModel.sendStagedFiles()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(viewModel.stagedUrls.isEmpty || viewModel.invitationInput.isEmpty || viewModel.isTransferActive)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(viewModel.stagedUrls.isEmpty || viewModel.invitationInput.isEmpty || viewModel.isTransferActive)
+                } else {
+                    HStack(spacing: 12) {
+                        if viewModel.trustedPeers.isEmpty {
+                            Text("No paired devices saved yet.")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                        } else {
+                            Picker("Paired device", selection: $viewModel.selectedTrustedPeer) {
+                                ForEach(viewModel.trustedPeers, id: \.fingerprintHex) { peer in
+                                    Text(peer.displayName).tag(Optional(peer))
+                                }
+                            }
+                            .frame(width: 220)
+
+                            TextField("Local address (e.g. 192.168.1.20:42424)", text: $viewModel.selectedPeerEndpoint)
+                                .textFieldStyle(.roundedBorder)
+
+                            Button("Send Files") {
+                                viewModel.sendToPairedDevice()
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(viewModel.stagedUrls.isEmpty || viewModel.selectedTrustedPeer == nil || viewModel.isTransferActive)
+                        }
+                    }
                 }
             }
             .padding()
             .background(Color(NSColor.controlBackgroundColor))
+        }
+        .onAppear {
+            viewModel.refreshTrustedPeers()
         }
         .onDrop(of: [.fileURL], isTargeted: $isTargeted) { providers in
             for provider in providers {

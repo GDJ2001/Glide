@@ -58,6 +58,9 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var transferRuntime: TransferRuntime
 
+    @Inject
+    lateinit var persistentTrustManager: dev.glide.core.identity.PersistentTrustManager
+
     private var lastHandledFingerprint: String? = null
     private val incomingOutcomeFlow = MutableStateFlow<IngressOutcome?>(null)
 
@@ -1061,6 +1064,7 @@ class MainActivity : ComponentActivity() {
 
                     GlideAppNavDisplay(
                         transferRuntime = transferRuntime,
+                        persistentTrustManager = persistentTrustManager,
                         initialRoute = initialRoute,
                         incomingRoute = incomingRoute,
                         initialUiState = debugUiState,
