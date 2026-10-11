@@ -113,6 +113,11 @@ public static class InvitationCodec
             throw new InvitationException($"URI length {uri.Length} exceeds maximum allowed bound of {MaxUriChars} characters");
         }
 
+        if (uri.StartsWith(UriPrefixV2, StringComparison.Ordinal))
+        {
+            throw new InvitationException("Update Glide to pair this device");
+        }
+
         if (!uri.StartsWith(UriPrefix, StringComparison.Ordinal))
         {
             throw new InvitationException($"URI must start with '{UriPrefix}', got: '{uri}'");
@@ -252,6 +257,242 @@ public static class InvitationCodec
         }
     }
 
+    public const string UriPrefixV2 = "glide://pair/v2#";
+
+    private static readonly HashSet<string> ExpectedV2RootKeys = new(StringComparer.Ordinal)
+    {
+        "v", "purpose", "transport", "profile", "protocol", "invitationId",
+        "presence", "name", "platform", "endpoints", "spkiSha256",
+        "token", "expiresAt", "ttlSeconds"
+    };
+
+    /// <summary>
+    /// Encodes a LanPairV2Invitation into the canonical `glide://pair/v2#` URI.
+    /// </summary>
+    public static string EncodePairV2(LanPairV2Invitation invitation)
+    {
+        ArgumentNullException.ThrowIfNull(invitation);
+
+        var endpointsArray = new JsonArray();
+        foreach (var endpoint in invitation.Endpoints)
+        {
+            var epObj = new JsonObject
+            {
+                ["address"] = endpoint.Address,
+                ["port"] = endpoint.Port
+            };
+            endpointsArray.Add(epObj);
+        }
+
+        var jsonObject = new JsonObject
+        {
+            ["v"] = invitation.V,
+            ["purpose"] = invitation.Purpose,
+            ["transport"] = invitation.Transport,
+            ["profile"] = invitation.Profile,
+            ["protocol"] = invitation.Protocol,
+            ["invitationId"] = invitation.InvitationId,
+            ["presence"] = invitation.Presence,
+            ["name"] = invitation.Name,
+            ["platform"] = invitation.Platform,
+            ["endpoints"] = endpointsArray,
+            ["spkiSha256"] = invitation.SpkiSha256,
+            ["token"] = invitation.Token,
+            ["expiresAt"] = invitation.ExpiresAt,
+            ["ttlSeconds"] = invitation.TtlSeconds
+        };
+
+        byte[] jsonBytes = Encoding.UTF8.GetBytes(jsonObject.ToJsonString());
+        if (jsonBytes.Length > MaxJsonBytes)
+        {
+            throw new InvitationException($"Encoded JSON size {jsonBytes.Length} exceeds maximum {MaxJsonBytes} bytes");
+        }
+
+        string base64 = ToUnpaddedBase64Url(jsonBytes);
+        string uri = $"{UriPrefixV2}{base64}";
+        if (uri.Length > MaxUriChars)
+        {
+            throw new InvitationException($"Encoded URI length {uri.Length} exceeds maximum {MaxUriChars} characters");
+        }
+
+        return uri;
+    }
+
+    /// <summary>
+    /// Decodes either a `glide://pair/v1#` transfer invitation or a `glide://pair/v2#` pair-only invitation.
+    /// </summary>
+    public static ParsedGlideInvitation DecodeAny(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+        {
+            throw new InvitationException("Invitation URI must not be empty or blank");
+        }
+
+        if (uri.StartsWith(UriPrefixV2, StringComparison.Ordinal))
+        {
+            return new ParsedGlideInvitation.PairOnlyV2(DecodePairV2(uri));
+        }
+
+        if (uri.StartsWith(UriPrefix, StringComparison.Ordinal))
+        {
+            return new ParsedGlideInvitation.TransferV1(Decode(uri));
+        }
+
+        throw new InvitationException("Unsupported Glide invitation URI version.");
+    }
+
+    /// <summary>
+    /// Decodes and strictly validates a Profile 2 pair-only QR/link invitation URI (`glide://pair/v2#...`).
+    /// </summary>
+    public static LanPairV2Invitation DecodePairV2(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+        {
+            throw new InvitationException("Invitation URI must not be empty or blank");
+        }
+
+        if (uri.Length > MaxUriChars)
+        {
+            throw new InvitationException($"URI length {uri.Length} exceeds maximum allowed bound of {MaxUriChars} characters");
+        }
+
+        if (!uri.StartsWith(UriPrefixV2, StringComparison.Ordinal))
+        {
+            throw new InvitationException($"URI must start with '{UriPrefixV2}'");
+        }
+
+        string rawBase64Url = uri[UriPrefixV2.Length..];
+        if (string.IsNullOrEmpty(rawBase64Url))
+        {
+            throw new InvitationException("URI payload fragment must not be empty");
+        }
+
+        if (!Base64UrlRegex.IsMatch(rawBase64Url))
+        {
+            throw new InvitationException("URI payload fragment contains non-base64url characters or padding");
+        }
+
+        byte[] jsonBytes;
+        try
+        {
+            jsonBytes = FromUnpaddedBase64Url(rawBase64Url);
+        }
+        catch (Exception ex) when (ex is not InvitationException)
+        {
+            throw new InvitationException("Failed to decode base64url payload", ex);
+        }
+
+        string reencoded = ToUnpaddedBase64Url(jsonBytes);
+        if (!string.Equals(rawBase64Url, reencoded, StringComparison.Ordinal))
+        {
+            throw new InvitationException("Base64url payload is not canonically encoded");
+        }
+
+        if (jsonBytes.Length > MaxJsonBytes)
+        {
+            throw new InvitationException($"Decoded JSON byte length {jsonBytes.Length} exceeds maximum {MaxJsonBytes} bytes");
+        }
+
+        byte[] hashBytes = SHA256.HashData(jsonBytes);
+        string invitationHash = Convert.ToHexString(hashBytes).ToLowerInvariant();
+
+        JsonNode rootNode;
+        try
+        {
+            rootNode = StrictJsonParser.Parse(jsonBytes, maxDepth: MaxJsonDepth);
+        }
+        catch (Exception ex)
+        {
+            throw new InvitationException($"Invalid JSON in invitation: {ex.Message}", ex);
+        }
+
+        if (rootNode is not JsonObject rootObj)
+        {
+            throw new InvitationException("Decoded JSON root must be a JSON object");
+        }
+
+        var actualKeys = rootObj.Select(kvp => kvp.Key).ToHashSet(StringComparer.Ordinal);
+        var unknownKeys = actualKeys.Except(ExpectedV2RootKeys).ToList();
+        if (unknownKeys.Count > 0)
+        {
+            throw new InvitationException($"Unknown root keys in v2 invitation: [{string.Join(", ", unknownKeys)}]");
+        }
+
+        var missingKeys = ExpectedV2RootKeys.Except(actualKeys).ToList();
+        if (missingKeys.Count > 0)
+        {
+            throw new InvitationException($"Missing required root keys in v2 invitation: [{string.Join(", ", missingKeys)}]");
+        }
+
+        try
+        {
+            int v = GetInt(rootObj["v"], "v");
+            string purpose = rootObj["purpose"]?.GetValue<string>() ?? throw new InvitationException("Missing or invalid 'purpose'");
+            string transport = rootObj["transport"]?.GetValue<string>() ?? throw new InvitationException("Missing or invalid 'transport'");
+            int profile = GetInt(rootObj["profile"], "profile");
+            int protocol = GetInt(rootObj["protocol"], "protocol");
+            string invitationId = rootObj["invitationId"]?.GetValue<string>() ?? throw new InvitationException("Missing or invalid 'invitationId'");
+            string presence = rootObj["presence"]?.GetValue<string>() ?? throw new InvitationException("Missing or invalid 'presence'");
+            string name = rootObj["name"]?.GetValue<string>() ?? throw new InvitationException("Missing or invalid 'name'");
+            string platform = rootObj["platform"]?.GetValue<string>() ?? throw new InvitationException("Missing or invalid 'platform'");
+
+            if (rootObj["endpoints"] is not JsonArray endpointsArray)
+            {
+                throw new InvitationException("'endpoints' must be a JSON array");
+            }
+
+            var endpoints = new List<LanEndpoint>();
+            foreach (var item in endpointsArray)
+            {
+                if (item is not JsonObject epObj)
+                {
+                    throw new InvitationException("Endpoint items must be JSON objects");
+                }
+
+                var epKeys = epObj.Select(kvp => kvp.Key).ToHashSet(StringComparer.Ordinal);
+                var unknownEpKeys = epKeys.Except(ExpectedEndpointKeys).ToList();
+                if (unknownEpKeys.Count > 0)
+                {
+                    throw new InvitationException($"Unknown keys in endpoint: [{string.Join(", ", unknownEpKeys)}]");
+                }
+
+                string addr = epObj["address"]?.GetValue<string>() ?? throw new InvitationException("Missing endpoint 'address'");
+                int port = GetInt(epObj["port"], "port");
+                endpoints.Add(new LanEndpoint(addr, port));
+            }
+
+            string spkiSha256 = rootObj["spkiSha256"]?.GetValue<string>() ?? throw new InvitationException("Missing or invalid 'spkiSha256'");
+            string token = rootObj["token"]?.GetValue<string>() ?? throw new InvitationException("Missing or invalid 'token'");
+            string expiresAt = rootObj["expiresAt"]?.GetValue<string>() ?? throw new InvitationException("Missing or invalid 'expiresAt'");
+            int ttlSeconds = GetInt(rootObj["ttlSeconds"], "ttlSeconds");
+
+            return new LanPairV2Invitation(
+                invitationId: invitationId,
+                presence: presence,
+                name: name,
+                platform: platform,
+                endpoints: endpoints,
+                spkiSha256: spkiSha256,
+                token: token,
+                expiresAt: expiresAt,
+                ttlSeconds: ttlSeconds,
+                invitationHash: invitationHash,
+                v: v,
+                purpose: purpose,
+                transport: transport,
+                profile: profile,
+                protocol: protocol);
+        }
+        catch (InvitationException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new InvitationException($"Failed to extract v2 invitation fields: {ex.Message}", ex);
+        }
+    }
+
     private static int GetInt(JsonNode? node, string fieldName)
     {
         if (node == null) throw new InvitationException($"Missing '{fieldName}'");
@@ -263,7 +504,7 @@ public static class InvitationCodec
         throw new InvitationException($"Invalid integer value for '{fieldName}'");
     }
 
-    private static string ToUnpaddedBase64Url(byte[] bytes)
+    public static string ToUnpaddedBase64Url(byte[] bytes)
     {
         return Convert.ToBase64String(bytes)
             .TrimEnd('=')
@@ -271,7 +512,7 @@ public static class InvitationCodec
             .Replace('/', '_');
     }
 
-    private static byte[] FromUnpaddedBase64Url(string base64Url)
+    public static byte[] FromUnpaddedBase64Url(string base64Url)
     {
         string padded = base64Url.Replace('-', '+').Replace('_', '/');
         int mod = padded.Length % 4;

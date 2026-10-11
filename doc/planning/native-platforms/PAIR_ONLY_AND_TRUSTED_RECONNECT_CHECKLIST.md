@@ -41,13 +41,13 @@
   - `GLD2` (`0x47, 0x4C, 0x44, 0x32`) routes to a bounded Profile 2 session (`PAIR_ONLY` or `TRUSTED_SEND`), failing closed on unknown versions/purposes or transfer records during `PAIR_ONLY`.
 
 ### Stage 3: Pinned BoringSSL SPAKE2 Wrapper & Pair-Only Handshakes
-- [ ] Integrate pinned BoringSSL (`3fed4f207543470b3d639db6ed40737e30308b51`) SPAKE2 implementation behind a small private C ABI (`glide_spake2`), packaged for Windows (`win-x64`), Linux (`linux-x64`), and macOS, with license notices retained and known-answer tests (KATs) executed in unit tests.
-- [ ] Implement 6-digit desktop pairing (`PAIR_ONLY` + `spake2-pin-v1`):
+- [x] Integrate pinned BoringSSL (`3fed4f207543470b3d639db6ed40737e30308b51`) SPAKE2 implementation behind a small private C ABI (`glide_spake2`), packaged for Windows (`win-x64`), Linux (`linux-x64`), and macOS, with license notices retained and known-answer tests (KATs) executed in unit tests.
+- [x] Implement 6-digit desktop pairing (`PAIR_ONLY` + `spake2-pin-v1`):
   - Cryptographically random 6-digit code preserving leading zeroes, 120s expiry, one-use, max 3 failed attempts across the pairing window before invalidation.
   - Directional key-confirmation keys derived from SPAKE2 shared secret, bound to session ID, roles, both nonces, both persistent identity keys, advertised presence ID, actual TLS server certificate SPKI, and `PAIR_ONLY`.
   - Mutual ECDSA P-256 signature verification from both persistent identities and explicit approval by both users before enrollment.
   - Zero secret buffers after use.
-- [ ] Implement `glide://pair/v2#...` codec and pair-only QR/link handshake (`PAIR_ONLY` + `qr-token-v2`) in C#, Kotlin, and Swift:
+- [x] Implement `glide://pair/v2#...` codec and pair-only QR/link handshake (`PAIR_ONLY` + `qr-token-v2`) in C#, Kotlin, and Swift:
   - Route `v1` invitations to transfer flow and `v2` invitations to pair-only flow; old v1-only parser path surfaces **Update Glide to pair this device** when encountering `v2`.
   - Enforce single-active-operation ownership so pairing during an active transfer (or vice versa) returns **This device is busy — try again**.
   - Clear/reconcile any partially completed handshake on restart.

@@ -112,6 +112,31 @@ object IdentityProofVerifier {
         )
     }
 
+    fun verifyPairV2Signature(
+        publicKeyDer: ByteArray,
+        transcript: ByteArray,
+        signatureBytes: ByteArray,
+        displayName: String
+    ): VerifiedPeerIdentity {
+        require(displayName.isNotBlank()) { "Peer display name cannot be blank" }
+        val derivedFingerprint = PeerIdentityVerifier.deriveFingerprint(publicKeyDer)
+        require(
+            PeerIdentityVerifier.verifyTranscriptSignature(
+                publicKeyDer = publicKeyDer,
+                transcript = transcript,
+                signatureBytes = signatureBytes
+            )
+        ) {
+            "Profile 2 persistent identity signature verification failed"
+        }
+        val publicKeyDerHex = publicKeyDer.joinToString("") { String.format("%02x", it.toInt() and 0xff) }
+        return VerifiedPeerIdentity(
+            fingerprintHex = derivedFingerprint,
+            publicKeyDerHex = publicKeyDerHex,
+            displayName = displayName
+        )
+    }
+
     private fun decodeCanonicalHex(
         value: String,
         name: String

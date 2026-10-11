@@ -112,4 +112,75 @@ final class InvitationCodecTests: XCTestCase {
             invitationHash: invitation.invitationHash,
             role: "sender", nowEpochSeconds: now), .used)
     }
+
+    func testPairV2InvitationRoundTripAndV1Rejection() throws {
+        let nowSeconds = Int64(Date().timeIntervalSince1970)
+        let v2 = LanPairV2Invitation(
+            invitationId: "660e8400-e29b-41d4-a716-446655440001",
+            presence: "fedcba9876543210fedcba9876543210",
+            name: "Office Linux Workstation",
+            platform: "linux",
+            endpoints: [LanEndpoint(address: "192.168.1.25", port: 42424)],
+            spkiSha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            token: InvitationCodec.toUnpaddedBase64Url(Data(repeating: 0x11, count: 32)),
+            expiresAt: String(nowSeconds + 120),
+            ttlSeconds: 120
+        )
+
+        let uri = try InvitationCodec.encodePairV2(v2)
+        XCTAssertTrue(uri.hasPrefix("glide://pair/v2#"))
+
+        // V1 decode must reject v2 URI with explicit "Update Glide to pair this device"
+        XCTAssertThrowsError(try InvitationCodec.decode(uri)) { error in
+            XCTAssertEqual(error as? InvitationError, InvitationError.unsupportedVersion("Update Glide to pair this device"))
+        }
+
+        let decoded = try InvitationCodec.decodePairV2(uri)
+        XCTAssertEqual(decoded.v, 2)
+        XCTAssertEqual(decoded.purpose, "pair-only")
+        XCTAssertEqual(decoded.profile, 2)
+        XCTAssertEqual(decoded.invitationId, v2.invitationId)
+
+        let anyDecoded = try InvitationCodec.decodeAny(uri)
+        XCTAssertEqual(anyDecoded, .pairOnlyV2(decoded))
+    }
+
+    func testGlideSpake2SessionAndPairV2Transcript() throws {
+        XCTAssertEqual(GlideSpake2Session.boringSslCommit, GlideSpake2Session.pinnedBoringSslCommit)
+
+        let alice = try GlideSpake2Session(
+            role: .alice,
+            myName: Data("glide-spake2-initiator-v1".utf8),
+            theirName: Data("glide-spake2-responder-v1".utf8)
+        )
+        let bob = try GlideSpake2Session(
+            role: .bob,
+            myName: Data("glide-spake2-responder-v1".utf8),
+            theirName: Data("glide-spake2-initiator-v1".utf8)
+        )
+
+        let pin = Data("042857".utf8)
+        let msgA = try alice.generateMessage(password: pin)
+        let msgB = try bob.generateMessage(password: pin)
+        let secretA = try alice.processPeerMessage(msgB)
+        let secretB = try bob.processPeerMessage(msgA)
+        XCTAssertEqual(secretA.count, 64)
+        XCTAssertEqual(secretA, secretB)
+
+        let transcript = GlideSpake2Session.buildPairV2TranscriptBytes(
+            method: "spake2-pin-v1",
+            sessionId: "770e8400-e29b-41d4-a716-446655440002",
+            initiatorNonceHex: "1111111111111111111111111111111111111111111111111111111111111111",
+            responderNonceHex: "2222222222222222222222222222222222222222222222222222222222222222",
+            initiatorFingerprintHex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            initiatorPublicKeyDerHex: "3059301306072a8648ce3d020106082a8648ce3d0301070342000411",
+            responderFingerprintHex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            responderPublicKeyDerHex: "3059301306072a8648ce3d020106082a8648ce3d0301070342000422",
+            responderPresenceHex: "fedcba9876543210fedcba9876543210",
+            tlsServerSpkiSha256Hex: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            purpose: "PAIR_ONLY"
+        )
+        XCTAssertEqual(transcript.count, 606)
+    }
 }
+

@@ -4,6 +4,7 @@
 *.aab
 *.exe
 *.dll
+!native/glide_spake2/runtimes/win-x64/native/glide_spake2.dll
 *.pdb
 
 # Files for the ART/Dalvik VM

@@ -5,6 +5,7 @@ import Network
 /// Errors encountered during parsing or generation of Glide pairing invitations.
 public enum InvitationError: Error, Equatable, Sendable {
     case invalidUriPrefix
+    case unsupportedVersion(String)
     case uriExceedsMaxCharacters(actual: Int, max: Int)
     case invalidBase64Url
     case jsonExceedsMaxBytes(actual: Int, max: Int)
@@ -142,12 +143,18 @@ enum StrictJsonObjectKeys {
 
 /// Strict canonical codec for Glide QR Pairing invitations (LAN-006 Section 8, ADR-0020).
 /// Encoding format: `glide://pair/v1#<unpadded-base64url(UTF-8 JSON)>`
+/// and Profile 2 pair-only invitations: `glide://pair/v2#<unpadded-base64url(UTF-8 JSON)>`
 public enum InvitationCodec {
     public static let uriPrefix = "glide://pair/v1#"
+    public static let uriPrefixV2 = "glide://pair/v2#"
     public static let maxUriChars = 2768
     public static let maxJsonBytes = 2048
     private static let rootKeys: Set<String> = [
         "v", "transport", "profile", "protocol", "invitationId", "presence",
+        "name", "platform", "endpoints", "spkiSha256", "token", "expiresAt", "ttlSeconds"
+    ]
+    private static let rootKeysV2: Set<String> = [
+        "v", "purpose", "transport", "profile", "protocol", "invitationId", "presence",
         "name", "platform", "endpoints", "spkiSha256", "token", "expiresAt", "ttlSeconds"
     ]
     private static let endpointKeys: Set<String> = ["address", "port"]
@@ -174,10 +181,48 @@ public enum InvitationCodec {
         return uri
     }
 
+    /// Encodes a `LanPairV2Invitation` into the canonical `glide://pair/v2#...` QR URI.
+    public static func encodePairV2(_ invitation: LanPairV2Invitation) throws -> String {
+        try validateV2(invitation)
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let jsonData = try encoder.encode(invitation)
+
+        guard jsonData.count <= maxJsonBytes else {
+            throw InvitationError.jsonExceedsMaxBytes(actual: jsonData.count, max: maxJsonBytes)
+        }
+
+        let base64Url = toUnpaddedBase64Url(jsonData)
+        let uri = "\(uriPrefixV2)\(base64Url)"
+
+        guard uri.count <= maxUriChars else {
+            throw InvitationError.uriExceedsMaxCharacters(actual: uri.count, max: maxUriChars)
+        }
+
+        return uri
+    }
+
+    /// Decodes either a v1 transfer invitation (`glide://pair/v1#`) or a v2 pair-only invitation (`glide://pair/v2#`).
+    public static func decodeAny(_ uriString: String, currentEpochSeconds: Int64? = nil) throws -> ParsedGlideInvitation {
+        let trimmed = uriString.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasPrefix(uriPrefix) {
+            return .transferV1(try decode(trimmed, currentEpochSeconds: currentEpochSeconds))
+        }
+        if trimmed.hasPrefix(uriPrefixV2) {
+            return .pairOnlyV2(try decodePairV2(trimmed, currentEpochSeconds: currentEpochSeconds))
+        }
+        throw InvitationError.invalidUriPrefix
+    }
+
     /// Strictly decodes a canonical QR pairing URI into a `LanInvitation`.
     public static func decode(_ uriString: String, currentEpochSeconds: Int64? = nil) throws -> LanInvitation {
         guard uriString.count <= maxUriChars else {
             throw InvitationError.uriExceedsMaxCharacters(actual: uriString.count, max: maxUriChars)
+        }
+
+        if uriString.hasPrefix(uriPrefixV2) {
+            throw InvitationError.unsupportedVersion("Update Glide to pair this device")
         }
 
         guard uriString.hasPrefix(uriPrefix) else {
@@ -209,6 +254,48 @@ public enum InvitationCodec {
         }
 
         try validate(decoded)
+
+        if decoded.isExpired(currentEpochSeconds: currentEpochSeconds) {
+            throw InvitationError.invitationExpired
+        }
+
+        return decoded.withHash(payloadHash)
+    }
+
+    /// Strictly decodes a Profile 2 pair-only QR/link URI (`glide://pair/v2#...`) into a `LanPairV2Invitation`.
+    public static func decodePairV2(_ uriString: String, currentEpochSeconds: Int64? = nil) throws -> LanPairV2Invitation {
+        guard uriString.count <= maxUriChars else {
+            throw InvitationError.uriExceedsMaxCharacters(actual: uriString.count, max: maxUriChars)
+        }
+
+        guard uriString.hasPrefix(uriPrefixV2) else {
+            throw InvitationError.invalidUriPrefix
+        }
+
+        let base64Part = String(uriString.dropFirst(uriPrefixV2.count))
+        guard let jsonData = fromUnpaddedBase64Url(base64Part) else {
+            throw InvitationError.invalidBase64Url
+        }
+
+        guard jsonData.count <= maxJsonBytes else {
+            throw InvitationError.jsonExceedsMaxBytes(actual: jsonData.count, max: maxJsonBytes)
+        }
+
+        try StrictJsonObjectKeys.validate(jsonData, allowedKeys: rootKeysV2,
+                                          requiredKeys: rootKeysV2, endpointKeys: endpointKeys)
+
+        let digest = SHA256.hash(data: jsonData)
+        let payloadHash = digest.map { String(format: "%02x", $0) }.joined()
+
+        let decoder = JSONDecoder()
+        let decoded: LanPairV2Invitation
+        do {
+            decoded = try decoder.decode(LanPairV2Invitation.self, from: jsonData)
+        } catch {
+            throw InvitationError.missingRequiredField(error.localizedDescription)
+        }
+
+        try validateV2(decoded)
 
         if decoded.isExpired(currentEpochSeconds: currentEpochSeconds) {
             throw InvitationError.invitationExpired
@@ -260,6 +347,48 @@ public enum InvitationCodec {
               invitation.presence.count == 32 &&
               invitation.presence.utf8.allSatisfy({ ($0 >= 48 && $0 <= 57) || ($0 >= 97 && $0 <= 102) }) &&
               LanInvitation.allowedPlatforms.contains(invitation.platform) &&
+              !invitation.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+              invitation.name.count <= 64 && invitation.name.utf8.count <= 128 &&
+              invitation.invitationId.count == 36 &&
+              invitation.invitationId == UUID(uuidString: invitation.invitationId)?.uuidString.lowercased() &&
+              invitation.invitationId[invitation.invitationId.index(invitation.invitationId.startIndex, offsetBy: 14)] == "4" &&
+              "89ab".contains(invitation.invitationId[invitation.invitationId.index(invitation.invitationId.startIndex, offsetBy: 19)]) &&
+              Set(invitation.endpoints.map { "\($0.address):\($0.port)" }).count == invitation.endpoints.count &&
+              invitation.endpoints.allSatisfy({
+                  (IPv4Address($0.address) != nil || IPv6Address($0.address) != nil) &&
+                  $0.port > 0 && $0.port <= 65535
+              }) else {
+            throw InvitationError.invalidSchema
+        }
+        guard invitation.token.count == 43,
+              let tokenBytes = fromUnpaddedBase64Url(invitation.token),
+              tokenBytes.count == 32 else { throw InvitationError.invalidToken }
+        guard let expiry = Int64(invitation.expiresAt),
+              expiry > 0,
+              String(expiry) == invitation.expiresAt else {
+            throw InvitationError.invalidExpiresAt(invitation.expiresAt)
+        }
+    }
+
+    private static func validateV2(_ invitation: LanPairV2Invitation) throws {
+        guard invitation.endpoints.count >= 1 && invitation.endpoints.count <= 4 else {
+            throw InvitationError.invalidEndpointsCount(actual: invitation.endpoints.count)
+        }
+        guard invitation.spkiSha256.count == 64 else {
+            throw InvitationError.invalidSpkiHashLength(actual: invitation.spkiSha256.count)
+        }
+        guard invitation.transport == "lan-tls" else {
+            throw InvitationError.unsupportedTransport(invitation.transport)
+        }
+        guard invitation.v == 2 &&
+              invitation.purpose == LanPairV2Invitation.requiredPurpose &&
+              invitation.profile == 2 &&
+              invitation.protocolVersion == 1 &&
+              invitation.ttlSeconds >= 1 && invitation.ttlSeconds <= LanPairV2Invitation.maxTtlSeconds &&
+              invitation.spkiSha256.utf8.allSatisfy({ ($0 >= 48 && $0 <= 57) || ($0 >= 97 && $0 <= 102) }) &&
+              invitation.presence.count == 32 &&
+              invitation.presence.utf8.allSatisfy({ ($0 >= 48 && $0 <= 57) || ($0 >= 97 && $0 <= 102) }) &&
+              LanPairV2Invitation.allowedPlatforms.contains(invitation.platform) &&
               !invitation.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
               invitation.name.count <= 64 && invitation.name.utf8.count <= 128 &&
               invitation.invitationId.count == 36 &&
