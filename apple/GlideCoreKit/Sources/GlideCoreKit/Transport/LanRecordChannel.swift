@@ -71,7 +71,9 @@ public actor LanRecordChannel {
         guard count > 0, count <= Profile2Constants.maxControlPayloadBytes else {
             throw LanChannelError.payloadTooLarge(count)
         }
-        return try await readExact(count: count)
+        let payload = try await readExact(count: count)
+        try Profile2WireValidator.validate(payload)
+        return payload
     }
 
     /// Reads exactly `count` bytes from the underlying TLS connection (consuming any prefix buffer first).

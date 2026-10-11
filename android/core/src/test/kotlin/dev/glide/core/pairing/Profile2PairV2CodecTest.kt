@@ -10,8 +10,43 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 import java.io.File
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 
 class Profile2PairV2CodecTest {
+
+    @Test
+    fun `shared profile2 wire frames decode and reject ambiguous fields`() {
+        val root = Json.parseToJsonElement(
+            File(findRepoRoot(), "doc/protocol/fixtures/profile2-fixtures.json").readText()
+        ).jsonObject
+        for (fixture in root.getValue("profile2WireFrames").jsonArray) {
+            val item = fixture.jsonObject
+            val bytes = item.getValue("frameHex").jsonPrimitive.content
+                .chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+            val length = java.nio.ByteBuffer.wrap(bytes, 0, 4).int
+            assertEquals(bytes.size - 4, length)
+            val message = Profile2WireCodec.readMessage(ByteArrayInputStream(bytes))
+            val written = ByteArrayOutputStream().also { Profile2WireCodec.writeMessage(it, message) }
+            assertEquals(message, Profile2WireCodec.readMessage(ByteArrayInputStream(written.toByteArray())))
+            val expectedType = item.getValue("json").jsonObject.getValue("type").jsonPrimitive.content
+            assertEquals(expectedType, Json.parseToJsonElement(
+                Profile2WireCodec.encode(message).toString(Charsets.UTF_8)
+            ).jsonObject.getValue("type").jsonPrimitive.content)
+        }
+        val id = "770e8400-e29b-41d4-a716-446655440002"
+        for (bad in listOf(
+            "{\"v\":1,\"type\":\"PAIR_RESULT\",\"sessionId\":\"$id\",\"paired\":true,\"extra\":1}",
+            "{\"v\":1,\"type\":\"PAIR_RESULT\",\"sessionId\":\"$id\",\"paired\":true,\"paired\":false}"
+        )) {
+            try {
+                Profile2WireCodec.decode(bad.toByteArray())
+                fail("Profile 2 parser accepted ambiguous JSON")
+            } catch (_: IllegalArgumentException) {
+                // Rejected before a session can start.
+            }
+        }
+    }
 
     private fun findRepoRoot(): File {
         var dir: File? = File(System.getProperty("user.dir")).canonicalFile

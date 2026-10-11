@@ -125,6 +125,31 @@ public sealed class Profile2PairingAndSpake2Tests
     }
 
     [Fact]
+    public async Task Profile2WireFrames_SharedFixtures_DecodeAndRejectAmbiguity()
+    {
+        string fixturePath = Path.Combine(FindRepoRoot(), "doc", "protocol", "fixtures", "profile2-fixtures.json");
+        using var document = JsonDocument.Parse(File.ReadAllText(fixturePath));
+        foreach (var fixture in document.RootElement.GetProperty("profile2WireFrames").EnumerateArray())
+        {
+            byte[] frame = Convert.FromHexString(fixture.GetProperty("frameHex").GetString()!);
+            int length = System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(frame.AsSpan(0, 4));
+            Assert.Equal(frame.Length - 4, length);
+            using var stream = new MemoryStream(frame);
+            Profile2Message message = await Profile2WireCodec.ReadMessageAsync(stream);
+            Assert.Equal(fixture.GetProperty("json").GetProperty("type").GetString(), message.Type);
+            Assert.Equal(fixture.GetProperty("json").GetProperty("sessionId").GetString(), message.SessionId);
+            using var output = new MemoryStream();
+            await Profile2WireCodec.WriteMessageAsync(output, message);
+            Assert.Equal(message, Profile2WireCodec.Decode(output.ToArray().AsSpan(4)));
+        }
+
+        byte[] unknown = Encoding.UTF8.GetBytes("{\"v\":1,\"type\":\"PAIR_RESULT\",\"sessionId\":\"770e8400-e29b-41d4-a716-446655440002\",\"paired\":true,\"extra\":1}");
+        Assert.Throws<Glide.Core.Models.ProtocolViolationException>(() => Profile2WireCodec.Decode(unknown));
+        byte[] duplicate = Encoding.UTF8.GetBytes("{\"v\":1,\"type\":\"PAIR_RESULT\",\"sessionId\":\"770e8400-e29b-41d4-a716-446655440002\",\"paired\":true,\"paired\":false}");
+        Assert.Throws<Glide.Core.Models.ProtocolViolationException>(() => Profile2WireCodec.Decode(duplicate));
+    }
+
+    [Fact]
     public void GlideSpake2_PinnedBoringSslCommit_DeterministicAndRandomExchange_SucceedsAndRejectsWrongPin()
     {
         Assert.Equal(GlideSpake2Session.PinnedBoringSslCommit, GlideSpake2Session.GetBoringSslCommit());

@@ -16,6 +16,48 @@ public enum Profile2Constants {
     public static let gld2Magic = Data("GLD2".utf8)
 }
 
+/// Validates the Profile 2 control envelope before JSONDecoder can silently discard
+/// duplicate or unknown keys. The shared wire contract is deliberately closed per type.
+public enum Profile2WireValidator {
+    public static func validate(_ data: Data) throws {
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let type = object["type"] as? String,
+              let version = object["v"] as? Int, version == Profile2Constants.wireVersion,
+              let sessionId = object["sessionId"] as? String,
+              UUID(uuidString: sessionId)?.uuidString.lowercased() == sessionId else {
+            throw InvitationError.invalidSchema
+        }
+        let common: Set<String> = ["v", "type", "sessionId"]
+        let required: Set<String>
+        let allowed: Set<String>
+        switch type {
+        case "SESSION_OPEN":
+            required = common.union(["purpose", "authMethod", "initiatorNonce", "initiatorDeviceName",
+                                     "initiatorPlatform", "initiatorIdentityPublicKey"])
+            allowed = required.union(["expectedPresenceId", "invitationId", "expectedPeerIdentityFingerprint"])
+        case "SESSION_OPEN_ACK":
+            required = common.union(["accepted"])
+            allowed = required.union(["errorCode", "message", "responderNonce", "responderDeviceName",
+                                     "responderPlatform", "responderIdentityPublicKey", "advertisedPresenceId"])
+        case "PAIR_MSG":
+            required = common.union(["role"])
+            allowed = required.union(["spakePublicValue", "invitationHash"])
+        case "PAIR_CONFIRM":
+            required = common.union(["role", "keyConfirmationMac", "identitySignature"])
+            allowed = required
+        case "PAIR_APPROVAL":
+            required = common.union(["role", "approved"])
+            allowed = required.union(["reason"])
+        case "PAIR_RESULT":
+            required = common.union(["paired"])
+            allowed = required.union(["errorCode", "message"])
+        default:
+            throw InvitationError.invalidSchema
+        }
+        try StrictJsonObjectKeys.validate(data, allowedKeys: allowed, requiredKeys: required)
+    }
+}
+
 public struct Profile2SessionOpen: Codable, Equatable, Sendable {
     public let v: Int
     public let type: String

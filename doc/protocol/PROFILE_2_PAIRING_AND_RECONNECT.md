@@ -94,7 +94,7 @@ When a TLS connection is accepted by the listener, the server reads the **first 
    - Unknown wire versions or purposes fail closed immediately (`UNSUPPORTED_VERSION` or `PROTOCOL_ORDER`).
    - If `purpose == "PAIR_ONLY"`:
      - Routes to the Pair-Only session handler.
-     - Headless/daemon listeners without an interactive owner reject `PAIR_ONLY` immediately with `ERROR` (`code: "AUTHENTICATION_FAILED"`).
+     - Headless/daemon listeners without an interactive owner reject `PAIR_ONLY` with `SESSION_OPEN_ACK` (`accepted: false`, `errorCode: "AUTH_FAILED"`).
      - Any non-pairing message type (`OFFER_BEGIN`, `OFFER_PAGE`, `OFFER_END`, `ITEM_START`, `DATA`, `STREAM_END`) is rejected immediately (`PROTOCOL_ORDER`).
    - If `purpose == "TRUSTED_SEND"`:
      - Routes to the Trusted Reconnect receiver handler (Section 6).
@@ -112,20 +112,9 @@ When a TLS connection is accepted by the listener, the server reads the **first 
 
 ### 4.2 Pinned BoringSSL SPAKE2 Wire Profile
 
-Glide uses a single pinned BoringSSL SPAKE2 implementation (commit `3fed4f207543470b3d639db6ed40737e30308b51`, Ed25519 curve group from `crypto/curve25519/spake25519.c`) exposed behind a private C ABI (`glide_spake2`):
+All native clients use the pinned BoringSSL SPAKE2 implementation (commit `3fed4f207543470b3d639db6ed40737e30308b51`) through the private `glide_spake2` C ABI. Alice is the initiator; Bob is the Ready-to-pair responder. Each 32-byte public share is unpadded base64url in `PAIR_MSG`. The password is exactly six ASCII digit bytes and never appears on the wire.
 
-- **Curve & Primitives**: Ed25519 / SHA-512 internal PAKE state (`SPAKE2_CTX`), 32-byte public share messages (`SPAKE2_MAX_MSG_SIZE = 32`), 64-byte raw shared secret output (`K_shared`).
-- **Fixed SPAKE2 Role Names**:
-  - Initiator (client entering the 6-digit code): `my_name = "glide-spake2-v1-initiator"`, `their_name = "glide-spake2-v1-responder"`, `role = spake2_role_alice`.
-  - Responder (target displaying the 6-digit code): `my_name = "glide-spake2-v1-responder"`, `their_name = "glide-spake2-v1-initiator"`, `role = spake2_role_bob`.
-- **Password Input**: The exact 6-byte ASCII representation of the 6-digit code (`"000000"`..`"999999"`). Never transmitted or logged.
-- **Key Schedule (HKDF-SHA256)**:
-  From the 64-byte `K_shared` output of `SPAKE2_process_msg`:
-  - `salt` = `SHA-256("GLIDE-SPAKE2-SALT-V1\0" || sessionId_utf8 || tlsServerSpkiSha256_bytes)` (32 bytes)
-  - `PRK` = `HKDF-Extract(SHA-256, salt, IKM = K_shared)`
-  - `K_confirm_init` = `HKDF-Expand(PRK, info = "glide-pair-v2-kc-initiator", L = 32)`
-  - `K_confirm_resp` = `HKDF-Expand(PRK, info = "glide-pair-v2-kc-responder", L = 32)`
-  - `K_shared` and `PRK` are zeroed immediately after key derivation.
+The BoringSSL role names are session-bound byte strings, not fixed labels: `"glide-pair-v2:initiator:" || lowercaseSessionId || ":" || initiatorNonce32` for Alice and the analogous `responder` form for Bob. After SPAKE2 returns the 64-byte shared secret, compute `transcriptHash = SHA-256(T_pair)`, use it as the HKDF-SHA256 extract salt, and expand with `glide-pair-v2-confirm-i2r` and `glide-pair-v2-confirm-r2i` to obtain two 32-byte keys. Each `PAIR_CONFIRM.keyConfirmationMac` is HMAC-SHA256 over `transcriptHash` with its directional key. Zero mutable shared-secret and intermediate buffers after use.
 
 ### 4.3 Canonical Pairing Transcript (`GLIDE-PAIR-V2`)
 
@@ -150,45 +139,16 @@ Both key confirmations and persistent-identity ECDSA signatures are computed ove
 
 ### 4.4 `spake2-pin-v1` Handshake Sequence
 
-1. **Initiator → Responder**: `GLD2` preamble + `GLD2_OPEN` (`purpose: "PAIR_ONLY"`).
-2. **Initiator → Responder**: `PAIR_PAKE_INIT` (`seq=2`):
-   - `method`: `"spake2-pin-v1"`
-   - `pakeMessageHex`: 64 lowercase hex chars (32-byte SPAKE2 Alice message)
-   - `initiatorNonceHex`: 64 lowercase hex chars (32 random bytes)
-   - `initiatorDisplayName`: 1..64 code points
-   - `initiatorPlatform`: `"windows" | "linux" | "macos"`
-   - `presenceHex`: 32 lowercase hex chars (advertised presence ID or 32 zeroes for manual address)
-3. **Responder → Initiator**: `PAIR_PAKE_RESP` (`seq=1`):
-   - If the responder is busy (`BUSY`), not in **Ready to pair** (`PAIR_NOT_READY`), or expired/locked out (`CODE_EXPIRED`), responder sends `PAIR_REJECT` (`code`, `message`) and closes.
-   - Otherwise responder generates its SPAKE2 Bob message, computes `K_shared`, and sends:
-     - `method`: `"spake2-pin-v1"`
-     - `pakeMessageHex`: 64 lowercase hex chars (32-byte SPAKE2 Bob message)
-     - `responderNonceHex`: 64 lowercase hex chars (32 random bytes)
-     - `responderDisplayName`: 1..64 code points
-     - `responderPlatform`: `"windows" | "linux" | "macos"`
-     - `responderPresenceHex`: 32 lowercase hex chars
-4. **Initiator → Responder**: `PAIR_IDENT_INIT` (`seq=3`):
-   - Initiator processes `pakeMessageHex`, derives `K_confirm_init` and `K_confirm_resp`, and sends its identity + HMAC over `initiator_kc_input = SHA-256("GLIDE-KC-INIT-V2\0" || sessionId || initiatorNonceHex || responderNonceHex || tlsServerSpkiSha256Hex || initiatorFingerprintHex || initiatorPublicKeyDerHex)`:
-     - `initiatorFingerprintHex`: 64 lowercase hex
-     - `initiatorPublicKeyDerHex`: lowercase hex P-256 SPKI DER
-     - `macHex`: 64 lowercase hex (`HMAC-SHA256(K_confirm_init, initiator_kc_input)`)
-5. **Responder Verifies & Replies**: `PAIR_IDENT_RESP` (`seq=2`):
-   - Responder verifies `macHex` in constant time using `K_confirm_init`.
-   - If `macHex` fails (wrong 6-digit PIN), responder increments its failed-attempt counter; if attempts $\ge 3$, invalidates the code and sends `PAIR_REJECT` (`code: "CODE_EXPIRED"`); otherwise sends `PAIR_REJECT` (`code: "WRONG_CODE"`).
-   - If `macHex` succeeds, the one-use PIN is consumed! Responder builds the full `T_pair` transcript, signs `T_pair` with its persistent P-256 identity key, computes `responder_mac = HMAC-SHA256(K_confirm_resp, T_pair)`, and sends:
-     - `responderFingerprintHex`: 64 lowercase hex
-     - `responderPublicKeyDerHex`: lowercase hex P-256 SPKI DER
-     - `macHex`: 64 lowercase hex (`responder_mac`)
-     - `signatureHex`: lowercase hex DER ECDSA signature over `T_pair`
-6. **Initiator Verifies & Signs**: `PAIR_CONFIRM_INIT` (`seq=4`):
-   - Initiator verifies `responder_mac` using `K_confirm_resp` and verifies the responder's ECDSA P-256 signature over `T_pair`.
-   - Initiator signs `T_pair` with its persistent P-256 identity key and sends:
-     - `signatureHex`: lowercase hex DER ECDSA signature over `T_pair`
-7. **Mutual User Approval & Commit**:
-   - Responder verifies initiator's ECDSA signature over `T_pair`.
-   - Responder prompts the target user: **`[device name] wants to pair`** (**Approve** / **Decline**).
-   - Initiator (having already clicked **Pair** to initiate, or awaiting target approval) and Responder exchange `PAIR_DECISION` (`approved: true | false`).
-   - Only when both sides have verified all cryptographic proofs **and** both sides send `approved: true` does each side commit the peer's `VerifiedDesktopPeerIdentity` / `VerifiedPeerIdentity` into its persistent trust store and display **`Paired with [device name]`**.
+All messages below are flat Profile 2 JSON objects with `v: 1`, `type`, and the same canonical lowercase UUIDv4 `sessionId`. Every JSON message is preceded by its four-byte big-endian length. Only the first message is preceded by `GLD2`.
+
+1. Initiator sends `SESSION_OPEN` with `purpose: "PAIR_ONLY"`, `authMethod: "spake2-pin-v1"`, its 32-byte base64url nonce, display name, platform, persistent P-256 SPKI, and optional `expectedPresenceId`.
+2. Responder requires an active 120-second Ready window and matching presence, then sends `SESSION_OPEN_ACK` with `accepted: true`, its nonce, identity SPKI, display name, platform, and `advertisedPresenceId`. Busy, expired, and unsupported attempts receive `accepted: false` with `errorCode`.
+3. Initiator sends `PAIR_MSG` (`role: "initiator"`, `spakePublicValue`: base64url 32-byte Alice share). Responder sends `PAIR_MSG` (`role: "responder"`, Bob share). The six-digit PIN itself never crosses the wire. Both derive the same 64-byte SPAKE2 secret and the two directional confirmation keys from the canonical transcript hash.
+4. Initiator sends `PAIR_CONFIRM` (`role: "initiator"`, base64url HMAC-SHA256 `keyConfirmationMac`, base64url DER ECDSA `identitySignature`). Responder checks both against the complete transcript. An invalid confirmation increments the Ready window's failure count; the third invalid attempt revokes the window and code.
+5. Responder sends its own `PAIR_CONFIRM` with the opposite directional HMAC key and signature. Initiator checks both. No peer is enrolled yet.
+6. Each side explicitly decides. Initiator sends `PAIR_APPROVAL`, responder sends `PAIR_APPROVAL`, then responder sends `PAIR_RESULT` (`paired: true` only after both approvals and one-use window consumption). Each side saves the verified persistent identity only after the required successful result. A decline, expiry, or disconnect never reports pairing success.
+
+The permitted `errorCode` values are `BUSY`, `EXPIRED`, `AUTH_FAILED`, `DECLINED`, `IDENTITY_CHANGED`, `UNTRUSTED_PEER`, `UNSUPPORTED_VERSION`, and `PROTOCOL_ORDER`. The control decoder rejects duplicate and unknown fields, unsupported wire versions, invalid message order, and frames outside 1..16,384 bytes.
 
 ---
 
@@ -251,29 +211,9 @@ Field validation rules:
 
 ### 5.3 `qr-token-v2` Pair-Only Handshake Sequence
 
-1. Initiator (phone or desktop that scanned/pasted `glide://pair/v2#...`) connects to an endpoint in `endpoints`, pinning `spkiSha256` during the TLS 1.3 handshake.
-2. Initiator sends `"GLD2"` preamble + `GLD2_OPEN` (`purpose: "PAIR_ONLY"`).
-3. Initiator sends `PAIR_TOKEN_INIT` (`seq=2`):
-   - `method`: `"qr-token-v2"`
-   - `invitationId`: UUIDv4 from invitation
-   - `token`: 43-char base64url token from invitation
-   - `invitationHash`: 64 lowercase hex SHA-256 of decoded invitation JSON bytes
-   - `initiatorNonceHex`: 64 lowercase hex
-   - `initiatorDisplayName`: 1..64 code points
-   - `initiatorPlatform`: platform string
-   - `initiatorFingerprintHex`: 64 lowercase hex
-   - `initiatorPublicKeyDerHex`: lowercase hex P-256 SPKI DER
-4. Responder validates and consumes `(invitationId, token, invitationHash)` one-time from its active pair-only invitation authority (checking 120s expiry and single-use). If invalid/expired/replayed, responder sends `PAIR_REJECT` (`code: "CODE_EXPIRED"`) and closes.
-5. Responder generates `responderNonceHex`, builds the canonical `T_pair` transcript (`method = "qr-token-v2"`), signs `T_pair` with its persistent P-256 identity key, and sends `PAIR_TOKEN_RESP` (`seq=1`):
-   - `responderNonceHex`: 64 lowercase hex
-   - `responderDisplayName`: 1..64 code points
-   - `responderPlatform`: platform string
-   - `responderPresenceHex`: 32 lowercase hex
-   - `responderFingerprintHex`: 64 lowercase hex
-   - `responderPublicKeyDerHex`: lowercase hex P-256 SPKI DER
-   - `signatureHex`: lowercase hex DER ECDSA signature over `T_pair`
-6. Initiator verifies responder's ECDSA signature over `T_pair`, signs `T_pair` with its own persistent P-256 identity key, and sends `PAIR_CONFIRM_INIT` (`seq=3`) with `signatureHex`.
-7. Responder verifies initiator's ECDSA signature over `T_pair`. Both sides prompt/confirm user approval (`PAIR_DECISION`) and commit the verified peer identity to their persistent trust stores.
+The initiator connects to an invitation endpoint with TLS 1.3 and pins the certificate SPKI to `spkiSha256`. It sends `GLD2` and `SESSION_OPEN` with `purpose: "PAIR_ONLY"`, `authMethod: "qr-token-v2"`, `expectedPresenceId`, and `invitationId`. After `SESSION_OPEN_ACK`, it sends `PAIR_MSG` with the canonical decoded invitation JSON's `invitationHash`. The responder verifies the active window, invitation ID, and hash and replies with its matching `PAIR_MSG`. Both derive the 64-byte secret from the 32-byte invitation token and invitation hash using the specified HKDF schedule. The token is never sent in a Profile 2 message.
+
+The remainder is identical to steps 4–6 in Section 4.4: the canonical transcript binds both identities, nonces, purpose, presence, and actual TLS server SPKI; both signatures and HMACs must verify; both users decide; and the responder consumes the invitation once before returning `PAIR_RESULT`. A `glide://pair/v1#` invitation never enters this flow.
 
 ---
 
@@ -288,23 +228,11 @@ When a user selects a saved peer under **Paired device** on **Send**:
    - The sender connects via TLS 1.3 (`ALPN: glide-lan/1`) and records the server certificate's actual `RemoteSpkiSha256` (32-byte SHA-256 of the server's X.509 SPKI).
    - Because desktop/mobile TLS listener certificates are ephemeral or rotated independently of persistent identity keys, the connection is authenticated by the mandatory `identity-v1` mutual proof bound to `RemoteSpkiSha256` before any file metadata is sent.
 3. **`GLD2` Bootstrap**:
-   - Sender writes `"GLD2"` (4 bytes) followed by `GLD2_OPEN`:
-     ```json
-     {
-       "v": 1,
-       "type": "GLD2_OPEN",
-       "sessionId": "<new-uuid-v4>",
-       "messageId": "<uuid-v4>",
-       "seq": 1,
-       "body": {
-         "profile": 2,
-         "purpose": "TRUSTED_SEND"
-       }
-     }
-     ```
-   - Receiver replies with `GLD2_OPEN_ACK` (`seq=1`, `accepted: true`, `sessionId`) or `GLD2_OPEN_ACK` (`accepted: false`, `code: "BUSY" | "AUTHENTICATION_FAILED"`).
+   - Sender writes `GLD2`, then the length-prefixed flat `SESSION_OPEN` (`v: 1`, `purpose: "TRUSTED_SEND"`, `authMethod: "identity-v1"`, fresh `sessionId`, initiator nonce, name, platform, persistent identity SPKI, and optional expected presence/peer fingerprint).
+   - Receiver replies with length-prefixed `SESSION_OPEN_ACK` carrying `accepted: true`, its nonce, name, platform, and persistent identity SPKI. Unknown/revoked peers, changed identity, busy state, or malformed messages fail closed with `accepted: false` and an `errorCode`.
+   - Neither side treats a discovery name, cached address, or TLS certificate alone as proof of the selected saved peer.
 4. **Mandatory `HELLO` + Mutual `identity-v1` Proof Before Offer**:
-   - Following `GLD2_OPEN_ACK`, both sides reset/enter the standard `DesktopTransferEngine` / `GlideTransferEngine` control sequence for `sessionId`:
+   - Following `SESSION_OPEN_ACK`, both sides reset/enter the standard `DesktopTransferEngine` / `GlideTransferEngine` control sequence for `sessionId`:
    - Sender sends `HELLO` requiring `["stream-v1", "sha256", "identity-v1"]`.
    - Receiver replies with `HELLO_ACK` including `"identity-v1"`. If the receiver omits `"identity-v1"`, the sender aborts immediately (`AUTHENTICATION_FAILED` — capability downgrade rejected).
    - Sender and Receiver execute the mutual `identity-v1` challenge/response (`IDENTITY_CHALLENGE` / `IDENTITY_RESPONSE` in both directions), bound to `channelBindingHex = tlsServerSpkiSha256Hex` and `capabilityHashHex`.
