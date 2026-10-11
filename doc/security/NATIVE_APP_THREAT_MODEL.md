@@ -1,6 +1,6 @@
 # Native Glide application threat model
 
-Updated 2026-10-12. Scope: local-network file sharing and pair-only enrollment between Android, Windows, Linux, iOS/iPadOS, and macOS. Browser file transfer is retired. The status column records current source evidence; it does not imply physical interoperability. Apple source in the completion audit awaits target-host compilation. The new Profile 2 Windows/Linux/Android physical gates also remain open.
+Updated 2026-10-12. Scope: local-network file sharing and pair-only enrollment between Android, Windows, Linux, iOS/iPadOS, and macOS. Browser file transfer is retired. The status column records current source evidence; it does not imply physical interoperability. Apple source in the completion audit awaits target-host compilation because GitHub Actions is disabled and no local Mac runner is available. The new Profile 2 Windows/Linux/Android physical gates also remain open.
 
 | Threat / boundary | Required control | Production source | Status | Phase 2 evidence required |
 |---|---|---|---|---|

@@ -174,6 +174,7 @@ public enum AppleProfile2PairingSession {
         guard approved && peerApproval.approved && result.paired else {
             throw mapError(result.errorCode)
         }
+        try Task.checkCancellation()
         let fingerprint = sha256Hex(responderSpki)
         try trustStore.enrollPeer(
             fingerprintHex: fingerprint, publicKeyDerHex: hex(responderSpki),
@@ -297,6 +298,7 @@ public enum AppleProfile2PairingSession {
             try await rejectPair(channel, id: open.sessionId, code: "DECLINED")
             throw ApplePairSessionError.declined
         }
+        try Task.checkCancellation()
         guard window.consumeSuccess() else {
             try await rejectPair(channel, id: open.sessionId, code: "EXPIRED")
             throw ApplePairSessionError.expired

@@ -10,14 +10,14 @@
 
 ## Current evidence gate (2026-10-12)
 
-The checkboxes below distinguish source work from acceptance. Desktop Profile 2 tests and shared C#/Kotlin wire fixtures pass; the Apple target-host build is pending. A source implementation or an automated test does not prove a Windows↔Windows, Windows↔Linux, Linux↔Linux, phone↔desktop, or Apple device transfer. None of those new Profile 2 physical pairing and trusted-send scenarios has recorded two-screen consent plus matching source/destination SHA-256 in this checklist. The audit branch must not be merged or packaged as validated until its applicable gates are recorded.
+The checkboxes below distinguish source work from acceptance. The full desktop solution passed 347 core tests and one WPF UI test; Android core, LAN transport, app unit tests, lint, and debug APK build passed; the architecture and Windows companion checks passed. Apple target-host compilation is blocked because GitHub Actions is disabled for the private repository, and no Mac runner is connected locally. The Apple specification audit is a source inspection, not a build. A source implementation or automated test does not prove a Windows↔Windows, Windows↔Linux, Linux↔Linux, phone↔desktop, or Apple device transfer. None of those new Profile 2 physical pairing and trusted-send scenarios has recorded two-screen consent plus matching source/destination SHA-256 in this checklist. The audit branch must not be merged as validated until its applicable gates are recorded.
 
 | Gate | Current result | Evidence still required |
 |---|---|---|
 | Profile 2 wire contract | C# and Kotlin shared-frame tests pass; Swift fixture test added | Swift test on macOS CI and cross-client live exchange |
 | Desktop PIN and pair-only QR | Production code connected in Windows/Linux; targeted desktop tests pass | Two real desktop screens, expiry/lockout/rejection, saved identity on both sides |
 | Trusted reconnect | Production code connected in desktop and Android; source path added on Apple | Physical send without a new invitation, explicit offer consent, SHA-256 equality, revocation/identity-change cases |
-| Apple apps | Pair-only client/listener source wired | macOS CI compile/tests, UI review, and physical device evidence where available |
+| Apple apps | Pair-only client/listener and trusted identity-v1 proof source wired; compilation blocked by disabled GitHub Actions | Enable a protected Mac runner, compile/test iOS and macOS targets, UI review, and physical device evidence where available |
 
 ---
 

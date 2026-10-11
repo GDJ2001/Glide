@@ -61,6 +61,8 @@ public final class IosTransferViewModel: ObservableObject {
     @Published public var pairStage: IosPairStage = .idle
     @Published public var pairDiagnostic: String = ""
     private var pendingPairInvitation: LanPairV2Invitation?
+    private var pairOnlyTask: Task<Void, Never>?
+    private var pairAttemptId = UUID()
 
     @Published public var currentInvitationUri: String = ""
     @Published public var isListening: Bool = false
@@ -122,6 +124,9 @@ public final class IosTransferViewModel: ObservableObject {
     // MARK: - Pair-only QR/Link flow (Mobile: no 6-digit PIN page)
 
     public func submitPairOnlyInvitation(_ rawUri: String) {
+        pairOnlyTask?.cancel()
+        pairOnlyTask = nil
+        pairAttemptId = UUID()
         let trimmed = rawUri.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         do {
@@ -146,23 +151,31 @@ public final class IosTransferViewModel: ObservableObject {
     }
 
     public func confirmPairOnlyApproval(approved: Bool) {
+        guard case .approvalRequired = pairStage else { return }
         guard approved, let inv = pendingPairInvitation else {
-            pendingPairInvitation = nil
-            pairStage = .idle
-            pairDiagnostic = ""
+            resetPairOnlyState()
             return
         }
         pairStage = .verifying
-        Task { @MainActor in
-            defer { self.pendingPairInvitation = nil }
+        let attempt = pairAttemptId
+        pairOnlyTask = Task { @MainActor in
+            defer {
+                if self.pairAttemptId == attempt {
+                    self.pendingPairInvitation = nil
+                    self.pairOnlyTask = nil
+                }
+            }
             do {
                 let saved = try await AppleProfile2PairingSession.initiateQr(
                     invitation: inv, localDeviceName: deviceName, platform: "ios",
                     trustStore: engine.trustStore, approve: { _ in true })
+                try Task.checkCancellation()
+                guard self.pairAttemptId == attempt else { return }
                 self.refreshTrustedPeers()
                 self.pairStage = .success(saved.displayName)
                 self.pairDiagnostic = ""
             } catch {
+                guard !Task.isCancelled, self.pairAttemptId == attempt else { return }
                 self.pairStage = .failed(error.localizedDescription)
                 self.pairDiagnostic = "Pairing did not complete."
             }
@@ -170,6 +183,9 @@ public final class IosTransferViewModel: ObservableObject {
     }
 
     public func resetPairOnlyState() {
+        pairOnlyTask?.cancel()
+        pairOnlyTask = nil
+        pairAttemptId = UUID()
         pendingPairInvitation = nil
         pairStage = .idle
         pairDiagnostic = ""
