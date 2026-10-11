@@ -482,7 +482,7 @@ class LanTransferTransport(
         )
 
         sslSocket.soTimeout = 0
-        val readerJob = coroutineScope.launch {
+        val readerJob = coroutineScope.launch(start = CoroutineStart.LAZY) {
             readLoop(peerId, sslSocket, inputStream)
         }
 
@@ -496,6 +496,8 @@ class LanTransferTransport(
                 channelBindingHex = invitation.spkiSha256
             )
         )
+
+        readerJob.start()
 
         _connectionEvents.emit(ConnectionEvent.Connected(peerDevice))
     }
@@ -597,7 +599,7 @@ class LanTransferTransport(
             )
 
             sslSocket.soTimeout = 0
-            val readerJob = coroutineScope.launch {
+            val readerJob = coroutineScope.launch(start = CoroutineStart.LAZY) {
                 readLoop(peerId, sslSocket, inputStream)
             }
 
@@ -611,6 +613,8 @@ class LanTransferTransport(
                     channelBindingHex = serverSpkiHex
                 )
             )
+
+            readerJob.start()
 
             _connectionEvents.emit(ConnectionEvent.Connected(peerDevice))
         } catch (e: Throwable) {
