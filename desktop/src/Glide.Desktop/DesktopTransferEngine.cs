@@ -400,7 +400,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
         LanInvitationAuthority? hostedInvitationAuthority = null)
     {
         await using var channel =
-            new LanRecordChannel(connection.SslStream);
+            new LanRecordChannel(connection.TransportStream);
         var sequence = new DesktopControlSequence();
         SessionId sessionId;
 
@@ -959,7 +959,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
         bool localEndpointHostsTls = true)
     {
         await using var channel =
-            new LanRecordChannel(connection.SslStream);
+            new LanRecordChannel(connection.TransportStream);
 
         LanBootstrapResult bootstrapResult;
         SessionId sessionId;

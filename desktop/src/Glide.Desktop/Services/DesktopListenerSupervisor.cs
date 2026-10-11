@@ -93,7 +93,8 @@ public sealed class DesktopListenerSupervisor : IDisposable
 
     public void StartListenerLoop(
         Func<TlsSocketConnection, CancellationToken, Task> onConnectionAccepted,
-        CancellationToken externalToken)
+        CancellationToken externalToken,
+        Func<TlsSocketConnection, CancellationToken, Task>? onProfile2ConnectionAccepted = null)
     {
         if (_listener == null) throw new InvalidOperationException("Start the listener before accepting connections.");
 
@@ -112,12 +113,33 @@ public sealed class DesktopListenerSupervisor : IDisposable
                     TlsSocketConnection conn = await listener.AcceptConnectionAsync(token);
                     try
                     {
-                        // Await each authenticated session: one GUI listener must not
-                        // accumulate unbounded connection tasks in the background.
-                        await onConnectionAccepted(conn, token);
+                        if (onProfile2ConnectionAccepted != null)
+                        {
+                            var dispatch = await Glide.Transport.Framing.LanSessionPreambleInspector
+                                .InspectAndPrepareAsync(conn, token);
+                            switch (dispatch)
+                            {
+                                case Glide.Transport.Framing.LanSessionDispatchKind.Profile2Gld2:
+                                    await onProfile2ConnectionAccepted(conn, token);
+                                    break;
+                                case Glide.Transport.Framing.LanSessionDispatchKind.Profile1LanRecord:
+                                    await onConnectionAccepted(conn, token);
+                                    break;
+                                default:
+                                    await conn.DisposeAsync();
+                                    break;
+                            }
+                        }
+                        else
+                        {
+                            // Await each authenticated session: one GUI listener must not
+                            // accumulate unbounded connection tasks in the background.
+                            await onConnectionAccepted(conn, token);
+                        }
                     }
                     catch (Exception ex) when (!token.IsCancellationRequested)
                     {
+                        await conn.DisposeAsync();
                         ListenerError?.Invoke(ex);
                     }
                 }

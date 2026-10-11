@@ -120,19 +120,19 @@ final class MacCompanionCoordinatorTests: XCTestCase {
 
     func testGenerateMenuItemsWithDiscoveredPeers() {
         let coordinator = MacCompanionCoordinator()
-        let dummySpki = String(repeating: "ab", count: 32)
+        let presence = "0123456789abcdef0123456789abcdef"
         let peer = BonjourPeer(
             name: "Galaxy S24",
             endpoint: "192.168.1.55:42424",
-            spkiSha256: dummySpki,
-            presenceToken: "token123"
+            presenceToken: presence,
+            deviceType: BonjourService.deviceTypePhone
         )
 
         let items = coordinator.generateMenuItems(discoveredPeers: [peer])
 
         XCTAssertTrue(items.contains { $0.id == "peers_header" })
-        XCTAssertTrue(items.contains { $0.id == "peer_\(dummySpki)" && $0.title.contains("Galaxy S24") })
-        XCTAssertTrue(items.contains { $0.action == .selectPeer(spkiFingerprint: dummySpki) })
+        XCTAssertTrue(items.contains { $0.id == "peer_\(presence)" && $0.title.contains("Galaxy S24") })
+        XCTAssertTrue(items.contains { $0.action == .selectPeer(presenceToken: presence) })
         XCTAssertTrue(items.contains { $0.action == .resumeReceiving }) // since not listening
     }
 }

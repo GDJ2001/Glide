@@ -86,12 +86,10 @@ final class MacDropTargetCoordinatorTests: XCTestCase {
         let coordinator = MacDropTargetCoordinator()
         XCTAssertNil(coordinator.selectedPeer)
 
-        let dummySpki = String(repeating: "cd", count: 32)
         let peer = BonjourPeer(
             name: "MacBook Pro M3",
             endpoint: "192.168.1.120:42424",
-            spkiSha256: dummySpki,
-            presenceToken: "active"
+            presenceToken: "0123456789abcdef0123456789abcdef"
         )
 
         let file = tempDir.appendingPathComponent("test.txt")

@@ -33,10 +33,10 @@
   - BoringSSL SPAKE2 (`3fed4f207543470b3d639db6ed40737e30308b51`) deterministic test vectors, HKDF key confirmation, and `GLIDE-PAIR-V2` signed transcript bytes.
 
 ### Stage 2: Interface-Aware Discovery, Canonical Apple TXT, Pair Readiness & Listener Routing
-- [ ] Refactor `MdnsDiscoveryService` (`desktop/src/Glide.Transport/Discovery/`) to join IPv4 multicast groups and transmit queries/announcements across all eligible active LAN interfaces (`SystemNetworkSnapshotProvider` criteria), handling multiple NICs and VM adapters, and surfacing typed multicast/firewall errors.
-- [ ] Update `_glide._tcp` TXT codec across C# (`MdnsDiscoveryService`), Kotlin (`LanTxtCodec`), and Swift (`BonjourService`) to support optional `pair=1` (during 2-minute **Ready to pair** window) and `tr=1` (trusted reconnect capability), and remove `spki` from Apple Bonjour TXT.
-- [ ] Implement 2-minute **Ready to pair** window lifecycle that starts the shared TLS listener even when file receiving is off (without turning on file receiving) and cancels readiness on expiry, explicit Cancel, app close, or leaving Pair devices.
-- [ ] Implement 4-byte preamble inspection on the TLS listener (`TlsSocketListener` / `DesktopListenerSupervisor`, `LanListener`, `GlideNetworkListener`) under the handshake deadline:
+- [x] Refactor `MdnsDiscoveryService` (`desktop/src/Glide.Transport/Discovery/`) to join IPv4 multicast groups and transmit queries/announcements across all eligible active LAN interfaces (`SystemNetworkSnapshotProvider` criteria), handling multiple NICs and VM adapters, and surfacing typed multicast/firewall errors.
+- [x] Update `_glide._tcp` TXT codec across C# (`MdnsDiscoveryService`), Kotlin (`LanTxtCodec`), and Swift (`BonjourService`) to support optional `pair=1` (during 2-minute **Ready to pair** window) and `tr=1` (trusted reconnect capability), and remove `spki` from Apple Bonjour TXT.
+- [x] Implement 2-minute **Ready to pair** window lifecycle that starts the shared TLS listener even when file receiving is off (without turning on file receiving) and cancels readiness on expiry, explicit Cancel, app close, or leaving Pair devices.
+- [x] Implement 4-byte preamble inspection on the TLS listener (`TlsSocketListener` / `DesktopListenerSupervisor`, `LanListener`, `GlideNetworkListener`) under the handshake deadline:
   - Existing Profile 1 records (`0x01`, `0x02`, `0x10`, `0x20`, `0x21`) continue unchanged to the Profile 1 transfer runtime.
   - `GLD2` (`0x47, 0x4C, 0x44, 0x32`) routes to a bounded Profile 2 session (`PAIR_ONLY` or `TRUSTED_SEND`), failing closed on unknown versions/purposes or transfer records during `PAIR_ONLY`.
 
