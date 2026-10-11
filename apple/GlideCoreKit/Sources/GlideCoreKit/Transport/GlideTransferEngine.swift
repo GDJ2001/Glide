@@ -18,6 +18,8 @@ public enum TransferError: Error, Equatable, Sendable {
     case busy
     case insufficientStorage
     case limitExceeded(String)
+    case identityChanged
+    case untrustedPeer
 }
 
 public struct TransferItemInfo: Sendable, Equatable {
@@ -263,6 +265,214 @@ public final class GlideTransferEngine: @unchecked Sendable {
         )
     }
 
+    // MARK: - Trusted Reconnect Outbound Flow (TRUSTED_SEND -> saved peer without fresh invitation)
+
+    public func sendFilesToTrustedPeer(
+        fileUrls: [URL],
+        peerFingerprintHex: String,
+        endpoints: [LanEndpoint],
+        expectedPresenceId: String? = nil,
+        localDeviceName: String = "",
+        onProgress: (@Sendable (Double, Int64, Int64, String) -> Void)? = nil
+    ) async throws -> Int {
+        guard !fileUrls.isEmpty else {
+            throw TransferError.invalidFileCount(0)
+        }
+        guard fileUrls.count <= Self.maxBatchFiles else {
+            throw TransferError.invalidFileCount(fileUrls.count)
+        }
+        guard let enrolledPeer = trustStore.getPeer(fingerprintHex: peerFingerprintHex) else {
+            throw TransferError.identityChanged
+        }
+        guard !endpoints.isEmpty else {
+            throw TransferError.peerDisconnected
+        }
+
+        var totalBatchBytes: Int64 = 0
+        for url in fileUrls {
+            guard FileManager.default.fileExists(atPath: url.path) else {
+                throw TransferError.fileNotFound(url.path)
+            }
+            let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
+            guard let sizeNum = attrs[.size] as? NSNumber else {
+                throw TransferError.fileNotFound(url.path)
+            }
+            let size = sizeNum.int64Value
+            guard size >= 0 && size <= Self.maxItemBytes else {
+                throw TransferError.itemSizeExceeded(url.lastPathComponent, size)
+            }
+            let (nextTotal, overflow) = totalBatchBytes.addingReportingOverflow(size)
+            guard !overflow && nextTotal <= Self.maxBatchBytes else {
+                throw TransferError.batchSizeExceeded(nextTotal)
+            }
+            totalBatchBytes = nextTotal
+        }
+
+        let client = GlideNetworkClient()
+        var connectedChannel: LanRecordChannel?
+        var lastError: Error?
+
+        for endpoint in endpoints {
+            do {
+                connectedChannel = try await client.connect(
+                    host: endpoint.address,
+                    port: UInt16(endpoint.port),
+                    expectedSpkiSha256Hex: nil,
+                    timeoutSeconds: 3.0
+                )
+                break
+            } catch {
+                lastError = error
+            }
+        }
+
+        guard let channel = connectedChannel else {
+            throw lastError ?? TransferError.peerDisconnected
+        }
+
+        let sessionId = UUID().uuidString.lowercased()
+        let localSpki = try KeychainIdentityManager.shared.getPublicKeySpkiData()
+        var nonceBytes = [UInt8](repeating: 0, count: 32)
+        for i in 0..<32 { nonceBytes[i] = UInt8.random(in: 0...255) }
+
+        let openMsg = Profile2SessionOpen(
+            sessionId: sessionId,
+            purpose: Profile2Constants.purposeTrustedSend,
+            authMethod: Profile2Constants.authMethodIdentityV1,
+            initiatorNonce: InvitationCodec.toUnpaddedBase64Url(Data(nonceBytes)),
+            initiatorDeviceName: localDeviceName.isEmpty ? "Apple Device" : localDeviceName,
+            initiatorPlatform: "macos",
+            initiatorIdentityPublicKey: InvitationCodec.toUnpaddedBase64Url(localSpki),
+            expectedPresenceId: expectedPresenceId,
+            expectedPeerIdentityFingerprint: enrolledPeer.fingerprintHex
+        )
+
+        try await channel.writeGld2Preamble()
+        try await channel.writeProfile2Message(openMsg)
+
+        let ackData = try await channel.readProfile2MessageData()
+        let ack = try JSONDecoder().decode(Profile2SessionOpenAck.self, from: ackData)
+        guard ack.sessionId == sessionId else {
+            await channel.close()
+            throw TransferError.protocolViolation("SessionId mismatch in SESSION_OPEN_ACK")
+        }
+        if !ack.accepted {
+            await channel.close()
+            if ack.errorCode == "BUSY" {
+                throw TransferError.busy
+            }
+            if ack.errorCode == "IDENTITY_CHANGED" || ack.errorCode == "UNTRUSTED_PEER" || ack.errorCode == "AUTH_FAILED" {
+                throw TransferError.identityChanged
+            }
+            throw TransferError.bootstrapRejected(ack.errorCode ?? "REJECTED")
+        }
+
+        guard let respKeyB64 = ack.responderIdentityPublicKey,
+              let respKeyDer = try? InvitationCodec.fromUnpaddedBase64Url(respKeyB64) else {
+            await channel.close()
+            throw TransferError.identityChanged
+        }
+        let respFp = SHA256.hash(data: respKeyDer).map { String(format: "%02x", $0) }.joined()
+        let respHex = respKeyDer.map { String(format: "%02x", $0) }.joined()
+        guard respFp == enrolledPeer.fingerprintHex && respHex == enrolledPeer.publicKeyDerHex else {
+            await channel.close()
+            throw TransferError.identityChanged
+        }
+
+        return try await runSenderSession(
+            channel: channel,
+            fileUrls: fileUrls,
+            totalBatchBytes: totalBatchBytes,
+            invitation: nil,
+            authority: nil,
+            localDeviceName: localDeviceName,
+            isHostedSender: false,
+            preEstablishedTrustedSessionId: sessionId,
+            onConfirmRecipient: nil,
+            onProgress: onProgress
+        )
+    }
+
+    // MARK: - Trusted Reconnect Inbound Receive Dispatch (TRUSTED_SEND on listener)
+
+    public func receiveTrustedInboundConnection(
+        channel: LanRecordChannel,
+        open: Profile2SessionOpen,
+        destinationDirectory: URL,
+        localDeviceName: String = "",
+        onConsent: @escaping @Sendable (String, Int, Int64) async -> Bool,
+        onProgress: (@Sendable (Double, Int64, Int64, String) -> Void)? = nil
+    ) async throws -> Int {
+        guard open.purpose == Profile2Constants.purposeTrustedSend,
+              open.authMethod == Profile2Constants.authMethodIdentityV1 else {
+            let ack = Profile2SessionOpenAck(
+                sessionId: open.sessionId,
+                accepted: false,
+                errorCode: "PROTOCOL_ORDER",
+                message: "Invalid session purpose for TRUSTED_SEND",
+                responderDeviceName: localDeviceName.isEmpty ? "Apple Receiver" : localDeviceName
+            )
+            try? await channel.writeProfile2Message(ack)
+            await channel.close()
+            throw TransferError.protocolViolation("Invalid session purpose for TRUSTED_SEND")
+        }
+
+        guard let initSpki = try? InvitationCodec.fromUnpaddedBase64Url(open.initiatorIdentityPublicKey) else {
+            let ack = Profile2SessionOpenAck(
+                sessionId: open.sessionId,
+                accepted: false,
+                errorCode: "AUTH_FAILED",
+                message: "Identity changed — pair again",
+                responderDeviceName: localDeviceName.isEmpty ? "Apple Receiver" : localDeviceName
+            )
+            try? await channel.writeProfile2Message(ack)
+            await channel.close()
+            throw TransferError.untrustedPeer
+        }
+
+        let initFp = SHA256.hash(data: initSpki).map { String(format: "%02x", $0) }.joined()
+        let initHex = initSpki.map { String(format: "%02x", $0) }.joined()
+        guard let enrolledSender = trustStore.getPeer(fingerprintHex: initFp),
+              enrolledSender.publicKeyDerHex == initHex else {
+            let ack = Profile2SessionOpenAck(
+                sessionId: open.sessionId,
+                accepted: false,
+                errorCode: "UNTRUSTED_PEER",
+                message: "Identity changed — pair again",
+                responderDeviceName: localDeviceName.isEmpty ? "Apple Receiver" : localDeviceName
+            )
+            try? await channel.writeProfile2Message(ack)
+            await channel.close()
+            throw TransferError.untrustedPeer
+        }
+
+        let localSpki = try KeychainIdentityManager.shared.getPublicKeySpkiData()
+        var nonceBytes = [UInt8](repeating: 0, count: 32)
+        for i in 0..<32 { nonceBytes[i] = UInt8.random(in: 0...255) }
+
+        let ack = Profile2SessionOpenAck(
+            sessionId: open.sessionId,
+            accepted: true,
+            responderNonce: InvitationCodec.toUnpaddedBase64Url(Data(nonceBytes)),
+            responderDeviceName: localDeviceName.isEmpty ? "Apple Receiver" : localDeviceName,
+            responderPlatform: "macos",
+            responderIdentityPublicKey: InvitationCodec.toUnpaddedBase64Url(localSpki)
+        )
+        try await channel.writeProfile2Message(ack)
+
+        return try await runReceiverSession(
+            channel: channel,
+            invitation: nil,
+            authority: nil,
+            destinationDirectory: destinationDirectory,
+            localDeviceName: localDeviceName,
+            isConnectingToHostedSender: false,
+            preEstablishedTrustedSessionId: open.sessionId.lowercased(),
+            onConsent: onConsent,
+            onProgress: onProgress
+        )
+    }
+
     // MARK: - Internal Sender Session Implementation
 
     private func runSenderSession(
@@ -273,15 +483,22 @@ public final class GlideTransferEngine: @unchecked Sendable {
         authority: LanInvitationAuthority? = nil,
         localDeviceName: String,
         isHostedSender: Bool,
+        preEstablishedTrustedSessionId: String? = nil,
         onConfirmRecipient: (@Sendable (String) async -> Bool)?,
         onProgress: (@Sendable (Double, Int64, Int64, String) -> Void)?
     ) async throws -> Int {
-        var sessionId = UUID().uuidString.lowercased()
+        var sessionId = preEstablishedTrustedSessionId ?? UUID().uuidString.lowercased()
         let sequence = LanControlSequence()
 
         print("DEBUG: [runSenderSession] Entered: isHostedSender=\(isHostedSender), sessionId=\(sessionId)")
         // 1. BOOTSTRAP
-        if !isHostedSender {
+        if let trustedSessionId = preEstablishedTrustedSessionId {
+            sessionId = trustedSessionId
+            guard tryAcquireSession(sessionId) else {
+                await channel.close()
+                throw TransferError.busy
+            }
+        } else if !isHostedSender {
             guard tryAcquireSession(sessionId) else {
                 await channel.close()
                 throw TransferError.busy
@@ -557,14 +774,21 @@ public final class GlideTransferEngine: @unchecked Sendable {
         destinationDirectory: URL,
         localDeviceName: String,
         isConnectingToHostedSender: Bool,
+        preEstablishedTrustedSessionId: String? = nil,
         onConsent: @escaping @Sendable (String, Int, Int64) async -> Bool,
         onProgress: (@Sendable (Double, Int64, Int64, String) -> Void)?
     ) async throws -> Int {
-        var sessionId = UUID().uuidString.lowercased()
+        var sessionId = preEstablishedTrustedSessionId ?? UUID().uuidString.lowercased()
         let sequence = LanControlSequence()
 
         // 1. BOOTSTRAP
-        if isConnectingToHostedSender {
+        if let trustedSessionId = preEstablishedTrustedSessionId {
+            sessionId = trustedSessionId
+            guard tryAcquireSession(sessionId) else {
+                await channel.close()
+                throw TransferError.busy
+            }
+        } else if isConnectingToHostedSender {
             guard let inv = invitation else { throw TransferError.protocolViolation("Missing invitation") }
             guard tryAcquireSession(sessionId) else {
                 await channel.close()

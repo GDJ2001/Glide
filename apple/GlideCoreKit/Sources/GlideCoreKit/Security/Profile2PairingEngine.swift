@@ -2,7 +2,7 @@ import Foundation
 import CryptoKit
 
 public enum Profile2Constants {
-    public static let wireVersion = 2
+    public static let wireVersion = 1
     public static let purposePairOnly = "PAIR_ONLY"
     public static let purposeTrustedSend = "TRUSTED_SEND"
     public static let authMethodSpake2PinV1 = "spake2-pin-v1"

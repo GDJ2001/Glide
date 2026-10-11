@@ -12,11 +12,11 @@ public enum NetworkClientError: Error, Equatable, Sendable {
 public final class GlideNetworkClient: Sendable {
     public init() {}
 
-    /// Connects to a remote peer endpoint over TLS 1.3, pinning the peer's certificate SPKI hash.
+    /// Connects to a remote peer endpoint over TLS 1.3, optionally pinning the peer's certificate SPKI hash.
     public func connect(
         host: String,
         port: UInt16,
-        expectedSpkiSha256Hex: String,
+        expectedSpkiSha256Hex: String? = nil,
         timeoutSeconds: TimeInterval = 10.0
     ) async throws -> LanRecordChannel {
         guard let endpointPort = NWEndpoint.Port(rawValue: port) else {
@@ -24,7 +24,13 @@ public final class GlideNetworkClient: Sendable {
         }
         let endpointHost = NWEndpoint.Host(host)
 
-        let parameters = GlideTlsParameters.createClientParameters(expectedSpkiSha256: expectedSpkiSha256Hex)
+        let capturedSpkiBox = ManagedAtomicString()
+        let parameters = GlideTlsParameters.createClientParameters(
+            expectedSpkiSha256: expectedSpkiSha256Hex,
+            onRemoteSpkiSha256Captured: { spki in
+                capturedSpkiBox.set(spki)
+            }
+        )
         let connection = NWConnection(host: endpointHost, port: endpointPort, using: parameters)
 
         let queue = DispatchQueue(label: "dev.glide.network.client", qos: .userInitiated)
@@ -63,7 +69,24 @@ public final class GlideNetworkClient: Sendable {
             }
         }
 
-        return LanRecordChannel(connection: connection)
+        return LanRecordChannel(connection: connection, remoteSpkiSha256Hex: capturedSpkiBox.get())
+    }
+}
+
+private final class ManagedAtomicString: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: String?
+
+    func set(_ newValue: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        value = newValue
+    }
+
+    func get() -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
     }
 }
 

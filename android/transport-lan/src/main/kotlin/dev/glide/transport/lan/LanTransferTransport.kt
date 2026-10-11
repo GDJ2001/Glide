@@ -93,7 +93,17 @@ class LanTransferTransport(
         val bootstrapRole: String
     )
 
+    data class PendingTrustedPeer(
+        val expectedFingerprintHex: String,
+        val expectedPublicKeyDerHex: String,
+        val displayName: String,
+        val endpoints: List<dev.glide.core.pairing.LanEndpoint>,
+        val localIdentityPublicKeyDer: ByteArray,
+        val expectedPresenceId: String? = null
+    )
+
     private val pendingInvitations = ConcurrentHashMap<PeerId, PendingInvitation>()
+    private val pendingTrustedPeers = ConcurrentHashMap<PeerId, PendingTrustedPeer>()
     private val activeConnections = ConcurrentHashMap<PeerId, ActiveConnection>()
     private val markedReadyStreams = Collections.synchronizedSet(mutableSetOf<BulkRef>())
 
@@ -119,6 +129,13 @@ class LanTransferTransport(
         pendingInvitations[peerId] = PendingInvitation(invitation, bootstrapRole)
     }
 
+    fun registerPendingTrustedPeer(
+        peerId: PeerId,
+        trustedPeer: PendingTrustedPeer
+    ) {
+        pendingTrustedPeers[peerId] = trustedPeer
+    }
+
     fun attachServerListener(lanListener: LanListener, invitationAuthority: InvitationAuthority) {
         this.listener = lanListener
         this.authority = invitationAuthority
@@ -138,11 +155,42 @@ class LanTransferTransport(
         invitationAuthority: InvitationAuthority
     ) {
         try {
-            val inputStream = socket.inputStream
+            val rawInput = java.io.PushbackInputStream(socket.inputStream, 4)
             val outputStream = socket.outputStream
 
+            val preamble = ByteArray(4)
+            var readCount = 0
+            while (readCount < 4) {
+                val r = rawInput.read(preamble, readCount, 4 - readCount)
+                if (r < 0) {
+                    socket.close()
+                    return
+                }
+                readCount += r
+            }
+
+            if (preamble.contentEquals(dev.glide.core.pairing.Profile2Constants.GLD2_MAGIC_BYTES)) {
+                // Profile 2 session on Android receiver listener
+                val open = dev.glide.core.pairing.Profile2WireCodec.readMessage(rawInput) as? dev.glide.core.pairing.Profile2Message.SessionOpen
+                if (open != null) {
+                    dev.glide.core.pairing.Profile2WireCodec.writeMessage(
+                        outputStream,
+                        dev.glide.core.pairing.Profile2Message.SessionOpenAck(
+                            sessionId = open.sessionId,
+                            accepted = false,
+                            errorCode = dev.glide.core.pairing.Profile2Constants.ERROR_UNTRUSTED_PEER,
+                            message = "Identity changed — pair again"
+                        )
+                    )
+                }
+                socket.close()
+                return
+            }
+
+            rawInput.unread(preamble)
+
             // 1. Read first record: must be BOOTSTRAP
-            val firstRecord = LanRecordReader.readRecord(inputStream)
+            val firstRecord = LanRecordReader.readRecord(rawInput)
             if (firstRecord !is LanRecord.Bootstrap) {
                 socket.close()
                 return
@@ -181,7 +229,7 @@ class LanTransferTransport(
 
             socket.soTimeout = 0
             val readerJob = coroutineScope.launch {
-                readLoop(peerId, socket, inputStream)
+                readLoop(peerId, socket, rawInput)
             }
 
             val serverSpki =
@@ -229,6 +277,12 @@ class LanTransferTransport(
     }
 
     override suspend fun initiateConnection(peerId: PeerId, localDeviceName: String) {
+        val pendingTrusted = pendingTrustedPeers[peerId]
+        if (pendingTrusted != null) {
+            initiateTrustedConnection(peerId, pendingTrusted, localDeviceName)
+            return
+        }
+
         val pendingInvitation = pendingInvitations[peerId]
             ?: throw IllegalStateException("No pending invitation registered for peer: ${peerId.value}")
         val invitation = pendingInvitation.invitation
@@ -344,6 +398,111 @@ class LanTransferTransport(
         )
 
         _connectionEvents.emit(ConnectionEvent.Connected(peerDevice))
+    }
+
+    private suspend fun initiateTrustedConnection(
+        peerId: PeerId,
+        trustedPeer: PendingTrustedPeer,
+        localDeviceName: String
+    ) {
+        if (trustedPeer.endpoints.isEmpty()) {
+            throw IOException("Couldn’t reach this device — check the local network")
+        }
+
+        var sslSocket: SSLSocket? = null
+        for (endpoint in trustedPeer.endpoints) {
+            try {
+                val inetAddress = InetAddress.getByName(endpoint.address)
+                sslSocket = connector.connect(
+                    address = inetAddress,
+                    port = endpoint.port,
+                    expectedSpkiSha256Hex = null
+                )
+                break
+            } catch (_: Throwable) {
+                // try next endpoint
+            }
+        }
+
+        if (sslSocket == null) {
+            throw IOException("Couldn’t reach this device — check the local network")
+        }
+
+        val inputStream = sslSocket.inputStream
+        val outputStream = sslSocket.outputStream
+
+        try {
+            val serverCert = sslSocket.session.peerCertificates.firstOrNull() as? java.security.cert.X509Certificate
+                ?: throw IOException("Identity changed — pair again")
+            val serverSpkiHex = dev.glide.transport.lan.tls.PinnedTrustManager.computeSpkiSha256Hex(serverCert)
+
+            outputStream.write(dev.glide.core.pairing.Profile2Constants.GLD2_MAGIC_BYTES)
+            outputStream.flush()
+
+            val senderSessionId = UUID.randomUUID().toString().lowercase()
+            val nonceBytes = ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }
+            val encoder = java.util.Base64.getUrlEncoder().withoutPadding()
+            val open = dev.glide.core.pairing.Profile2Message.SessionOpen(
+                sessionId = senderSessionId,
+                purpose = dev.glide.core.pairing.Profile2Constants.PURPOSE_TRUSTED_SEND,
+                authMethod = dev.glide.core.pairing.Profile2Constants.AUTH_METHOD_IDENTITY_V1,
+                initiatorNonce = encoder.encodeToString(nonceBytes),
+                initiatorDeviceName = localDeviceName,
+                initiatorPlatform = "android",
+                initiatorIdentityPublicKey = encoder.encodeToString(trustedPeer.localIdentityPublicKeyDer),
+                expectedPresenceId = trustedPeer.expectedPresenceId
+            )
+            dev.glide.core.pairing.Profile2WireCodec.writeMessage(outputStream, open)
+
+            val ack = dev.glide.core.pairing.Profile2WireCodec.readMessage(inputStream)
+                as? dev.glide.core.pairing.Profile2Message.SessionOpenAck
+                ?: throw IOException("Identity changed — pair again")
+
+            if (!ack.accepted) {
+                val mapped = when (ack.errorCode) {
+                    dev.glide.core.pairing.Profile2Constants.ERROR_BUSY -> "This device is busy — try again"
+                    dev.glide.core.pairing.Profile2Constants.ERROR_EXPIRED -> "Code expired — get a new code"
+                    else -> "Identity changed — pair again"
+                }
+                throw IOException(mapped)
+            }
+
+            val responderSpki = java.util.Base64.getUrlDecoder().decode(ack.responderIdentityPublicKey ?: "")
+            val responderFp = dev.glide.core.identity.PeerIdentityVerifier.deriveFingerprint(responderSpki)
+            val responderPubHex = responderSpki.joinToString("") { "%02x".format(it.toInt() and 0xff) }
+            if (responderFp != trustedPeer.expectedFingerprintHex ||
+                responderPubHex != trustedPeer.expectedPublicKeyDerHex
+            ) {
+                throw IOException("Identity changed — pair again")
+            }
+
+            val writer = LanRecordWriter(outputStream)
+            val peerDevice = PeerDevice(
+                id = peerId,
+                displayName = ack.responderDeviceName ?: trustedPeer.displayName
+            )
+
+            sslSocket.soTimeout = 0
+            val readerJob = coroutineScope.launch {
+                readLoop(peerId, sslSocket, inputStream)
+            }
+
+            activeConnections[peerId] = ActiveConnection(
+                peerId = peerId,
+                socket = sslSocket,
+                writer = writer,
+                readerJob = readerJob,
+                channelContext = AuthenticatedChannelContext(
+                    sessionId = SessionId(senderSessionId),
+                    channelBindingHex = serverSpkiHex
+                )
+            )
+
+            _connectionEvents.emit(ConnectionEvent.Connected(peerDevice))
+        } catch (e: Throwable) {
+            try { sslSocket.close() } catch (_: Exception) {}
+            throw e
+        }
     }
 
     override fun authenticatedChannelContext(

@@ -33,6 +33,8 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
         }
     }
 
+    public bool IsBusy => _activeBatch.CurrentCount == 0;
+
     public bool CancelActiveTransfer()
     {
         lock (_gate)
@@ -57,6 +59,16 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
             token => _executor.SendAsync(request, interaction, token),
             cancellationToken);
 
+    public Task<DesktopTransferResult> SendTrustedAsync(
+        DesktopSendRequest request,
+        IDesktopTransferInteraction interaction,
+        CancellationToken cancellationToken = default) =>
+        RunAsync(
+            DesktopTransferDirection.Send,
+            "Paired device",
+            token => _executor.SendTrustedAsync(request, interaction, token),
+            cancellationToken);
+
     public Task<DesktopTransferResult> ReceiveAsync(
         TlsSocketConnection connection,
         DesktopReceiveRequest request,
@@ -67,6 +79,87 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
             "Incoming peer",
             token => _executor.ReceiveAsync(connection, request, interaction, token),
             cancellationToken);
+
+    public async Task<DesktopTransferResult> ReceiveTrustedAsync(
+        TlsSocketConnection connection,
+        Glide.Core.Pairing.Profile2Message.SessionOpen open,
+        DesktopReceiveRequest request,
+        IDesktopTransferInteraction interaction,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await _activeBatch.WaitAsync(0, cancellationToken))
+        {
+            return await _executor.ReceiveTrustedAsync(
+                connection,
+                open,
+                request,
+                interaction,
+                isBusy: true,
+                cancellationToken);
+        }
+
+        using var linkedCancellation =
+            CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        lock (_gate)
+        {
+            _activeCancellation = linkedCancellation;
+        }
+
+        string peerName = string.IsNullOrWhiteSpace(open.InitiatorDeviceName)
+            ? "Paired device"
+            : open.InitiatorDeviceName;
+
+        SetSnapshot(new DesktopTransferSnapshot(
+            DesktopTransferPhase.Preparing,
+            DesktopTransferDirection.Receive,
+            peerName,
+            "Preparing transfer…"));
+
+        try
+        {
+            SetSnapshot(new DesktopTransferSnapshot(
+                DesktopTransferPhase.Transferring,
+                DesktopTransferDirection.Receive,
+                peerName,
+                "Transfer in progress."));
+
+            DesktopTransferResult result = await _executor.ReceiveTrustedAsync(
+                connection,
+                open,
+                request,
+                interaction,
+                isBusy: false,
+                linkedCancellation.Token);
+
+            DesktopTransferPhase phase = result switch
+            {
+                { Success: true } => DesktopTransferPhase.Completed,
+                { Cancelled: true } => DesktopTransferPhase.Cancelled,
+                { Rejected: true } => DesktopTransferPhase.Cancelled,
+                _ => DesktopTransferPhase.Failed
+            };
+            SetSnapshot(new DesktopTransferSnapshot(phase, DesktopTransferDirection.Receive, peerName, result.Message));
+            return result;
+        }
+        catch (OperationCanceledException) when (linkedCancellation.IsCancellationRequested)
+        {
+            const string message = "Transfer cancelled.";
+            SetSnapshot(new DesktopTransferSnapshot(
+                DesktopTransferPhase.Cancelled,
+                DesktopTransferDirection.Receive,
+                peerName,
+                message));
+            return DesktopTransferResult.CancelledByUser(message);
+        }
+        finally
+        {
+            lock (_gate)
+            {
+                _activeCancellation = null;
+            }
+            _activeBatch.Release();
+        }
+    }
 
     public Task<DesktopTransferResult> ReceiveFromInvitationAsync(
         DesktopReceiveRequest request,

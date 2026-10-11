@@ -53,7 +53,7 @@
   - Clear/reconcile any partially completed handshake on restart.
 
 ### Stage 4: Trusted Reconnect (`TRUSTED_SEND`)
-- [ ] Implement saved-device connection without a fresh invitation in `DesktopTransferEngine` / `DesktopTransferRuntime` and Apple `GlideTransferEngine`:
+- [x] Implement saved-device connection without a fresh invitation in `DesktopTransferEngine` / `DesktopTransferRuntime` and Apple `GlideTransferEngine`:
   - Connect to discovered or manually validated local endpoint using `GLD2` (`TRUSTED_SEND`).
   - Perform mutual `identity-v1` challenge-response bound to the live TLS server certificate SPKI and expected saved peer fingerprint **before any file offer**.
   - Reject identity change (**Identity changed — pair again**) and capability downgrade; allow TLS certificate rotation only when persistent identity proof matches.

@@ -10,21 +10,81 @@ public enum LanChannelError: Error, Equatable, Sendable {
     case invalidRecord(String)
 }
 
+public enum LanSessionDispatchKind: Sendable, Equatable {
+    case profile1LanRecord
+    case profile2Gld2
+    case invalid
+}
+
 /// Asynchronous length-prefixed frame channel operating over Apple Network.framework NWConnection.
 /// Enforces the 5-byte record header, 16 KiB control ceiling, and 64 KiB bulk payload bounding.
 public actor LanRecordChannel {
     private let connection: NWConnection
+    public nonisolated let remoteSpkiSha256Hex: String?
+    private var prefixBuffer = Data()
 
-    public init(connection: NWConnection) {
+    public init(connection: NWConnection, remoteSpkiSha256Hex: String? = nil) {
         self.connection = connection
+        self.remoteSpkiSha256Hex = remoteSpkiSha256Hex
     }
 
-    /// Reads exactly `count` bytes from the underlying TLS connection.
+    /// Inspects the first 4 bytes of an inbound session to route Profile 2 (`"GLD2"`) vs Profile 1 (`LanRecordKind`).
+    public func inspectSessionPreamble() async throws -> LanSessionDispatchKind {
+        let firstFour = try await readExact(count: 4)
+        if firstFour == Profile2Constants.gld2Magic {
+            return .profile2Gld2
+        }
+        guard let firstByte = firstFour.first,
+              LanRecordKind(rawValue: firstByte) != nil else {
+            return .invalid
+        }
+        var combined = firstFour
+        combined.append(prefixBuffer)
+        prefixBuffer = combined
+        return .profile1LanRecord
+    }
+
+    public func writeGld2Preamble() async throws {
+        try await writeRaw(Profile2Constants.gld2Magic)
+    }
+
+    public func writeProfile2Message<T: Encodable>(_ message: T) async throws {
+        let payload = try JSONEncoder().encode(message)
+        guard !payload.isEmpty, payload.count <= Profile2Constants.maxControlPayloadBytes else {
+            throw LanChannelError.payloadTooLarge(payload.count)
+        }
+        let len = UInt32(payload.count)
+        var frame = Data([
+            UInt8((len >> 24) & 0xFF),
+            UInt8((len >> 16) & 0xFF),
+            UInt8((len >> 8) & 0xFF),
+            UInt8(len & 0xFF)
+        ])
+        frame.append(payload)
+        try await writeRaw(frame)
+    }
+
+    public func readProfile2MessageData() async throws -> Data {
+        let header = try await readExact(count: 4)
+        let length = header.reduce(UInt32(0)) { ($0 << 8) | UInt32($1) }
+        let count = Int(length)
+        guard count > 0, count <= Profile2Constants.maxControlPayloadBytes else {
+            throw LanChannelError.payloadTooLarge(count)
+        }
+        return try await readExact(count: count)
+    }
+
+    /// Reads exactly `count` bytes from the underlying TLS connection (consuming any prefix buffer first).
     public func readExact(count: Int) async throws -> Data {
         guard count >= 0, count <= LanRecordCodec.maxRecordPayloadSize else {
             throw LanChannelError.payloadTooLarge(count)
         }
         var accumulated = Data()
+        if !prefixBuffer.isEmpty {
+            let take = min(count, prefixBuffer.count)
+            accumulated.append(prefixBuffer.prefix(take))
+            prefixBuffer.removeFirst(take)
+        }
         while accumulated.count < count {
             let needed = count - accumulated.count
             print("DEBUG: [readExact] calling connection.receive for needed=\(needed)...")
@@ -92,14 +152,15 @@ public actor LanRecordChannel {
     /// Encodes and sends a `LanRecord` frame atomically.
     public func writeRecord(_ record: LanRecord) async throws {
         let frameData = try LanRecordCodec.encode(record)
-        print("DEBUG: [writeRecord] sending record kind=\(record.kind), len=\(frameData.count)...")
+        try await writeRaw(frameData)
+    }
+
+    public func writeRaw(_ frameData: Data) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             connection.send(content: frameData, isComplete: false, completion: .contentProcessed { error in
                 if let error = error {
-                    print("DEBUG: [writeRecord] send error: \(error)")
                     continuation.resume(throwing: error)
                 } else {
-                    print("DEBUG: [writeRecord] send completed for kind=\(record.kind)")
                     continuation.resume(returning: ())
                 }
             })

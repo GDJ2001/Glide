@@ -37,15 +37,11 @@ public static class Profile2PairingEngine
                 : $"{peerDeviceName} declined pairing",
             Profile2Constants.ErrorBusy => "This device is busy — try again",
             Profile2Constants.ErrorIdentityChanged => "Identity changed — pair again",
-            Profile2Constants.ErrorUntrustedPeer => string.IsNullOrWhiteSpace(peerDeviceName)
-                ? "This device is no longer paired — pair again"
-                : $"{peerDeviceName} is no longer paired with this computer — pair again",
+            Profile2Constants.ErrorUntrustedPeer => "Identity changed — pair again",
             Profile2Constants.ErrorUnsupportedVersion => "Update Glide to pair this device",
             _ => !string.IsNullOrWhiteSpace(fallbackMessage)
                 ? fallbackMessage
-                : (string.IsNullOrWhiteSpace(peerDeviceName)
-                    ? "Couldn't reach the other device — make sure both are on the same network"
-                    : $"Couldn't reach {peerDeviceName} — make sure both are on the same network")
+                : "Couldn’t reach this device — check the local network"
         };
     }
 
@@ -98,7 +94,7 @@ public static class Profile2PairingEngine
         {
             return Profile2PairOutcome.Failure(
                 "UNREACHABLE",
-                "Couldn't reach the other device — make sure both are on the same network");
+                "Couldn’t reach this device — check the local network");
         }
         finally
         {
@@ -358,7 +354,7 @@ public static class Profile2PairingEngine
         {
             return Profile2PairOutcome.Failure(
                 "UNREACHABLE",
-                $"Couldn't reach {invitation.Name} — make sure both are on the same network");
+                "Couldn’t reach this device — check the local network");
         }
         finally
         {
@@ -523,6 +519,20 @@ public static class Profile2PairingEngine
 
         Stream stream = connection.TransportStream;
 
+        if (!string.Equals(open.Purpose, Profile2Constants.PurposePairOnly, StringComparison.Ordinal))
+        {
+            await Profile2WireCodec.WriteMessageAsync(
+                stream,
+                new Profile2Message.SessionOpenAck(
+                    SessionId: open.SessionId,
+                    Accepted: false,
+                    ErrorCode: Profile2Constants.ErrorProtocolOrder,
+                    Message: "Invalid session purpose for PAIR_ONLY handler",
+                    ResponderDeviceName: localDeviceName),
+                cancellationToken).ConfigureAwait(false);
+            return Profile2PairOutcome.Failure(Profile2Constants.ErrorProtocolOrder, "Pairing failed");
+        }
+
         if (isBusy)
         {
             await Profile2WireCodec.WriteMessageAsync(
@@ -583,7 +593,16 @@ public static class Profile2PairingEngine
                 AdvertisedPresenceId: activeWindow.PresenceId),
             cancellationToken).ConfigureAwait(false);
 
-        var pairMsgRaw = await Profile2WireCodec.ReadMessageAsync(stream, cancellationToken).ConfigureAwait(false);
+        Profile2Message pairMsgRaw;
+        try
+        {
+            pairMsgRaw = await Profile2WireCodec.ReadMessageAsync(stream, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Glide.Core.Models.ProtocolViolationException)
+        {
+            return Profile2PairOutcome.Failure(Profile2Constants.ErrorProtocolOrder, "Pairing failed");
+        }
+
         if (pairMsgRaw is not Profile2Message.PairMsg initiatorPairMsg)
         {
             return Profile2PairOutcome.Failure(Profile2Constants.ErrorProtocolOrder, "Pairing failed");
@@ -808,6 +827,10 @@ public static class Profile2PairingEngine
                     cancellationToken).ConfigureAwait(false);
 
                 return Profile2PairOutcome.Success(enrolled);
+            }
+            catch (Glide.Core.Models.ProtocolViolationException)
+            {
+                return Profile2PairOutcome.Failure(Profile2Constants.ErrorProtocolOrder, "Pairing failed");
             }
             finally
             {
