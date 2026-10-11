@@ -76,22 +76,22 @@ When a TLS connection is accepted by the listener, the server reads the **first 
      ```
      0x47 0x4C 0x44 0x32   ("GLD2")
      ```
-   - Immediately following `"GLD2"`, all Profile 2 messages use `LanRecord.Control` framing (`0x10` followed by 4-byte unsigned big-endian length $\le 16,384\text{ bytes}$ and UTF-8 JSON payload) or length-prefixed Profile 2 control frames. To reuse `LanRecordChannel` cleanly across C#, Kotlin, and Swift, after the 4-byte `"GLD2"` preamble is consumed, both peers exchange standard `LanRecord.Control` (`0x10`) frames containing `Envelope` JSON (`v=1`, `type`, `sessionId`, `messageId`, `seq`, `body`).
-   - The first control envelope sent by the initiator after `"GLD2"` MUST be `GLD2_OPEN` (`seq=1`):
+   - Immediately following `"GLD2"`, Profile 2 messages use a 4-byte unsigned big-endian JSON byte length (1..16,384), followed by that many UTF-8 JSON bytes. The Profile 2 frame has no `LanRecordKind` prefix. The JSON is a flat object with `v=1`, `type`, and `sessionId`; the invitation URI's `v=2` is a separate version number. After Profile 2 authentication succeeds, a `TRUSTED_SEND` session resumes the existing Profile 1 `LanRecord` transfer sequence.
+   - The first Profile 2 message sent by the initiator MUST be `SESSION_OPEN`:
      ```json
      {
        "v": 1,
-       "type": "GLD2_OPEN",
+       "type": "SESSION_OPEN",
        "sessionId": "<uuid-v4>",
-       "messageId": "<uuid-v4>",
-       "seq": 1,
-       "body": {
-         "profile": 2,
-         "purpose": "PAIR_ONLY" | "TRUSTED_SEND"
-       }
+       "purpose": "PAIR_ONLY",
+       "authMethod": "spake2-pin-v1",
+       "initiatorNonce": "<32-byte unpadded base64url>",
+       "initiatorDeviceName": "<display name>",
+       "initiatorPlatform": "windows",
+       "initiatorIdentityPublicKey": "<unpadded base64url SPKI>"
      }
      ```
-   - Unknown `profile` values or unknown `purpose` strings fail closed immediately (`UNSUPPORTED_PROTOCOL`).
+   - Unknown wire versions or purposes fail closed immediately (`UNSUPPORTED_VERSION` or `PROTOCOL_ORDER`).
    - If `purpose == "PAIR_ONLY"`:
      - Routes to the Pair-Only session handler.
      - Headless/daemon listeners without an interactive owner reject `PAIR_ONLY` immediately with `ERROR` (`code: "AUTHENTICATION_FAILED"`).
