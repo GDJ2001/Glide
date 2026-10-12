@@ -1,7 +1,7 @@
 # Glide Pair-Only Discovery and Trusted Reconnect — Baseline & Implementation Checklist
 
 **Original branch**: `codex/pair-only-and-trusted-reconnect`; completion audit: `codex/pair-only-completion-audit`
-**Integration status**: The original branch was merged into `main` at `1994489` before the physical gates. The audit branch contains subsequent fixes and is not yet merged.
+**Integration status**: The original branch was merged into `main` at `1994489` before the physical gates. The completion audit was integrated into `main` at the user's request on 2026-10-12. Both feature branches were retired after confirming their commits are included in `main`. This source integration does not clear the open validation gates below.
 **Application Version**: `1.0.0` (preserved across all manifests, installers, and packages)  
 **Contract Reference**: [`doc/protocol/PROFILE_2_PAIRING_AND_RECONNECT.md`](../../protocol/PROFILE_2_PAIRING_AND_RECONNECT.md)  
 **Shared Golden Fixtures**: [`doc/protocol/fixtures/profile2-fixtures.json`](../../protocol/fixtures/profile2-fixtures.json)
@@ -10,7 +10,7 @@
 
 ## Current evidence gate (2026-10-12)
 
-The checkboxes below distinguish source work from acceptance. The full desktop solution passed 347 core tests and one WPF UI test; Android core, LAN transport, app unit tests, lint, and debug APK build passed; the architecture and Windows companion checks passed. Apple target-host compilation is blocked because GitHub Actions is disabled for the private repository, and no Mac runner is connected locally. The Apple specification audit is a source inspection, not a build. A source implementation or automated test does not prove a Windows↔Windows, Windows↔Linux, Linux↔Linux, phone↔desktop, or Apple device transfer. None of those new Profile 2 physical pairing and trusted-send scenarios has recorded two-screen consent plus matching source/destination SHA-256 in this checklist. The audit branch must not be merged as validated until its applicable gates are recorded.
+The checkboxes below distinguish source work from acceptance. The full desktop solution passed 347 core tests and one WPF UI test; Android core, LAN transport, app unit tests, lint, and debug APK build passed; the architecture and Windows companion checks passed. Apple target-host compilation is blocked because GitHub Actions is disabled for the private repository, and no Mac runner is connected locally. The Apple specification audit is a source inspection, not a build. A source implementation or automated test does not prove a Windows↔Windows, Windows↔Linux, Linux↔Linux, phone↔desktop, or Apple device transfer. None of those new Profile 2 physical pairing and trusted-send scenarios has recorded two-screen consent plus matching source/destination SHA-256 in this checklist. The source is integrated into `main` by request; validated completion remains open until the applicable gates are recorded.
 
 | Gate | Current result | Evidence still required |
 |---|---|---|
@@ -86,4 +86,4 @@ The checkboxes below distinguish source work from acceptance. The full desktop s
 
 ### Stage 7: Full Verification, Packaging & Merge to `main`
 - [ ] Run the full architecture, desktop, Android unit/lint/APK, and Apple target-host gates against one final commit; generate version `1.0.0` artifacts and record hashes.
-- [ ] Record the Windows/Linux/Android physical pairing and transfer gates before merging the completion audit branch into `main`. The earlier integration merge is historical, not acceptance evidence.
+- [ ] Record the Windows/Linux/Android physical pairing and transfer gates following the requested source integration into `main`. Neither integration merge is acceptance evidence.
