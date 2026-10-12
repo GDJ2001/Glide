@@ -65,6 +65,8 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     private string _currentFileName = "";
     private CancellationTokenSource? _activeTransferCts;
     private readonly DesktopTransferRuntime _transferRuntime = new();
+    private bool _pendingTrustedSend;
+    public DesktopTransferPresentation Transfer { get; } = new();
     private readonly DesktopStateStore _stateStore = new();
     private readonly Stopwatch _transferStopwatch = new();
     private string _receiveDirectory = "";
@@ -154,6 +156,8 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     public RelayCommand RejectTrustEnrollmentCommand { get; }
     public RelayCommand BrowseReceiveFolderCommand { get; }
     public RelayCommand CancelTransferCommand { get; }
+    public RelayCommand RetryTransferCommand { get; }
+    public RelayCommand OpenTransferFolderCommand { get; }
     public RelayCommand OpenDownloadsCommand { get; }
     public RelayCommand OpenHistoryItemCommand { get; }
     public RelayCommand RevokeTrustedDeviceCommand { get; }
@@ -194,6 +198,13 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
 
     public MainViewModel()
     {
+        _transferRuntime.SnapshotChanged += (_, snapshot) => RunOnUi(() =>
+        {
+            bool trustedSend = _pendingTrustedSend && snapshot.Direction == DesktopTransferDirection.Send;
+            if (Transfer.ApplySnapshot(snapshot, navigateOnPreparation: trustedSend)) CurrentTab = "Activity";
+            OnPropertyChanged(nameof(IsTransferBannerVisible));
+        });
+        _transferRuntime.EventOccurred += (_, ev) => RunOnUi(() => Transfer.ApplyEvent(ev));
         _appearanceMode = _uiPreferences.Load().AppearanceMode;
         ApplyAppearance();
         try
@@ -332,6 +343,19 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         {
             _transferRuntime.CancelActiveTransfer();
             _activeTransferCts?.Cancel();
+        });
+        RetryTransferCommand = new RelayCommand(() =>
+        {
+            if (SelectedFiles.Count == 0) return;
+            if (_sendMethod == SendMethodChoice.Trusted && _selectedTrustedDevice is not null)
+                _ = ExecuteTrustedSendAsync();
+            else
+                _ = StartQuickShareSafelyAsync();
+        });
+        OpenTransferFolderCommand = new RelayCommand(() =>
+        {
+            if (!string.IsNullOrWhiteSpace(Transfer.ReceivedFolder))
+                Process.Start(new ProcessStartInfo("explorer.exe", Transfer.ReceivedFolder) { UseShellExecute = true });
         });
         OpenDownloadsCommand = new RelayCommand(ExecuteOpenDownloads);
         OpenHistoryItemCommand = new RelayCommand(ExecuteOpenHistoryItem);
@@ -606,6 +630,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                 OnPropertyChanged(nameof(IsActivitySelected));
                 OnPropertyChanged(nameof(IsSettingsSelected));
                 OnPropertyChanged(nameof(IsPairDevicesSelected));
+                OnPropertyChanged(nameof(IsTransferBannerVisible));
                 if (value != "Pair devices") _pairing.OnPageLeft();
             }
         }
@@ -614,6 +639,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     public bool IsSendSelected => CurrentTab == "Send";
     public bool IsReceiveSelected => CurrentTab == "Receive";
     public bool IsActivitySelected => CurrentTab == "Activity";
+    public bool IsTransferBannerVisible => Transfer.IsActive && !IsActivitySelected;
     public bool IsSettingsSelected => CurrentTab == "Settings";
     public bool IsPairDevicesSelected => CurrentTab == "Pair devices";
     public bool IsUseInvitationSelected => _pairDirection == PairDirectionChoice.UseInvitation;
@@ -1604,6 +1630,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                 TrustManager: _trustManager,
                 ExpectedPeerFingerprintHex: peer.FingerprintHex,
                 CandidateEndpoints: candidates.Count > 0 ? candidates : null);
+            _pendingTrustedSend = true;
             DesktopTransferResult result = await _transferRuntime.SendTrustedAsync(
                 request, this, _activeTransferCts.Token);
             StatusMessage = result.Message;
@@ -1611,6 +1638,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         }
         finally
         {
+            _pendingTrustedSend = false;
             _transferStopwatch.Stop();
             IsTransferActive = false;
             IsOfferModalVisible = false;
@@ -1935,6 +1963,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
 
         RunOnUi(() =>
         {
+            Transfer.RecordVerifiedFile(entry);
             HistoryItems.Insert(
                 0,
                 ToHistoryViewModel(entry));

@@ -63,19 +63,22 @@ public sealed record DesktopTransferResult(
     bool Cancelled,
     string Message,
     int VerifiedCount = 0,
-    long VerifiedBytes = 0)
+    long VerifiedBytes = 0,
+    TransferErrorCategory ErrorCategory = TransferErrorCategory.None)
 {
     public static DesktopTransferResult Completed(string message, int count, long bytes) =>
         new(true, false, false, message, count, bytes);
 
-    public static DesktopTransferResult RejectedByPeer(string message) =>
-        new(false, true, false, message);
+    public static DesktopTransferResult RejectedByPeer(string message,
+        TransferErrorCategory category = TransferErrorCategory.UserRejected) =>
+        new(false, true, false, message, ErrorCategory: category);
 
     public static DesktopTransferResult CancelledByUser(string message) =>
-        new(false, false, true, message);
+        new(false, false, true, message, ErrorCategory: TransferErrorCategory.UserCancelled);
 
-    public static DesktopTransferResult Failed(string message) =>
-        new(false, false, false, message);
+    public static DesktopTransferResult Failed(string message, TransferErrorCategory category = TransferErrorCategory.Unknown,
+        int verifiedCount = 0, long verifiedBytes = 0) =>
+        new(false, false, false, message, verifiedCount, verifiedBytes, category);
 }
 
 public interface IDesktopTransferInteraction
@@ -98,6 +101,7 @@ public interface IDesktopTransferInteraction
     void OnProgress(DesktopTransferProgress progress);
     void OnItemStatus(DesktopTransferDirection direction, string itemName, string status);
     void OnHistory(DesktopHistoryEntry entry);
+    void OnPhase(DesktopTransferDirection direction, DesktopTransferPhase phase) { }
 }
 
 /// <summary>
@@ -169,6 +173,7 @@ public abstract class DesktopTransferInteractionBase : IDesktopTransferInteracti
     public virtual void OnProgress(DesktopTransferProgress progress) { }
     public virtual void OnItemStatus(DesktopTransferDirection direction, string itemName, string status) { }
     public virtual void OnHistory(DesktopHistoryEntry entry) { }
+    public virtual void OnPhase(DesktopTransferDirection direction, DesktopTransferPhase phase) { }
 }
 
 

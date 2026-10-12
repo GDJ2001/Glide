@@ -26,4 +26,5 @@ public sealed class TrustedDeviceViewModel
         ? $"{FingerprintHex[..8]}…{FingerprintHex[^8..]}"
         : FingerprintHex;
     public string LastSeenText => $"Last verified {LastSeen:g}";
+    public string ConnectAutomationName => $"Connect to {DisplayName}, identity {FingerprintShort}";
 }

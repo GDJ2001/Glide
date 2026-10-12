@@ -180,7 +180,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                 DesktopTransferDirection.Send,
                 $"Send failed: {ex.Message}");
             return DesktopTransferResult.Failed(
-                $"Send failed: {ex.Message}");
+                $"Send failed: {ex.Message}", DesktopTransferFailures.Classify(ex));
         }
     }
 
@@ -217,7 +217,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                 DesktopTransferDirection.Receive,
                 $"Receive failed: {ex.Message}");
             return DesktopTransferResult.Failed(
-                $"Receive failed: {ex.Message}");
+                $"Receive failed: {ex.Message}", DesktopTransferFailures.Classify(ex));
         }
     }
 
@@ -312,7 +312,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                 DesktopTransferDirection.Receive,
                 $"Receive failed: {ex.Message}");
             return DesktopTransferResult.Failed(
-                $"Receive failed: {ex.Message}");
+                $"Receive failed: {ex.Message}", DesktopTransferFailures.Classify(ex));
         }
     }
 
@@ -392,7 +392,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
         catch (Exception ex)
         {
             interaction.OnStatus(DesktopTransferDirection.Send, $"Send failed: {ex.Message}");
-            return DesktopTransferResult.Failed($"Send failed: {ex.Message}");
+            return DesktopTransferResult.Failed($"Send failed: {ex.Message}", DesktopTransferFailures.Classify(ex));
         }
     }
 
@@ -411,14 +411,14 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
 
         if (request.TrustManager == null || string.IsNullOrWhiteSpace(request.ExpectedPeerFingerprintHex))
         {
-            return DesktopTransferResult.Failed("Identity changed — pair again");
+            return DesktopTransferResult.Failed("Identity changed — pair again", TransferErrorCategory.Security);
         }
 
         request.TrustManager.Initialize();
         DesktopTrustedPeer? enrolledPeer = request.TrustManager.GetTrustedPeer(request.ExpectedPeerFingerprintHex);
         if (enrolledPeer == null)
         {
-            return DesktopTransferResult.Failed("Identity changed — pair again");
+            return DesktopTransferResult.Failed("Identity changed — pair again", TransferErrorCategory.Security);
         }
 
         if (request.Files.Count == 0)
@@ -485,7 +485,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
         }
         else
         {
-            return DesktopTransferResult.Failed("Couldn’t reach this device — check the local network");
+            return DesktopTransferResult.Failed("Couldn’t reach this device — check the local network", TransferErrorCategory.Network);
         }
 
         TlsSocketConnection? connectedSocket = null;
@@ -522,7 +522,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                 interaction.OnStatus(
                     DesktopTransferDirection.Send,
                     "Couldn’t reach this device — check the local network");
-                return DesktopTransferResult.Failed("Couldn’t reach this device — check the local network");
+                return DesktopTransferResult.Failed("Couldn’t reach this device — check the local network", TransferErrorCategory.Network);
             }
 
             await using TlsSocketConnection connection = connectedSocket;
@@ -558,7 +558,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
             if (ackRaw is not Profile2Message.SessionOpenAck ack ||
                 !string.Equals(ack.SessionId, sessionId.Value, StringComparison.Ordinal))
             {
-                return DesktopTransferResult.Failed("Identity changed — pair again");
+            return DesktopTransferResult.Failed("Identity changed — pair again", TransferErrorCategory.Security);
             }
 
             if (!ack.Accepted)
@@ -576,7 +576,13 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                         ack.Message)
                 };
                 interaction.OnStatus(DesktopTransferDirection.Send, mapped);
-                return DesktopTransferResult.Failed(mapped);
+                return DesktopTransferResult.Failed(mapped, ack.ErrorCode switch
+                {
+                    Profile2Constants.ErrorBusy => TransferErrorCategory.Protocol,
+                    Profile2Constants.ErrorIdentityChanged or Profile2Constants.ErrorUntrustedPeer or
+                        Profile2Constants.ErrorAuthFailed => TransferErrorCategory.Security,
+                    _ => TransferErrorCategory.Protocol
+                });
             }
 
             byte[] responderSpki = InvitationCodec.FromUnpaddedBase64Url(ack.ResponderIdentityPublicKey ?? string.Empty);
@@ -587,7 +593,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                 !string.Equals(responderPubHex, enrolledPeer.PublicKeyDerHex, StringComparison.Ordinal))
             {
                 interaction.OnStatus(DesktopTransferDirection.Send, "Identity changed — pair again");
-                return DesktopTransferResult.Failed("Identity changed — pair again");
+            return DesktopTransferResult.Failed("Identity changed — pair again", TransferErrorCategory.Security);
             }
 
             DesktopTransferResult result = await RunSenderSessionAsync(
@@ -623,17 +629,17 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
         catch (CryptographicException)
         {
             interaction.OnStatus(DesktopTransferDirection.Send, "Identity changed — pair again");
-            return DesktopTransferResult.Failed("Identity changed — pair again");
+            return DesktopTransferResult.Failed("Identity changed — pair again", TransferErrorCategory.Security);
         }
         catch (ProtocolViolationException ex) when (string.Equals(ex.FailureCode, WireErrorCodes.AuthenticationFailed, StringComparison.Ordinal))
         {
             interaction.OnStatus(DesktopTransferDirection.Send, "Identity changed — pair again");
-            return DesktopTransferResult.Failed("Identity changed — pair again");
+            return DesktopTransferResult.Failed("Identity changed — pair again", TransferErrorCategory.Security);
         }
         catch (Exception ex)
         {
             interaction.OnStatus(DesktopTransferDirection.Send, $"Send failed: {ex.Message}");
-            return DesktopTransferResult.Failed($"Send failed: {ex.Message}");
+            return DesktopTransferResult.Failed($"Send failed: {ex.Message}", DesktopTransferFailures.Classify(ex));
         }
     }
 
@@ -681,7 +687,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                         Message: "This device is busy — try again",
                         ResponderDeviceName: localName),
                     cancellationToken);
-                return DesktopTransferResult.RejectedByPeer("This device is busy — try again");
+                return DesktopTransferResult.RejectedByPeer("This device is busy — try again", TransferErrorCategory.Protocol);
             }
 
             if (!string.Equals(open.AuthMethod, Profile2Constants.AuthMethodIdentityV1, StringComparison.Ordinal))
@@ -695,7 +701,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                         Message: "Update Glide to pair this device",
                         ResponderDeviceName: localName),
                     cancellationToken);
-                return DesktopTransferResult.RejectedByPeer("Unsupported trusted send authentication method.");
+                return DesktopTransferResult.RejectedByPeer("Unsupported trusted send authentication method.", TransferErrorCategory.Protocol);
             }
 
             if (request.TrustManager == null)
@@ -709,7 +715,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                         Message: "Identity changed — pair again",
                         ResponderDeviceName: localName),
                     cancellationToken);
-                return DesktopTransferResult.RejectedByPeer("Trusted reconnect requires a persistent trust manager.");
+                return DesktopTransferResult.RejectedByPeer("Trusted reconnect requires a persistent trust manager.", TransferErrorCategory.Security);
             }
 
             request.TrustManager.Initialize();
@@ -730,7 +736,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                         Message: "Identity changed — pair again",
                         ResponderDeviceName: localName),
                     cancellationToken);
-                return DesktopTransferResult.RejectedByPeer("Malformed initiator identity key.");
+                return DesktopTransferResult.RejectedByPeer("Malformed initiator identity key.", TransferErrorCategory.Security);
             }
 
             string initiatorFp = Convert.ToHexStringLower(SHA256.HashData(initiatorSpki));
@@ -748,7 +754,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                         Message: "Identity changed — pair again",
                         ResponderDeviceName: localName),
                     cancellationToken);
-                return DesktopTransferResult.RejectedByPeer("Trusted reconnect rejected: sender is not enrolled.");
+                return DesktopTransferResult.RejectedByPeer("Trusted reconnect rejected: sender is not enrolled.", TransferErrorCategory.Security);
             }
 
             if (!string.Equals(enrolledSender.PublicKeyDerHex, initiatorPubHex, StringComparison.Ordinal))
@@ -762,7 +768,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                         Message: "Identity changed — pair again",
                         ResponderDeviceName: localName),
                     cancellationToken);
-                return DesktopTransferResult.RejectedByPeer("Trusted reconnect rejected: sender identity key changed.");
+                return DesktopTransferResult.RejectedByPeer("Trusted reconnect rejected: sender identity key changed.", TransferErrorCategory.Security);
             }
 
             await Profile2WireCodec.WriteMessageAsync(
@@ -797,7 +803,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
         catch (Exception ex)
         {
             interaction.OnStatus(DesktopTransferDirection.Receive, $"Receive failed: {ex.Message}");
-            return DesktopTransferResult.Failed($"Receive failed: {ex.Message}");
+            return DesktopTransferResult.Failed($"Receive failed: {ex.Message}", DesktopTransferFailures.Classify(ex));
         }
     }
 
@@ -871,7 +877,8 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                 if (!bootstrapResult.IsAccepted)
                 {
                     return DesktopTransferResult.RejectedByPeer(
-                        $"Pairing bootstrap rejected: {bootstrapResult.Code}");
+                        $"Pairing bootstrap rejected: {bootstrapResult.Code}",
+                        DesktopTransferFailures.FromBootstrapCode(bootstrapResult.Code));
                 }
 
                 sessionId = new SessionId(bootstrap.SessionId);
@@ -880,7 +887,8 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
             if (!bootstrapResult.IsAccepted)
             {
                 return DesktopTransferResult.RejectedByPeer(
-                    $"Pairing bootstrap rejected by peer: {bootstrapResult.Code}");
+                    $"Pairing bootstrap rejected by peer: {bootstrapResult.Code}",
+                    DesktopTransferFailures.FromBootstrapCode(bootstrapResult.Code));
             }
 
             if (!string.Equals(
@@ -1080,6 +1088,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
         interaction.OnStatus(
             DesktopTransferDirection.Send,
             "Waiting for peer approval...");
+        interaction.OnPhase(DesktopTransferDirection.Send, DesktopTransferPhase.AwaitingConsent);
 
         Envelope offerDecision =
             await sequence.ReadExpectedAsync(
@@ -1105,6 +1114,8 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                 $"Peer rejected the transfer offer ({code}).");
         }
 
+        interaction.OnPhase(DesktopTransferDirection.Send, DesktopTransferPhase.Transferring);
+
         long cumulativeTransferred = 0;
         int verifiedCount = 0;
         long verifiedBytes = 0;
@@ -1113,6 +1124,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
         foreach (PreparedSendItem prepared in preparedItems)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            interaction.OnPhase(DesktopTransferDirection.Send, DesktopTransferPhase.Transferring);
             DesktopTransferFile file = prepared.File;
 
             interaction.OnItemStatus(
@@ -1248,6 +1260,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                     }),
                 cancellationToken);
 
+            interaction.OnPhase(DesktopTransferDirection.Send, DesktopTransferPhase.Verifying);
             Envelope itemResult =
                 await sequence.ReadExpectedAsync(
                     channel,
@@ -1313,6 +1326,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                 }),
             cancellationToken);
 
+        interaction.OnPhase(DesktopTransferDirection.Send, DesktopTransferPhase.Verifying);
         Envelope terminal =
             await sequence.ReadExpectedOneOfAsync(
                 channel,
@@ -1331,7 +1345,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                 DesktopTransferDirection.Send,
                 message);
             return DesktopTransferResult.Failed(
-                message);
+                message, TransferErrorCategory.Protocol, verifiedCount, verifiedBytes);
         }
 
         RequireExactString(
@@ -1366,7 +1380,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                 DesktopTransferDirection.Send,
                 partialMessage);
             return DesktopTransferResult.Failed(
-                partialMessage);
+                partialMessage, TransferErrorCategory.Security, verifiedCount, verifiedBytes);
         }
 
         string successMessage =
@@ -1437,7 +1451,8 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
             if (!bootstrapResult.IsAccepted)
             {
                 return DesktopTransferResult.RejectedByPeer(
-                    $"Inbound pairing bootstrap rejected: {bootstrapResult.Code}.");
+                    $"Inbound pairing bootstrap rejected: {bootstrapResult.Code}.",
+                    DesktopTransferFailures.FromBootstrapCode(bootstrapResult.Code));
             }
 
             sessionId = new SessionId(bootstrap.SessionId);
@@ -1463,7 +1478,8 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
             if (!bootstrapResult.IsAccepted)
             {
                 return DesktopTransferResult.RejectedByPeer(
-                    $"Pairing bootstrap rejected by peer: {bootstrapResult.Code}.");
+                    $"Pairing bootstrap rejected by peer: {bootstrapResult.Code}.",
+                    DesktopTransferFailures.FromBootstrapCode(bootstrapResult.Code));
             }
 
             if (!string.Equals(
@@ -1801,11 +1817,14 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
 
             if (!offerAccepted)
             {
-                return DesktopTransferResult.RejectedByPeer(
-                    hasStorage
-                        ? "Transfer offer was rejected."
-                        : "Transfer offer rejected because there is insufficient staging storage.");
+                return hasStorage
+                    ? DesktopTransferResult.RejectedByPeer("Transfer offer was rejected.")
+                    : DesktopTransferResult.Failed(
+                        "Transfer offer rejected because there is insufficient staging storage.",
+                        TransferErrorCategory.Storage);
             }
+
+            interaction.OnPhase(DesktopTransferDirection.Receive, DesktopTransferPhase.Transferring);
 
             long cumulativeTransferred = 0;
             int verifiedCount = 0;
@@ -1815,6 +1834,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
             foreach (DesktopOfferItem item in items)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                interaction.OnPhase(DesktopTransferDirection.Receive, DesktopTransferPhase.Transferring);
                 interaction.OnItemStatus(
                     DesktopTransferDirection.Receive,
                     item.Name,
@@ -1969,6 +1989,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                     throw;
                 }
 
+                interaction.OnPhase(DesktopTransferDirection.Receive, DesktopTransferPhase.Verifying);
                 Envelope itemEnd =
                     await sequence.ReadExpectedAsync(
                         channel,
@@ -2106,7 +2127,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                     DesktopTransferDirection.Receive,
                     failedMessage);
                 return DesktopTransferResult.Failed(
-                    failedMessage);
+                    failedMessage, TransferErrorCategory.Security);
             }
 
             await channel.WriteEnvelopeAsync(
@@ -2134,7 +2155,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                     partialMessage);
                 request.StagingStore.PurgeSession(sessionId);
                 return DesktopTransferResult.Failed(
-                    partialMessage);
+                    partialMessage, TransferErrorCategory.Security, verifiedCount, verifiedBytes);
             }
 
             string message =

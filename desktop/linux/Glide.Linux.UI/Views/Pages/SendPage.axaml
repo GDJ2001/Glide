@@ -9,7 +9,7 @@
 
       <!-- Page Header -->
       <StackPanel Spacing="4">
-        <TextBlock Text="Send Files" Classes="h1" />
+        <TextBlock Text="Send" Classes="h1" />
         <TextBlock Text="Select files or folders, choose a sharing method, and send securely peer-to-peer."
                    Classes="secondary" TextWrapping="Wrap" />
       </StackPanel>
@@ -98,7 +98,7 @@
       <!-- Two sending methods: one-time QR or saved identity. -->
       <Border Classes="card">
         <StackPanel Spacing="16">
-          <TextBlock Text="Choose Sending Method" Classes="h3" />
+          <TextBlock Text="Choose a device" Classes="h3" />
 
           <!-- Method Segmented Buttons -->
           <Grid ColumnDefinitions="*,*">
@@ -131,7 +131,7 @@
               </Grid>
             </Border>
 
-            <TextBlock Text="Quick share creates an instant one-time QR code. The receiving device scans the code in Glide to connect. You will confirm the recipient's device name before any files are transmitted."
+            <TextBlock Text="The other device scans the code in Glide. You approve it before files are sent."
                        Classes="secondary" TextWrapping="Wrap" />
             <Button Content="Start quick share with QR"
                     Command="{Binding StartQuickShareCommand}"
@@ -145,33 +145,34 @@
             <!-- Saved Peers List -->
             <Border Background="{DynamicResource SurfaceRaisedBrush}" CornerRadius="8" Padding="8">
               <StackPanel Spacing="6">
-                <ListBox ItemsSource="{Binding TrustedPeers}" SelectedItem="{Binding SelectedTrustedPeer}"
-                         MaxHeight="140" Background="Transparent" BorderThickness="0">
-                  <ListBox.ItemTemplate>
+                <ScrollViewer MaxHeight="220" VerticalScrollBarVisibility="Auto">
+                <ItemsControl ItemsSource="{Binding SavedDeviceRows}">
+                  <ItemsControl.ItemTemplate>
                     <DataTemplate>
-                      <Grid ColumnDefinitions="Auto,*,Auto" Margin="4,2">
-                        <PathIcon Grid.Column="0" Data="{StaticResource IconPair}" Width="20" Height="20"
-                                  Foreground="{DynamicResource AccentPrimaryBrush}" VerticalAlignment="Center"
-                                  Margin="0,0,12,0" />
-                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                          <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" Classes="body" />
-                        </StackPanel>
-                        <TextBlock Grid.Column="2" Text="Verified" Classes="small" VerticalAlignment="Center"
-                                   Foreground="{DynamicResource StatusSuccessBrush}" />
-                      </Grid>
+                      <Button Classes="secondary" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                              Margin="0,0,0,8" Command="{Binding $parent[ItemsControl].DataContext.ConnectSavedDeviceCommand}"
+                              CommandParameter="{Binding}" AutomationProperties.Name="{Binding ConnectAutomationName}">
+                        <Grid ColumnDefinitions="*,16,Auto" HorizontalAlignment="Stretch">
+                          <StackPanel Grid.Column="0" Spacing="2">
+                            <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" Classes="body"
+                                       TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding DisplayName}" />
+                            <TextBlock Text="{Binding LastSeenText}" Classes="muted"
+                                       TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding LastSeenText}" />
+                          </StackPanel>
+                          <TextBlock Grid.Column="2" Text="Connect" VerticalAlignment="Center"
+                                     Foreground="{DynamicResource AccentPrimaryBrush}" FontWeight="SemiBold" />
+                        </Grid>
+                      </Button>
                     </DataTemplate>
-                  </ListBox.ItemTemplate>
-                </ListBox>
-                <TextBlock Text="No saved devices yet. Connect with a device and accept pairing to save its identity."
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                </ScrollViewer>
+                <TextBlock Text="No paired devices yet. Pair a device first."
                            Classes="muted" IsVisible="{Binding !TrustedPeers.Count}"
                            HorizontalAlignment="Center" Margin="12" />
               </StackPanel>
             </Border>
 
-            <Button Content="Send to paired device"
-                    Command="{Binding SendFilesCommand}"
-                    Classes="primary" HorizontalAlignment="Left"
-                    AutomationProperties.Name="Send files to selected saved device" />
           </StackPanel>
 
         </StackPanel>

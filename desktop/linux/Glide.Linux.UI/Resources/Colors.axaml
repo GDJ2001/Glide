@@ -15,41 +15,42 @@
     <!-- Dark Theme (Default) -->
     <ResourceDictionary x:Key="Dark">
       <SolidColorBrush x:Key="AppBackgroundBrush" Color="#0F172A" />
-      <SolidColorBrush x:Key="SurfaceBrush" Color="#1E293B" />
-      <SolidColorBrush x:Key="SurfaceRaisedBrush" Color="#334155" />
+      <SolidColorBrush x:Key="SidebarBrush" Color="#111C31" />
+      <SolidColorBrush x:Key="SurfaceBrush" Color="#16233A" />
+      <SolidColorBrush x:Key="SurfaceRaisedBrush" Color="#1D2D47" />
       <SolidColorBrush x:Key="SurfaceOverlayBrush" Color="#0F172A" />
-      <SolidColorBrush x:Key="SurfaceActiveBrush" Color="#2563EB" />
+      <SolidColorBrush x:Key="SurfaceActiveBrush" Color="#173B7D" />
       <local:AssetBitmap x:Key="GlideLogoHorizontal">
         <x:Arguments>
           <x:String>avares://Glide.Linux.UI/Assets/glide-logo-horizontal-inverse-256.png</x:String>
         </x:Arguments>
       </local:AssetBitmap>
 
-      <SolidColorBrush x:Key="TextPrimaryBrush" Color="#F8FAFC" />
-      <SolidColorBrush x:Key="TextSecondaryBrush" Color="#94A3B8" />
-      <SolidColorBrush x:Key="TextMutedBrush" Color="#64748B" />
+      <SolidColorBrush x:Key="TextPrimaryBrush" Color="#F3F7FF" />
+      <SolidColorBrush x:Key="TextSecondaryBrush" Color="#B7C3D8" />
+      <SolidColorBrush x:Key="TextMutedBrush" Color="#8F9DB6" />
       <SolidColorBrush x:Key="TextOnAccentBrush" Color="#FFFFFF" />
 
-      <SolidColorBrush x:Key="BorderSubtleBrush" Color="#334155" />
-      <SolidColorBrush x:Key="BorderStrongBrush" Color="#475569" />
-      <SolidColorBrush x:Key="BorderFocusBrush" Color="#38BDF8" />
+      <SolidColorBrush x:Key="BorderSubtleBrush" Color="#2A3B57" />
+      <SolidColorBrush x:Key="BorderStrongBrush" Color="#536784" />
+      <SolidColorBrush x:Key="BorderFocusBrush" Color="#9EBAFF" />
 
-      <SolidColorBrush x:Key="AccentPrimaryBrush" Color="#2457E6" />
-      <SolidColorBrush x:Key="AccentHoverBrush" Color="#1D4ED8" />
+      <SolidColorBrush x:Key="AccentPrimaryBrush" Color="#6D98FF" />
+      <SolidColorBrush x:Key="AccentHoverBrush" Color="#8AADFF" />
       <SolidColorBrush x:Key="AccentPressedBrush" Color="#1E40AF" />
       <SolidColorBrush x:Key="AccentSubtleBrush" Color="#1E3A8A" />
 
-      <SolidColorBrush x:Key="StatusSuccessBrush" Color="#10B981" />
-      <SolidColorBrush x:Key="StatusSuccessBackgroundBrush" Color="#064E3B" />
-      <SolidColorBrush x:Key="StatusWarningBrush" Color="#F59E0B" />
-      <SolidColorBrush x:Key="StatusWarningBackgroundBrush" Color="#78350F" />
-      <SolidColorBrush x:Key="StatusErrorBrush" Color="#EF4444" />
-      <SolidColorBrush x:Key="StatusErrorBackgroundBrush" Color="#7F1D1D" />
+      <SolidColorBrush x:Key="StatusSuccessBrush" Color="#63D7A8" />
+      <SolidColorBrush x:Key="StatusSuccessBackgroundBrush" Color="#123B32" />
+      <SolidColorBrush x:Key="StatusWarningBrush" Color="#FFD184" />
+      <SolidColorBrush x:Key="StatusWarningBackgroundBrush" Color="#493315" />
+      <SolidColorBrush x:Key="StatusErrorBrush" Color="#FF9EAA" />
+      <SolidColorBrush x:Key="StatusErrorBackgroundBrush" Color="#4D202A" />
       <SolidColorBrush x:Key="StatusIdleBrush" Color="#64748B" />
 
-      <SolidColorBrush x:Key="NavButtonHoverBrush" Color="#2D3748" />
-      <SolidColorBrush x:Key="NavButtonSelectedBrush" Color="#1E3A8A" />
-      <SolidColorBrush x:Key="NavButtonSelectedBorderBrush" Color="#38BDF8" />
+      <SolidColorBrush x:Key="NavButtonHoverBrush" Color="#1D2D47" />
+      <SolidColorBrush x:Key="NavButtonSelectedBrush" Color="#173B7D" />
+      <SolidColorBrush x:Key="NavButtonSelectedBorderBrush" Color="#9EBAFF" />
       <SolidColorBrush x:Key="DropTargetBackgroundBrush" Color="#162032" />
       <SolidColorBrush x:Key="DropTargetHoverBrush" Color="#1E2E4A" />
 
@@ -59,41 +60,42 @@
     <!-- Default Theme (Fallback to Dark) -->
     <ResourceDictionary x:Key="Default">
       <SolidColorBrush x:Key="AppBackgroundBrush" Color="#0F172A" />
-      <SolidColorBrush x:Key="SurfaceBrush" Color="#1E293B" />
-      <SolidColorBrush x:Key="SurfaceRaisedBrush" Color="#334155" />
+      <SolidColorBrush x:Key="SidebarBrush" Color="#111C31" />
+      <SolidColorBrush x:Key="SurfaceBrush" Color="#16233A" />
+      <SolidColorBrush x:Key="SurfaceRaisedBrush" Color="#1D2D47" />
       <SolidColorBrush x:Key="SurfaceOverlayBrush" Color="#0F172A" />
-      <SolidColorBrush x:Key="SurfaceActiveBrush" Color="#2563EB" />
+      <SolidColorBrush x:Key="SurfaceActiveBrush" Color="#173B7D" />
       <local:AssetBitmap x:Key="GlideLogoHorizontal">
         <x:Arguments>
           <x:String>avares://Glide.Linux.UI/Assets/glide-logo-horizontal-inverse-256.png</x:String>
         </x:Arguments>
       </local:AssetBitmap>
       
-      <SolidColorBrush x:Key="TextPrimaryBrush" Color="#F8FAFC" />
-      <SolidColorBrush x:Key="TextSecondaryBrush" Color="#94A3B8" />
-      <SolidColorBrush x:Key="TextMutedBrush" Color="#64748B" />
+      <SolidColorBrush x:Key="TextPrimaryBrush" Color="#F3F7FF" />
+      <SolidColorBrush x:Key="TextSecondaryBrush" Color="#B7C3D8" />
+      <SolidColorBrush x:Key="TextMutedBrush" Color="#8F9DB6" />
       <SolidColorBrush x:Key="TextOnAccentBrush" Color="#FFFFFF" />
 
-      <SolidColorBrush x:Key="BorderSubtleBrush" Color="#334155" />
-      <SolidColorBrush x:Key="BorderStrongBrush" Color="#475569" />
-      <SolidColorBrush x:Key="BorderFocusBrush" Color="#38BDF8" />
+      <SolidColorBrush x:Key="BorderSubtleBrush" Color="#1D2D47" />
+      <SolidColorBrush x:Key="BorderStrongBrush" Color="#536784" />
+      <SolidColorBrush x:Key="BorderFocusBrush" Color="#9EBAFF" />
 
-      <SolidColorBrush x:Key="AccentPrimaryBrush" Color="#2457E6" />
-      <SolidColorBrush x:Key="AccentHoverBrush" Color="#1D4ED8" />
+      <SolidColorBrush x:Key="AccentPrimaryBrush" Color="#6D98FF" />
+      <SolidColorBrush x:Key="AccentHoverBrush" Color="#8AADFF" />
       <SolidColorBrush x:Key="AccentPressedBrush" Color="#1E40AF" />
-      <SolidColorBrush x:Key="AccentSubtleBrush" Color="#1E3A8A" />
+      <SolidColorBrush x:Key="AccentSubtleBrush" Color="#173B7D" />
 
-      <SolidColorBrush x:Key="StatusSuccessBrush" Color="#10B981" />
-      <SolidColorBrush x:Key="StatusSuccessBackgroundBrush" Color="#064E3B" />
-      <SolidColorBrush x:Key="StatusWarningBrush" Color="#F59E0B" />
-      <SolidColorBrush x:Key="StatusWarningBackgroundBrush" Color="#78350F" />
-      <SolidColorBrush x:Key="StatusErrorBrush" Color="#EF4444" />
-      <SolidColorBrush x:Key="StatusErrorBackgroundBrush" Color="#7F1D1D" />
-      <SolidColorBrush x:Key="StatusIdleBrush" Color="#64748B" />
+      <SolidColorBrush x:Key="StatusSuccessBrush" Color="#63D7A8" />
+      <SolidColorBrush x:Key="StatusSuccessBackgroundBrush" Color="#123B32" />
+      <SolidColorBrush x:Key="StatusWarningBrush" Color="#FFD184" />
+      <SolidColorBrush x:Key="StatusWarningBackgroundBrush" Color="#493315" />
+      <SolidColorBrush x:Key="StatusErrorBrush" Color="#FF9EAA" />
+      <SolidColorBrush x:Key="StatusErrorBackgroundBrush" Color="#4D202A" />
+      <SolidColorBrush x:Key="StatusIdleBrush" Color="#8F9DB6" />
 
-      <SolidColorBrush x:Key="NavButtonHoverBrush" Color="#2D3748" />
-      <SolidColorBrush x:Key="NavButtonSelectedBrush" Color="#1E3A8A" />
-      <SolidColorBrush x:Key="NavButtonSelectedBorderBrush" Color="#38BDF8" />
+      <SolidColorBrush x:Key="NavButtonHoverBrush" Color="#1D2D47" />
+      <SolidColorBrush x:Key="NavButtonSelectedBrush" Color="#173B7D" />
+      <SolidColorBrush x:Key="NavButtonSelectedBorderBrush" Color="#9EBAFF" />
       <SolidColorBrush x:Key="DropTargetBackgroundBrush" Color="#162032" />
       <SolidColorBrush x:Key="DropTargetHoverBrush" Color="#1E2E4A" />
 
@@ -102,23 +104,24 @@
 
     <!-- Light Theme -->
     <ResourceDictionary x:Key="Light">
-      <SolidColorBrush x:Key="AppBackgroundBrush" Color="#F8FAFC" />
+      <SolidColorBrush x:Key="AppBackgroundBrush" Color="#F6F8FC" />
+      <SolidColorBrush x:Key="SidebarBrush" Color="#FFFFFF" />
       <SolidColorBrush x:Key="SurfaceBrush" Color="#FFFFFF" />
-      <SolidColorBrush x:Key="SurfaceRaisedBrush" Color="#F1F5F9" />
-      <SolidColorBrush x:Key="SurfaceOverlayBrush" Color="#E2E8F0" />
-      <SolidColorBrush x:Key="SurfaceActiveBrush" Color="#DBEAFE" />
+      <SolidColorBrush x:Key="SurfaceRaisedBrush" Color="#F1F5FB" />
+      <SolidColorBrush x:Key="SurfaceOverlayBrush" Color="#E8EEF9" />
+      <SolidColorBrush x:Key="SurfaceActiveBrush" Color="#E8F0FF" />
       <local:AssetBitmap x:Key="GlideLogoHorizontal">
         <x:Arguments>
           <x:String>avares://Glide.Linux.UI/Assets/glide-logo-horizontal-color-256.png</x:String>
         </x:Arguments>
       </local:AssetBitmap>
 
-      <SolidColorBrush x:Key="TextPrimaryBrush" Color="#0F172A" />
-      <SolidColorBrush x:Key="TextSecondaryBrush" Color="#475569" />
-      <SolidColorBrush x:Key="TextMutedBrush" Color="#94A3B8" />
+      <SolidColorBrush x:Key="TextPrimaryBrush" Color="#14213D" />
+      <SolidColorBrush x:Key="TextSecondaryBrush" Color="#55627A" />
+      <SolidColorBrush x:Key="TextMutedBrush" Color="#75839A" />
       <SolidColorBrush x:Key="TextOnAccentBrush" Color="#FFFFFF" />
 
-      <SolidColorBrush x:Key="BorderSubtleBrush" Color="#E2E8F0" />
+      <SolidColorBrush x:Key="BorderSubtleBrush" Color="#DCE4F2" />
       <SolidColorBrush x:Key="BorderStrongBrush" Color="#CBD5E1" />
       <SolidColorBrush x:Key="BorderFocusBrush" Color="#2457E6" />
 
@@ -127,16 +130,16 @@
       <SolidColorBrush x:Key="AccentPressedBrush" Color="#1E40AF" />
       <SolidColorBrush x:Key="AccentSubtleBrush" Color="#DBEAFE" />
 
-      <SolidColorBrush x:Key="StatusSuccessBrush" Color="#059669" />
-      <SolidColorBrush x:Key="StatusSuccessBackgroundBrush" Color="#D1FAE5" />
-      <SolidColorBrush x:Key="StatusWarningBrush" Color="#D97706" />
-      <SolidColorBrush x:Key="StatusWarningBackgroundBrush" Color="#FEF3C7" />
-      <SolidColorBrush x:Key="StatusErrorBrush" Color="#DC2626" />
-      <SolidColorBrush x:Key="StatusErrorBackgroundBrush" Color="#FEE2E2" />
+      <SolidColorBrush x:Key="StatusSuccessBrush" Color="#087E5B" />
+      <SolidColorBrush x:Key="StatusSuccessBackgroundBrush" Color="#E7F7F0" />
+      <SolidColorBrush x:Key="StatusWarningBrush" Color="#A15C00" />
+      <SolidColorBrush x:Key="StatusWarningBackgroundBrush" Color="#FFF4DE" />
+      <SolidColorBrush x:Key="StatusErrorBrush" Color="#C42B3A" />
+      <SolidColorBrush x:Key="StatusErrorBackgroundBrush" Color="#FDECEE" />
       <SolidColorBrush x:Key="StatusIdleBrush" Color="#94A3B8" />
 
       <SolidColorBrush x:Key="NavButtonHoverBrush" Color="#E2E8F0" />
-      <SolidColorBrush x:Key="NavButtonSelectedBrush" Color="#DBEAFE" />
+      <SolidColorBrush x:Key="NavButtonSelectedBrush" Color="#E8F0FF" />
       <SolidColorBrush x:Key="NavButtonSelectedBorderBrush" Color="#2457E6" />
       <SolidColorBrush x:Key="DropTargetBackgroundBrush" Color="#F1F5F9" />
       <SolidColorBrush x:Key="DropTargetHoverBrush" Color="#E0E7FF" />

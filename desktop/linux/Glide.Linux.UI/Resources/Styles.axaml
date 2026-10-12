@@ -16,7 +16,7 @@
 
   <Style Selector="TextBlock.h3">
     <Setter Property="FontSize" Value="{DynamicResource FontSizeH3}" />
-    <Setter Property="FontWeight" Value="Medium" />
+    <Setter Property="FontWeight" Value="SemiBold" />
     <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
   </Style>
 
@@ -101,7 +101,7 @@
     <Setter Property="Foreground" Value="{DynamicResource TextOnAccentBrush}" />
     <Setter Property="FontWeight" Value="SemiBold" />
     <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
-    <Setter Property="MinHeight" Value="38" />
+    <Setter Property="MinHeight" Value="40" />
     <Setter Property="Padding" Value="18,9" />
     <Setter Property="CornerRadius" Value="8" />
     <Setter Property="BorderThickness" Value="0" />
@@ -126,7 +126,7 @@
     <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
     <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
     <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
-    <Setter Property="MinHeight" Value="38" />
+    <Setter Property="MinHeight" Value="40" />
     <Setter Property="Padding" Value="14,8" />
     <Setter Property="CornerRadius" Value="8" />
     <Setter Property="BorderThickness" Value="1" />
@@ -182,16 +182,16 @@
     <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" />
     <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="CornerRadius" Value="10" />
-    <Setter Property="Padding" Value="18" />
+    <Setter Property="CornerRadius" Value="12" />
+    <Setter Property="Padding" Value="20" />
   </Style>
 
   <Style Selector="Border.card-raised">
     <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" />
     <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="CornerRadius" Value="10" />
-    <Setter Property="Padding" Value="18" />
+    <Setter Property="CornerRadius" Value="12" />
+    <Setter Property="Padding" Value="20" />
   </Style>
 
   <!-- Drop Target Card -->

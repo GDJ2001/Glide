@@ -297,32 +297,56 @@
                             <StackPanel>
                                 <TextBlock Text="Current transfer" FontWeight="SemiBold" />
                                 <TextBlock Text="No transfer in progress." Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,8,0,0">
-                                    <TextBlock.Style><Style TargetType="TextBlock"><Style.Triggers><DataTrigger Binding="{Binding IsTransferActive}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger></Style.Triggers></Style></TextBlock.Style>
+                                    <TextBlock.Style><Style TargetType="TextBlock"><Style.Triggers><DataTrigger Binding="{Binding Transfer.HasTransfer}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger></Style.Triggers></Style></TextBlock.Style>
                                 </TextBlock>
-                                <Grid Margin="0,12,0,0" Visibility="{Binding IsTransferActive, Converter={StaticResource BoolToVis}}">
-                                    <StackPanel>
-                                        <TextBlock Text="{Binding TransferTitle}" FontWeight="SemiBold" />
-                                        <TextBlock Text="{Binding CurrentFileName}" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" Margin="0,3,0,0" />
+                                <Grid x:Name="ActivityTransferGrid" Margin="0,12,0,0" Visibility="{Binding Transfer.IsActive, Converter={StaticResource BoolToVis}}">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Text="{Binding Transfer.Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip="{Binding Transfer.Title}" />
+                                        <TextBlock Text="{Binding Transfer.PhaseText}" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,3,0,0" />
+                                        <TextBlock Text="{Binding Transfer.CurrentFile}" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" Margin="0,3,0,0" />
                                     </StackPanel>
-                                    <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
-                                        <TextBlock Text="{Binding TransferredBytesText}" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,14,0" />
-                                        <TextBlock Text="{Binding TransferRateText}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,14,0" />
-                                        <Button Style="{StaticResource SecondaryButtonStyle}" Content="Cancel" Command="{Binding CancelTransferCommand}" IsEnabled="{Binding IsTransferActive}" />
+                                    <StackPanel x:Name="ActivityTransferActions" Grid.Column="1" HorizontalAlignment="Right" Orientation="Horizontal">
+                                        <TextBlock Text="{Binding Transfer.BytesText}" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,14,0" />
+                                        <TextBlock Text="{Binding Transfer.RateText}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,14,0" />
+                                        <Button Style="{StaticResource SecondaryButtonStyle}" Content="Cancel" Command="{Binding CancelTransferCommand}" />
                                     </StackPanel>
                                 </Grid>
-                                <ProgressBar Style="{StaticResource ModernProgressBarStyle}" Value="{Binding TotalProgress}" Margin="0,14,0,0" Visibility="{Binding IsTransferActive, Converter={StaticResource BoolToVis}}" />
+                                <ProgressBar Style="{StaticResource ModernProgressBarStyle}" Value="{Binding Transfer.Progress, Mode=OneWay}" IsIndeterminate="{Binding Transfer.IsIndeterminate, Mode=OneWay}" Margin="0,14,0,0" Visibility="{Binding Transfer.IsActive, Converter={StaticResource BoolToVis}}" />
+                                <StackPanel Margin="0,12,0,0" Visibility="{Binding Transfer.HasResult, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock Text="{Binding Transfer.Title}" FontWeight="SemiBold" FontSize="18" />
+                                    <TextBlock Text="{Binding Transfer.PeerName}" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0" />
+                                    <TextBlock Text="{Binding Transfer.ResultSummary}" TextWrapping="Wrap" Margin="0,8,0,0" />
+                                    <TextBlock Text="{Binding Transfer.VerifiedSummary}" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0" Visibility="{Binding Transfer.HasVerifiedSummary, Converter={StaticResource BoolToVis}}" />
+                                    <Expander Header="Technical details" Margin="0,10,0,0" Visibility="{Binding Transfer.HasDetails, Converter={StaticResource BoolToVis}}"><TextBlock Text="{Binding Transfer.Details}" TextWrapping="Wrap" Margin="0,8,0,0" /></Expander>
+                                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                                        <Button Style="{StaticResource PrimaryButtonStyle}" Content="Open folder" Command="{Binding OpenTransferFolderCommand}" Visibility="{Binding Transfer.CanOpenFolder, Converter={StaticResource BoolToVis}}" Margin="0,0,8,0" />
+                                        <Button Style="{StaticResource SecondaryButtonStyle}" Content="Try again" Command="{Binding RetryTransferCommand}" Visibility="{Binding Transfer.CanRetry, Converter={StaticResource BoolToVis}}" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource CardStyle}" Margin="0,12,0,0" Visibility="{Binding Transfer.HasPreviousResults, Converter={StaticResource BoolToVis}}">
+                            <StackPanel>
+                                <TextBlock Text="Earlier this session" FontWeight="SemiBold" />
+                                <ItemsControl ItemsSource="{Binding Transfer.PreviousResults}" Margin="0,8,0,0">
+                                    <ItemsControl.ItemTemplate><DataTemplate><Grid Margin="0,5"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Text="{Binding Title}" FontWeight="SemiBold" /><TextBlock Grid.Column="1" Text="{Binding PeerName}" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" Margin="12,0,0,0" /></Grid></DataTemplate></ItemsControl.ItemTemplate>
+                                </ItemsControl>
                             </StackPanel>
                         </Border>
                         <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0">
                             <Grid>
                                 <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-                                <StackPanel>
-                                    <StackPanel><TextBlock Text="Verified history" FontWeight="SemiBold" /><TextBlock Text="Only completed, verified items are kept here." FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,3,0,0" TextWrapping="Wrap" /></StackPanel>
-                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Margin="0,12,0,0">
+                                <Grid x:Name="ActivityHistoryHeader">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                                    <StackPanel Grid.Column="0" Margin="0,0,12,0"><TextBlock Text="Verified history" FontWeight="SemiBold" /><TextBlock Text="Only completed, verified items are kept here." FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,3,0,0" TextWrapping="Wrap" /></StackPanel>
+                                    <StackPanel x:Name="ActivityHistoryActions" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
                                         <StackPanel><TextBlock Text="Search history" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" Margin="0,0,0,4" /><TextBox Style="{StaticResource ModernTextBoxStyle}" Width="190" Text="{Binding ActivitySearchText, UpdateSourceTrigger=PropertyChanged}" ToolTip="Search history" AutomationProperties.Name="Search transfer activity" /></StackPanel>
                                         <StackPanel Margin="8,0,0,0"><TextBlock Text="Show" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" Margin="0,0,0,4" /><ComboBox Width="100" ItemsSource="{Binding ActivityFilterOptions}" SelectedItem="{Binding ActivityFilter}" AutomationProperties.Name="Filter transfer direction" /></StackPanel>
                                     </StackPanel>
-                                </StackPanel>
+                                </Grid>
                                 <ListBox x:Name="ActivityHistoryList" Grid.Row="1" ItemsSource="{Binding ActivityItems}" BorderThickness="0" Background="Transparent" Margin="0,16,0,0" MaxHeight="320" HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.CanContentScroll="True" VirtualizingPanel.IsVirtualizing="True">
                                     <ListBox.ItemTemplate>
                                         <DataTemplate>
@@ -362,8 +386,8 @@
                 </ScrollViewer>
             </Grid>
 
-            <Border Grid.Row="2" Margin="0,16,0,0" Background="{DynamicResource SurfaceRaisedBrush}" CornerRadius="8" Padding="12" Visibility="{Binding IsTransferActive, Converter={StaticResource BoolToVis}}">
-                <Grid><TextBlock Text="{Binding TransferTitle}" FontWeight="SemiBold" /><TextBlock HorizontalAlignment="Right" Text="{Binding TransferredBytesText}" Foreground="{DynamicResource TextSecondaryBrush}" /></Grid>
+            <Border Grid.Row="2" Margin="0,16,0,0" Background="{DynamicResource SurfaceRaisedBrush}" CornerRadius="8" Padding="12" Visibility="{Binding IsTransferBannerVisible, Converter={StaticResource BoolToVis}}">
+                <Grid><TextBlock Text="{Binding Transfer.Title}" FontWeight="SemiBold" /><TextBlock HorizontalAlignment="Right" Text="{Binding Transfer.BytesText}" Foreground="{DynamicResource TextSecondaryBrush}" /></Grid>
             </Border>
         </Grid>
 
@@ -376,8 +400,8 @@
                     <ScrollViewer x:Name="TrustedDevicesScroll" MaxHeight="260" VerticalScrollBarVisibility="Auto">
                         <ItemsControl ItemsSource="{Binding TrustedDevices}">
                             <ItemsControl.ItemTemplate><DataTemplate>
-                                <Button Style="{StaticResource SecondaryButtonStyle}" Command="{Binding DataContext.SelectTrustedDeviceCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" HorizontalContentAlignment="Stretch" Margin="0,0,0,8" AutomationProperties.Name="Select saved device">
-                                    <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><StackPanel><TextBlock Text="{Binding DisplayName}" Foreground="{DynamicResource TextPrimaryBrush}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip="{Binding DisplayName}" /><TextBlock Text="{Binding LastSeenText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" /></StackPanel><TextBlock Grid.Column="1" Text="Connect" Foreground="{DynamicResource PrimaryBrush}" VerticalAlignment="Center" /></Grid>
+                                <Button Style="{StaticResource SecondaryButtonStyle}" Command="{Binding DataContext.SelectTrustedDeviceCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Margin="0,0,0,8" AutomationProperties.Name="{Binding ConnectAutomationName}">
+                                    <Grid HorizontalAlignment="Stretch"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="16" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><StackPanel Grid.Column="0"><TextBlock Text="{Binding DisplayName}" Foreground="{DynamicResource TextPrimaryBrush}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip="{Binding DisplayName}" /><TextBlock Text="{Binding LastSeenText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" TextTrimming="CharacterEllipsis" ToolTip="{Binding LastSeenText}" /></StackPanel><TextBlock Grid.Column="2" Text="Connect" Foreground="{DynamicResource PrimaryBrush}" VerticalAlignment="Center" /></Grid>
                                 </Button>
                             </DataTemplate></ItemsControl.ItemTemplate>
                         </ItemsControl>

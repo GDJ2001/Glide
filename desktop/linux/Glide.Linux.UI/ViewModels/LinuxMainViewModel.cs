@@ -27,6 +27,15 @@ public enum LinuxPage
     Settings
 }
 
+public sealed class LinuxSavedDeviceRow(DesktopTrustedPeer peer)
+{
+    public DesktopTrustedPeer Peer { get; } = peer;
+    public string DisplayName => Peer.DisplayName;
+    public string LastSeenText => "Last verified " +
+        DateTimeOffset.FromUnixTimeMilliseconds(Peer.LastSeenAtUnixMs).ToLocalTime().ToString("g");
+    public string ConnectAutomationName => $"Connect to {DisplayName}, identity {Peer.FingerprintHex[..Math.Min(8, Peer.FingerprintHex.Length)]}";
+}
+
 public enum SendMethod
 {
     QuickShareQr,
@@ -100,6 +109,7 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
 
     // Services
     private readonly DesktopTransferRuntime _runtime = new();
+    public DesktopTransferPresentation Transfer { get; } = new();
     private readonly MdnsDiscoveryService _mdnsDiscovery = new();
     private readonly DesktopListenerSupervisor _listenerSupervisor = new();
     private DesktopListenerOwnership? _listenerOwner;
@@ -116,6 +126,7 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
     public ObservableCollection<LinuxDiscoveredPeerViewModel> DiscoveredPeers { get; } = [];
     public ObservableCollection<LinuxHistoryItemViewModel> HistoryItems { get; } = [];
     public ObservableCollection<DesktopTrustedPeer> TrustedPeers { get; } = [];
+    public ObservableCollection<LinuxSavedDeviceRow> SavedDeviceRows { get; } = [];
 
     private LinuxDiscoveredPeerViewModel? _selectedPeer;
     private DesktopTrustedPeer? _selectedTrustedPeer;
@@ -172,6 +183,7 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
                 OnPropertyChanged(nameof(IsReceiveActive));
                 OnPropertyChanged(nameof(IsPairActive));
                 OnPropertyChanged(nameof(IsActivityActive));
+                OnPropertyChanged(nameof(IsTransferBannerVisible));
                 OnPropertyChanged(nameof(IsSettingsActive));
                 if (value != LinuxPage.Pair) _pairing.OnPageLeft();
             }
@@ -194,6 +206,7 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
     public bool IsReceiveActive => _activePage == LinuxPage.Receive;
     public bool IsPairActive => _activePage == LinuxPage.Pair;
     public bool IsActivityActive => _activePage == LinuxPage.Activity;
+    public bool IsTransferBannerVisible => Transfer.IsActive && !IsActivityActive;
     public bool IsSettingsActive => _activePage == LinuxPage.Settings;
 
     public SendMethod SelectedSendMethod
@@ -355,6 +368,7 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
                 SendFilesCommand.RaiseCanExecuteChanged();
                 StartQuickShareCommand.RaiseCanExecuteChanged();
                 ReceiveFromInvitationCommand.RaiseCanExecuteChanged();
+                ConnectSavedDeviceCommand?.RaiseCanExecuteChanged();
             }
         }
     }
@@ -555,6 +569,9 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
     public AsyncRelayCommand ReceiveFromInvitationCommand { get; }
     public AsyncRelayCommand ToggleListenerCommand { get; }
     public RelayCommand CancelTransferCommand { get; }
+    public AsyncRelayCommand RetryTransferCommand { get; }
+    public RelayCommand OpenTransferFolderCommand { get; }
+    public AsyncRelayCommand ConnectSavedDeviceCommand { get; }
     public RelayCommand AcceptSasCommand { get; }
     public RelayCommand DeclineSasCommand { get; }
     public RelayCommand AcceptOfferCommand { get; }
@@ -729,6 +746,33 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
         ReceiveFromInvitationCommand = new AsyncRelayCommand(ExecuteReceiveFromInvitationAsync, () => !string.IsNullOrWhiteSpace(InvitationInput) && !IsTransferActive);
         ToggleListenerCommand = new AsyncRelayCommand(ExecuteToggleListenerAsync);
         CancelTransferCommand = new RelayCommand(ExecuteCancelTransfer);
+        RetryTransferCommand = new AsyncRelayCommand(async () =>
+        {
+            if (StagedItems.Count == 0) return;
+            if (SelectedSendMethod == SendMethod.SavedDevice && SelectedTrustedPeer != null)
+                await ExecuteSendAsync();
+            else
+                await ExecuteStartQuickShareAsync();
+        });
+        ConnectSavedDeviceCommand = new AsyncRelayCommand(async value =>
+        {
+            if (value is not LinuxSavedDeviceRow row || StagedItems.Count == 0 || IsTransferActive) return;
+            SelectedSendMethod = SendMethod.SavedDevice;
+            SelectedTrustedPeer = row.Peer;
+            await ExecuteSendAsync();
+        }, value => value is LinuxSavedDeviceRow && StagedItems.Count > 0 && !IsTransferActive);
+        OpenTransferFolderCommand = new RelayCommand(() =>
+        {
+            if (string.IsNullOrWhiteSpace(Transfer.ReceivedFolder)) return;
+            try
+            {
+                Process.Start(new ProcessStartInfo("xdg-open")
+                {
+                    ArgumentList = { Transfer.ReceivedFolder }, UseShellExecute = true
+                });
+            }
+            catch (Exception error) { StatusMessage = $"Could not open folder: {error.Message}"; }
+        });
 
         AcceptSasCommand = new RelayCommand(() => ResolveSas(true));
         DeclineSasCommand = new RelayCommand(() => ResolveSas(false));
@@ -784,6 +828,14 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
             }
         });
 
+        _runtime.SnapshotChanged += (_, snapshot) => OnUi(() =>
+        {
+            bool trustedSend = snapshot.Direction == DesktopTransferDirection.Send &&
+                SelectedSendMethod == SendMethod.SavedDevice;
+            if (Transfer.ApplySnapshot(snapshot, navigateOnPreparation: trustedSend))
+                ActivePage = LinuxPage.Activity;
+            OnPropertyChanged(nameof(IsTransferBannerVisible));
+        });
         _runtime.EventOccurred += OnRuntimeEventOccurred;
         _listenerSupervisor.ListenerError += _ => OnUi(() =>
             StatusMessage = "An incoming connection ended unexpectedly. Refresh the link and try again.");
@@ -892,6 +944,7 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
         OnPropertyChanged(nameof(HasNoStagedItems));
         SendFilesCommand.RaiseCanExecuteChanged();
         StartQuickShareCommand.RaiseCanExecuteChanged();
+        ConnectSavedDeviceCommand?.RaiseCanExecuteChanged();
     }
 
     private void StartMdnsDiscovery()
@@ -1042,22 +1095,12 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
             {
                 StatusMessage = "Transfer completed successfully.";
                 RefreshTrustedPeers();
-                LinuxNotificationService.ShowNotification("Transfer Complete", $"Sent {prep.Files.Count} item(s) successfully.");
                 StagedItems.Clear();
                 NotifyStagingChanged();
             }
             else
             {
                 StatusMessage = $"Transfer failed: {result.Message}";
-                HistoryItems.Insert(0, new LinuxHistoryItemViewModel(
-                    Guid.NewGuid().ToString("N"),
-                    DateTime.Now,
-                    "Sent",
-                    destination?.DisplayName ?? "Peer",
-                    prep.Files.Count,
-                    prep.TotalBytes,
-                    "Failed",
-                    result.Message));
             }
         }
         catch (OperationCanceledException)
@@ -1113,7 +1156,6 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
             {
                 StatusMessage = "Received files successfully.";
                 RefreshTrustedPeers();
-                LinuxNotificationService.ShowNotification("Transfer Complete", $"Received {result.VerifiedCount} file(s).");
             }
             else
             {
@@ -1473,6 +1515,7 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
     {
         OnUi(() =>
         {
+            Transfer.ApplyEvent(ev);
             switch (ev)
             {
                 case TransferEvent.ProgressUpdated progress:
@@ -1594,7 +1637,11 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
     public void OnHistory(DesktopHistoryEntry entry)
     {
         _stateStore.AppendVerifiedHistory(entry);
-        OnUi(() => HistoryItems.Insert(0, ToHistoryItem(entry)));
+        OnUi(() =>
+        {
+            Transfer.RecordVerifiedFile(entry);
+            HistoryItems.Insert(0, ToHistoryItem(entry));
+        });
     }
 
     private static LinuxHistoryItemViewModel ToHistoryItem(DesktopHistoryEntry entry) =>
@@ -1604,9 +1651,13 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
     private void RefreshTrustedPeers()
     {
         TrustedPeers.Clear();
+        SavedDeviceRows.Clear();
         if (_trustManager == null) return;
         foreach (var peer in _trustManager.GetTrustedPeers())
+        {
             TrustedPeers.Add(peer);
+            SavedDeviceRows.Add(new LinuxSavedDeviceRow(peer));
+        }
     }
 
     private void ResolveSas(bool accepted)

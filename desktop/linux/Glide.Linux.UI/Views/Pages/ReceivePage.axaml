@@ -9,7 +9,7 @@
 
       <!-- Header -->
       <StackPanel Spacing="4">
-        <TextBlock Text="Receive Files" Classes="h1" />
+        <TextBlock Text="Receive" Classes="h1" />
         <TextBlock Text="Accept incoming file transfers directly over your local network." Classes="secondary" />
       </StackPanel>
 

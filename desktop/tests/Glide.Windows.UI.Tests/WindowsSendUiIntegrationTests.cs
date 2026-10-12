@@ -109,6 +109,10 @@ public sealed class WindowsSendUiIntegrationTests
                 var historyList = Assert.IsType<ListBox>(window.FindName("ActivityHistoryList"));
                 var activityPage = Assert.IsType<ScrollViewer>(window.FindName("ActivityPage"));
                 Assert.True(historyList.ActualWidth <= activityPage.ViewportWidth + 1);
+                var historyActions = Assert.IsType<StackPanel>(window.FindName("ActivityHistoryActions"));
+                Assert.Equal(0, Grid.GetRow(historyActions));
+                Assert.True(historyActions.TranslatePoint(new Point(), window).X >
+                    activityPage.TranslatePoint(new Point(), window).X + activityPage.ActualWidth / 2);
                 viewModel.CurrentTab = "Send";
                 viewModel.AddDroppedFiles([testFile]);
                 window.Dispatcher.Invoke(
@@ -148,6 +152,8 @@ public sealed class WindowsSendUiIntegrationTests
                 Assert.Equal(1, Grid.GetRow(Assert.IsType<StackPanel>(window.FindName("SelectedFileActions"))));
                 Assert.Equal(Orientation.Vertical,
                     Assert.IsType<StackPanel>(window.FindName("ReceiveQrLayout")).Orientation);
+                Assert.Equal(1, Grid.GetRow(historyActions));
+                Assert.Equal(1, Grid.GetRow(Assert.IsType<StackPanel>(window.FindName("ActivityTransferActions"))));
                 foreach (string tab in new[] { "Send", "Receive", "Activity", "Pair devices", "Settings" })
                 {
                     viewModel.CurrentTab = tab;
@@ -247,6 +253,24 @@ public sealed class WindowsSendUiIntegrationTests
                 window.UpdateLayout();
                 Assert.True(viewModel.IsTrustedDevicePickerVisible);
                 Assert.Equal(Visibility.Collapsed, sendButton.Visibility);
+                viewModel.TrustedDevices.Add(new TrustedDeviceViewModel(new DesktopTrustedPeer(
+                    new string('b', 64), "00", "ubuntu with a deliberately long device name for layout", 1, 1)));
+                viewModel.TrustedDevices.Add(new TrustedDeviceViewModel(new DesktopTrustedPeer(
+                    new string('c', 64), "00", "ubuntu", 1, 1)));
+                window.UpdateLayout();
+                var pickerRows = Descendants(Assert.IsType<ScrollViewer>(window.FindName("TrustedDevicesScroll")))
+                    .OfType<Button>().Where(button =>
+                        AutomationProperties.GetName(button)?.StartsWith("Connect to ") == true).ToList();
+                Assert.True(pickerRows.Count >= 2);
+                Assert.Contains(pickerRows, row => AutomationProperties.GetName(row).Contains("bbbbbbbb"));
+                Assert.Contains(pickerRows, row => AutomationProperties.GetName(row).Contains("cccccccc"));
+                foreach (Button row in pickerRows)
+                {
+                    var rowGrid = Assert.IsType<Grid>(row.Content);
+                    TextBlock connect = rowGrid.Children.OfType<TextBlock>().Single(t => t.Text == "Connect");
+                    Assert.True(connect.TranslatePoint(new Point(), row).X > row.ActualWidth / 2);
+                    Assert.True(connect.TranslatePoint(new Point(connect.ActualWidth, 0), row).X <= row.ActualWidth + 1);
+                }
                 var closePicker = Assert.IsType<Button>(window.FindName("CloseTrustedDevicePickerButton"));
                 Assert.True(closePicker.TranslatePoint(new Point(0, closePicker.ActualHeight), window).Y <= window.ActualHeight);
                 var savedDevice = new TrustedDeviceViewModel(

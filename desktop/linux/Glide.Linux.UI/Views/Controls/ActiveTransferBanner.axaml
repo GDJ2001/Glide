@@ -7,28 +7,28 @@
   <Border Background="{DynamicResource SurfaceBrush}"
           BorderBrush="{DynamicResource AccentPrimaryBrush}"
           BorderThickness="1.5" CornerRadius="10" Padding="14,12" Margin="0,10,0,0"
-          IsVisible="{Binding IsTransferActive}"
+          IsVisible="{Binding IsTransferBannerVisible}"
           AutomationProperties.Name="Active transfer progress banner">
     <Grid RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="*,Auto">
       <!-- Title & Rate -->
       <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" Spacing="8">
         <Ellipse Classes="status-dot active" VerticalAlignment="Center" />
-        <TextBlock Text="{Binding TransferTitle}" FontWeight="SemiBold" Classes="body" VerticalAlignment="Center" />
+        <TextBlock Text="{Binding Transfer.Title}" FontWeight="SemiBold" Classes="body" VerticalAlignment="Center" />
       </StackPanel>
-      <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding TransferRateText}"
+      <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Transfer.RateText}"
                  FontWeight="SemiBold" Foreground="{DynamicResource AccentPrimaryBrush}"
                  VerticalAlignment="Center" />
 
       <!-- Progress Bar -->
       <ProgressBar Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
-                   Value="{Binding TransferProgressPercent}" Maximum="100"
+                   Value="{Binding Transfer.Progress}" IsIndeterminate="{Binding Transfer.IsIndeterminate}" Maximum="100"
                    Height="6" Margin="0,8" CornerRadius="3" />
 
       <!-- File & Bytes / Cancel -->
-      <TextBlock Grid.Row="2" Grid.Column="0" Text="{Binding CurrentTransferFile}"
+      <TextBlock Grid.Row="2" Grid.Column="0" Text="{Binding Transfer.CurrentFile}"
                  Classes="muted" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
       <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-        <TextBlock Text="{Binding TransferredBytesText}" Classes="small" VerticalAlignment="Center" />
+        <TextBlock Text="{Binding Transfer.BytesText}" Classes="small" VerticalAlignment="Center" />
         <Button Content="Cancel" Command="{Binding CancelTransferCommand}"
                 Classes="danger" Padding="10,4" MinHeight="28" FontSize="{DynamicResource FontSizeSmall}"
                 AutomationProperties.Name="Cancel active transfer" />

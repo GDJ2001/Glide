@@ -10,11 +10,11 @@
       <!-- Header & Top Actions -->
       <Grid ColumnDefinitions="*,Auto,Auto">
         <StackPanel Grid.Column="0" Spacing="4">
-          <TextBlock Text="Transfer Activity" Classes="h1" />
-          <TextBlock Text="Monitor active transfers and view verified transfer history." Classes="secondary" />
+          <TextBlock Text="Activity" Classes="h1" />
+          <TextBlock Text="Current transfers and verified file history." Classes="secondary" />
         </StackPanel>
 
-        <Button Grid.Column="1" Content="Open Downloads"
+        <Button Grid.Column="1" Content="Received files"
                 Command="{Binding OpenDownloadsDirectoryCommand}"
                 Classes="secondary" Margin="0,0,8,0" VerticalAlignment="Center"
                 AutomationProperties.Name="Open downloads directory in file manager" />
@@ -27,25 +27,26 @@
 
       <!-- Active Transfer Card (LUI-07: Active batch first) -->
       <Border Classes="card" BorderBrush="{DynamicResource AccentPrimaryBrush}"
-              BorderThickness="1.5" IsVisible="{Binding IsTransferActive}">
+              BorderThickness="1.5" IsVisible="{Binding Transfer.IsActive}">
         <Grid RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="*,Auto">
           <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" Spacing="8">
             <Ellipse Classes="status-dot active" VerticalAlignment="Center" />
-            <TextBlock Text="{Binding TransferTitle}" Classes="h3" VerticalAlignment="Center" />
+            <TextBlock Text="{Binding Transfer.Title}" Classes="h3" VerticalAlignment="Center" />
           </StackPanel>
 
-          <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding TransferRateText}"
+          <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Transfer.RateText}"
                      FontWeight="SemiBold" Foreground="{DynamicResource AccentPrimaryBrush}"
                      VerticalAlignment="Center" />
 
           <ProgressBar Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
-                       Value="{Binding TransferProgressPercent}" Maximum="100"
+                       Value="{Binding Transfer.Progress}" IsIndeterminate="{Binding Transfer.IsIndeterminate}" Maximum="100"
                        Height="8" Margin="0,12" CornerRadius="4" />
 
           <StackPanel Grid.Row="2" Grid.Column="0" Spacing="2">
-            <TextBlock Text="{Binding CurrentTransferFile}" Classes="body" FontWeight="Medium"
+            <TextBlock Text="{Binding Transfer.PhaseText}" Classes="secondary" />
+            <TextBlock Text="{Binding Transfer.CurrentFile}" Classes="body" FontWeight="Medium"
                        TextTrimming="CharacterEllipsis" />
-            <TextBlock Text="{Binding TransferredBytesText}" Classes="muted" />
+            <TextBlock Text="{Binding Transfer.BytesText}" Classes="muted" />
           </StackPanel>
 
           <Button Grid.Row="2" Grid.Column="1" Content="Cancel transfer"
@@ -55,14 +56,47 @@
         </Grid>
       </Border>
 
+      <Border Classes="card" IsVisible="{Binding Transfer.HasResult}">
+        <StackPanel Spacing="8">
+          <TextBlock Text="{Binding Transfer.Title}" Classes="h3" />
+          <TextBlock Text="{Binding Transfer.PeerName}" Classes="secondary" />
+          <TextBlock Text="{Binding Transfer.ResultSummary}" TextWrapping="Wrap" Classes="body" />
+          <TextBlock Text="{Binding Transfer.VerifiedSummary}" IsVisible="{Binding Transfer.HasVerifiedSummary}" Classes="secondary" />
+          <Expander Header="Technical details" IsVisible="{Binding Transfer.HasDetails}">
+            <TextBlock Text="{Binding Transfer.Details}" TextWrapping="Wrap" Margin="0,8,0,0" />
+          </Expander>
+          <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+            <Button Content="Open folder" Command="{Binding OpenTransferFolderCommand}" IsVisible="{Binding Transfer.CanOpenFolder}" Classes="primary" />
+            <Button Content="Try again" Command="{Binding RetryTransferCommand}" IsVisible="{Binding Transfer.CanRetry}" Classes="secondary" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card" IsVisible="{Binding Transfer.HasPreviousResults}">
+        <StackPanel Spacing="8">
+          <TextBlock Text="Earlier this session" Classes="h3" />
+          <ItemsControl ItemsSource="{Binding Transfer.PreviousResults}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Grid ColumnDefinitions="Auto,*" Margin="0,4">
+                  <TextBlock Text="{Binding Title}" FontWeight="SemiBold" />
+                  <TextBlock Grid.Column="1" Text="{Binding PeerName}" Classes="secondary"
+                             TextTrimming="CharacterEllipsis" Margin="12,0,0,0" />
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </Border>
+
       <!-- History Section with Search and Filter -->
       <Border Classes="card">
         <StackPanel Spacing="16">
-          <Grid ColumnDefinitions="*,Auto">
-            <TextBlock Grid.Column="0" Text="Transfer History" Classes="h3" VerticalAlignment="Center" />
-
-            <!-- Filter Buttons: All, Sent, Received -->
-            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
+          <Grid x:Name="HistoryHeaderGrid" ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+            <TextBlock Grid.Column="0" Text="Verified history" Classes="h3" VerticalAlignment="Center" />
+            <StackPanel x:Name="HistoryHeaderActions" Grid.Column="1" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+              <TextBox Text="{Binding ActivitySearchQuery}" Width="170" PlaceholderText="Search history" AutomationProperties.Name="Search transfer history" />
+              <!-- Filter Buttons: All, Sent, Received -->
               <Button Content="All" Command="{Binding SelectActivityFilterCommand}" CommandParameter="All"
                       Classes="method-tab"
                       AutomationProperties.Name="Filter all transfers" />
@@ -74,11 +108,6 @@
                       AutomationProperties.Name="Filter received transfers" />
             </StackPanel>
           </Grid>
-
-          <!-- Search Input -->
-          <TextBox Text="{Binding ActivitySearchQuery}"
-                   PlaceholderText="Search history by peer name or file name..."
-                   Classes="body" />
 
           <!-- History Items List -->
           <ScrollViewer MaxHeight="380" VerticalScrollBarVisibility="Auto">
@@ -129,7 +158,7 @@
                 <PathIcon Data="{StaticResource IconActivity}" Width="36" Height="36"
                           Foreground="{DynamicResource TextMutedBrush}" HorizontalAlignment="Center" />
                 <TextBlock Text="No transfer history yet" Classes="h3" HorizontalAlignment="Center" />
-                <TextBlock Text="Completed and failed file transfers will be recorded here."
+                <TextBlock Text="Verified transfers appear here."
                            Classes="muted" HorizontalAlignment="Center" />
               </StackPanel>
             </StackPanel>

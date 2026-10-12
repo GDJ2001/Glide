@@ -23,7 +23,7 @@
           ClipToBounds="True">
   <Grid RowDefinitions="36,*">
     <Border x:Name="GlideTitleBar" Grid.Row="0"
-            Background="{DynamicResource SurfaceBrush}"
+            Background="{DynamicResource AppBackgroundBrush}"
             BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="0,0,0,1"
             WindowDecorationProperties.ElementRole="TitleBar">
       <Grid ColumnDefinitions="*,Auto,*">
@@ -56,11 +56,11 @@
     </Border>
 
   <Grid Grid.Row="1">
-    <!-- Shell Layout: Left Nav Rail (240 DIP), Right Main Content -->
-    <Grid ColumnDefinitions="240,*">
+    <!-- Shell Layout: Left Nav Rail (212 DIP), Right Main Content -->
+    <Grid ColumnDefinitions="212,*">
 
       <!-- LEFT NAVIGATION RAIL -->
-      <Border Grid.Column="0" Background="{DynamicResource SurfaceBrush}"
+      <Border Grid.Column="0" Background="{DynamicResource SidebarBrush}"
               BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="0,0,1,0">
         <Grid RowDefinitions="Auto,*,Auto,Auto">
 
@@ -97,16 +97,6 @@
               </StackPanel>
             </Button>
 
-            <Button Content="Pair"
-                    Command="{Binding SwitchTabCommand}" CommandParameter="Pair"
-                    Classes="nav" Classes.selected="{Binding IsPairActive}"
-                    AutomationProperties.Name="Pair devices navigation destination">
-              <StackPanel Orientation="Horizontal" Spacing="12">
-                <PathIcon Data="{StaticResource IconPair}" Width="16" Height="16" />
-                <TextBlock Text="Pair devices" VerticalAlignment="Center" />
-              </StackPanel>
-            </Button>
-
             <Button Content="Activity"
                     Command="{Binding SwitchTabCommand}" CommandParameter="Activity"
                     Classes="nav" Classes.selected="{Binding IsActivityActive}"
@@ -114,6 +104,16 @@
               <StackPanel Orientation="Horizontal" Spacing="12">
                 <PathIcon Data="{StaticResource IconActivity}" Width="16" Height="16" />
                 <TextBlock Text="Activity" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+
+            <Button Content="Pair"
+                    Command="{Binding SwitchTabCommand}" CommandParameter="Pair"
+                    Classes="nav" Classes.selected="{Binding IsPairActive}"
+                    AutomationProperties.Name="Pair devices navigation destination">
+              <StackPanel Orientation="Horizontal" Spacing="12">
+                <PathIcon Data="{StaticResource IconPair}" Width="16" Height="16" />
+                <TextBlock Text="Pair devices" VerticalAlignment="Center" />
               </StackPanel>
             </Button>
           </StackPanel>
@@ -150,7 +150,7 @@
       </Border>
 
       <!-- RIGHT MAIN CONTENT (LUI-01: Exactly one page visible) -->
-      <Grid Grid.Column="1" Margin="24">
+      <Grid Grid.Column="1" Margin="32,28,32,24">
         <!-- Send Page -->
         <pages:SendPage IsVisible="{Binding IsSendActive}" />
 

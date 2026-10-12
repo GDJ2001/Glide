@@ -63,6 +63,16 @@ public partial class MainWindow : Window
 
         Grid.SetRow(SelectedFileActions, narrowContent ? 1 : 0);
         Grid.SetColumn(SelectedFileActions, narrowContent ? 0 : 1);
+        bool narrowHistory = layoutWidth - SidebarColumn.Width.Value -
+            MainContent.Margin.Left - MainContent.Margin.Right < 620;
+        Grid.SetRow(ActivityHistoryActions, narrowHistory ? 1 : 0);
+        Grid.SetColumn(ActivityHistoryActions, narrowHistory ? 0 : 1);
+        Grid.SetColumnSpan(ActivityHistoryActions, narrowHistory ? 2 : 1);
+        ActivityHistoryActions.Margin = narrowHistory ? new Thickness(0, 12, 0, 0) : new Thickness(0);
+        Grid.SetRow(ActivityTransferActions, narrowHistory ? 1 : 0);
+        Grid.SetColumn(ActivityTransferActions, narrowHistory ? 0 : 1);
+        Grid.SetColumnSpan(ActivityTransferActions, narrowHistory ? 2 : 1);
+        ActivityTransferActions.Margin = narrowHistory ? new Thickness(0, 12, 0, 0) : new Thickness(0);
         SelectedFileActions.Margin = narrowContent ? new Thickness(0, 8, 0, 0) : new Thickness(0);
         SelectedFileActions.HorizontalAlignment = narrowContent ? HorizontalAlignment.Left : HorizontalAlignment.Right;
         ReceiveQrLayout.Orientation = narrowContent ? Orientation.Vertical : Orientation.Horizontal;

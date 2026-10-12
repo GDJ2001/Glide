@@ -46,6 +46,21 @@ public static class HeadlessSetup
 public sealed class LinuxRenderedUiTests
 {
     [Fact]
+    public async Task ActivityHistoryControls_MoveBelowHeadingAtNarrowWidth()
+    {
+        await HeadlessSetup.GetSession().Dispatch(() =>
+        {
+            var page = new ActivityPage();
+            var controls = Assert.IsType<StackPanel>(page.FindControl<StackPanel>("HistoryHeaderActions"));
+            page.Measure(new Size(800, 600));
+            page.Arrange(new Rect(0, 0, 800, 600));
+            Assert.Equal(0, Grid.GetRow(controls));
+            page.Arrange(new Rect(0, 0, 500, 600));
+            Assert.Equal(1, Grid.GetRow(controls));
+        }, CancellationToken.None);
+    }
+
+    [Fact]
     public async Task MainWindow_TitleBar_FollowsGlideTheme()
     {
         var session = HeadlessSetup.GetSession();
@@ -63,11 +78,11 @@ public sealed class LinuxRenderedUiTests
 
                 vm.CurrentThemePreference = AppThemePreference.Dark;
                 window.UpdateLayout();
-                Assert.Equal(Color.Parse("#1E293B"), ((ISolidColorBrush)titleBar.Background!).Color);
+                Assert.Equal(Color.Parse("#0F172A"), ((ISolidColorBrush)titleBar.Background!).Color);
 
                 vm.CurrentThemePreference = AppThemePreference.Light;
                 window.UpdateLayout();
-                Assert.Equal(Color.Parse("#FFFFFF"), ((ISolidColorBrush)titleBar.Background!).Color);
+                Assert.Equal(Color.Parse("#F6F8FC"), ((ISolidColorBrush)titleBar.Background!).Color);
 
                 Assert.Equal(3, window.GetVisualDescendants().OfType<Button>()
                     .Count(button => button.Classes.Contains("window-control")));
