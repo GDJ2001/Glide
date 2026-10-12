@@ -6,6 +6,18 @@
 *.dll
 !native/glide_spake2/runtimes/win-x64/native/glide_spake2.dll
 *.pdb
+*.deb
+*.rpm
+*.ipa
+*.dmg
+*.pkg
+*.app/
+*.appex/
+*.xcarchive/
+*.dSYM/
+glide-*-installer.run
+/glide-*.tar.gz
+/glide-*.zip
 
 # Files for the ART/Dalvik VM
 *.dex
@@ -32,6 +44,20 @@ graphify-out/
 **/.graphify_python/
 .vs/
 .cxx/
+.kotlin/
+DerivedData/
+TestResults/
+*.xcresult/
+*.trx
+*.coverage
+*.coveragexml
+/coverage/
+/artifacts/
+/dist/
+/tmp/
+/temp/
+/test-runs/
+/test-results/
 
 # Gradle files
 .gradle/
@@ -66,12 +92,41 @@ captures/
 *.pem
 *.key
 *.pk8
+*.p8
+*.mobileprovision
+*.provisionprofile
 signing.properties
 release.properties
+.env.local
+.env.*.local
 
 # OS-specific files
 .DS_Store
 Thumbs.db
+Desktop.ini
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# Local captures belong in build/; curated evidence and brand assets stay tracked.
+/codex-clipboard-*.png
+/codex-clipboard-*.jpg
+/vm-*.png
+/android-install-smoke.png
+/screenshot*.png
+
+# Local virtual machines and transfer staging
+*.vdi
+*.vmdk
+*.vhd
+*.vhdx
+*.ova
+*.vbox
+*.vbox-prev
+.glide/
+.glide-test/
 
 # NuGet packages directory
 packages/
