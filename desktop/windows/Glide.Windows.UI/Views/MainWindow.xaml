@@ -313,7 +313,7 @@
                                         <Button Style="{StaticResource SecondaryButtonStyle}" Content="Cancel" Command="{Binding CancelTransferCommand}" />
                                     </StackPanel>
                                 </Grid>
-                                <ProgressBar Style="{StaticResource ModernProgressBarStyle}" Value="{Binding Transfer.Progress, Mode=OneWay}" IsIndeterminate="{Binding Transfer.IsIndeterminate, Mode=OneWay}" Margin="0,14,0,0" Visibility="{Binding Transfer.IsActive, Converter={StaticResource BoolToVis}}" />
+                                <ProgressBar x:Name="ActivityTransferProgressBar" Style="{StaticResource ModernProgressBarStyle}" Maximum="100" Value="{Binding Transfer.Progress, Mode=OneWay}" IsIndeterminate="{Binding Transfer.IsIndeterminate, Mode=OneWay}" Margin="0,14,0,0" Visibility="{Binding Transfer.IsActive, Converter={StaticResource BoolToVis}}" />
                                 <StackPanel Margin="0,12,0,0" Visibility="{Binding Transfer.HasResult, Converter={StaticResource BoolToVis}}">
                                     <TextBlock Text="{Binding Transfer.Title}" FontWeight="SemiBold" FontSize="18" />
                                     <TextBlock Text="{Binding Transfer.PeerName}" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0" />

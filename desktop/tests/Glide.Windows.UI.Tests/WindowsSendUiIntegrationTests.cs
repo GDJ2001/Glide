@@ -7,6 +7,8 @@ using System.Windows.Automation.Provider;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Threading;
+using Glide.Desktop;
+using Rectangle = System.Windows.Shapes.Rectangle;
 using Glide.Windows.UI.ViewModels;
 using Glide.Windows.UI.Views;
 using Glide.Core.Security;
@@ -113,6 +115,35 @@ public sealed class WindowsSendUiIntegrationTests
                 Assert.Equal(0, Grid.GetRow(historyActions));
                 Assert.True(historyActions.TranslatePoint(new Point(), window).X >
                     activityPage.TranslatePoint(new Point(), window).X + activityPage.ActualWidth / 2);
+                var progressBar = Assert.IsType<ProgressBar>(window.FindName("ActivityTransferProgressBar"));
+                Guid progressRun = Guid.NewGuid();
+                viewModel.Transfer.ApplySnapshot(new DesktopTransferSnapshot(
+                    DesktopTransferPhase.Transferring, DesktopTransferDirection.Send,
+                    "Test desktop", "Transferring", RunId: progressRun));
+                viewModel.Transfer.ApplyEvent(new TransferEvent.ProgressUpdated(
+                    new DesktopTransferProgress(DesktopTransferDirection.Send,
+                        "Test desktop", "large-file.bin", 6, 65),
+                    1, "1 B/s", "6 B / 65 B"));
+                window.UpdateLayout();
+                progressBar.ApplyTemplate();
+                window.Dispatcher.Invoke(() => { }, DispatcherPriority.Background);
+                window.UpdateLayout();
+                var indicator = Assert.IsType<Rectangle>(
+                    progressBar.Template.FindName("PART_Indicator", progressBar));
+                double initialFillWidth = indicator.ActualWidth;
+                viewModel.Transfer.ApplyEvent(new TransferEvent.ProgressUpdated(
+                    new DesktopTransferProgress(DesktopTransferDirection.Send,
+                        "Test desktop", "large-file.bin", 61, 65),
+                    1, "1 B/s", "61 B / 65 B"));
+                window.Dispatcher.Invoke(() => { }, DispatcherPriority.Background);
+                window.UpdateLayout();
+                Assert.InRange(progressBar.Value, 93, 95);
+                Assert.True(indicator.ActualWidth > progressBar.ActualWidth * 0.8,
+                    $"The progress fill stayed empty: value={progressBar.Value}, " +
+                    $"bar width={progressBar.ActualWidth}, fill width={indicator.ActualWidth}.");
+                Assert.True(indicator.ActualWidth > initialFillWidth * 3,
+                    $"The progress fill did not advance: initial={initialFillWidth}, current={indicator.ActualWidth}.");
+                viewModel.Transfer.ApplySnapshot(DesktopTransferSnapshot.Idle);
                 viewModel.CurrentTab = "Send";
                 viewModel.AddDroppedFiles([testFile]);
                 window.Dispatcher.Invoke(

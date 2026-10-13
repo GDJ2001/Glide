@@ -324,7 +324,9 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="ProgressBar">
                         <Border Background="{TemplateBinding Background}" CornerRadius="4" ClipToBounds="True">
-                            <Grid><Rectangle x:Name="PART_Indicator" Fill="{TemplateBinding Foreground}" HorizontalAlignment="Left" RadiusX="4" RadiusY="4" /></Grid>
+                            <Grid x:Name="PART_Track">
+                                <Rectangle x:Name="PART_Indicator" Fill="{TemplateBinding Foreground}" HorizontalAlignment="Left" RadiusX="4" RadiusY="4" />
+                            </Grid>
                         </Border>
                     </ControlTemplate>
                 </Setter.Value>
