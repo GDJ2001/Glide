@@ -52,7 +52,8 @@
             <TextBlock Text="Download Directory" FontWeight="Medium" Classes="body" />
             <TextBlock Text="Inbound files are staged in private quarantine and verified before moving here:" Classes="muted" />
             <Grid ColumnDefinitions="*,Auto">
-              <TextBox Grid.Column="0" Text="{Binding DownloadDirectory}" Classes="body" Margin="0,0,10,0" />
+              <TextBox Grid.Column="0" Text="{Binding DownloadDirectory}" IsReadOnly="True"
+                       Classes="body" Margin="0,0,10,0" />
               <Button Grid.Column="1" x:Name="BrowseDownloadDirButton" Content="Browse..."
                       Classes="secondary"
                       AutomationProperties.Name="Browse download destination folder" />

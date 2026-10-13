@@ -572,6 +572,40 @@ public sealed class DesktopTransferEngineTests : IDisposable
     }
 
     [Fact]
+    public async Task SharedEngine_UnavailableDestination_RejectsBeforeAskingForConsent()
+    {
+        string sourcePath = Path.Combine(_sourceDir, "storage-check.bin");
+        await File.WriteAllBytesAsync(sourcePath, RandomNumberGenerator.GetBytes(4096));
+        string occupiedPath = Path.Combine(_destinationDir, "not-a-folder");
+        await File.WriteAllTextAsync(occupiedPath, "occupied");
+
+        using var listener = new TlsSocketListener(0);
+        var authority = new LanInvitationAuthority();
+        var invitation = authority.Publish(CreateInvitation(listener));
+        var receiverInteraction = new RecordingInteraction();
+        var receiverStore = new QuarantineStagingStore(_stagingDir, occupiedPath);
+        Task<DesktopTransferResult> receiverTask = Task.Run(async () =>
+        {
+            await using var connection = await listener.AcceptConnectionAsync();
+            return await new DesktopTransferEngine().ReceiveAsync(connection,
+                new DesktopReceiveRequest(receiverStore, authority, "Storage-Receiver"),
+                receiverInteraction);
+        });
+
+        DesktopTransferResult senderResult = await new DesktopTransferEngine().SendAsync(
+            new DesktopSendRequest("127.0.0.1", listener.BoundPort,
+                [new DesktopTransferFile(sourcePath)], invitation, "Storage-Sender"),
+            new RecordingInteraction());
+        DesktopTransferResult receiverResult = await receiverTask.WaitAsync(TimeSpan.FromSeconds(15));
+
+        Assert.Equal(TransferErrorCategory.Storage, senderResult.ErrorCategory);
+        Assert.False(senderResult.Rejected);
+        Assert.Equal(TransferErrorCategory.Storage, receiverResult.ErrorCategory);
+        Assert.Null(receiverInteraction.LastOfferAuthenticatedFingerprint);
+        Assert.Empty(Directory.GetFiles(_stagingDir, "*.quarantine", SearchOption.AllDirectories));
+    }
+
+    [Fact]
     public async Task SharedEngine_UnpairedSend_FailsClosedBeforeConnecting()
     {
         string sourcePath = Path.Combine(_sourceDir, "unpaired.bin");

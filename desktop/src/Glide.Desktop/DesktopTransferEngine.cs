@@ -1110,6 +1110,12 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
             string code =
                 offerDecision.Body["code"]?.ToString()
                 ?? WireErrorCodes.UserRejected;
+            if (code == WireErrorCodes.InsufficientStorage)
+            {
+                return DesktopTransferResult.Failed(
+                    "The receiving device cannot save these files. Ask its user to choose a writable folder in Settings or free space, then try again.",
+                    TransferErrorCategory.Storage);
+            }
             return DesktopTransferResult.RejectedByPeer(
                 $"Peer rejected the transfer offer ({code}).");
         }
@@ -1777,10 +1783,18 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                     $"Offer declared {totalBytes} bytes but item metadata totals {offeredBytes}.");
             }
 
-            bool hasStorage =
-                request.StagingStore
-                    .GetAvailableFreeSpaceBytes()
-                >= totalBytes;
+            bool hasStorage = request.StagingStore.GetAvailableFreeSpaceBytes() >= totalBytes;
+            if (hasStorage)
+            {
+                try
+                {
+                    await request.StagingStore.VerifyDestinationWritableAsync(cancellationToken);
+                }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException)
+                {
+                    hasStorage = false;
+                }
+            }
 
             bool offerAccepted =
                 hasStorage &&
@@ -1820,7 +1834,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                 return hasStorage
                     ? DesktopTransferResult.RejectedByPeer("Transfer offer was rejected.")
                     : DesktopTransferResult.Failed(
-                        "Transfer offer rejected because there is insufficient staging storage.",
+                        "The receiving folder is unavailable, read-only, or short of space. Choose a writable folder in Settings and try again.",
                         TransferErrorCategory.Storage);
             }
 

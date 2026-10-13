@@ -249,18 +249,17 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
         public override async Task<bool> ConfirmRecipientAsync(string peerName, CancellationToken cancellationToken)
         {
             OnPhase(_direction, DesktopTransferPhase.AwaitingConsent);
-            bool accepted = await _inner.ConfirmRecipientAsync(peerName, cancellationToken);
-            if (accepted) OnPhase(_direction, DesktopTransferPhase.Transferring);
-            return accepted;
+            // Recipient confirmation only authenticates the peer. The transfer engine reports
+            // Transferring after the offer has been accepted and it is ready to send data.
+            return await _inner.ConfirmRecipientAsync(peerName, cancellationToken);
         }
 
         public override async Task<bool> ConfirmOfferAsync(DesktopOffer offer, CancellationToken cancellationToken)
         {
             _owner.NotifyEvent(new TransferEvent.OfferReceived(offer));
             OnPhase(_direction, DesktopTransferPhase.AwaitingConsent);
-            bool accepted = await _inner.ConfirmOfferAsync(offer, cancellationToken);
-            if (accepted) OnPhase(_direction, DesktopTransferPhase.Transferring);
-            return accepted;
+            // The decision must be written to the peer before the engine can enter its data phase.
+            return await _inner.ConfirmOfferAsync(offer, cancellationToken);
         }
 
         public override Task<bool> ConfirmPeerEnrollmentAsync(VerifiedDesktopPeerIdentity peer,

@@ -33,6 +33,18 @@ public class QuarantineStagingTests : IDisposable
     }
 
     [Fact]
+    public async Task DestinationPreflight_RequiresWritableDirectoryAndLeavesNoProbe()
+    {
+        await _store.VerifyDestinationWritableAsync();
+        Assert.Empty(Directory.GetFiles(_testDestDir, ".glide-write-check-*.tmp"));
+
+        string occupiedPath = Path.Combine(_testDestDir, "occupied");
+        await File.WriteAllTextAsync(occupiedPath, "file, not folder");
+        var invalidStore = new QuarantineStagingStore(_testStagingDir, occupiedPath);
+        await Assert.ThrowsAnyAsync<IOException>(() => invalidStore.VerifyDestinationWritableAsync());
+    }
+
+    [Fact]
     public async Task WriteAndCommit_ValidFile_QuarantinesAndCommitsAtomically()
     {
         var sessionId = new SessionId("11111111-1111-4111-8111-111111111111");

@@ -1,11 +1,9 @@
 using System.Collections.ObjectModel;
-using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Security.Cryptography;
 using System.Windows;
-using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -31,8 +29,6 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     private string _currentTab = "Send";
     private readonly WindowsUiPreferencesStore _uiPreferences = new();
     private string _appearanceMode = "System";
-    private string _activitySearchText = "";
-    private string _activityFilter = "All";
     private string _peerHost = "127.0.0.1";
     private int _peerPort = LanDiscoveryConstants.DefaultPort;
     private bool _isListening;
@@ -135,11 +131,9 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     }
 
     public ObservableCollection<TransferItemViewModel> SelectedFiles { get; } = [];
-    public ObservableCollection<HistoryItemViewModel> HistoryItems { get; } = [];
+    public ActivityHistoryViewModel Activity { get; } = new();
     public ObservableCollection<TrustedDeviceViewModel> TrustedDevices { get; } = [];
-    public ICollectionView ActivityItems { get; }
     public IReadOnlyList<string> AppearanceOptions { get; } = ["System", "Light", "Dark"];
-    public IReadOnlyList<string> ActivityFilterOptions { get; } = ["All", "Sent", "Received"];
 
     public RelayCommand SwitchTabCommand { get; }
     public RelayCommand AddFilesCommand { get; }
@@ -214,7 +208,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             _listenerPortPreference = persisted.Settings.ListenerPort;
             foreach (DesktopHistoryEntry entry in persisted.History)
             {
-                HistoryItems.Add(ToHistoryViewModel(entry));
+                Activity.Entries.Add(ToHistoryViewModel(entry));
             }
         }
         catch
@@ -274,8 +268,6 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         _pairing.PeerPaired += _ => RefreshTrustedDevices();
         _pairInvitationManager.SnapshotProvider.NetworkAddressChanged += (_, _) =>
             RunOnUi(() => { if (_pairing.IsReadyWindowActive) _pairing.Cancel(); });
-        ActivityItems = CollectionViewSource.GetDefaultView(HistoryItems);
-        ActivityItems.Filter = FilterActivity;
 
         SwitchTabCommand = new RelayCommand(param => CurrentTab = param?.ToString() ?? "Send");
         FindPairDevicesCommand = new RelayCommand(() => _pairing.BeginFindDevices());
@@ -566,14 +558,6 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             }
         };
 
-        PropertyChanged += (_, args) =>
-        {
-            if (args.PropertyName is nameof(ActivitySearchText) or nameof(ActivityFilter))
-            {
-                ActivityItems.Refresh();
-            }
-        };
-
         _mdnsService.PeerDiscovered += peer =>
         {
             Application.Current?.Dispatcher?.Invoke(() =>
@@ -694,18 +678,6 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                 ApplyAppearance();
             }
         }
-    }
-
-    public string ActivitySearchText
-    {
-        get => _activitySearchText;
-        set => SetProperty(ref _activitySearchText, value);
-    }
-
-    public string ActivityFilter
-    {
-        get => _activityFilter;
-        set => SetProperty(ref _activityFilter, value);
     }
 
     public string PeerHost
@@ -1964,7 +1936,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         RunOnUi(() =>
         {
             Transfer.RecordVerifiedFile(entry);
-            HistoryItems.Insert(
+            Activity.Entries.Insert(
                 0,
                 ToHistoryViewModel(entry));
         });
@@ -2098,29 +2070,6 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         {
             StatusMessage = $"Could not remove trusted device: {ex.Message}";
         }
-    }
-
-    private bool FilterActivity(object item)
-    {
-        if (item is not HistoryItemViewModel entry)
-        {
-            return false;
-        }
-
-        bool matchesDirection = ActivityFilter == "All" || entry.Direction == ActivityFilter;
-        if (!matchesDirection)
-        {
-            return false;
-        }
-
-        if (string.IsNullOrWhiteSpace(ActivitySearchText))
-        {
-            return true;
-        }
-
-        return entry.ItemName.Contains(ActivitySearchText, StringComparison.OrdinalIgnoreCase) ||
-            entry.PeerName.Contains(ActivitySearchText, StringComparison.OrdinalIgnoreCase) ||
-            entry.TargetPath.Contains(ActivitySearchText, StringComparison.OrdinalIgnoreCase);
     }
 
     private void ApplyAppearance()
@@ -2269,7 +2218,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         dispatcher.Invoke(action);
     }
 
-    private void ExecuteBrowseReceiveFolder()
+    private async void ExecuteBrowseReceiveFolder()
     {
         var dialog = new OpenFolderDialog
         {
@@ -2283,7 +2232,16 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
 
         if (dialog.ShowDialog() == true)
         {
-            ReceiveDirectory = dialog.FolderName;
+            try
+            {
+                await new QuarantineStagingStore(destinationRoot: dialog.FolderName)
+                    .VerifyDestinationWritableAsync();
+                ReceiveDirectory = dialog.FolderName;
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException)
+            {
+                StatusMessage = "That folder cannot receive files. Choose a writable folder.";
+            }
         }
     }
 

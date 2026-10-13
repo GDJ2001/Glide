@@ -61,6 +61,27 @@ public sealed class DesktopTransferRuntimeTests
     }
 
     [Fact]
+    public async Task Runtime_ConsentDoesNotPrematurelyReportTransferring()
+    {
+        var executor = new BlockingExecutor();
+        await using var runtime = new DesktopTransferRuntime(executor);
+        Task<DesktopTransferResult> active = runtime.SendAsync(Request(), new ApprovingInteraction());
+        await executor.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.True(await executor.Interaction!.ConfirmRecipientAsync("Test peer", CancellationToken.None));
+        Assert.Equal(DesktopTransferPhase.AwaitingConsent, runtime.Snapshot.Phase);
+
+        var offer = new DesktopOffer("batch", "Test peer", [], 0);
+        Assert.True(await executor.Interaction.ConfirmOfferAsync(offer, CancellationToken.None));
+        Assert.Equal(DesktopTransferPhase.AwaitingConsent, runtime.Snapshot.Phase);
+
+        executor.Interaction.OnPhase(DesktopTransferDirection.Send, DesktopTransferPhase.Transferring);
+        Assert.Equal(DesktopTransferPhase.Transferring, runtime.Snapshot.Phase);
+        executor.Complete(DesktopTransferResult.Completed("Verified", 0, 0));
+        Assert.True((await active).Success);
+    }
+
+    [Fact]
     public async Task Runtime_UnhandledExecutorErrorStillProducesOneTerminalFailure()
     {
         await using var runtime = new DesktopTransferRuntime(new ThrowingExecutor());
@@ -129,5 +150,14 @@ public sealed class DesktopTransferRuntimeTests
 
     private sealed class TestInteraction : DesktopTransferInteractionBase
     {
+    }
+
+    private sealed class ApprovingInteraction : DesktopTransferInteractionBase
+    {
+        public override Task<bool> ConfirmRecipientAsync(string peerName, CancellationToken cancellationToken) =>
+            Task.FromResult(true);
+
+        public override Task<bool> ConfirmOfferAsync(DesktopOffer offer, CancellationToken cancellationToken) =>
+            Task.FromResult(true);
     }
 }

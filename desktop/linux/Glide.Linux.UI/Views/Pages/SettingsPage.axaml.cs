@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
+using Glide.Core.Storage;
 using Glide.Linux.UI.ViewModels;
 
 namespace Glide.Linux.UI.Views.Pages;
@@ -32,7 +33,16 @@ public partial class SettingsPage : UserControl
             var path = folders[0].TryGetLocalPath();
             if (!string.IsNullOrEmpty(path))
             {
-                vm.DownloadDirectory = path;
+                try
+                {
+                    await new QuarantineStagingStore(destinationRoot: path)
+                        .VerifyDestinationWritableAsync();
+                    vm.DownloadDirectory = path;
+                }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException)
+                {
+                    vm.StatusMessage = "That folder cannot receive files. Choose a writable folder.";
+                }
             }
         }
     }

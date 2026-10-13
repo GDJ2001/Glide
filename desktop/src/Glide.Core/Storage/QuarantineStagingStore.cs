@@ -68,6 +68,33 @@ public sealed class QuarantineStagingStore
         }
     }
 
+    /// <summary>
+    /// Checks that verified files can be committed to the selected destination before
+    /// an offer is accepted. Commit still revalidates the path and handles later changes.
+    /// </summary>
+    public async Task VerifyDestinationWritableAsync(CancellationToken cancellationToken = default)
+    {
+        string root = Path.GetFullPath(_destinationRoot);
+        RejectLinkedAncestors(root);
+        Directory.CreateDirectory(root);
+        RejectLinkedAncestors(root);
+
+        string probe = Path.Combine(root, $".glide-write-check-{Guid.NewGuid():N}.tmp");
+        try
+        {
+            await using var stream = new FileStream(probe, FileMode.CreateNew, FileAccess.Write,
+                FileShare.None, 1, FileOptions.Asynchronous | FileOptions.DeleteOnClose);
+            await stream.WriteAsync(new byte[] { 0 }, cancellationToken);
+            await stream.FlushAsync(cancellationToken);
+        }
+        finally
+        {
+            // DeleteOnClose handles normal disposal; this covers platforms that leave a
+            // probe behind after an interrupted open or flush.
+            if (File.Exists(probe)) File.Delete(probe);
+        }
+    }
+
     public string GetQuarantinePath(SessionId sessionId, ItemId itemId)
     {
         return Path.Combine(_stagingRoot, sessionId.Value, $"{itemId.Value}.quarantine");

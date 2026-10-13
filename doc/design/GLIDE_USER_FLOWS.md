@@ -1,59 +1,52 @@
-# Screens and user flows
-[Design system](GLIDE_DESIGN_SYSTEM.md) · [Failures](../architecture/GLIDE_FAILURE_MODEL.md) · [Protocol](../protocol/GLIDE_PROTOCOL_V1.md).
+# Glide native screens and user flows
 
-## Screen inventory
-| Destination / surface | Content and actions | Required states |
+Updated 2026-10-13. This is the product behavior specification for Android, Windows, Linux, macOS, and iOS. [Design system](GLIDE_DESIGN_SYSTEM.md) · [Failure model](../architecture/GLIDE_FAILURE_MODEL.md) · [Pair-only and reconnect contract](../protocol/PROFILE_2_PAIRING_AND_RECONNECT.md). Platform controls should feel native; labels, security decisions, and transfer states should agree.
+
+## Core destinations
+
+| Destination | Primary action and content | States that need a visible result |
 | --- | --- | --- |
-| Home | Glide identity, Send primary, Receive secondary, recent/active summary | First use explanation inline, ready, active, unavailable |
-| Selection route | System picker entry, selected file rows/count/total, add/remove, Continue | Empty, preparing unknown sizes, unreadable, oversized |
-| Discovery route | “Open Receive on the other device”, peer list, stop/retry | Searching, no results120s, lost peer, permission/radio/GMS blocked |
-| Verification dialog/sheet | Both names (untrusted), full digits, Match / Don't match | Waiting, confirmed locally, rejected, timed out |
-| Receive readiness route | Visible name,120s discoverability countdown, stop | Advertising, incoming connection, unavailable |
-| Offer sheet | Peer label, item list, total size, private destination, Accept/Decline | Metadata loading, validated, insufficient storage, timeout |
-| Transfer route | Phase, bytes, item and batch progress, speed/ETA, Cancel | Preparing, sending/receiving, checking, interrupted, partial completion |
-| Result on transfer route | Verified count, Open/Export received items, Done; retry unfinished sender items | Complete, partial, failed, cancelled, receipt unconfirmed |
-| History list/detail | Sent/received filters, peer/time/status/count, per-item result, open/export received | Empty, missing local file, failed, clear-history confirmation |
-| Settings | Device name, appearance, receive storage explanation/manage files, notification privacy, privacy/about/licenses | Validation, system setting disabled, delete confirmation |
-| About/privacy/licenses subroutes | Version, local-sharing explanation, SDK diagnostics disclosure, licenses | Accessible long text |
+| Send | Select files/folders, review selection, choose Quick share with QR or a paired device on desktop; Android also offers its supported Nearby flow | Empty, preparing, skipped source, no peer, authenticating, awaiting consent, busy, retryable failure |
+| Receive | Turn receiving on/off, show transfer QR/link while available, approve each incoming file offer | Off, ready, expired invitation, incoming offer, insufficient storage, declined, active |
+| Activity | Current transfer first; bytes, speed, item, progress, verification, Cancel; verified history below | Active, complete, failed, cancelled, declined, missing historical file |
+| Pair devices | Pair **without selecting files** and inspect/revoke saved identities | Discovery, no peers, ready-to-pair expiry, PIN/link entry, both-party approval, verified, failed |
+| Settings | Appearance, receive destination, trusted-device details, advanced connection details, about | Invalid destination, changed identity, inaccessible system preference |
 
-Do not add a full-screen onboarding carousel or a destination per transient transfer phase. Trusted devices, folder transfer and pause controls do not appear in V1. Settings “transfer preferences” initially contains keep-screen-awake off, notification privacy on and storage explanation; no unsupported transport selector.
+Use the existing Glide logo and concise action labels. First-use help belongs next to the relevant action. Do not add a mandatory wizard, duplicate Send and Pair actions, or persistent paragraphs that restate what a control already says.
 
-## Send
-1. Home Send → system document/Photo Picker → selection. Picker cancellation returns safely.
-2. Validate accessible sources, stage unknown/transient ones, show preparation. Do not discover while a long cloud source prepares.
-3. Continue → nearby explanation/permissions at point of use → discovery. Select peer once; disable repeat connect.
-4. Both devices compare SDK digits. Match on both is required. Back or Don't match rejects.
-5. Send validated offer; sender sees “Waiting for acceptance”. Receiver separately inspects and accepts.
-6. Sequential stream with visible current item and overall bytes. At bytes complete show “Checking file”; completion requires receipt.
-7. Sender success provides Done; receiver Open/Export. No automatic file opening or app install.
-8. On partial failure show verified items retained, unattempted/failed items distinct; retry starts a new authenticated session and offer for unfinished items.
+## Send and receive
 
-## Receive
-Home Receive explains nearby visibility, grants requested if needed, advertises for120s. Auto-stop if user leaves readiness before an active link. Incoming connection opens verification only while visible; locked/background receiver never auto-confirms. After matching, show offer sheet with scrollable names/types/count/total and “Saved in Glide; export to keep outside app”. Accept only after complete validation and space check. Decline allocates no destination. Active accepted transfer may continue under service when backgrounded.
+1. Select files with the system picker, folder picker where supported, drag/drop on desktop, or Android share ingress. Show count, size, individual removals, and specific skipped-item reasons. A cancelled picker leaves the previous selection intact.
+2. Desktop Send offers **Quick share with QR** and **Paired device**. Quick share shows a one-use sender-hosted QR and waits for the recipient to connect; the sender confirms the recipient before the offer can carry file data. Paired device chooses a saved cryptographic identity, reconnects without another invitation, verifies the live identity, and sends an offer. If a paired device is unavailable, preserve files and give a retry or pair action.
+3. A receiver can show a one-use transfer QR/link while receiving is on. A desktop sender can use the link when scanning is inconvenient. Discovery identifies availability only; it is never proof of identity. Android may use its supported Nearby transport, but still requires authentication and an explicit offer decision.
+4. The receiver reviews sender, file count, total size, and destination context and chooses **Accept** or **Decline**. Trusted identity does not waive this decision. Before asking, Glide checks staging capacity and that the selected destination is writable. The destination is changed in Settings, not on Receive.
+5. After consent, open Activity automatically once. Progress uses actual transferred bytes; it does not advance during connection or verification. The user may navigate elsewhere while a compact active-transfer indicator remains available. Cancel is explicit and affects only the current attempt.
+6. Show **Transfer complete** only after exact length, independent digest, and receiver commit are confirmed. Keep a readable result card for complete, failed, cancelled, or declined attempts in the current session; only verified files enter persistent history. Offer Open folder for verified received files. Recoverable sender failure retains selected sources; Try again starts a new authenticated attempt and new receiver consent.
 
-## Android Share Sheet
-ACTION_SEND/SEND_MULTIPLE opens Glide's validated ingress, not an instant send. Restrict to granted content URIs, cap count/metadata, deduplicate identical URI references within request, preserve intent grant lifetime during staging. Bring an existing active session to foreground and show Busy; do not replace it. Preview selection then same discover/verify/offer path. Forged or unreadable inputs show safe error; never fetch arbitrary HTTP/file URLs. Sending text is outside V1; explain unsupported share type.
+## Pair-only and trusted devices
 
-## Errors and recovery
-| Trigger | UX and next action |
+- Desktop Pair devices presents **Find devices** and **Ready to pair** as primary tasks, with QR/link and **Pair by address** as secondary paths. A receiver ready-to-pair window lasts two minutes. Desktop users can compare or enter a six-digit PIN without a camera; both people approve before identities are saved. Three wrong PIN attempts lock out that window. Expiry, cancellation, app close, or network change withdraw readiness.
+- Android and iOS can scan or open a pair-only QR/link, review the peer, and approve; they do not need a desktop-style PIN entry page. A pair-only session never opens a file offer or sends file bytes.
+- The saved list distinguishes devices by cryptographic identity even when names match. Revocation takes effect on the next connection. A changed identity fails closed and offers an explicit re-pair path.
+
+## Platform integration
+
+- Android `ACTION_SEND`/`ACTION_SEND_MULTIPLE` enters a validated selection preview. Retain granted content access through staging, reject unsupported or unreadable input, and bring an existing active session forward as Busy. A share intent is never automatic authorization to send.
+- Windows and Linux keep standard window controls, resizing, Snap/tile behavior, keyboard navigation, focus restoration, and a single listener owner. macOS keeps standard window/Dock behavior. iOS and Android follow their native navigation and background-transfer rules.
+- All clients preserve one active batch, accessible consent dialogs, source selection on recoverable failure, and private quarantine until verification. No browser transfer flow exists.
+
+## Recovery copy and accessibility
+
+| Trigger | User-facing action |
 | --- | --- |
-| Permission denied/permanent | Inline blocked discovery with reason and explicit retry/Settings; no startup prompt loop |
-| Wi-Fi/Bluetooth disabled | Named connectivity state, system settings panel; no forced toggle |
-| Peer disappears | Remove/disable stale row without shifting focused selection; rediscover |
-| Authentication mismatch | Close attempt, “Codes don't match”; no override bypass |
-| Receiver rejects | Calm declined result, preserve source selection; no automatic reoffer |
-| Connection/offer timeout | State-specific explanation and manual retry |
-| Insufficient storage | Required/free space, decline disabled Accept, free-space instructions |
-| Source deleted/revoked | Mark item unavailable; reselect/remove; no broad storage request |
-| Network/process interruption | Verified count retained; unfinished require retry, no resume label |
-| Integrity mismatch | Explicit failed check, partial deleted, no Open; fresh retry only |
-| User cancellation | Confirmation during active bytes: “Stop transfer?”; list already received files retained |
-| Unsupported protocol | Update guidance; no unsafe downgrade |
-| Export fails / no viewer | Receive remains verified; offer another export/viewer, never mark whole transfer corrupt |
-| Receipt missing | Explain other device may have file; retry warns about duplicates |
+| Peer unavailable or network lost | Keep the selection; explain the local-network step and offer Try again. |
+| Invitation expired or PIN incorrect | Request a new code; never silently reuse or bypass it. |
+| Identity changed or trust revoked | Stop before the offer and offer re-pairing with explicit approval. |
+| Receiver declined | Show **Transfer declined** without implying corruption; preserve sender selection. |
+| Destination read-only/full | Decline before consent when detectable; direct the receiver to Settings to choose a writable folder or free space. |
+| Source disappeared or changed | Name the affected item; remove/reselect it before retry. |
+| Disconnect or cancellation | Retain verified items, purge unverified staging, and show which items did not finish. |
+| Integrity failure | Report failed verification, do not commit or offer Open, and require a new authenticated attempt. |
+| Missing completion receipt | Explain that the other device may have a verified copy; avoid a false success claim. |
 
-## Navigation/lifecycle contracts
-Back from selection/discovery returns without sharing. Back during active transfer navigates Home with active summary; it does not silently cancel. Cancel is a separate labeled action. Back from unconfirmed pairing/offer declines. Predictive back previews the same destination/decision; commit destructive effect only on completed gesture. Notification tap restores current session route; cancel action targets exact session. Rotation/resize never duplicates dialogs or acceptance. Incoming UI never steals focus from another active batch.
-
-Every route needs loading/empty/failure/success representations, keyboard focus restoration, screen-reader labels, large-text wrapping and stable item keys. Attach light/dark/dynamic/adaptive screenshots to each UI task's evidence.
-
+Keyboard, screen readers, large text, contrast, high-contrast themes, RTL/Unicode filenames, narrow windows, reduced motion, and clear focus must be checked on installed builds. Announce phase changes and meaningful progress intervals without flooding assistive technology. Color alone never conveys trust, success, or failure.

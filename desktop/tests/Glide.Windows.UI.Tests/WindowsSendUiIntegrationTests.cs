@@ -111,6 +111,21 @@ public sealed class WindowsSendUiIntegrationTests
                 var historyList = Assert.IsType<ListBox>(window.FindName("ActivityHistoryList"));
                 var activityPage = Assert.IsType<ScrollViewer>(window.FindName("ActivityPage"));
                 Assert.True(historyList.ActualWidth <= activityPage.ViewportWidth + 1);
+                string uniqueHistoryName = $"history-{Guid.NewGuid():N}.txt";
+                var historyEntry = new HistoryItemViewModel
+                {
+                    ItemName = uniqueHistoryName,
+                    Direction = "Sent",
+                    PeerName = "Test peer"
+                };
+                viewModel.Activity.Entries.Add(historyEntry);
+                viewModel.Activity.SearchText = uniqueHistoryName;
+                Assert.Contains(historyEntry, viewModel.Activity.Items.Cast<HistoryItemViewModel>());
+                viewModel.Activity.Filter = "Received";
+                Assert.DoesNotContain(historyEntry, viewModel.Activity.Items.Cast<HistoryItemViewModel>());
+                viewModel.Activity.Filter = "All";
+                viewModel.Activity.SearchText = string.Empty;
+                viewModel.Activity.Entries.Remove(historyEntry);
                 var historyActions = Assert.IsType<StackPanel>(window.FindName("ActivityHistoryActions"));
                 Assert.Equal(0, Grid.GetRow(historyActions));
                 Assert.True(historyActions.TranslatePoint(new Point(), window).X >
