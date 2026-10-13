@@ -642,7 +642,6 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
          (SendMethod == SendMethodChoice.Nearby && _pairedInvitation is not null && !_pairedInvitation.IsExpired()));
     public string SelectedSendMethodText => SendMethod switch
     {
-        SendMethodChoice.QuickQr => "Quick QR selected. The transfer starts after scan and approval.",
         SendMethodChoice.Nearby when _pairedInvitation is not null =>
             $"{_pairedInvitation.Name} is ready. Its identity will be checked when you send.",
         SendMethodChoice.Nearby when _selectedPeer is not null =>
@@ -650,9 +649,9 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         SendMethodChoice.Nearby => "Find a nearby device, then use its current invitation.",
         SendMethodChoice.Trusted when _selectedTrustedDevice is not null =>
             $"Selected {_selectedTrustedDevice.DisplayName}. Glide will verify its identity before sending.",
-        SendMethodChoice.Trusted => "Choose a paired device to continue.",
-        _ => "Choose one sending method below."
+        _ => string.Empty
     };
+    public bool HasSelectedSendMethodText => !string.IsNullOrWhiteSpace(SelectedSendMethodText);
     public bool IsTrustedDevicePickerVisible
     {
         get => _isTrustedDevicePickerVisible;
@@ -998,6 +997,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         OnPropertyChanged(nameof(IsTrustedSelected));
         OnPropertyChanged(nameof(IsSendActionVisible));
         OnPropertyChanged(nameof(SelectedSendMethodText));
+        OnPropertyChanged(nameof(HasSelectedSendMethodText));
         OnPropertyChanged(nameof(SendActionText));
         CommandManager.InvalidateRequerySuggested();
     }

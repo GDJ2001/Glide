@@ -152,6 +152,8 @@ public sealed class WindowsSendUiIntegrationTests
                     1, "1 B/s", "61 B / 65 B"));
                 window.Dispatcher.Invoke(() => { }, DispatcherPriority.Background);
                 window.UpdateLayout();
+                PumpDispatcherUntil(() => indicator.ActualWidth > progressBar.ActualWidth * 0.8,
+                    TimeSpan.FromSeconds(2), progressBar);
                 Assert.InRange(progressBar.Value, 93, 95);
                 Assert.True(indicator.ActualWidth > progressBar.ActualWidth * 0.8,
                     $"The progress fill stayed empty: value={progressBar.Value}, " +
@@ -304,10 +306,18 @@ public sealed class WindowsSendUiIntegrationTests
                 viewModel.TrustedDevices.Add(new TrustedDeviceViewModel(new DesktopTrustedPeer(
                     new string('c', 64), "00", "ubuntu", 1, 1)));
                 window.UpdateLayout();
-                var pickerRows = Descendants(Assert.IsType<ScrollViewer>(window.FindName("TrustedDevicesScroll")))
+                var pickerScroll = Assert.IsType<ScrollViewer>(window.FindName("TrustedDevicesScroll"));
+                PumpDispatcherUntil(() => Descendants(pickerScroll).OfType<Button>().Count(button =>
+                    AutomationProperties.GetName(button)?.StartsWith("Connect to ") == true) >= 2,
+                    TimeSpan.FromSeconds(2), pickerScroll);
+                var pickerRows = Descendants(pickerScroll)
                     .OfType<Button>().Where(button =>
                         AutomationProperties.GetName(button)?.StartsWith("Connect to ") == true).ToList();
-                Assert.True(pickerRows.Count >= 2);
+                Assert.True(pickerRows.Count >= 2,
+                    $"Expected two saved-device rows, found {pickerRows.Count}; " +
+                    $"trusted count={viewModel.TrustedDevices.Count}, scroll visibility={pickerScroll.Visibility}, " +
+                    $"scroll size={pickerScroll.ActualWidth}x{pickerScroll.ActualHeight}, " +
+                    $"visual buttons={Descendants(pickerScroll).OfType<Button>().Count()}.");
                 Assert.Contains(pickerRows, row => AutomationProperties.GetName(row).Contains("bbbbbbbb"));
                 Assert.Contains(pickerRows, row => AutomationProperties.GetName(row).Contains("cccccccc"));
                 foreach (Button row in pickerRows)
