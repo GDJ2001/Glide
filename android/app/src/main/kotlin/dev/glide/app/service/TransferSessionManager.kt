@@ -3,8 +3,6 @@ package dev.glide.app.service
 import dev.glide.app.transfer.ActiveSessionTracker
 import dev.glide.app.ui.transfer.TransferUiState
 import dev.glide.app.ui.transfer.toUiState
-import dev.glide.app.util.BatchTransferRateTracker
-import dev.glide.core.coordinator.SessionPhase
 import dev.glide.core.coordinator.TransferCoordinator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -34,7 +32,7 @@ object TransferSessionManager {
     val uiState: StateFlow<TransferUiState> get() = _uiState.asStateFlow()
 
     var timeProvider: () -> Long = { System.currentTimeMillis() }
-    private var rateTracker = BatchTransferRateTracker(timeProvider = { timeProvider() })
+    private val statePresenter = TransferStatePresenter(timeProvider = { timeProvider() })
 
     /**
      * Callback invoked when the active session reaches a terminal state, allowing
@@ -82,37 +80,19 @@ object TransferSessionManager {
         ActiveSessionTracker.setSessionActive(coordinator.sessionId.value, true)
 
         // 5. Observe coordinator state in the service scope
-        rateTracker.reset()
-        var lastPhase: SessionPhase? = null
+        statePresenter.reset()
 
         activeJob = scope.launch {
             coordinator.state.collect { sessionState ->
                 val committedKeys = coordinator.committedItemFiles.mapKeys { it.key.value }.mapValues { it.value.value }
-                val baseUiState = sessionState.toUiState(
+                val nextUiState = statePresenter.present(
+                    sessionState = sessionState,
                     peerDisplayName = peerDisplayName,
                     committedFileKey = coordinator.lastCommittedFileHandle?.value,
-                    committedItemKeys = committedKeys
+                    committedItemKeys = committedKeys,
+                    current = _uiState.value
                 )
-
-                val phaseChanged = sessionState.phase != lastPhase
-                lastPhase = sessionState.phase
-
-                if (baseUiState is TransferUiState.Transferring) {
-                    val snapshot = rateTracker.updateProgress(
-                        cumulativeBatchBytes = baseUiState.transferredBytes,
-                        currentItemIndex = baseUiState.itemIndex,
-                        forceImmediate = phaseChanged
-                    )
-                    if (snapshot.shouldEmitUiUpdate || _uiState.value !is TransferUiState.Transferring) {
-                        _uiState.value = baseUiState.copy(
-                            speedBytesPerSec = snapshot.speedBytesPerSec,
-                            isStalled = snapshot.isStalled
-                        )
-                    }
-                } else {
-                    rateTracker.reset()
-                    _uiState.value = baseUiState
-                }
+                if (nextUiState != null) _uiState.value = nextUiState
 
                 val isActive = !sessionState.phase.isTerminal
                 ActiveSessionTracker.setSessionActive(coordinator.sessionId.value, isActive)
@@ -215,7 +195,7 @@ object TransferSessionManager {
      */
     @Synchronized
     fun stopSession() {
-        rateTracker.reset()
+        statePresenter.reset()
         activeCoordinator?.stop()
         activeCoordinator = null
         terminalCallbackSessionId = null
@@ -255,7 +235,7 @@ object TransferSessionManager {
      * Resets internal state for clean testing isolation.
      */
     internal fun resetForTesting() {
-        rateTracker.reset()
+        statePresenter.reset()
         timeProvider = { System.currentTimeMillis() }
         activeJob?.cancel()
         activeJob = null

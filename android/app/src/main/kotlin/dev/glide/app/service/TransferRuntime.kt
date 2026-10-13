@@ -11,9 +11,7 @@ import dev.glide.app.ui.pairing.PairingUiState
 import dev.glide.app.ui.selection.SelectedTransferStore
 import dev.glide.app.ui.transfer.TransferUiState
 import dev.glide.app.ui.transfer.toUiState
-import dev.glide.app.util.BatchTransferRateTracker
 import dev.glide.core.coordinator.ItemPhase
-import dev.glide.core.coordinator.SessionPhase
 import dev.glide.core.coordinator.SessionState
 import dev.glide.core.coordinator.TransferCoordinator
 import dev.glide.core.domain.BatchId
@@ -127,7 +125,7 @@ class TransferRuntime private constructor(
     val activeSessionId: StateFlow<String?> = _activeSessionId.asStateFlow()
 
     internal var timeProvider: () -> Long = { System.currentTimeMillis() }
-    private var rateTracker = BatchTransferRateTracker(timeProvider = { timeProvider() })
+    private val statePresenter = TransferStatePresenter(timeProvider = { timeProvider() })
 
     private var lastTerminalState: SessionState? = null
     private var lastSenderBatch: TransferBatch? = null
@@ -219,7 +217,7 @@ class TransferRuntime private constructor(
             serviceScope = null
             terminalCallback = null
             terminalCallbackSessionId = null
-            rateTracker.reset()
+            statePresenter.reset()
         }
 
         discoveryController?.stopAdvertising()
@@ -686,7 +684,7 @@ class TransferRuntime private constructor(
             lastSourceMap = emptyMap()
             _activeSessionId.value = coordinator.sessionId.value
             _isSessionActive.value = true
-            rateTracker.reset()
+            statePresenter.reset()
 
             owner
         }
@@ -703,7 +701,6 @@ class TransferRuntime private constructor(
     ) {
         synchronized(lock) {
             activeCoordinatorJob?.cancel()
-            var lastPhase: SessionPhase? = null
             activeCoordinatorJob = scope.launch {
                 coordinator.state.collect { sessionState ->
                     if (activeCoordinator !== coordinator) return@collect
@@ -711,31 +708,14 @@ class TransferRuntime private constructor(
                     val committedKeys = coordinator.committedItemFiles
                         .mapKeys { it.key.value }
                         .mapValues { it.value.value }
-                    val baseUiState = sessionState.toUiState(
+                    val nextUiState = statePresenter.present(
+                        sessionState = sessionState,
                         peerDisplayName = peerDisplayName,
                         committedFileKey = coordinator.lastCommittedFileHandle?.value,
-                        committedItemKeys = committedKeys
+                        committedItemKeys = committedKeys,
+                        current = _transferState.value
                     )
-
-                    val phaseChanged = sessionState.phase != lastPhase
-                    lastPhase = sessionState.phase
-
-                    if (baseUiState is TransferUiState.Transferring) {
-                        val snapshot = rateTracker.updateProgress(
-                            cumulativeBatchBytes = baseUiState.transferredBytes,
-                            currentItemIndex = baseUiState.itemIndex,
-                            forceImmediate = phaseChanged
-                        )
-                        if (snapshot.shouldEmitUiUpdate || _transferState.value !is TransferUiState.Transferring) {
-                            _transferState.value = baseUiState.copy(
-                                speedBytesPerSec = snapshot.speedBytesPerSec,
-                                isStalled = snapshot.isStalled
-                            )
-                        }
-                    } else {
-                        rateTracker.reset()
-                        _transferState.value = baseUiState
-                    }
+                    if (nextUiState != null) _transferState.value = nextUiState
 
                     val active = !sessionState.phase.isTerminal
                     _isSessionActive.value = active
@@ -1260,7 +1240,7 @@ class TransferRuntime private constructor(
                     activeCoordinator = null
                     _isSessionActive.value = false
                     _activeSessionId.value = null
-                    rateTracker.reset()
+                    statePresenter.reset()
                 }
             }
             coordinator.stop()
@@ -1352,7 +1332,7 @@ class TransferRuntime private constructor(
         )
         _isSessionActive.value = false
         _activeSessionId.value = null
-        rateTracker.reset()
+        statePresenter.reset()
         timeProvider = { System.currentTimeMillis() }
     }
 
@@ -1383,7 +1363,7 @@ class TransferRuntime private constructor(
             )
             _isSessionActive.value = false
             _activeSessionId.value = null
-            rateTracker.reset()
+            statePresenter.reset()
             captureTerminalSnapshot(coordinator)
 
             callback = if (terminalCallbackSessionId == coordinator.sessionId.value) {
