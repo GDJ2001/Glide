@@ -82,6 +82,27 @@ class Hard019PersistentTrustRuntimeTest {
         }
 
     @Test
+    fun stoppingServiceTrustObservation_doesNotReportFailure() =
+        runTest {
+            val runtime =
+                TransferRuntime.forTesting(
+                    persistentTrustManager =
+                        PersistentTrustManager(
+                            JvmDeviceIdentityKeyStore(),
+                            RuntimeTrustedPeerStore()
+                        )
+                )
+
+            runtime.attachServiceScope(this)
+            advanceUntilIdle()
+            assertTrue(runtime.trustState.value.isInitialized)
+
+            runtime.detachServiceScope()?.join()
+            advanceUntilIdle()
+            assertNull(runtime.trustState.value.errorMessage)
+        }
+
+    @Test
     fun verifiedEnrollment_requiresExplicitApproval() =
         runTest {
             val identity =

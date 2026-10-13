@@ -29,6 +29,7 @@ import dev.glide.core.ports.AuthenticatedChannelContextProvider
 import dev.glide.core.ports.ConnectionEvent
 import dev.glide.core.ports.TransferTransport
 import dev.glide.data.store.ResumableStagingStore
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -521,6 +522,7 @@ class TransferRuntime private constructor(
             try {
                 transport.initiateConnection(command.peerId, command.localDeviceName)
             } catch (error: Throwable) {
+                if (error is CancellationException) throw error
                 failPairing(
                     "Connection failed",
                     error.message ?: "Unable to request a Nearby connection."
@@ -961,6 +963,7 @@ class TransferRuntime private constructor(
             )
             true
         } catch (t: Throwable) {
+            if (t is CancellationException) throw t
             _trustState.value = _trustState.value.copy(
                 errorMessage =
                     "Persistent identity initialization failed: " +
@@ -987,6 +990,7 @@ class TransferRuntime private constructor(
             )
             true
         } catch (t: Throwable) {
+            if (t is CancellationException) throw t
             _trustState.value = _trustState.value.copy(
                 errorMessage =
                     "Could not revoke trusted device: " +
@@ -1020,6 +1024,7 @@ class TransferRuntime private constructor(
             )
             true
         } catch (t: Throwable) {
+            if (t is CancellationException) throw t
             _trustState.value = _trustState.value.copy(
                 errorMessage =
                     "Could not rotate local identity: " +
@@ -1050,6 +1055,7 @@ class TransferRuntime private constructor(
                         )
                     }
                 } catch (t: Throwable) {
+                    if (t is CancellationException) throw t
                     _trustState.value = _trustState.value.copy(
                         errorMessage =
                             "Persistent trust observation failed: " +
@@ -1109,6 +1115,7 @@ class TransferRuntime private constructor(
                     errorMessage = null
                 )
             } catch (t: Throwable) {
+                if (t is CancellationException) throw t
                 _trustState.value = _trustState.value.copy(
                     errorMessage =
                         "Could not enroll trusted device: " +
