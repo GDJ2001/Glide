@@ -173,9 +173,11 @@
                         <Border Style="{StaticResource CardStyle}">
                             <StackPanel>
                                 <TextBlock Text="Pair devices" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,12" />
-                                <WrapPanel>
+                                <WrapPanel x:Name="PairMethodActions">
                                     <Button Style="{StaticResource PrimaryButtonStyle}" Content="Find devices" Command="{Binding FindPairDevicesCommand}" Margin="0,0,8,8" AutomationProperties.Name="Find pair-ready Glide devices" />
                                     <Button Style="{StaticResource SecondaryButtonStyle}" Content="Ready to pair" Command="{Binding ReadyToPairCommand}" Margin="0,0,8,8" AutomationProperties.Name="Show pairing code for this PC" />
+                                    <Button Style="{StaticResource SecondaryButtonStyle}" Content="Use QR or link" Command="{Binding ShowPairLinkCommand}" Margin="0,0,8,8" />
+                                    <Button Style="{StaticResource SecondaryButtonStyle}" Content="Pair by address" Command="{Binding ShowPairAddressCommand}" Margin="0,0,0,8" />
                                 </WrapPanel>
                                 <StackPanel Visibility="{Binding IsPairDiscovery, Converter={StaticResource BoolToVis}}" Margin="0,12,0,0">
                                     <TextBlock Text="{Binding Pairing.Message}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
@@ -186,10 +188,7 @@
                                             </Button>
                                         </DataTemplate></ItemsControl.ItemTemplate>
                                     </ItemsControl>
-                                    <WrapPanel Visibility="{Binding IsPairEmpty, Converter={StaticResource BoolToVis}}" Margin="0,8,0,0">
-                                        <Button Style="{StaticResource PrimaryButtonStyle}" Content="Try again" Command="{Binding FindPairDevicesCommand}" Margin="0,0,8,8" />
-                                        <Button Style="{StaticResource SecondaryButtonStyle}" Content="Can’t find your device?" Command="{Binding ShowPairAddressCommand}" Margin="0,0,0,8" />
-                                    </WrapPanel>
+                                    <Button Style="{StaticResource SecondaryButtonStyle}" Content="Try again" Command="{Binding FindPairDevicesCommand}" Visibility="{Binding IsPairEmpty, Converter={StaticResource BoolToVis}}" HorizontalAlignment="Left" Margin="0,8,0,0" />
                                 </StackPanel>
                                 <StackPanel Visibility="{Binding IsPairReady, Converter={StaticResource BoolToVis}}" Margin="0,12,0,0">
                                     <TextBlock Text="Pairing code" FontWeight="SemiBold" />
@@ -238,10 +237,6 @@
                                         <TextBlock Text="{Binding Pairing.Diagnostic}" Foreground="{DynamicResource TextSecondaryBrush}" FontFamily="Consolas" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0" />
                                     </Expander>
                                 </StackPanel>
-                                <WrapPanel Margin="0,12,0,0">
-                                    <Button Style="{StaticResource SecondaryButtonStyle}" Content="Use QR or link" Command="{Binding ShowPairLinkCommand}" Margin="0,0,8,8" />
-                                    <Button Style="{StaticResource SecondaryButtonStyle}" Content="Can’t find your device?" Command="{Binding ShowPairAddressCommand}" Margin="0,0,0,8" />
-                                </WrapPanel>
                             </StackPanel>
                         </Border>
                         <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0"><StackPanel><TextBlock Text="Paired devices" FontWeight="SemiBold" FontSize="16" /><ItemsControl ItemsSource="{Binding TrustedDevices}" Margin="0,10,0,0"><ItemsControl.ItemTemplate><DataTemplate><TextBlock Text="{Binding DisplayName}" ToolTip="{Binding DisplayName}" TextTrimming="CharacterEllipsis" Margin="0,4,0,4" /></DataTemplate></ItemsControl.ItemTemplate></ItemsControl></StackPanel></Border>
@@ -274,16 +269,6 @@
                                         <Button x:Name="ReceiveRefreshQrButton" Style="{StaticResource SecondaryButtonStyle}" Content="Refresh code" Command="{Binding RefreshQrCommand}" Width="192" HorizontalAlignment="Left" />
                                     </StackPanel>
                                 </StackPanel>
-                            </StackPanel>
-                        </Border>
-                        <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0">
-                            <StackPanel>
-                                <TextBlock Text="Save received files to" FontWeight="SemiBold" />
-                                <Grid Margin="0,10,0,0">
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                    <TextBox Style="{StaticResource ModernTextBoxStyle}" Text="{Binding ReceiveDirectory}" IsReadOnly="True" AutomationProperties.Name="Receive folder" />
-                                    <Button Grid.Column="1" Style="{StaticResource SecondaryButtonStyle}" Content="Change folder" Command="{Binding BrowseReceiveFolderCommand}" Margin="8,0,0,0" />
-                                </Grid>
                             </StackPanel>
                         </Border>
                     </StackPanel>
@@ -372,8 +357,8 @@
                             <StackPanel><TextBlock Text="Appearance" FontWeight="SemiBold" /><TextBlock Text="Match Windows by default, or choose a theme for Glide." Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="0,4,0,12" /><ComboBox ItemsSource="{Binding AppearanceOptions}" SelectedItem="{Binding AppearanceMode}" Width="180" HorizontalAlignment="Left" AutomationProperties.Name="Appearance theme" /></StackPanel>
                         </Border>
                         <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0">
-                            <StackPanel><TextBlock Text="Receiving" FontWeight="SemiBold" /><TextBlock Text="Folder and connection details are kept here so sending stays simple." Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="0,4,0,12" />
-                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBox Style="{StaticResource ModernTextBoxStyle}" Text="{Binding ReceiveDirectory}" IsReadOnly="True" /><Button Grid.Column="1" Style="{StaticResource SecondaryButtonStyle}" Content="Change folder" Command="{Binding BrowseReceiveFolderCommand}" Margin="8,0,0,0" /></Grid>
+                            <StackPanel><TextBlock Text="Receiving" FontWeight="SemiBold" /><TextBlock Text="Save received files to" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="0,12,0,6" />
+                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBox Style="{StaticResource ModernTextBoxStyle}" Text="{Binding ReceiveDirectory}" IsReadOnly="True" AutomationProperties.Name="Receive folder" /><Button Grid.Column="1" Style="{StaticResource SecondaryButtonStyle}" Content="Change folder" Command="{Binding BrowseReceiveFolderCommand}" Margin="8,0,0,0" /></Grid>
                                 <Expander Header="Advanced connection details" Margin="0,16,0,0"><StackPanel Margin="0,10,0,0"><TextBlock Text="{Binding LocalIpText, StringFormat=Local address: {0}}" Foreground="{DynamicResource TextSecondaryBrush}" /><TextBlock Text="{Binding ListeningPort, StringFormat=Listening port: {0}}" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,5,0,0" /><TextBlock Text="{Binding LocalIdentityFingerprint, StringFormat=Device fingerprint: {0}}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,5,0,0" /></StackPanel></Expander>
                             </StackPanel>
                         </Border>
@@ -460,7 +445,7 @@
             <Border Style="{StaticResource CardStyle}" MaxWidth="500" Margin="12" HorizontalAlignment="Stretch" VerticalAlignment="Center" Padding="28" KeyboardNavigation.TabNavigation="Cycle">
                 <StackPanel><TextBlock Text="{Binding PairingSheetTitle}" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center" /><TextBlock Text="{Binding PairingSheetInstruction}" Foreground="{DynamicResource TextSecondaryBrush}" TextAlignment="Center" TextWrapping="Wrap" Margin="0,10,0,18" />
                     <StackPanel Visibility="{Binding IsHostedSendQrVisible, Converter={StaticResource BoolToVis}}" HorizontalAlignment="Center"><Border Background="White" CornerRadius="10" Padding="12"><Image x:Name="HostedQrImage" Source="{Binding PairingQrImage}" Width="260" Height="260" Stretch="Uniform" RenderOptions.BitmapScalingMode="NearestNeighbor" AutomationProperties.Name="QR code for receiving selected files" /></Border><TextBlock Text="This code expires automatically for your security." Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" HorizontalAlignment="Center" Margin="0,10,0,0" /></StackPanel>
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,16,0,0"><Button Style="{StaticResource SecondaryButtonStyle}" Content="Refresh code" Command="{Binding RefreshQrCommand}" Width="160" Margin="0,0,8,0" /><Button x:Name="CancelQuickShareButton" Style="{StaticResource SecondaryButtonStyle}" Content="Cancel quick share" Command="{Binding CancelPairModalCommand}" Width="160" /></StackPanel>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,16,0,0"><Button Style="{StaticResource SecondaryButtonStyle}" Content="Refresh code" Command="{Binding RefreshQrCommand}" Width="160" Margin="0,0,8,0" /><Button x:Name="CancelQuickShareButton" Style="{StaticResource SecondaryButtonStyle}" Content="Cancel QR share" Command="{Binding CancelPairModalCommand}" Width="160" /></StackPanel>
                 </StackPanel>
             </Border>
         </Border>
