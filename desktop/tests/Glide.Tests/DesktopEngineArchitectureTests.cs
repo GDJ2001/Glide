@@ -74,15 +74,17 @@ public sealed class DesktopEngineArchitectureTests
         Assert.Contains(
             "ConfirmPeerEnrollmentAsync",
             viewModel);
+        string consentViewModel = File.ReadAllText(Path.Combine(
+            root, "desktop", "windows", "Glide.Windows.UI", "ViewModels", "DesktopConsentViewModel.cs"));
         Assert.Contains(
-            "_trustEnrollmentTcs",
-            viewModel);
+            "_trustDecision",
+            consentViewModel);
         Assert.Contains(
             "AcceptTrustEnrollmentCommand",
-            viewModel);
+            consentViewModel);
         Assert.Contains(
             "RejectTrustEnrollmentCommand",
-            viewModel);
+            consentViewModel);
 
         Assert.Contains(
             "IsTrustEnrollmentModalVisible",
@@ -166,9 +168,9 @@ public sealed class DesktopEngineArchitectureTests
 
         Assert.Contains("IsPairModalVisible = false", viewModel);
         Assert.Contains("Confirm the device, then choose whether to remember it", viewModel);
-        Assert.Contains("IsTrustEnrollmentModalVisible, Converter={StaticResource BoolToVis}", view);
+        Assert.Contains("Consent.IsTrustEnrollmentModalVisible, Converter={StaticResource BoolToVis}", view);
         Assert.Contains("Panel.ZIndex=\"102\"", view);
-        Assert.Contains("IsRecipientConfirmationModalVisible, Converter={StaticResource BoolToVis}", view);
+        Assert.Contains("Consent.IsRecipientConfirmationModalVisible, Converter={StaticResource BoolToVis}", view);
         Assert.Contains("Panel.ZIndex=\"103\"", view);
     }
 

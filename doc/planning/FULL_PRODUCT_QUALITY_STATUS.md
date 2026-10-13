@@ -1,6 +1,6 @@
 # Glide full-product quality program
 
-Updated: 2026-10-13. This is the live handoff ledger for the cross-platform quality program. A checked source change is not a target-host build, installed UI inspection, physical transfer, or release approval.
+Updated: 2026-10-14. This is the live handoff ledger for the cross-platform quality program. A checked source change is not a target-host build, installed UI inspection, physical transfer, or release approval.
 
 ## Product contract
 
@@ -13,7 +13,7 @@ Updated: 2026-10-13. This is the live handoff ledger for the cross-platform qual
 
 | Area | Implemented or observed | Open acceptance gate |
 |---|---|---|
-| Windows | WPF Send/Receive/Activity/Pair/Settings wired. Activity history filtering has a dedicated view model and redundant Send chooser status copy was removed. The hidden-window UI harness now waits for progress animation and saved-device row realization; it passed five consecutive runs on this Windows host on 2026-10-13. | Installed current-build light/dark/high-contrast and scaling audit; current physical pair and transfer matrix; repeat the UI test in a clean environment. |
+| Windows | WPF Send/Receive/Activity/Pair/Settings wired. Activity history filtering and the three interactive consent prompts now have dedicated view models. Prompt ownership rejects an older decision without letting its cleanup hide a newer prompt; four WPF UI tests, including an actual offer-overlay binding check, passed on 2026-10-14. Redundant Send chooser status copy was removed. The hidden-window UI harness waits for progress animation and saved-device row realization. | Installed current-build light/dark/high-contrast and scaling audit; current physical pair and transfer matrix; repeat the UI test in a clean environment. |
 | Android | Compose app and service-owned transfer runtime are present. Pairing and trust tasks now propagate coroutine cancellation instead of showing a false failure. App, core, and LAN unit tests, app lint, and debug APK build passed on Windows on 2026-10-13. | Installed UI review, measured startup/jank/memory, current physical transfer matrix. No USB device was attached on 2026-10-13. |
 | Linux | Receive destination control moved to Settings. Activity history now has a dedicated view model and a distinct no-matches state; 23 focused Linux UI tests passed on Windows. A clean Linux-local snapshot of commit `5ace664` passed 358 desktop core tests and built the Avalonia app with zero warnings on Ubuntu 24.04 WSL on 2026-10-13. On 2026-10-14, the installed Ubuntu 26 VM showed Glide on Send in dark mode with no visible clipping at its current window size; screen evidence is [installed-send-2026-10-14.png](../evidence/linux-ui/installed-send-2026-10-14.png). | Confirm the installed package source commit, review every screen and theme at required sizes, and perform both physical transfer directions with hashes. The earlier screenshot showed an installer-media destination, a plausible but unproven cause of failed receive. |
 | macOS/iOS | Swift sources exist; no new Apple change in this program yet. | Target-host compilation, installed UI, and physical evidence. No Mac runner is connected and GitHub Actions must remain disabled. |

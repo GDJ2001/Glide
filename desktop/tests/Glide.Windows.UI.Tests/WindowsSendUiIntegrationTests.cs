@@ -21,6 +21,7 @@ public sealed class WindowsSendUiIntegrationTests
     public void ChoosingOneSendMethod_ControlsPairingAndSendVisibility()
     {
         Exception? failure = null;
+        string stage = "not started";
         var completed = new ManualResetEventSlim();
         var thread = new Thread(() =>
         {
@@ -53,8 +54,19 @@ public sealed class WindowsSendUiIntegrationTests
                 };
                 window.Show();
                 window.UpdateLayout();
+                stage = "window shown";
 
                 var viewModel = Assert.IsType<MainViewModel>(window.DataContext);
+                viewModel.Consent.IsOfferModalVisible = true;
+                stage = "offer overlay opened";
+                window.UpdateLayout();
+                var offerOverlay = Assert.IsType<Border>(window.FindName("OfferConsentOverlay"));
+                Assert.Equal(Visibility.Visible, offerOverlay.Visibility);
+                viewModel.Consent.IsOfferModalVisible = false;
+                window.UpdateLayout();
+                Assert.Equal(Visibility.Collapsed, offerOverlay.Visibility);
+                stage = "offer overlay closed";
+
                 string[] destinations = ["Send files", "Receive files", "Transfer activity", "Pair devices", "Settings"];
                 foreach (string destination in destinations)
                 {
@@ -107,6 +119,7 @@ public sealed class WindowsSendUiIntegrationTests
                 viewModel.TrustedDeviceCount = 3;
                 Assert.StartsWith("3 devices trusted", viewModel.TrustedDevicesSummary);
                 viewModel.CurrentTab = "Activity";
+                stage = "activity opened";
                 window.UpdateLayout();
                 var historyList = Assert.IsType<ListBox>(window.FindName("ActivityHistoryList"));
                 var activityPage = Assert.IsType<ScrollViewer>(window.FindName("ActivityPage"));
@@ -162,6 +175,7 @@ public sealed class WindowsSendUiIntegrationTests
                     $"The progress fill did not advance: initial={initialFillWidth}, current={indicator.ActualWidth}.");
                 viewModel.Transfer.ApplySnapshot(DesktopTransferSnapshot.Idle);
                 viewModel.CurrentTab = "Send";
+                stage = "send reopened";
                 viewModel.AddDroppedFiles([testFile]);
                 window.Dispatcher.Invoke(
                     () => { },
@@ -399,7 +413,7 @@ public sealed class WindowsSendUiIntegrationTests
 
         Assert.True(
             completed.Wait(TimeSpan.FromSeconds(30)),
-            "The WPF send-button test did not complete within 30 seconds.");
+            $"The WPF send-button test did not complete within 30 seconds (stage: {stage}).");
         thread.Join();
 
         if (failure is not null)

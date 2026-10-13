@@ -36,19 +36,6 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     private string _statusMessage = "Ready to share nearby.";
     private string _localIpText = "";
 
-    private bool _isOfferModalVisible;
-    private string _incomingOfferPeer = "";
-    private string _incomingOfferSummary = "";
-    private TaskCompletionSource<bool>? _offerConfirmationTcs;
-
-    private bool _isRecipientConfirmationModalVisible;
-    private string _recipientConfirmationPeerName = "";
-    private TaskCompletionSource<bool>? _recipientConfirmationTcs;
-
-    private bool _isTrustEnrollmentModalVisible;
-    private string _trustEnrollmentPeerName = "";
-    private string _trustEnrollmentFingerprint = "";
-    private TaskCompletionSource<bool>? _trustEnrollmentTcs;
     private DesktopPersistentTrustManager? _trustManager;
     private string _localIdentityFingerprint = "Unavailable";
     private int _trustedDeviceCount;
@@ -132,6 +119,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
 
     public ObservableCollection<TransferItemViewModel> SelectedFiles { get; } = [];
     public ActivityHistoryViewModel Activity { get; } = new();
+    public DesktopConsentViewModel Consent { get; } = new(RunOnUi);
     public ObservableCollection<TrustedDeviceViewModel> TrustedDevices { get; } = [];
     public IReadOnlyList<string> AppearanceOptions { get; } = ["System", "Light", "Dark"];
 
@@ -142,12 +130,6 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     public RelayCommand ClearFilesCommand { get; }
     public RelayCommand SendFilesCommand { get; }
     public RelayCommand ToggleListenerCommand { get; }
-    public RelayCommand AcceptOfferCommand { get; }
-    public RelayCommand RejectOfferCommand { get; }
-    public RelayCommand AcceptRecipientCommand { get; }
-    public RelayCommand RejectRecipientCommand { get; }
-    public RelayCommand AcceptTrustEnrollmentCommand { get; }
-    public RelayCommand RejectTrustEnrollmentCommand { get; }
     public RelayCommand BrowseReceiveFolderCommand { get; }
     public RelayCommand CancelTransferCommand { get; }
     public RelayCommand RetryTransferCommand { get; }
@@ -324,12 +306,6 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             () => _ = ExecuteSendFilesSafelyAsync(),
             () => IsSendActionVisible);
         ToggleListenerCommand = new RelayCommand(async () => await ToggleListenerAsync());
-        AcceptOfferCommand = new RelayCommand(() => _offerConfirmationTcs?.TrySetResult(true));
-        RejectOfferCommand = new RelayCommand(() => _offerConfirmationTcs?.TrySetResult(false));
-        AcceptRecipientCommand = new RelayCommand(() => _recipientConfirmationTcs?.TrySetResult(true));
-        RejectRecipientCommand = new RelayCommand(() => _recipientConfirmationTcs?.TrySetResult(false));
-        AcceptTrustEnrollmentCommand = new RelayCommand(() => _trustEnrollmentTcs?.TrySetResult(true));
-        RejectTrustEnrollmentCommand = new RelayCommand(() => _trustEnrollmentTcs?.TrySetResult(false));
         BrowseReceiveFolderCommand = new RelayCommand(ExecuteBrowseReceiveFolder);
         CancelTransferCommand = new RelayCommand(() =>
         {
@@ -725,42 +701,6 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         set => SetProperty(ref _localIpText, value);
     }
 
-    public bool IsOfferModalVisible
-    {
-        get => _isOfferModalVisible;
-        set => SetProperty(ref _isOfferModalVisible, value);
-    }
-
-    public string IncomingOfferPeer
-    {
-        get => _incomingOfferPeer;
-        set => SetProperty(ref _incomingOfferPeer, value);
-    }
-
-    public string IncomingOfferSummary
-    {
-        get => _incomingOfferSummary;
-        set => SetProperty(ref _incomingOfferSummary, value);
-    }
-
-    public bool IsTrustEnrollmentModalVisible
-    {
-        get => _isTrustEnrollmentModalVisible;
-        set => SetProperty(ref _isTrustEnrollmentModalVisible, value);
-    }
-
-    public string TrustEnrollmentPeerName
-    {
-        get => _trustEnrollmentPeerName;
-        set => SetProperty(ref _trustEnrollmentPeerName, value);
-    }
-
-    public string TrustEnrollmentFingerprint
-    {
-        get => _trustEnrollmentFingerprint;
-        set => SetProperty(ref _trustEnrollmentFingerprint, value);
-    }
-
     public string LocalIdentityFingerprint
     {
         get => _localIdentityFingerprint;
@@ -826,18 +766,6 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     {
         get => _pairInputUri;
         set => SetProperty(ref _pairInputUri, value);
-    }
-
-    public bool IsRecipientConfirmationModalVisible
-    {
-        get => _isRecipientConfirmationModalVisible;
-        set => SetProperty(ref _isRecipientConfirmationModalVisible, value);
-    }
-
-    public string RecipientConfirmationPeerName
-    {
-        get => _recipientConfirmationPeerName;
-        set => SetProperty(ref _recipientConfirmationPeerName, value);
     }
 
     public string PairingStatusText
@@ -1180,7 +1108,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             {
                 _transferStopwatch.Stop();
                 IsTransferActive = false;
-                IsOfferModalVisible = false;
+                Consent.IsOfferModalVisible = false;
                 _pairedInvitation = null;
             });
         }
@@ -1488,7 +1416,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                 {
                     _transferStopwatch.Stop();
                     IsTransferActive = false;
-                    IsOfferModalVisible = false;
+                    Consent.IsOfferModalVisible = false;
                     _hostedSendRequest = null;
                     IsPairModalVisible = false;
                     OnPropertyChanged(nameof(IsHostedSendQrVisible));
@@ -1559,7 +1487,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         {
             _transferStopwatch.Stop();
             IsTransferActive = false;
-            IsOfferModalVisible = false;
+            Consent.IsOfferModalVisible = false;
             // LAN invitations are short-lived bearer credentials and are consumed by a
             // connection attempt. Never present a stale invitation as ready for another send.
             _pairedInvitation = null;
@@ -1613,7 +1541,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             _pendingTrustedSend = false;
             _transferStopwatch.Stop();
             IsTransferActive = false;
-            IsOfferModalVisible = false;
+            Consent.IsOfferModalVisible = false;
             _activeTransferCts?.Dispose();
             _activeTransferCts = null;
             NotifySendState();
@@ -1694,78 +1622,24 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         DesktopOffer offer,
         CancellationToken cancellationToken)
     {
-        var confirmation =
-            new TaskCompletionSource<bool>(
-                TaskCreationOptions.RunContinuationsAsynchronously);
-
-        RunOnUi(() =>
-        {
-            _offerConfirmationTcs = confirmation;
-            IncomingOfferPeer = offer.PeerName;
-            IncomingOfferSummary =
-                $"{offer.Items.Count} item(s) • " +
-                $"{TransferItemViewModel.FormatSize(offer.TotalBytes)}";
-            TransferTitle =
-                $"Incoming transfer from {offer.PeerName}";
-            IsOfferModalVisible = true;
-        });
-
-        try
-        {
-            return await confirmation.Task.WaitAsync(
-                cancellationToken);
-        }
-        finally
-        {
-            RunOnUi(() =>
-            {
-                if (ReferenceEquals(
-                        _offerConfirmationTcs,
-                        confirmation))
-                {
-                    _offerConfirmationTcs = null;
-                }
-
-                IsOfferModalVisible = false;
-            });
-        }
+        RunOnUi(() => TransferTitle = $"Incoming transfer from {offer.PeerName}");
+        return await Consent.ConfirmOfferAsync(offer, cancellationToken);
     }
 
     public async Task<bool> ConfirmRecipientAsync(
         string peerName,
         CancellationToken cancellationToken)
     {
-        var confirmation = new TaskCompletionSource<bool>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
         RunOnUi(() =>
         {
-            _recipientConfirmationTcs?.TrySetResult(false);
-            _recipientConfirmationTcs = confirmation;
-            RecipientConfirmationPeerName = peerName;
             // The pairing sheet must not cover the next identity-enrolment
             // prompt. Leaving it open made a successful QR connection look
             // like an automatic cancellation: identity verification waited
             // for a confirmation that the user could not see.
             IsPairModalVisible = false;
             StatusMessage = $"{peerName} connected. Confirm the device, then choose whether to remember it.";
-            IsRecipientConfirmationModalVisible = true;
         });
-
-        try
-        {
-            return await confirmation.Task.WaitAsync(cancellationToken);
-        }
-        finally
-        {
-            RunOnUi(() =>
-            {
-                if (ReferenceEquals(_recipientConfirmationTcs, confirmation))
-                {
-                    _recipientConfirmationTcs = null;
-                }
-                IsRecipientConfirmationModalVisible = false;
-            });
-        }
+        return await Consent.ConfirmRecipientAsync(peerName, cancellationToken);
     }
 
     public async Task<bool> ConfirmPeerEnrollmentAsync(
@@ -1779,48 +1653,9 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             return false;
         }
 
-        var confirmation =
-            new TaskCompletionSource<bool>(
-                TaskCreationOptions.RunContinuationsAsynchronously);
-
-        RunOnUi(() =>
-        {
-            _trustEnrollmentTcs
-                ?.TrySetResult(false);
-            _trustEnrollmentTcs =
-                confirmation;
-            TrustEnrollmentPeerName =
-                peer.DisplayName;
-            TrustEnrollmentFingerprint =
-                FormatFingerprint(
-                    peer.FingerprintHex);
-            TransferTitle =
-                $"Verify identity for {peer.DisplayName}";
-            IsTrustEnrollmentModalVisible =
-                true;
-        });
-
-        try
-        {
-            return await confirmation.Task.WaitAsync(
-                cancellationToken);
-        }
-        finally
-        {
-            RunOnUi(() =>
-            {
-                if (ReferenceEquals(
-                        _trustEnrollmentTcs,
-                        confirmation))
-                {
-                    _trustEnrollmentTcs =
-                        null;
-                }
-
-                IsTrustEnrollmentModalVisible =
-                    false;
-            });
-        }
+        RunOnUi(() => TransferTitle = $"Verify identity for {peer.DisplayName}");
+        return await Consent.ConfirmTrustEnrollmentAsync(peer.DisplayName,
+            FormatFingerprint(peer.FingerprintHex), cancellationToken);
     }
 
     public void OnInvitationConsumed(DesktopTransferDirection direction)
