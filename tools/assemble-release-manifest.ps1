@@ -62,6 +62,29 @@ function Parse-BuildManifest {
     return $dict
 }
 
+function Assert-BuildManifestIdentity {
+    param(
+        [hashtable]$Manifest,
+        [string]$ManifestPath,
+        [string]$Platform
+    )
+
+    if ($Manifest.Count -eq 0) {
+        if ($AllowMissing -and -not (Test-Path (Split-Path -Parent $ManifestPath))) {
+            return
+        }
+        throw "$Platform artifact directory has no BUILD-MANIFEST.txt: $ManifestPath"
+    }
+    if (-not $Manifest.ContainsKey('source_commit') -or $Manifest['source_commit'] -ne $Commit) {
+        $actual = if ($Manifest.ContainsKey('source_commit')) { $Manifest['source_commit'] } else { '<missing>' }
+        throw "$Platform artifact source commit is $actual, expected $Commit. Rebuild this platform from the frozen commit."
+    }
+    if (-not $Manifest.ContainsKey('package_version') -or $Manifest['package_version'] -ne $Version) {
+        $actual = if ($Manifest.ContainsKey('package_version')) { $Manifest['package_version'] } else { '<missing>' }
+        throw "$Platform package version is $actual, expected $Version."
+    }
+}
+
 # 2. Collect and Register Artifacts
 $runnableArtifacts = [System.Collections.Generic.List[PSCustomObject]]::new()
 $testEvidenceArtifacts = [System.Collections.Generic.List[PSCustomObject]]::new()
@@ -142,6 +165,7 @@ Write-Host "`nAuditing and hashing platform artifacts..." -ForegroundColor Yello
 # --- A. Windows Artifacts ---
 $winManifestPath = Join-Path $repoRoot 'build\distributions\windows\BUILD-MANIFEST.txt'
 $winManifest = Parse-BuildManifest $winManifestPath
+Assert-BuildManifestIdentity $winManifest $winManifestPath 'Windows'
 $winToolchain = if ($winManifest.ContainsKey('dotnet_sdk') -and $winManifest.ContainsKey('nsis_version')) {
     ".NET $($winManifest['dotnet_sdk']), $($winManifest['nsis_version'])"
 } else {
@@ -178,6 +202,7 @@ Register-Artifact `
 # --- B. Android Artifacts ---
 $androidManifestPath = Join-Path $repoRoot 'build\distributions\android\BUILD-MANIFEST.txt'
 $androidManifest = Parse-BuildManifest $androidManifestPath
+Assert-BuildManifestIdentity $androidManifest $androidManifestPath 'Android'
 $androidToolchain = if ($androidManifest.ContainsKey('toolchain')) {
     $androidManifest['toolchain']
 } else {
@@ -251,6 +276,9 @@ $linuxRpm = if ($linuxDir) { Get-ChildItem -Path $linuxDir -Filter "glide-*-1.x8
 $linuxTar = if ($linuxDir) { Get-ChildItem -Path $linuxDir -Filter "glide-*-linux-x64.tar.gz" -ErrorAction SilentlyContinue | Select-Object -First 1 } else { $null }
 $linuxManifestPath = if ($linuxDir) { Join-Path $linuxDir 'BUILD-MANIFEST.txt' } else { '' }
 $linuxManifest = Parse-BuildManifest $linuxManifestPath
+if ($linuxDir) {
+    Assert-BuildManifestIdentity $linuxManifest $linuxManifestPath 'Linux'
+}
 $linuxToolchain = if ($linuxManifest.ContainsKey('dotnet_sdk') -and $linuxManifest.ContainsKey('rpm_version')) {
     ".NET $($linuxManifest['dotnet_sdk']), dpkg-deb 1.22.6, $($linuxManifest['rpm_version']), Ubuntu 24.04 WSL2"
 } else {
@@ -317,6 +345,9 @@ foreach ($ac in $appleCandidateDirs) {
 
 $macAppZip = if ($appleMacDir) { Get-ChildItem -Path $appleMacDir -Filter "Glide-macos-unsigned.zip" -ErrorAction SilentlyContinue | Select-Object -First 1 } else { $null }
 $macManifest = if ($appleMacDir) { Parse-BuildManifest (Join-Path $appleMacDir 'BUILD-MANIFEST.txt') } else { @{} }
+if ($macAppZip) {
+    Assert-BuildManifestIdentity $macManifest (Join-Path $appleMacDir 'BUILD-MANIFEST.txt') 'macOS'
+}
 $macToolchain = if ($macManifest.ContainsKey('toolchain')) { $macManifest['toolchain'] } else { 'Xcode 26.6 (17F113), Apple Swift 6.3.3, macOS 26.6.2' }
 $macSigning = if ($macManifest.ContainsKey('signing_status')) { $macManifest['signing_status'] } else { 'unsigned_development' }
 $macInstallability = if ($macManifest.ContainsKey('installability')) { $macManifest['installability'] } else { 'requires_local_development_or_signed_release_build' }
@@ -337,6 +368,9 @@ Register-Artifact `
 $iosSimZip = if ($appleIosDir) { Get-ChildItem -Path $appleIosDir -Filter "Glide-iOS-simulator-unsigned.zip" -ErrorAction SilentlyContinue | Select-Object -First 1 } else { $null }
 $iosDevZip = if ($appleIosDir) { Get-ChildItem -Path $appleIosDir -Filter "Glide-iOS-device-unsigned-archive.zip" -ErrorAction SilentlyContinue | Select-Object -First 1 } else { $null }
 $iosManifest = if ($appleIosDir) { Parse-BuildManifest (Join-Path $appleIosDir 'BUILD-MANIFEST.txt') } else { @{} }
+if ($iosSimZip -or $iosDevZip) {
+    Assert-BuildManifestIdentity $iosManifest (Join-Path $appleIosDir 'BUILD-MANIFEST.txt') 'iOS/iPadOS'
+}
 $iosToolchain = if ($iosManifest.ContainsKey('toolchain')) { $iosManifest['toolchain'] } else { 'Xcode 26.6 (17F113), Apple Swift 6.3.3, iOS 26.5 Simulator' }
 $iosSigning = if ($iosManifest.ContainsKey('signing_status')) { $iosManifest['signing_status'] } else { 'unsigned_development' }
 
@@ -482,22 +516,21 @@ foreach ($art in $testEvidenceArtifacts) {
 [void]$sb.AppendLine()
 [void]$sb.AppendLine("## 3. Platform Installation and Execution Gate Status")
 [void]$sb.AppendLine()
-[void]$sb.AppendLine("| Platform | Artifact | Test Host / Environment | Verification Level | Gate Status |")
-[void]$sb.AppendLine("|---|---|---|---|:---:|")
-[void]$sb.AppendLine("| **Windows 11** | ${bt}Glide-Setup-$Version-win-x64.exe$bt | Windows 11 Pro 24H2 physical host | Silent fresh install, launch, single-instance activation, uninstall, retained data in `%LOCALAPPDATA%\\Glide` | **PASSED** |")
-[void]$sb.AppendLine("| **Android** | ${bt}app-debug.apk$bt / ${bt}app-debug.aab$bt | Android SDK 37 (API 37), Java 26 | APK Signature Scheme v2 verified, 4-byte zipaligned verified; device awaiting physical LAN connection | **BUILD QUALIFIED** |")
-[void]$sb.AppendLine("| **Linux (Ubuntu)** | ${bt}glide_1.0.0_amd64.deb$bt | Ubuntu 24.04 LTS (WSL 2 VM) | `dpkg -i` install, dependencies configured, `glide --help`, `glide identity`, `dpkg -r` uninstall, retained state in `~/.config/glide` | **VM QUALIFIED** |")
-[void]$sb.AppendLine("| **Linux (Fedora/RPM)** | ${bt}glide-1.0.0-1.x86_64.rpm$bt | RPM 4.18.2, x86_64 | `rpmbuild -bb` verified, `cmp` byte-comparison against compiler output passed, `rpm -qip` package metadata verified | **PACKAGE QUALIFIED** |")
-[void]$sb.AppendLine("| **Apple (macOS)** | ${bt}Glide-macos-unsigned.zip$bt | GitHub Actions macOS 26.6.2 Runner | Clean compilation, 91 unit tests + UI smoke passed, authenticated engine dispatch verified | **CI BACKEND QUALIFIED** |")
-[void]$sb.AppendLine("| **Apple (iOS/iPadOS)** | ${bt}Glide-iOS-simulator-unsigned.zip$bt | iPhone & iPad Simulators (iOS 26.5) | App Group `group.dev.glide.shared` wired, foreground listener and session dispatch verified, 91 tests passed | **SIMULATOR QUALIFIED** |")
+[void]$sb.AppendLine("This manifest inventories files and hashes. It cannot establish installation, execution, UI, or physical-transfer results. Record those gates separately with the exact artifact hash, source commit, host, test log, and date; an earlier run does not qualify this build.")
+[void]$sb.AppendLine()
+[void]$sb.AppendLine("| Platform | Installed UI | Physical transfer |")
+[void]$sb.AppendLine("|---|:---:|:---:|")
+foreach ($platform in @('Windows', 'Android', 'Linux', 'macOS', 'iOS/iPadOS')) {
+    [void]$sb.AppendLine("| **$platform** | **NOT VERIFIED BY THIS MANIFEST** | **NOT VERIFIED BY THIS MANIFEST** |")
+}
 [void]$sb.AppendLine()
 [void]$sb.AppendLine("---")
 [void]$sb.AppendLine()
 [void]$sb.AppendLine("## 4. Disclaimers & Governance Rules")
 [void]$sb.AppendLine()
-[void]$sb.AppendLine("1. **Independent-Device Linux**: Independent physical Linux interoperability remains **OPEN / BLOCKED** until a dedicated physical Linux machine joins the LAN. Linux results reflect VM execution.")
-[void]$sb.AppendLine("2. **Apple Physical Device**: Simulator results validate protocol logic, framing, framing sequence, quarantine staging, and cryptographic pairing; physical Apple devices require registered provisioning profiles for ${bt}group.dev.glide.shared$bt and device deployment.")
-[void]$sb.AppendLine("3. **No Web Gateways**: Retired browser-based transfer endpoints are completely absent in accordance with the native peer-to-peer security architecture.")
+[void]$sb.AppendLine("1. **Linux and Apple physical gates**: Package presence and hashes do not establish independent-device interoperability or installed UI quality.")
+[void]$sb.AppendLine("2. **Apple device installation**: An unsigned archive is not an installable iPhone/iPad release. Physical deployment requires suitable signing and provisioning.")
+[void]$sb.AppendLine("3. **Native-only scope**: Browser file transfer is retired; verify the source and package contents separately before making an absence claim.")
 
 $catalogText = $sb.ToString()
 
@@ -531,4 +564,4 @@ try {
     throw "Generated RELEASE_MANIFEST.json failed JSON parse validation: $_"
 }
 
-Write-Host "`nAll release artifacts validated successfully against commit $Commit." -ForegroundColor Green
+Write-Host "`nArtifact inventory and hashes assembled. Installation and physical gates require separate evidence." -ForegroundColor Yellow

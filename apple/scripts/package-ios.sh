@@ -17,6 +17,7 @@ xcode_version="$(xcodebuild -version)"
   echo "Xcode 26.6 is required for the baseline build." >&2; exit 2;
 }
 commit="$(git -C "$repo" rev-parse HEAD)"
+version="${GLIDE_PACKAGE_VERSION:-1.0.0}"
 run_id="$(date -u +%Y%m%dT%H%M%SZ)"
 out="$repo/build/distributions/runs/${commit}-${run_id}/apple/ios"
 derived="$repo/build/apple-derived/${commit}-${run_id}"
@@ -110,6 +111,7 @@ if [[ "$ipa_artifact" != none ]]; then hash_files+=("$ipa_artifact"); fi
 cat > "$out/BUILD-MANIFEST.txt" <<EOF
 source_commit=$commit
 build_utc=$run_id
+package_version=$version
 toolchain=$(printf '%s' "$xcode_version" | tr '\n' ' ')
 simulator_artifact=Glide-iOS-simulator-unsigned.zip
 device_artifact=Glide-iOS-device-unsigned-archive.zip
