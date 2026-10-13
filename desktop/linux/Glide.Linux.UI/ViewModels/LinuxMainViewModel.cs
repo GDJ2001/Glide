@@ -63,8 +63,6 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
     private int _disposeState;
     private LinuxPage _activePage = LinuxPage.Send;
     private SendMethod _selectedSendMethod = SendMethod.QuickShareQr;
-    private ActivityFilter _selectedActivityFilter = ActivityFilter.All;
-    private string _activitySearchQuery = "";
     private AppThemePreference _currentThemePreference = AppThemePreference.System;
 
     private string _deviceName = Environment.MachineName;
@@ -124,7 +122,8 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
 
     public ObservableCollection<LinuxTransferItemViewModel> StagedItems { get; } = [];
     public ObservableCollection<LinuxDiscoveredPeerViewModel> DiscoveredPeers { get; } = [];
-    public ObservableCollection<LinuxHistoryItemViewModel> HistoryItems { get; } = [];
+    public LinuxActivityHistoryViewModel History { get; } = new();
+    public ObservableCollection<LinuxHistoryItemViewModel> HistoryItems => History.Items;
     public ObservableCollection<DesktopTrustedPeer> TrustedPeers { get; } = [];
     public ObservableCollection<LinuxSavedDeviceRow> SavedDeviceRows { get; } = [];
 
@@ -304,49 +303,17 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
 
     public ActivityFilter SelectedActivityFilter
     {
-        get => _selectedActivityFilter;
-        set
-        {
-            if (SetProperty(ref _selectedActivityFilter, value))
-            {
-                OnPropertyChanged(nameof(FilteredHistoryItems));
-            }
-        }
+        get => History.SelectedFilter;
+        set => History.SelectedFilter = value;
     }
 
     public string ActivitySearchQuery
     {
-        get => _activitySearchQuery;
-        set
-        {
-            if (SetProperty(ref _activitySearchQuery, value))
-            {
-                OnPropertyChanged(nameof(FilteredHistoryItems));
-            }
-        }
+        get => History.SearchQuery;
+        set => History.SearchQuery = value;
     }
 
-    public IEnumerable<LinuxHistoryItemViewModel> FilteredHistoryItems
-    {
-        get
-        {
-            var query = HistoryItems.AsEnumerable();
-            if (SelectedActivityFilter == ActivityFilter.Sent)
-                query = query.Where(h => string.Equals(h.Direction, "Send", StringComparison.OrdinalIgnoreCase) || string.Equals(h.Direction, "Sent", StringComparison.OrdinalIgnoreCase));
-            else if (SelectedActivityFilter == ActivityFilter.Received)
-                query = query.Where(h => string.Equals(h.Direction, "Receive", StringComparison.OrdinalIgnoreCase) || string.Equals(h.Direction, "Received", StringComparison.OrdinalIgnoreCase));
-
-            if (!string.IsNullOrWhiteSpace(ActivitySearchQuery))
-            {
-                string search = ActivitySearchQuery.Trim();
-                query = query.Where(h =>
-                    (h.PeerName?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                    (h.ItemName?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false));
-            }
-
-            return query.ToList();
-        }
-    }
+    public IEnumerable<LinuxHistoryItemViewModel> FilteredHistoryItems => History.FilteredItems;
 
     public string AppVersionText => typeof(LinuxMainViewModel).Assembly.GetName().Version?.ToString(3) ?? "1.0.0";
 
@@ -619,8 +586,6 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
         {
             // Ignore if platform does not support network change events
         }
-
-        HistoryItems.CollectionChanged += (_, _) => OnPropertyChanged(nameof(FilteredHistoryItems));
 
         DismissActiveModalCommand = new RelayCommand(() =>
         {

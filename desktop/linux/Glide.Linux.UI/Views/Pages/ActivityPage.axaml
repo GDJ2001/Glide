@@ -95,7 +95,7 @@
           <Grid x:Name="HistoryHeaderGrid" ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
             <TextBlock Grid.Column="0" Text="Verified history" Classes="h3" VerticalAlignment="Center" />
             <StackPanel x:Name="HistoryHeaderActions" Grid.Column="1" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
-              <TextBox Text="{Binding ActivitySearchQuery}" Width="170" PlaceholderText="Search history" AutomationProperties.Name="Search transfer history" />
+              <TextBox Text="{Binding History.SearchQuery}" Width="170" PlaceholderText="Search history" AutomationProperties.Name="Search transfer history" />
               <!-- Filter Buttons: All, Sent, Received -->
               <Button Content="All" Command="{Binding SelectActivityFilterCommand}" CommandParameter="All"
                       Classes="method-tab"
@@ -112,7 +112,7 @@
           <!-- History Items List -->
           <ScrollViewer MaxHeight="380" VerticalScrollBarVisibility="Auto">
             <StackPanel>
-              <ItemsControl ItemsSource="{Binding FilteredHistoryItems}">
+              <ItemsControl ItemsSource="{Binding History.FilteredItems}">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate>
                     <Border BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="0,0,0,1"
@@ -153,12 +153,12 @@
               </ItemsControl>
 
               <!-- Empty State -->
-              <StackPanel IsVisible="{Binding !HistoryItems.Count}"
+              <StackPanel IsVisible="{Binding !History.HasResults}"
                           Spacing="8" HorizontalAlignment="Center" Margin="24">
                 <PathIcon Data="{StaticResource IconActivity}" Width="36" Height="36"
                           Foreground="{DynamicResource TextMutedBrush}" HorizontalAlignment="Center" />
-                <TextBlock Text="No transfer history yet" Classes="h3" HorizontalAlignment="Center" />
-                <TextBlock Text="Verified transfers appear here."
+                <TextBlock Text="{Binding History.EmptyTitle}" Classes="h3" HorizontalAlignment="Center" />
+                <TextBlock Text="{Binding History.EmptyDescription}"
                            Classes="muted" HorizontalAlignment="Center" />
               </StackPanel>
             </StackPanel>

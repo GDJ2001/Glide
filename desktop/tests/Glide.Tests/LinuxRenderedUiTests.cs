@@ -362,6 +362,14 @@ public sealed class LinuxRenderedUiTests
         vm.ActivitySearchQuery = "report";
         Assert.Single(vm.FilteredHistoryItems);
         Assert.Equal("Pixel 8", vm.FilteredHistoryItems.First().PeerName);
+
+        vm.ActivitySearchQuery = "not-in-history";
+        Assert.Empty(vm.FilteredHistoryItems);
+        Assert.False(vm.History.HasResults);
+        Assert.Equal("No matching transfers", vm.History.EmptyTitle);
+
+        vm.HistoryItems.Clear();
+        Assert.Equal("No transfer history yet", vm.History.EmptyTitle);
     }
 
     [Fact]
