@@ -29,7 +29,7 @@ Write-Host "=================================================================" -
 $currentCommit = (git -C $repoRoot rev-parse HEAD).Trim()
 if ([string]::IsNullOrWhiteSpace($Commit)) {
     $Commit = $currentCommit
-} elseif ($currentCommit -ne $Commit -and -not $AllowDirty) {
+} elseif ($currentCommit -ne $Commit) {
     throw "Working tree HEAD ($currentCommit) does not match expected frozen commit ($Commit)"
 }
 
@@ -121,6 +121,26 @@ function Register-Artifact {
 
     $item = Get-Item $resolvedPath
     $hash = (Get-FileHash -Algorithm SHA256 -Path $resolvedPath).Hash.ToLowerInvariant()
+
+    if ($IsRunnable) {
+        $declaredHashes = @(
+            Get-ChildItem -LiteralPath $item.DirectoryName -Filter 'SHA256SUMS*.txt' -File -ErrorAction SilentlyContinue |
+                ForEach-Object {
+                    Get-Content -LiteralPath $_.FullName | ForEach-Object {
+                        if ($_ -match '^([0-9a-fA-F]{64})\s+\*?(.+)$' -and
+                            $matches[2].Trim() -eq $item.Name) {
+                            $matches[1].ToLowerInvariant()
+                        }
+                    }
+                } | Select-Object -Unique
+        )
+        if ($declaredHashes.Count -ne 1) {
+            throw "Expected exactly one declared SHA-256 for $($item.Name) beside the package; found $($declaredHashes.Count)."
+        }
+        if ($hash -ne $declaredHashes[0]) {
+            throw "Package checksum mismatch for $($item.Name): declared $($declaredHashes[0]), actual $hash."
+        }
+    }
 
     if ($ExpectedSha256 -and ($hash -ne $ExpectedSha256.ToLowerInvariant())) {
         throw "SHA-256 mismatch for $FilePath! Expected: $ExpectedSha256, Actual: $hash"
