@@ -606,6 +606,38 @@ public sealed class DesktopTransferEngineTests : IDisposable
     }
 
     [Fact]
+    public async Task SharedEngine_DestinationVolumeFull_RejectsBeforeAskingForConsent()
+    {
+        string sourcePath = Path.Combine(_sourceDir, "destination-full.bin");
+        await File.WriteAllBytesAsync(sourcePath, RandomNumberGenerator.GetBytes(4096));
+
+        using var listener = new TlsSocketListener(0);
+        var authority = new LanInvitationAuthority();
+        var invitation = authority.Publish(CreateInvitation(listener));
+        var receiverInteraction = new RecordingInteraction();
+        var receiverStore = new QuarantineStagingStore(_stagingDir, _destinationDir,
+            destinationFreeSpaceProvider: () => 0);
+        Task<DesktopTransferResult> receiverTask = Task.Run(async () =>
+        {
+            await using var connection = await listener.AcceptConnectionAsync();
+            return await new DesktopTransferEngine().ReceiveAsync(connection,
+                new DesktopReceiveRequest(receiverStore, authority, "Storage-Receiver"),
+                receiverInteraction);
+        });
+
+        DesktopTransferResult senderResult = await new DesktopTransferEngine().SendAsync(
+            new DesktopSendRequest("127.0.0.1", listener.BoundPort,
+                [new DesktopTransferFile(sourcePath)], invitation, "Storage-Sender"),
+            new RecordingInteraction());
+        DesktopTransferResult receiverResult = await receiverTask.WaitAsync(TimeSpan.FromSeconds(15));
+
+        Assert.Equal(TransferErrorCategory.Storage, senderResult.ErrorCategory);
+        Assert.Equal(TransferErrorCategory.Storage, receiverResult.ErrorCategory);
+        Assert.Null(receiverInteraction.LastOfferAuthenticatedFingerprint);
+        Assert.Empty(Directory.GetFiles(_destinationDir, "*", SearchOption.AllDirectories));
+    }
+
+    [Fact]
     public async Task SharedEngine_UnpairedSend_FailsClosedBeforeConnecting()
     {
         string sourcePath = Path.Combine(_sourceDir, "unpaired.bin");

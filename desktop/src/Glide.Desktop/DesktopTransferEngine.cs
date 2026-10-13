@@ -1783,7 +1783,9 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                     $"Offer declared {totalBytes} bytes but item metadata totals {offeredBytes}.");
             }
 
-            bool hasStorage = request.StagingStore.GetAvailableFreeSpaceBytes() >= totalBytes;
+            bool hasStorage =
+                request.StagingStore.GetAvailableFreeSpaceBytes() >= totalBytes &&
+                request.StagingStore.GetDestinationAvailableFreeSpaceBytes() >= totalBytes;
             if (hasStorage)
             {
                 try

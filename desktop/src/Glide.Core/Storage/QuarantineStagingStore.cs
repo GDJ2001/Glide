@@ -13,12 +13,14 @@ public sealed class QuarantineStagingStore
     private readonly string _stagingRoot;
     private readonly string _destinationRoot;
     private readonly Func<long>? _freeSpaceProvider;
+    private readonly Func<long>? _destinationFreeSpaceProvider;
     private int _commitCleanupAttempted;
 
     public string StagingRoot => _stagingRoot;
     public string DestinationRoot => _destinationRoot;
 
-    public QuarantineStagingStore(string? stagingRoot = null, string? destinationRoot = null, Func<long>? freeSpaceProvider = null)
+    public QuarantineStagingStore(string? stagingRoot = null, string? destinationRoot = null,
+        Func<long>? freeSpaceProvider = null, Func<long>? destinationFreeSpaceProvider = null)
     {
         _stagingRoot = Path.GetFullPath(stagingRoot ?? GetDefaultStagingRoot());
 
@@ -27,6 +29,7 @@ public sealed class QuarantineStagingStore
             "Downloads");
 
         _freeSpaceProvider = freeSpaceProvider;
+        _destinationFreeSpaceProvider = destinationFreeSpaceProvider;
     }
 
     private static string GetDefaultStagingRoot()
@@ -47,25 +50,44 @@ public sealed class QuarantineStagingStore
 
     public long GetAvailableFreeSpaceBytes()
     {
-        if (_freeSpaceProvider != null)
-        {
-            return _freeSpaceProvider();
-        }
+        if (_freeSpaceProvider != null) return _freeSpaceProvider();
+        return GetAvailableFreeSpaceForPath(_stagingRoot);
+    }
 
+    public long GetDestinationAvailableFreeSpaceBytes()
+    {
+        if (_destinationFreeSpaceProvider != null) return _destinationFreeSpaceProvider();
+        return GetAvailableFreeSpaceForPath(_destinationRoot);
+    }
+
+    private static long GetAvailableFreeSpaceForPath(string path)
+    {
         try
         {
-            string root =
-                Path.GetPathRoot(_stagingRoot)
-                ?? (OperatingSystem.IsWindows()
-                    ? Path.GetPathRoot(Environment.SystemDirectory) ?? "C:\\"
-                    : "/");
-            return new DriveInfo(root).AvailableFreeSpace;
+            string fullPath = Path.GetFullPath(path);
+            StringComparison comparison = OperatingSystem.IsWindows()
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal;
+            DriveInfo? volume = DriveInfo.GetDrives()
+                .Where(drive => IsWithinVolume(fullPath, drive.RootDirectory.FullName, comparison))
+                .OrderByDescending(drive => drive.RootDirectory.FullName.Length)
+                .FirstOrDefault();
+            return volume?.AvailableFreeSpace ?? 0;
         }
         catch
         {
             // Unknown capacity is not evidence of enough capacity.
             return 0;
         }
+    }
+
+    private static bool IsWithinVolume(string path, string volumeRoot, StringComparison comparison)
+    {
+        string root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(volumeRoot));
+        if (root.Equals(Path.GetPathRoot(root), comparison))
+            return path.StartsWith(root, comparison);
+        return path.Equals(root, comparison) ||
+            path.StartsWith(root + Path.DirectorySeparatorChar, comparison);
     }
 
     /// <summary>
