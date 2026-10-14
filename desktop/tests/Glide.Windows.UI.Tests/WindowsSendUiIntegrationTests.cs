@@ -53,7 +53,10 @@ public sealed class WindowsSendUiIntegrationTests
                     Opacity = 1
                 };
                 window.Show();
-                window.UpdateLayout();
+                PumpDispatcherUntil(() => window.IsLoaded && window.ActualWidth > 0 &&
+                    window.ActualHeight > 0, TimeSpan.FromSeconds(5), window);
+                Assert.True(window.IsLoaded && window.ActualWidth > 0 && window.ActualHeight > 0,
+                    "The WPF test window did not complete its first layout.");
                 stage = "window shown";
 
                 var viewModel = Assert.IsType<MainViewModel>(window.DataContext);
@@ -173,7 +176,10 @@ public sealed class WindowsSendUiIntegrationTests
                     new DesktopTransferProgress(DesktopTransferDirection.Send,
                         "Test desktop", "large-file.bin", 6, 65),
                     1, "1 B/s", "6 B / 65 B"));
-                window.UpdateLayout();
+                PumpDispatcherUntil(() => progressBar.Visibility == Visibility.Visible &&
+                    progressBar.ActualWidth > 0, TimeSpan.FromSeconds(3), window);
+                Assert.True(progressBar.ActualWidth > 0,
+                    "The Activity progress bar was not measured in the test window.");
                 progressBar.ApplyTemplate();
                 window.Dispatcher.Invoke(() => { }, DispatcherPriority.Background);
                 window.UpdateLayout();
@@ -340,11 +346,19 @@ public sealed class WindowsSendUiIntegrationTests
                     new string('b', 64), "00", "ubuntu with a deliberately long device name for layout", 1, 1)));
                 viewModel.TrustedDevices.Add(new TrustedDeviceViewModel(new DesktopTrustedPeer(
                     new string('c', 64), "00", "ubuntu", 1, 1)));
-                window.UpdateLayout();
                 var pickerScroll = Assert.IsType<ScrollViewer>(window.FindName("TrustedDevicesScroll"));
-                PumpDispatcherUntil(() => Descendants(pickerScroll).OfType<Button>().Count(button =>
-                    AutomationProperties.GetName(button)?.StartsWith("Connect to ") == true) >= 2,
-                    TimeSpan.FromSeconds(2), pickerScroll);
+                PumpDispatcherUntil(() => pickerScroll.Visibility == Visibility.Visible &&
+                    pickerScroll.ActualWidth > 0 && pickerScroll.ActualHeight > 0,
+                    TimeSpan.FromSeconds(3), window);
+                Assert.True(pickerScroll.ActualWidth > 0 && pickerScroll.ActualHeight > 0,
+                    "The saved-device picker was not measured in the test window.");
+                PumpDispatcherUntil(() =>
+                {
+                    string[] names = Descendants(pickerScroll).OfType<Button>()
+                        .Select(AutomationProperties.GetName).ToArray();
+                    return names.Any(name => name?.Contains("bbbbbbbb") == true) &&
+                        names.Any(name => name?.Contains("cccccccc") == true);
+                }, TimeSpan.FromSeconds(3), window);
                 var pickerRows = Descendants(pickerScroll)
                     .OfType<Button>().Where(button =>
                         AutomationProperties.GetName(button)?.StartsWith("Connect to ") == true).ToList();
@@ -481,7 +495,11 @@ public sealed class WindowsSendUiIntegrationTests
                 DispatcherPriority.Background,
                 new Action(() => frame.Continue = false));
             Dispatcher.PushFrame(frame);
-            visualToUpdate?.UpdateLayout();
+            if (visualToUpdate is not null)
+            {
+                Window.GetWindow(visualToUpdate)?.UpdateLayout();
+                visualToUpdate.UpdateLayout();
+            }
             Thread.Sleep(20);
         }
     }

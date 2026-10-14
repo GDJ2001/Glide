@@ -28,7 +28,6 @@
         <FontFamily x:Key="AppFont">Segoe UI Variable, Segoe UI, Arial</FontFamily>
 
         <BooleanToVisibilityConverter x:Key="BoolToVis" />
-        <common:ProgressWidthConverter x:Key="ProgressWidthConverter" />
 
         <Style TargetType="Window">
             <Setter Property="FontFamily" Value="{StaticResource AppFont}" />
@@ -329,7 +328,10 @@
                             <Grid x:Name="ProgressTrack">
                                 <Rectangle x:Name="ProgressFill" Fill="{TemplateBinding Foreground}" HorizontalAlignment="Left" RadiusX="4" RadiusY="4">
                                     <Rectangle.Width>
-                                        <MultiBinding Converter="{StaticResource ProgressWidthConverter}">
+                                        <MultiBinding>
+                                            <MultiBinding.Converter>
+                                                <common:ProgressWidthConverter />
+                                            </MultiBinding.Converter>
                                             <Binding Path="Value" RelativeSource="{RelativeSource TemplatedParent}" />
                                             <Binding Path="Maximum" RelativeSource="{RelativeSource TemplatedParent}" />
                                             <Binding Path="ActualWidth" ElementName="ProgressTrack" />
