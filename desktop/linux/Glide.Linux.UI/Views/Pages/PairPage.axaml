@@ -5,6 +5,11 @@
              x:DataType="vm:LinuxMainViewModel">
   <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
     <StackPanel Spacing="16" Margin="0,0,8,0">
+      <StackPanel Spacing="4">
+        <TextBlock Text="Pair devices" Classes="h1" />
+        <TextBlock Text="Connect with another Glide device." Classes="secondary" TextWrapping="Wrap" />
+      </StackPanel>
+
       <Border Classes="card">
         <StackPanel Spacing="14">
           <TextBlock Text="Pair devices" Classes="h2" />
@@ -135,8 +140,14 @@
           <ItemsControl ItemsSource="{Binding TrustedPeers}" AutomationProperties.Name="Paired devices">
             <ItemsControl.ItemTemplate>
               <DataTemplate>
-                <TextBlock Text="{Binding DisplayName}" ToolTip.Tip="{Binding DisplayName}"
-                           TextTrimming="CharacterEllipsis" Margin="0,4" />
+                <Grid ColumnDefinitions="*,Auto" Margin="0,4">
+                  <TextBlock Grid.Column="0" Text="{Binding DisplayName}" ToolTip.Tip="{Binding DisplayName}"
+                             TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                  <Button Grid.Column="1" Content="Remove" Classes="secondary"
+                          Command="{Binding $parent[ItemsControl].DataContext.RevokeTrustedPeerCommand}"
+                          CommandParameter="{Binding}" Margin="12,0,0,0"
+                          AutomationProperties.Name="Remove paired device" />
+                </Grid>
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>

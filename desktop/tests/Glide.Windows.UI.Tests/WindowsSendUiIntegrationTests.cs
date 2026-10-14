@@ -134,6 +134,27 @@ public sealed class WindowsSendUiIntegrationTests
                 viewModel.Activity.Entries.Add(historyEntry);
                 viewModel.Activity.SearchText = uniqueHistoryName;
                 Assert.Contains(historyEntry, viewModel.Activity.Items.Cast<HistoryItemViewModel>());
+                historyList.ScrollIntoView(historyEntry);
+                window.Dispatcher.Invoke(() => { }, DispatcherPriority.Background);
+                window.UpdateLayout();
+                string originalActivityAppearance = viewModel.AppearanceMode;
+                try
+                {
+                    viewModel.AppearanceMode = "Dark";
+                    window.UpdateLayout();
+                    Color primary = Assert.IsType<SolidColorBrush>(application.Resources["TextPrimaryBrush"]).Color;
+                    Color secondary = Assert.IsType<SolidColorBrush>(application.Resources["TextSecondaryBrush"]).Color;
+                    var historyText = Descendants(historyList).OfType<TextBlock>().ToArray();
+                    TextBlock peer = Assert.Single(historyText, text => text.Text == historyEntry.PeerName);
+                    TextBlock file = Assert.Single(historyText, text => text.Text == historyEntry.ItemName);
+                    Assert.Equal(primary, Assert.IsType<SolidColorBrush>(peer.Foreground).Color);
+                    Assert.Equal(secondary, Assert.IsType<SolidColorBrush>(file.Foreground).Color);
+                    Assert.True(primary.R > 200 && secondary.R > 150);
+                }
+                finally
+                {
+                    viewModel.AppearanceMode = originalActivityAppearance;
+                }
                 viewModel.Activity.Filter = "Received";
                 Assert.DoesNotContain(historyEntry, viewModel.Activity.Items.Cast<HistoryItemViewModel>());
                 viewModel.Activity.Filter = "All";

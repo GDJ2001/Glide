@@ -781,13 +781,15 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
             _stateStore.ClearHistory();
             HistoryItems.Clear();
         });
-        RevokeTrustedPeerCommand = new RelayCommand(() =>
+        RevokeTrustedPeerCommand = new RelayCommand(parameter =>
         {
-            if (SelectedTrustedPeer == null || _trustManager == null) return;
-            string fingerprint = SelectedTrustedPeer.FingerprintHex;
+            DesktopTrustedPeer? peer = parameter as DesktopTrustedPeer ?? SelectedTrustedPeer;
+            if (peer == null || _trustManager == null) return;
+            string fingerprint = peer.FingerprintHex;
             if (_trustManager.RevokePeer(fingerprint))
             {
-                SelectedTrustedPeer = null;
+                if (SelectedTrustedPeer?.FingerprintHex == fingerprint)
+                    SelectedTrustedPeer = null;
                 RefreshTrustedPeers();
                 StatusMessage = "Saved device removed. A new authenticated pairing is required.";
             }

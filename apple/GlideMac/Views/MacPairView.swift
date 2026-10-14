@@ -255,9 +255,9 @@ public struct MacPairView: View {
                                     .lineLimit(1)
                                     .help(peer.displayName)
                                 Spacer()
-                                Text("Paired")
-                                    .font(.caption)
-                                    .foregroundColor(.green)
+                                Button("Remove") { viewModel.revokeTrustedPeer(peer) }
+                                    .buttonStyle(.bordered)
+                                    .accessibilityLabel("Remove \(peer.displayName) from paired devices")
                             }
                             .padding(.vertical, 4)
                         }

@@ -161,6 +161,9 @@ public final class MacTransferViewModel: ObservableObject {
 
     public func revokeTrustedPeer(_ peer: PersistentTrustedPeer) {
         try? engine.trustStore.revokePeer(fingerprintHex: peer.fingerprintHex)
+        if selectedTrustedPeer?.fingerprintHex == peer.fingerprintHex {
+            selectedTrustedPeer = nil
+        }
         refreshTrustedPeers()
     }
 
