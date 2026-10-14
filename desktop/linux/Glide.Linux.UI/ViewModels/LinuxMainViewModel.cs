@@ -69,7 +69,7 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
     private string _downloadDirectory = LinuxEnvironment.ResolveDownloadsDirectory();
     private int _listeningPort = LanDiscoveryConstants.DefaultPort;
     private bool _isListening = false;
-    private string _statusMessage = "Ready to share files nearby.";
+    private string _statusMessage = "Turn on receiving to accept files.";
 
     // Active transfer properties
     private bool _isTransferActive = false;
