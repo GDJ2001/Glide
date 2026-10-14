@@ -5,109 +5,58 @@
              x:DataType="vm:LinuxMainViewModel">
 
   <ScrollViewer VerticalScrollBarVisibility="Auto">
-    <StackPanel Spacing="20" Margin="0,0,8,0">
+    <StackPanel Spacing="16" Margin="0,0,8,0">
 
       <!-- Header -->
       <StackPanel Spacing="4">
         <TextBlock Text="Receive" Classes="h1" />
-        <TextBlock Text="Accept incoming file transfers directly over your local network." Classes="secondary" />
+        <TextBlock Text="Make this computer available to nearby Glide devices. You approve each incoming transfer." Classes="secondary" TextWrapping="Wrap" />
       </StackPanel>
 
-      <!-- Primary Receiver Status & Sharing Card (LUI-07) -->
+      <!-- Receiving control follows the same order as Windows. -->
       <Border Classes="card">
-        <StackPanel Spacing="18">
-
-          <!-- Listener Header & Toggle -->
-          <Grid ColumnDefinitions="*,Auto">
-            <StackPanel Grid.Column="0" Spacing="4">
-              <StackPanel Orientation="Horizontal" Spacing="10">
-                <Ellipse Classes="status-dot" Classes.active="{Binding IsListening}" VerticalAlignment="Center" />
-                <TextBlock Text="{Binding ReceivingStatusText}" Classes="h2" VerticalAlignment="Center" />
-              </StackPanel>
-              <TextBlock Text="{Binding ReceivingStatusDetail}" Classes="secondary" />
-            </StackPanel>
-
-            <Button Grid.Column="1" Content="{Binding ReceivingButtonText}"
-                    Command="{Binding ToggleListenerCommand}"
-                    Classes="primary" VerticalAlignment="Center"
-                    AutomationProperties.Name="Toggle receiving files" />
-          </Grid>
-
-          <TextBlock Text="{Binding DeviceName, StringFormat='{}This device: {0}'}" Classes="secondary" />
-
-          <!-- When Receiving is ON: QR Code and Link Details -->
-          <StackPanel Spacing="14" IsVisible="{Binding IsListening}">
-            <!-- Network Guidance / NAT warning banner when not ready -->
-            <Border Classes="card" Background="{DynamicResource StatusWarningBackgroundBrush}"
-                    BorderBrush="{DynamicResource StatusWarningBrush}" BorderThickness="1"
-                    CornerRadius="8" Padding="12" IsVisible="{Binding !IsNetworkReady}"
-                    AutomationProperties.Name="Network reachability warning">
-              <Grid ColumnDefinitions="Auto,*">
-                <PathIcon Grid.Column="0" Data="{StaticResource IconWarning}" Width="20" Height="20"
-                          Margin="0,0,10,0" Foreground="{DynamicResource StatusWarningBrush}" VerticalAlignment="Top" />
-                <TextBlock Grid.Column="1" Text="{Binding NetworkGuidanceMessage}" Classes="body"
-                           TextWrapping="Wrap" VerticalAlignment="Center" />
-              </Grid>
-            </Border>
-
-            <TextBlock Text="Share this one-time code or link with the sender:" Classes="h3" IsVisible="{Binding IsNetworkReady}" />
-
-            <Grid ColumnDefinitions="Auto,*" Margin="0,4" IsVisible="{Binding IsNetworkReady}">
-              <!-- QR Code Container -->
-              <StackPanel Grid.Column="0" Spacing="8" HorizontalAlignment="Left" VerticalAlignment="Top"
-                          Margin="0,0,20,0">
-                <Border Background="White" Padding="12" CornerRadius="10">
-                  <Image Source="{Binding PairingQrImage}" Width="160" Height="160" Stretch="Uniform"
-                         AutomationProperties.Name="One-time QR code for receiving files" />
-                </Border>
-                <Button x:Name="EnlargeReceiveQrButton" Content="Enlarge QR"
-                        Command="{Binding OpenReceiveQrCommand}" IsEnabled="{Binding HasActiveInvitation}"
-                        Classes="secondary" HorizontalAlignment="Stretch"
-                        AutomationProperties.Name="Enlarge receiving QR code" />
-              </StackPanel>
-
-              <!-- Link Details & Actions -->
-              <StackPanel Grid.Column="1" Spacing="10" VerticalAlignment="Center">
-                <Expander Header="Connection details" IsExpanded="False" HorizontalAlignment="Stretch">
-                  <StackPanel Spacing="6" Margin="0,4,0,0">
-                    <TextBlock Text="{Binding ConnectionDetailsText}" Classes="body" FontWeight="Medium" />
-                    <TextBlock Text="One-time link URI:" Classes="small" />
-                    <TextBox Text="{Binding CurrentInvitationUri}" IsReadOnly="True" TextWrapping="Wrap"
-                             Classes="body" FontFamily="{DynamicResource FontFamilyMonospace}"
-                             Background="{DynamicResource SurfaceOverlayBrush}" />
-                  </StackPanel>
-                </Expander>
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                  <Button x:Name="CopyLinkButton" Content="Copy receive link" Classes="secondary"
-                          AutomationProperties.Name="Copy receiving link to clipboard" />
-                  <Button Content="Refresh link" Command="{Binding RefreshInvitationCommand}" Classes="secondary"
-                          AutomationProperties.Name="Generate a new one-time link" />
-                </StackPanel>
-                <TextBlock Text="Link expires in 2 minutes for security. You will review and approve any incoming file offer."
-                           Classes="muted" TextWrapping="Wrap" />
-              </StackPanel>
-            </Grid>
-          </StackPanel>
-
+        <StackPanel Spacing="12">
+          <TextBlock Text="{Binding ReceivingStatusText}" Classes="h2" />
+          <TextBlock Text="Nearby devices can scan your one-time QR code. You will still review every offer."
+                     Classes="secondary" TextWrapping="Wrap" />
+          <Button Content="{Binding ReceivingButtonText}" Command="{Binding ToggleListenerCommand}"
+                  Classes="primary" HorizontalAlignment="Left" AutomationProperties.Name="Toggle receiving files" />
         </StackPanel>
       </Border>
 
-      <!-- Secondary Focused Panel: Receive From Sender Invitation (LUI-07) -->
       <Border Classes="card">
         <StackPanel Spacing="12">
-          <TextBlock Text="Connect to Sender's Invitation" Classes="h3" />
-          <TextBlock Text="If another device provided a Glide invitation link, paste it below to connect and receive files:"
+          <TextBlock Text="Connect a phone" Classes="h3" />
+          <TextBlock Text="Open Glide on the phone, choose Send files, then scan this code."
                      Classes="secondary" TextWrapping="Wrap" />
-
-          <Grid ColumnDefinitions="*,Auto">
-            <TextBox Grid.Column="0" Text="{Binding InvitationInput}"
-                     PlaceholderText="glide://pair/v1#..."
-                     Classes="body" Margin="0,0,10,0" />
-            <Button Grid.Column="1" Content="Connect &amp; Receive"
-                    Command="{Binding ReceiveFromInvitationCommand}"
-                    Classes="primary"
-                    AutomationProperties.Name="Connect and receive from invitation" />
+          <StackPanel Spacing="12" IsVisible="{Binding IsListening}">
+          <Border Background="{DynamicResource StatusWarningBackgroundBrush}"
+                  BorderBrush="{DynamicResource StatusWarningBrush}" BorderThickness="1"
+                  CornerRadius="8" Padding="12" IsVisible="{Binding !IsNetworkReady}"
+                  AutomationProperties.Name="Network reachability warning">
+            <Grid ColumnDefinitions="Auto,*">
+              <PathIcon Data="{StaticResource IconWarning}" Width="20" Height="20"
+                        Margin="0,0,10,0" Foreground="{DynamicResource StatusWarningBrush}" VerticalAlignment="Top" />
+              <TextBlock Grid.Column="1" Text="{Binding NetworkGuidanceMessage}" Classes="body"
+                         TextWrapping="Wrap" />
+            </Grid>
+          </Border>
+          <Grid ColumnDefinitions="Auto,*" IsVisible="{Binding IsNetworkReady}">
+            <Border Background="White" Padding="10" CornerRadius="10" VerticalAlignment="Top" Margin="0,0,20,0">
+              <Image Source="{Binding PairingQrImage}" Width="180" Height="180" Stretch="Uniform"
+                     AutomationProperties.Name="One-time QR code for receiving files" />
+            </Border>
+            <StackPanel Grid.Column="1" Spacing="8" VerticalAlignment="Center" Width="192" HorizontalAlignment="Left">
+              <Button x:Name="EnlargeReceiveQrButton" Content="Show larger code"
+                      Command="{Binding OpenReceiveQrCommand}" IsEnabled="{Binding HasActiveInvitation}"
+                      Classes="primary" HorizontalAlignment="Stretch" />
+              <Button x:Name="CopyLinkButton" Content="Copy receive link" Classes="secondary"
+                      HorizontalAlignment="Stretch" AutomationProperties.Name="Copy receiving link to clipboard" />
+              <Button Content="Refresh code" Command="{Binding RefreshInvitationCommand}"
+                      Classes="secondary" HorizontalAlignment="Stretch" />
+            </StackPanel>
           </Grid>
+          </StackPanel>
         </StackPanel>
       </Border>
 

@@ -5,10 +5,9 @@
              x:DataType="vm:LinuxMainViewModel">
   <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
     <StackPanel Spacing="16" Margin="0,0,8,0">
-      <TextBlock Text="Pair devices" Classes="h1" />
-
       <Border Classes="card">
         <StackPanel Spacing="14">
+          <TextBlock Text="Pair devices" Classes="h2" />
           <WrapPanel>
             <Button Content="Find devices" Command="{Binding FindPairDevicesCommand}"
                     Classes="primary" Margin="0,0,8,8"
@@ -16,6 +15,10 @@
             <Button Content="Ready to pair" Command="{Binding ReadyToPairCommand}"
                     Classes="secondary" Margin="0,0,8,8"
                     AutomationProperties.Name="Show pairing code for this computer" />
+            <Button Content="Use QR or link" Command="{Binding ShowPairLinkCommand}"
+                    Classes="secondary" Margin="0,0,8,8" />
+            <Button Content="Pair by address" Command="{Binding ShowPairAddressCommand}"
+                    Classes="secondary" Margin="0,0,0,8" />
           </WrapPanel>
 
           <StackPanel Spacing="10" IsVisible="{Binding IsPairDiscovery}">
@@ -34,7 +37,7 @@
             <WrapPanel IsVisible="{Binding IsPairEmpty}">
               <Button Content="Try again" Command="{Binding FindPairDevicesCommand}"
                       Classes="primary" Margin="0,0,8,8" />
-              <Button Content="Can’t find your device?" Command="{Binding ShowPairAddressCommand}"
+              <Button Content="Pair by address" Command="{Binding ShowPairAddressCommand}"
                       Classes="secondary" Margin="0,0,0,8" />
             </WrapPanel>
           </StackPanel>
@@ -75,10 +78,10 @@
 
           <StackPanel Spacing="10" IsVisible="{Binding IsPairManualEntry}">
             <TextBlock Text="Local address" Classes="h3" />
-            <TextBox Text="{Binding PairAddress}" PlaceholderText="192.168.1.20:42424"
+            <TextBox Text="{Binding PairAddress}" PlaceholderText="192.168.1.20:42424" MaxWidth="320" HorizontalAlignment="Left"
                      AutomationProperties.Name="Other computer local address and port" />
             <TextBlock Text="Six-digit pairing code" Classes="h3" />
-            <TextBox Text="{Binding PairPin}" MaxLength="6" Width="180" HorizontalAlignment="Left"
+            <TextBox Text="{Binding PairPin}" MaxLength="6" MaxWidth="320" Width="320" HorizontalAlignment="Left"
                      PlaceholderText="000000" AutomationProperties.Name="Six-digit pairing code" />
             <WrapPanel>
               <Button Content="Pair" Command="{Binding SubmitPairAddressCommand}"
@@ -123,27 +126,20 @@
             </Expander>
           </StackPanel>
 
-          <WrapPanel>
-            <Button Content="Use QR or link" Command="{Binding ShowPairLinkCommand}"
-                    Classes="secondary" Margin="0,0,8,8" />
-            <Button Content="Can’t find your device?" Command="{Binding ShowPairAddressCommand}"
-                    Classes="secondary" Margin="0,0,0,8" />
-          </WrapPanel>
         </StackPanel>
       </Border>
 
       <Border Classes="card">
         <StackPanel Spacing="10">
           <TextBlock Text="Paired devices" Classes="h3" />
-          <ListBox ItemsSource="{Binding TrustedPeers}" MaxHeight="160"
-                   AutomationProperties.Name="Paired devices">
-            <ListBox.ItemTemplate>
+          <ItemsControl ItemsSource="{Binding TrustedPeers}" AutomationProperties.Name="Paired devices">
+            <ItemsControl.ItemTemplate>
               <DataTemplate>
                 <TextBlock Text="{Binding DisplayName}" ToolTip.Tip="{Binding DisplayName}"
-                           TextTrimming="CharacterEllipsis" Margin="8,4" />
+                           TextTrimming="CharacterEllipsis" Margin="0,4" />
               </DataTemplate>
-            </ListBox.ItemTemplate>
-          </ListBox>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
         </StackPanel>
       </Border>
     </StackPanel>

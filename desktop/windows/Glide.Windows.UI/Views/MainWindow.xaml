@@ -77,9 +77,12 @@
                     <TextBlock Text="{Binding CurrentTab}" FontSize="26" FontWeight="SemiBold" />
                     <TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0" TextTrimming="CharacterEllipsis" />
                 </StackPanel>
-                <Button Grid.Column="1" Style="{StaticResource SecondaryButtonStyle}" Command="{Binding OpenDownloadsCommand}" HorizontalAlignment="Right" AutomationProperties.Name="Open received files folder">
-                    <StackPanel Orientation="Horizontal"><Path Data="{StaticResource IconFolderOpen}" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Stretch="Uniform" Width="18" Height="18" Margin="0,0,8,0" /><TextBlock Text="Received files" /></StackPanel>
-                </Button>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Style="{StaticResource SecondaryButtonStyle}" Command="{Binding OpenDownloadsCommand}" AutomationProperties.Name="Open received files folder">
+                        <StackPanel Orientation="Horizontal"><Path Data="{StaticResource IconFolderOpen}" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Stretch="Uniform" Width="18" Height="18" Margin="0,0,8,0" /><TextBlock Text="Received files" /></StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource SecondaryButtonStyle}" Content="Clear history" Command="{Binding ClearHistoryCommand}" Margin="8,0,0,0" AutomationProperties.Name="Clear verified transfer history" Visibility="{Binding IsActivitySelected, Converter={StaticResource BoolToVis}}" />
+                </StackPanel>
             </Grid>
 
             <Grid Grid.Row="1" Margin="0,28,0,0">
@@ -280,7 +283,7 @@
                         <TextBlock Text="Current transfers and verified file history." Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,20" />
                         <Border Style="{StaticResource CardStyle}">
                             <StackPanel>
-                                <TextBlock Text="Current transfer" FontWeight="SemiBold" />
+                                <TextBlock Text="Current transfer" FontWeight="SemiBold" Visibility="{Binding Transfer.IsActive, Converter={StaticResource BoolToVis}}" />
                                 <TextBlock Text="No transfer in progress." Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,8,0,0">
                                     <TextBlock.Style><Style TargetType="TextBlock"><Style.Triggers><DataTrigger Binding="{Binding Transfer.HasTransfer}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger></Style.Triggers></Style></TextBlock.Style>
                                 </TextBlock>
@@ -327,20 +330,30 @@
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                     <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                                     <StackPanel Grid.Column="0" Margin="0,0,12,0"><TextBlock Text="Verified history" FontWeight="SemiBold" /><TextBlock Text="Only completed, verified items are kept here." FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,3,0,0" TextWrapping="Wrap" /></StackPanel>
-                                    <StackPanel x:Name="ActivityHistoryActions" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
-                                        <StackPanel><TextBlock Text="Search history" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" Margin="0,0,0,4" /><TextBox x:Name="ActivityHistorySearchBox" Style="{StaticResource ModernTextBoxStyle}" Width="145" Height="40" Text="{Binding Activity.SearchText, UpdateSourceTrigger=PropertyChanged}" ToolTip="Search history" AutomationProperties.Name="Search transfer activity" /></StackPanel>
-                                        <StackPanel Margin="8,0,0,0"><TextBlock Text="Show" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" Margin="0,0,0,4" /><ComboBox x:Name="ActivityHistoryFilterCombo" Width="145" Height="40" ItemsSource="{Binding Activity.FilterOptions}" SelectedItem="{Binding Activity.Filter}" AutomationProperties.Name="Filter transfer direction" /></StackPanel>
+                                    <StackPanel x:Name="ActivityHistoryActions" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                        <TextBox x:Name="ActivityHistorySearchBox" Style="{StaticResource ModernTextBoxStyle}" Width="145" Height="40" Text="{Binding Activity.SearchText, UpdateSourceTrigger=PropertyChanged}" ToolTip="Search history" AutomationProperties.Name="Search transfer activity" />
+                                        <Button Style="{StaticResource SecondaryButtonStyle}" Padding="8,4" Content="All" Command="{Binding SelectActivityFilterCommand}" CommandParameter="All" Margin="6,0,0,0" AutomationProperties.Name="Show all history" />
+                                        <Button Style="{StaticResource SecondaryButtonStyle}" Padding="8,4" Content="Sent" Command="{Binding SelectActivityFilterCommand}" CommandParameter="Sent" Margin="6,0,0,0" AutomationProperties.Name="Show sent history" />
+                                        <Button Style="{StaticResource SecondaryButtonStyle}" Padding="8,4" Content="Received" Command="{Binding SelectActivityFilterCommand}" CommandParameter="Received" Margin="6,0,0,0" AutomationProperties.Name="Show received history" />
                                     </StackPanel>
                                 </Grid>
                                 <ListBox x:Name="ActivityHistoryList" Grid.Row="1" ItemsSource="{Binding Activity.Items}" BorderThickness="0" Background="Transparent" Margin="0,16,0,0" MaxHeight="320" HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.CanContentScroll="True" VirtualizingPanel.IsVirtualizing="True">
                                     <ListBox.ItemTemplate>
                                         <DataTemplate>
-                                            <Grid Margin="0,7">
-                                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="116" /><ColumnDefinition Width="116" /></Grid.ColumnDefinitions>
-                                                <StackPanel><TextBlock Text="{Binding ItemName}" Foreground="{DynamicResource TextPrimaryBrush}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" /><TextBlock Text="{Binding Direction}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" /></StackPanel>
-                                                <StackPanel Grid.Column="1" Margin="6,0"><TextBlock Text="{Binding FormattedSize}" Foreground="{DynamicResource TextPrimaryBrush}" HorizontalAlignment="Right" /><TextBlock Text="{Binding FormattedTime}" Foreground="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Right" FontSize="11" /></StackPanel>
-                                                <Button Grid.Column="2" Style="{StaticResource SecondaryButtonStyle}" Content="Open folder" Command="{Binding DataContext.OpenHistoryItemCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" Width="110" HorizontalAlignment="Right" VerticalAlignment="Center" />
-                                            </Grid>
+                                            <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="4,7">
+                                                <Grid Margin="0,4">
+                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="36" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                                    <Border Grid.Column="0" Background="{DynamicResource SurfaceRaisedBrush}" CornerRadius="6" Width="32" Height="32" VerticalAlignment="Center"><Path Data="{StaticResource IconActivity}" Fill="{DynamicResource PrimaryBrush}" Width="16" Height="16" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
+                                                    <StackPanel Grid.Column="1" Margin="12,0,8,0">
+                                                        <StackPanel Orientation="Horizontal"><TextBlock Text="{Binding PeerName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip="{Binding PeerName}" /><TextBlock Text="{Binding Direction}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" Margin="8,2,0,0" /></StackPanel>
+                                                        <TextBlock Text="{Binding ItemName}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" TextTrimming="CharacterEllipsis" ToolTip="{Binding ItemName}" />
+                                                        <TextBlock Text="{Binding FormattedTime}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" />
+                                                    </StackPanel>
+                                                    <TextBlock Grid.Column="2" Text="{Binding FormattedSize}" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="8,0" />
+                                                    <Border Grid.Column="3" Background="{DynamicResource SurfaceRaisedBrush}" CornerRadius="6" Padding="8,4" VerticalAlignment="Center" Margin="8,0"><TextBlock Text="Completed" FontWeight="SemiBold" FontSize="11" Foreground="{DynamicResource PrimaryBrush}" /></Border>
+                                                    <Button Grid.Column="4" Style="{StaticResource SecondaryButtonStyle}" Content="Open folder" Command="{Binding DataContext.OpenHistoryItemCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" VerticalAlignment="Center" Margin="8,0,0,0" />
+                                                </Grid>
+                                            </Border>
                                         </DataTemplate>
                                     </ListBox.ItemTemplate>
                                 </ListBox>

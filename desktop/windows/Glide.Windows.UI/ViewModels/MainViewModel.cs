@@ -135,6 +135,8 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     public RelayCommand RetryTransferCommand { get; }
     public RelayCommand OpenTransferFolderCommand { get; }
     public RelayCommand OpenDownloadsCommand { get; }
+    public RelayCommand ClearHistoryCommand { get; }
+    public RelayCommand SelectActivityFilterCommand { get; }
     public RelayCommand OpenHistoryItemCommand { get; }
     public RelayCommand RevokeTrustedDeviceCommand { get; }
     public RelayCommand ShowPairModalCommand { get; }
@@ -326,6 +328,16 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                 Process.Start(new ProcessStartInfo("explorer.exe", Transfer.ReceivedFolder) { UseShellExecute = true });
         });
         OpenDownloadsCommand = new RelayCommand(ExecuteOpenDownloads);
+        ClearHistoryCommand = new RelayCommand(() =>
+        {
+            _stateStore.ClearHistory();
+            Activity.Entries.Clear();
+        });
+        SelectActivityFilterCommand = new RelayCommand(value =>
+        {
+            if (value is string filter && Activity.FilterOptions.Contains(filter))
+                Activity.Filter = filter;
+        });
         OpenHistoryItemCommand = new RelayCommand(ExecuteOpenHistoryItem);
         RevokeTrustedDeviceCommand = new RelayCommand(ExecuteRevokeTrustedDevice);
         ShowPairModalCommand = new RelayCommand(() =>

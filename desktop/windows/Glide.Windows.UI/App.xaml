@@ -1,6 +1,7 @@
 <Application x:Class="Glide.Windows.UI.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:common="clr-namespace:Glide.Windows.UI.Common">
     <Application.Resources>
         <ResourceDictionary>
         <ResourceDictionary.MergedDictionaries>
@@ -27,6 +28,7 @@
         <FontFamily x:Key="AppFont">Segoe UI Variable, Segoe UI, Arial</FontFamily>
 
         <BooleanToVisibilityConverter x:Key="BoolToVis" />
+        <common:ProgressWidthConverter x:Key="ProgressWidthConverter" />
 
         <Style TargetType="Window">
             <Setter Property="FontFamily" Value="{StaticResource AppFont}" />
@@ -324,8 +326,16 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="ProgressBar">
                         <Border Background="{TemplateBinding Background}" CornerRadius="4" ClipToBounds="True">
-                            <Grid x:Name="PART_Track">
-                                <Rectangle x:Name="PART_Indicator" Fill="{TemplateBinding Foreground}" HorizontalAlignment="Left" RadiusX="4" RadiusY="4" />
+                            <Grid x:Name="ProgressTrack">
+                                <Rectangle x:Name="ProgressFill" Fill="{TemplateBinding Foreground}" HorizontalAlignment="Left" RadiusX="4" RadiusY="4">
+                                    <Rectangle.Width>
+                                        <MultiBinding Converter="{StaticResource ProgressWidthConverter}">
+                                            <Binding Path="Value" RelativeSource="{RelativeSource TemplatedParent}" />
+                                            <Binding Path="Maximum" RelativeSource="{RelativeSource TemplatedParent}" />
+                                            <Binding Path="ActualWidth" ElementName="ProgressTrack" />
+                                        </MultiBinding>
+                                    </Rectangle.Width>
+                                </Rectangle>
                             </Grid>
                         </Border>
                     </ControlTemplate>

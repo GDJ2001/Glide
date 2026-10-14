@@ -50,7 +50,7 @@ public sealed class WindowsSendUiIntegrationTests
                 {
                     ShowActivated = false,
                     ShowInTaskbar = false,
-                    Opacity = 0
+                    Opacity = 1
                 };
                 window.Show();
                 window.UpdateLayout();
@@ -157,22 +157,22 @@ public sealed class WindowsSendUiIntegrationTests
                 window.Dispatcher.Invoke(() => { }, DispatcherPriority.Background);
                 window.UpdateLayout();
                 var indicator = Assert.IsType<Rectangle>(
-                    progressBar.Template.FindName("PART_Indicator", progressBar));
-                double initialFillWidth = indicator.ActualWidth;
+                    progressBar.Template.FindName("ProgressFill", progressBar));
+                double initialFillWidth = indicator.Width;
                 viewModel.Transfer.ApplyEvent(new TransferEvent.ProgressUpdated(
                     new DesktopTransferProgress(DesktopTransferDirection.Send,
                         "Test desktop", "large-file.bin", 61, 65),
                     1, "1 B/s", "61 B / 65 B"));
                 window.Dispatcher.Invoke(() => { }, DispatcherPriority.Background);
                 window.UpdateLayout();
-                PumpDispatcherUntil(() => indicator.ActualWidth > progressBar.ActualWidth * 0.8,
+                PumpDispatcherUntil(() => indicator.Width > progressBar.ActualWidth * 0.8,
                     TimeSpan.FromSeconds(2), progressBar);
                 Assert.InRange(progressBar.Value, 93, 95);
-                Assert.True(indicator.ActualWidth > progressBar.ActualWidth * 0.8,
+                Assert.True(indicator.Width > progressBar.ActualWidth * 0.8,
                     $"The progress fill stayed empty: value={progressBar.Value}, " +
-                    $"bar width={progressBar.ActualWidth}, fill width={indicator.ActualWidth}.");
-                Assert.True(indicator.ActualWidth > initialFillWidth * 3,
-                    $"The progress fill did not advance: initial={initialFillWidth}, current={indicator.ActualWidth}.");
+                    $"bar width={progressBar.ActualWidth}, requested fill width={indicator.Width}.");
+                Assert.True(indicator.Width > initialFillWidth * 3,
+                    $"The progress fill did not advance: initial={initialFillWidth}, current={indicator.Width}.");
                 viewModel.Transfer.ApplySnapshot(DesktopTransferSnapshot.Idle);
                 viewModel.CurrentTab = "Send";
                 stage = "send reopened";

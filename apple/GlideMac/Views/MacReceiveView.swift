@@ -1,4 +1,5 @@
 import SwiftUI
+import CoreImage.CIFilterBuiltins
 import GlideCoreKit
 
 #if os(macOS)
@@ -7,6 +8,9 @@ import AppKit
 
 public struct MacReceiveView: View {
     @ObservedObject var viewModel: MacTransferViewModel
+    @State private var qrImage: Image?
+    private let context = CIContext()
+    private let qrFilter = CIFilter.qrCodeGenerator()
 
     public init(viewModel: MacTransferViewModel) {
         self.viewModel = viewModel
@@ -14,131 +18,114 @@ public struct MacReceiveView: View {
 
     public var body: some View {
         ScrollView {
-            VStack(spacing: 20) {
-                // Header
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Receive Files")
-                            .font(.title2)
-                            .fontWeight(.bold)
-                        Text("Manage nearby availability and receive inbound transfers.")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                    }
-                    Spacer()
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Receive").font(.title2).fontWeight(.bold)
+                    Text("Make this Mac available to nearby Glide devices. You approve each incoming transfer.")
+                        .font(.subheadline).foregroundColor(.secondary)
                 }
 
-                // Active Transfer Banner
-                if viewModel.isTransferActive {
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack {
-                            Text(viewModel.transferStatusText)
-                                .font(.headline)
-                            Spacer()
-                            Text(viewModel.transferredBytesText)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-
-                        ProgressView(value: viewModel.transferProgress)
-
-                        if !viewModel.currentFileName.isEmpty {
-                            Text(viewModel.currentFileName)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                    .padding()
-                    .background(Color(NSColor.controlBackgroundColor))
-                    .cornerRadius(8)
-                }
-
-                // Nearby Listener Card
                 VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Circle()
-                            .fill(viewModel.isListening ? Color.green : Color.gray)
-                            .frame(width: 10, height: 10)
-                        Text("Continuous Nearby Listener")
-                            .font(.headline)
-                        Spacer()
-                        Button("Copy receive link") {
-                            #if os(macOS)
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(viewModel.currentInvitationUri, forType: .string)
-                            #endif
-                        }
-                        .disabled(viewModel.currentInvitationUri.isEmpty)
-
-                        Button(viewModel.isListening ? "Stop Listening" : "Start Listening") {
-                            viewModel.toggleListener()
-                        }
+                    Text(viewModel.isListening ? "Ready to receive" : "Receiving is off")
+                        .font(.headline)
+                    Text("Nearby devices can scan your one-time QR code. You will still review every offer.")
+                        .font(.subheadline).foregroundColor(.secondary)
+                    Button(viewModel.isListening ? "Stop receiving" : "Turn on receiving") {
+                        viewModel.toggleListener()
                     }
-
-                    Text("Advertises this Mac via Bonjour (_glide._tcp) for nearby device transfers.")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-
-                    HStack {
-                        Text("Device Name: \(viewModel.deviceName)")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        Spacer()
-                        Text("Port: \(viewModel.listeningPort)")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
+                    .buttonStyle(.borderedProminent)
                 }
                 .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color(NSColor.controlBackgroundColor))
                 .cornerRadius(8)
 
-                // Receiver-as-Client Card
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Receive from Sender Invitation")
-                        .font(.headline)
-                    Text("Connect to a sender device that displayed a QR code or provided an invitation URI:")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
+                    Text("Connect a phone").font(.headline)
+                    Text("Open Glide on the phone, choose Send files, then scan this code.")
+                        .font(.subheadline).foregroundColor(.secondary)
 
-                    HStack {
-                        TextField("glide://pair/v1#...", text: $viewModel.invitationInput)
-                            .textFieldStyle(.roundedBorder)
-
-                        Button("Connect & Receive") {
-                            viewModel.receiveFromInvitation()
+                    if viewModel.isListening {
+                        HStack(alignment: .center, spacing: 20) {
+                            if let qrImage {
+                                qrImage
+                                    .interpolation(.none)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 180, height: 180)
+                                    .padding(10)
+                                    .background(Color.white)
+                                    .cornerRadius(10)
+                                    .accessibilityLabel("One-time QR code for receiving files")
+                            } else {
+                                Text("Preparing code…")
+                                    .foregroundColor(.secondary)
+                                    .frame(width: 200, height: 200)
+                            }
+                            VStack(spacing: 8) {
+                                Button("Show larger code") { showLargeQr = true }
+                                    .buttonStyle(.borderedProminent)
+                                    .disabled(qrImage == nil)
+                                Button("Copy receive link") {
+                                    NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(viewModel.currentInvitationUri, forType: .string)
+                                }
+                                .disabled(viewModel.currentInvitationUri.isEmpty)
+                                Button("Refresh code") { viewModel.generateLocalInvitation() }
+                            }
+                            .frame(width: 192)
                         }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(viewModel.invitationInput.isEmpty || viewModel.isTransferActive)
                     }
                 }
                 .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(NSColor.controlBackgroundColor))
+                .cornerRadius(8)
+
+                // Keep sender-hosted invitations available without competing with the main receive flow.
+                DisclosureGroup("Use a sender link") {
+                    HStack {
+                        TextField("glide://pair/v1#...", text: $viewModel.invitationInput)
+                            .textFieldStyle(.roundedBorder)
+                        Button("Connect and receive") { viewModel.receiveFromInvitation() }
+                            .disabled(viewModel.invitationInput.isEmpty || viewModel.isTransferActive)
+                    }
+                    .padding(.top, 8)
+                }
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color(NSColor.controlBackgroundColor))
                 .cornerRadius(8)
             }
             .padding()
         }
+        .onAppear(perform: generateQr)
+        .onChange(of: viewModel.currentInvitationUri) { _ in generateQr() }
+        .sheet(isPresented: $showLargeQr) {
+            VStack(spacing: 16) {
+                Text("Scan with Glide").font(.headline)
+                if let qrImage {
+                    qrImage.interpolation(.none).resizable().scaledToFit()
+                        .frame(width: 320, height: 320)
+                        .padding(16).background(Color.white).cornerRadius(12)
+                }
+                Button("Close") { showLargeQr = false }
+            }
+            .padding(24)
+        }
         .sheet(isPresented: $viewModel.isIncomingOfferVisible) {
             VStack(spacing: 16) {
-                Text("Incoming Transfer Request")
-                    .font(.headline)
+                Text("Incoming transfer request").font(.headline)
                 Text("\(viewModel.incomingOfferPeer) wants to send files:")
-                    .font(.subheadline)
                 Text(viewModel.incomingOfferSummary)
-                    .font(.body)
                     .padding()
                     .background(Color(NSColor.controlBackgroundColor))
                     .cornerRadius(6)
-
                 HStack {
-                    Button("Decline") {
-                        viewModel.resolveOffer(accept: false)
-                    }
+                    Button("Decline") { viewModel.resolveOffer(accept: false) }
                     Spacer()
-                    Button("Accept") {
-                        viewModel.resolveOffer(accept: true)
-                    }
-                    .buttonStyle(.borderedProminent)
+                    Button("Accept") { viewModel.resolveOffer(accept: true) }
+                        .buttonStyle(.borderedProminent)
                 }
             }
             .padding(24)
@@ -146,29 +133,37 @@ public struct MacReceiveView: View {
         }
         .sheet(isPresented: $viewModel.isSasConfirmationVisible) {
             VStack(spacing: 16) {
-                Text("Verify Security Code")
-                    .font(.headline)
+                Text("Verify security code").font(.headline)
                 Text("Confirm that this 6-digit code matches the screen on \(viewModel.sasPeerName):")
-                    .font(.subheadline)
                     .multilineTextAlignment(.center)
-
                 Text(viewModel.sasCode)
                     .font(.system(size: 36, weight: .bold, design: .monospaced))
                     .foregroundColor(.blue)
-
                 HStack {
-                    Button("Decline") {
-                        viewModel.resolveSas(accept: false)
-                    }
+                    Button("Decline") { viewModel.resolveSas(accept: false) }
                     Spacer()
-                    Button("Match & Confirm") {
-                        viewModel.resolveSas(accept: true)
-                    }
-                    .buttonStyle(.borderedProminent)
+                    Button("Match and confirm") { viewModel.resolveSas(accept: true) }
+                        .buttonStyle(.borderedProminent)
                 }
             }
             .padding(24)
             .frame(width: 360)
         }
+    }
+
+    @State private var showLargeQr = false
+
+    private func generateQr() {
+        guard !viewModel.currentInvitationUri.isEmpty else {
+            qrImage = nil
+            return
+        }
+        qrFilter.message = Data(viewModel.currentInvitationUri.utf8)
+        guard let output = qrFilter.outputImage,
+              let image = context.createCGImage(output, from: output.extent) else {
+            qrImage = nil
+            return
+        }
+        qrImage = Image(decorative: image, scale: 1)
     }
 }

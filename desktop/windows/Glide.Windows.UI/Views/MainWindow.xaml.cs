@@ -69,6 +69,7 @@ public partial class MainWindow : Window
         Grid.SetColumn(ActivityHistoryActions, narrowHistory ? 0 : 1);
         Grid.SetColumnSpan(ActivityHistoryActions, narrowHistory ? 2 : 1);
         ActivityHistoryActions.Margin = narrowHistory ? new Thickness(0, 12, 0, 0) : new Thickness(0);
+        ActivityHistorySearchBox.Width = narrowHistory ? 110 : 145;
         Grid.SetRow(ActivityTransferActions, narrowHistory ? 1 : 0);
         Grid.SetColumn(ActivityTransferActions, narrowHistory ? 0 : 1);
         Grid.SetColumnSpan(ActivityTransferActions, narrowHistory ? 2 : 1);

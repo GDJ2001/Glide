@@ -17,15 +17,15 @@ public struct MacMainWindowView: View {
                     NavigationLink(value: "receive") {
                         Label("Receive", systemImage: "arrow.down.circle.fill")
                     }
-                    NavigationLink(value: "pair") {
-                        Label("Pair Devices", systemImage: "qrcode")
-                    }
-                }
-
-                Section("History & Configuration") {
                     NavigationLink(value: "activity") {
                         Label("Activity", systemImage: "clock.fill")
                     }
+                    NavigationLink(value: "pair") {
+                        Label("Pair devices", systemImage: "qrcode")
+                    }
+                }
+
+                Section("Preferences") {
                     NavigationLink(value: "settings") {
                         Label("Settings", systemImage: "gearshape.fill")
                     }

@@ -19,30 +19,19 @@ public struct MacPairView: View {
     public var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                // Compact Header: Find devices and Ready to pair
-                HStack(spacing: 12) {
+                // The desktop pairing actions retain the same order on all platforms.
+                VStack(alignment: .leading, spacing: 12) {
                     Text("Pair devices")
                         .font(.title2)
                         .fontWeight(.bold)
 
-                    Spacer()
+                    pairActions
 
-                    Button("Find devices") {
-                        viewModel.beginFindDevices()
-                    }
-                    .buttonStyle(.borderedProminent)
-
-                    Button("Ready to pair") {
-                        viewModel.startReadyToPair()
-                        generateQr()
-                    }
-                    .buttonStyle(.bordered)
-                }
-
-                // Single Active Panel whose content changes with its state
-                VStack(alignment: .leading, spacing: 12) {
                     switch viewModel.pairingPhase {
-                    case .idle, .scanning:
+                    case .idle:
+                        EmptyView()
+
+                    case .scanning:
                         HStack(spacing: 10) {
                             ProgressView()
                                 .controlSize(.small)
@@ -79,7 +68,7 @@ public struct MacPairView: View {
                             }
                             .buttonStyle(.borderedProminent)
 
-                            Button("Can’t find your device?") {
+                            Button("Pair by address") {
                                 viewModel.showManualPairEntry()
                             }
                             .buttonStyle(.bordered)
@@ -237,24 +226,12 @@ public struct MacPairView: View {
                                 viewModel.executePairRecovery()
                             }
                             .buttonStyle(.borderedProminent)
-                            Button("Can’t find your device?") {
+                            Button("Pair by address") {
                                 viewModel.showManualPairEntry()
                             }
                         }
                     }
 
-                    // Secondary actions
-                    HStack(spacing: 12) {
-                        Button("Use QR or link") {
-                            viewModel.showPairLinkEntry()
-                        }
-                        .buttonStyle(.link)
-                        Button("Can’t find your device?") {
-                            viewModel.showManualPairEntry()
-                        }
-                        .buttonStyle(.link)
-                    }
-                    .padding(.top, 4)
                 }
                 .padding()
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -295,9 +272,19 @@ public struct MacPairView: View {
         }
         .onAppear {
             viewModel.refreshTrustedPeers()
-            if viewModel.pairingPhase == .idle {
-                viewModel.beginFindDevices()
+        }
+    }
+
+    private var pairActions: some View {
+        HStack(spacing: 8) {
+            Button("Find devices") { viewModel.beginFindDevices() }
+                .buttonStyle(.borderedProminent)
+            Button("Ready to pair") {
+                viewModel.startReadyToPair()
+                generateQr()
             }
+            Button("Use QR or link") { viewModel.showPairLinkEntry() }
+            Button("Pair by address") { viewModel.showManualPairEntry() }
         }
     }
 
