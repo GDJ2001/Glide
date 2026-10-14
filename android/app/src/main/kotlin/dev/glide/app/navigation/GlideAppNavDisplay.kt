@@ -10,6 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import android.content.pm.PackageManager
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.flow.map
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.ui.NavDisplay
@@ -122,6 +123,28 @@ fun GlideAppNavDisplay(
         entryProvider = entryProvider {
             entry<GlideRoute.Home> {
                 val context = androidx.compose.ui.platform.LocalContext.current
+                androidx.compose.runtime.LaunchedEffect(transferRuntime) {
+                    transferRuntime?.refreshPersistentTrustState()
+                }
+                val pairedDevicesFlow = androidx.compose.runtime.remember(transferRuntime, customTrustedPeerDao, context) {
+                    if (transferRuntime != null) {
+                        transferRuntime.trustState.map { it.trustedPeers }
+                    } else {
+                        val dao = customTrustedPeerDao ?: dev.glide.app.di.DatabaseModule.provideGlideDatabase(context).trustedPeerDao()
+                        dao.observeAllPeers().map { peers ->
+                            peers.map { peer ->
+                                dev.glide.core.domain.TrustedPeerRecord(
+                                    peerFingerprintHex = peer.peerFingerprint.lowercase(),
+                                    publicKeyDerHex = peer.publicKeyDer.lowercase(),
+                                    displayName = peer.displayName,
+                                    pairedAtMs = peer.pairedAtMs,
+                                    lastSeenAtMs = peer.lastSeenAtMs
+                                )
+                            }
+                        }
+                    }
+                }
+                val pairedDevices by pairedDevicesFlow.collectAsStateWithLifecycle(initialValue = emptyList())
                 val historyStore = androidx.compose.runtime.remember(customHistoryStore, context) {
                     customHistoryStore ?: run {
                         val database = dev.glide.app.di.DatabaseModule.provideGlideDatabase(context)
@@ -157,6 +180,13 @@ fun GlideAppNavDisplay(
                     activeSessionId = activeSessionId,
                     onNavigateToTransfer = { sid ->
                         backStack.add(GlideRoute.Transfer(sid))
+                    },
+                    pairedDevices = pairedDevices,
+                    onPairDevice = {
+                        backStack.add(GlideRoute.QrScanner(purpose = QrScanPurpose.PAIR_ONLY))
+                    },
+                    onSelectPairedDevice = { peer ->
+                        backStack.add(GlideRoute.Selection())
                     },
                     recentActivities = recentSessions
                         .filter { it.outcome != null }

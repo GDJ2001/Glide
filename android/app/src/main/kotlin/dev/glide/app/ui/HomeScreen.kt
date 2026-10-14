@@ -19,8 +19,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Settings
+import dev.glide.core.domain.TrustedPeerRecord
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -71,6 +73,9 @@ fun HomeScreen(
     onNavigateToSettings: () -> Unit = {},
     activeSessionId: String? = null,
     onNavigateToTransfer: (String) -> Unit = {},
+    pairedDevices: List<TrustedPeerRecord> = emptyList(),
+    onPairDevice: () -> Unit = {},
+    onSelectPairedDevice: (TrustedPeerRecord) -> Unit = {},
     recentActivities: List<RecentActivity> = emptyList(),
     onOpenRecentActivity: (String) -> Unit = {},
     modifier: Modifier = Modifier
@@ -258,7 +263,7 @@ fun HomeScreen(
             }
         }
 
-        // Recent Transfers Section
+        // Paired Devices Section
         Column(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -269,49 +274,64 @@ fun HomeScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Recent activity",
+                    text = "Paired devices",
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 TextButton(
-                    onClick = onNavigateToHistory,
-                    modifier = Modifier.semantics {
-                        role = Role.Button
-                        contentDescription = "View all transfer history"
-                    }
+                    onClick = onPairDevice,
+                    modifier = Modifier
+                        .glideHoverHand()
+                        .semantics {
+                            role = Role.Button
+                            contentDescription = "Pair with another device"
+                        }
                 ) {
-                    Text("View all")
+                    Text("Pair device")
                 }
             }
 
-            if (recentActivities.isEmpty()) {
+            if (pairedDevices.isEmpty()) {
                 Card(
-                    onClick = onNavigateToHistory,
+                    onClick = onPairDevice,
                     shape = MaterialTheme.shapes.medium,
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant
                     ),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .semantics { contentDescription = "Open transfer history" }
+                        .glideHoverHand()
+                        .semantics { contentDescription = "Pair with another device" }
                 ) {
                     Box(
-                        modifier = Modifier.fillMaxWidth().padding(24.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = "Your completed and interrupted transfers will appear here.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "No paired devices yet.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "Pair with a nearby device to start sharing quickly.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    recentActivities.forEach { activity ->
-                        RecentActivityCard(
-                            activity = activity,
-                            onClick = { onOpenRecentActivity(activity.sessionId) }
+                    pairedDevices.forEach { peer ->
+                        PairedDeviceCard(
+                            peer = peer,
+                            onClick = { onSelectPairedDevice(peer) }
                         )
                     }
                 }
@@ -319,6 +339,73 @@ fun HomeScreen(
         }
     }
 }
+}
+
+@Composable
+private fun PairedDeviceCard(
+    peer: TrustedPeerRecord,
+    onClick: () -> Unit
+) {
+    val whenText = if (peer.lastSeenAtMs > 0) {
+        DateUtils.getRelativeTimeSpanString(
+            peer.lastSeenAtMs,
+            System.currentTimeMillis(),
+            DateUtils.MINUTE_IN_MILLIS,
+            DateUtils.FORMAT_ABBREV_RELATIVE
+        ).toString()
+    } else {
+        "Saved"
+    }
+
+    Card(
+        onClick = onClick,
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        modifier = Modifier
+            .fillMaxWidth()
+            .glideHoverHand()
+            .semantics {
+                role = Role.Button
+                contentDescription = "Paired device ${peer.displayName}. Tap to send files."
+            }
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Devices,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(24.dp)
+            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = peer.displayName,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1
+                )
+                Text(
+                    text = if (peer.lastSeenAtMs > 0) "Last seen $whenText" else "Paired device",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1
+                )
+            }
+            Text(
+                text = "Paired",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+    }
 }
 
 @Composable
