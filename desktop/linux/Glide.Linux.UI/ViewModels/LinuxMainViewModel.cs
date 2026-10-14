@@ -85,18 +85,18 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
     private bool _isSasModalVisible = false;
     private string _sasPeerName = "";
     private string _sasCode = "";
-    private TaskCompletionSource<bool>? _sasTcs;
+    private readonly LinuxConsentDecision _sasDecision = new(OnUiAsync);
 
     // Incoming Offer Modal
     private bool _isOfferModalVisible = false;
     private string _offerPeerName = "";
     private string _offerSummaryText = "";
-    private TaskCompletionSource<bool>? _offerTcs;
+    private readonly LinuxConsentDecision _offerDecision = new(OnUiAsync);
 
     // Sender-hosted QR still requires the local user to approve the recipient.
     private bool _isRecipientModalVisible;
     private string _recipientPeerName = "";
-    private TaskCompletionSource<bool>? _recipientTcs;
+    private readonly LinuxConsentDecision _recipientDecision = new(OnUiAsync);
 
     // Invitation pairing
     private string _invitationInput = "";
@@ -1496,72 +1496,35 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
     }
 
     // IDesktopTransferInteraction Implementation
-    public async Task<bool> ConfirmRecipientAsync(string peerName, CancellationToken cancellationToken)
-    {
-        var prompt = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        await OnUiAsync(() =>
-        {
-            RecipientPeerName = peerName;
-            IsRecipientModalVisible = true;
-            _recipientTcs = prompt;
-        });
-        using var registration = cancellationToken.Register(() =>
-        {
-            prompt.TrySetResult(false);
-            OnUi(() =>
-            {
-                if (ReferenceEquals(_recipientTcs, prompt)) ResolveRecipient(false);
-            });
-        });
-        return await prompt.Task;
-    }
+    public Task<bool> ConfirmRecipientAsync(string peerName, CancellationToken cancellationToken) =>
+        _recipientDecision.RequestAsync(cancellationToken,
+            () => { RecipientPeerName = peerName; IsRecipientModalVisible = true; },
+            () => IsRecipientModalVisible = false);
 
-    public async Task<bool> ConfirmOfferAsync(DesktopOffer offer, CancellationToken cancellationToken)
-    {
-        var prompt = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        await OnUiAsync(() =>
-        {
-            OfferPeerName = offer.PeerName;
-            OfferSummaryText = $"{offer.Items.Count} file(s), total {FormatBytes(offer.TotalBytes)}";
-            IsOfferModalVisible = true;
-            _offerTcs = prompt;
-        });
-        using var registration = cancellationToken.Register(() =>
-        {
-            prompt.TrySetResult(false);
-            OnUi(() =>
+    public Task<bool> ConfirmOfferAsync(DesktopOffer offer, CancellationToken cancellationToken) =>
+        _offerDecision.RequestAsync(cancellationToken,
+            () =>
             {
-                if (ReferenceEquals(_offerTcs, prompt)) ResolveOffer(false);
-            });
-        });
-        return await prompt.Task;
-    }
+                OfferPeerName = offer.PeerName;
+                OfferSummaryText = $"{offer.Items.Count} file(s), total {FormatBytes(offer.TotalBytes)}";
+                IsOfferModalVisible = true;
+            },
+            () => IsOfferModalVisible = false);
 
-    public async Task<bool> ConfirmPeerEnrollmentAsync(VerifiedDesktopPeerIdentity peer, CancellationToken cancellationToken)
-    {
-        var prompt = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        await OnUiAsync(() =>
-        {
-            SasPeerName = peer.DisplayName;
-            // This is the verified persistent identity fingerprint, not a
-            // session SAS. Never present a six-character hex prefix as a
-            // six-digit mutual verification code.
-            SasCode = string.Join(" ", Enumerable.Range(0, (peer.FingerprintHex.Length + 7) / 8)
-                .Select(i => peer.FingerprintHex.Substring(i * 8,
-                    Math.Min(8, peer.FingerprintHex.Length - i * 8)).ToUpperInvariant()));
-            IsSasModalVisible = true;
-            _sasTcs = prompt;
-        });
-        using var registration = cancellationToken.Register(() =>
-        {
-            prompt.TrySetResult(false);
-            OnUi(() =>
+    public Task<bool> ConfirmPeerEnrollmentAsync(VerifiedDesktopPeerIdentity peer, CancellationToken cancellationToken) =>
+        _sasDecision.RequestAsync(cancellationToken,
+            () =>
             {
-                if (ReferenceEquals(_sasTcs, prompt)) ResolveSas(false);
-            });
-        });
-        return await prompt.Task;
-    }
+                SasPeerName = peer.DisplayName;
+                // This is the verified persistent identity fingerprint, not a
+                // session SAS. Never present a six-character hex prefix as a
+                // six-digit mutual verification code.
+                SasCode = string.Join(" ", Enumerable.Range(0, (peer.FingerprintHex.Length + 7) / 8)
+                    .Select(i => peer.FingerprintHex.Substring(i * 8,
+                        Math.Min(8, peer.FingerprintHex.Length - i * 8)).ToUpperInvariant()));
+                IsSasModalVisible = true;
+            },
+            () => IsSasModalVisible = false);
 
     public void OnInvitationConsumed(DesktopTransferDirection direction)
     {
@@ -1627,23 +1590,17 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
 
     private void ResolveSas(bool accepted)
     {
-        IsSasModalVisible = false;
-        _sasTcs?.TrySetResult(accepted);
-        _sasTcs = null;
+        _sasDecision.Resolve(accepted);
     }
 
     private void ResolveOffer(bool accepted)
     {
-        IsOfferModalVisible = false;
-        _offerTcs?.TrySetResult(accepted);
-        _offerTcs = null;
+        _offerDecision.Resolve(accepted);
     }
 
     private void ResolveRecipient(bool accepted)
     {
-        IsRecipientModalVisible = false;
-        _recipientTcs?.TrySetResult(accepted);
-        _recipientTcs = null;
+        _recipientDecision.Resolve(accepted);
     }
 
     private static string FormatBytes(long bytes)

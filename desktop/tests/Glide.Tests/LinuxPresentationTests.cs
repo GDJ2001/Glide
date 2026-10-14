@@ -164,6 +164,40 @@ public sealed class LinuxPresentationTests
     }
 
     [Fact]
+    public async Task IncomingOfferModal_ReplacedRequestCannotHideNewOffer()
+    {
+        using var vm = new LinuxMainViewModel();
+        var first = new DesktopOffer("first", "First device", [], 0);
+        var second = new DesktopOffer("second", "Second device", [], 0);
+
+        Task<bool> firstDecision = vm.ConfirmOfferAsync(first, CancellationToken.None);
+        Task<bool> secondDecision = vm.ConfirmOfferAsync(second, CancellationToken.None);
+
+        Assert.False(await firstDecision);
+        Assert.True(vm.IsOfferModalVisible);
+        Assert.Equal("Second device", vm.OfferPeerName);
+
+        vm.AcceptOfferCommand.Execute(null);
+        Assert.True(await secondDecision);
+        Assert.False(vm.IsOfferModalVisible);
+    }
+
+    [Fact]
+    public async Task IncomingOfferModal_CancellationDeclinesAndClearsPrompt()
+    {
+        using var vm = new LinuxMainViewModel();
+        using var cancellation = new CancellationTokenSource();
+        var offer = new DesktopOffer("cancelled", "Peer", [], 0);
+
+        Task<bool> decision = vm.ConfirmOfferAsync(offer, cancellation.Token);
+        Assert.True(vm.IsOfferModalVisible);
+        cancellation.Cancel();
+
+        Assert.False(await decision);
+        Assert.False(vm.IsOfferModalVisible);
+    }
+
+    [Fact]
     public void TransferProgressAndStatus_UpdatesPresentationProperties()
     {
         var vm = new LinuxMainViewModel();
