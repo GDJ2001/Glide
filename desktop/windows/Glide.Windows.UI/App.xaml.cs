@@ -1,14 +1,18 @@
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Runtime.CompilerServices;
 using System.Windows;
 using Glide.Windows.UI.ViewModels;
 using Glide.Windows.UI.Views;
 using Glide.Windows.UI.Services;
 
+[assembly: InternalsVisibleTo("Glide.Windows.UI.Tests")]
+
 namespace Glide.Windows.UI;
 
 public partial class App : Application
 {
+    internal bool IsIntegrationTestHost { get; set; }
     private GlideUpdateCoordinator? _updateCoordinator;
     private WindowsSingleInstance? _singleInstance;
     [DllImport("kernel32.dll", SetLastError = true)]
@@ -39,6 +43,12 @@ public partial class App : Application
 
     protected override async void OnStartup(StartupEventArgs e)
     {
+        if (IsIntegrationTestHost)
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            return;
+        }
+
         DispatcherUnhandledException += (_, args) =>
         {
             MessageBox.Show(

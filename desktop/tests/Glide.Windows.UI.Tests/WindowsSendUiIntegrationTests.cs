@@ -35,7 +35,7 @@ public sealed class WindowsSendUiIntegrationTests
             {
                 File.WriteAllText(testFile, "Glide WPF send-button integration test.");
 
-                application = new Glide.Windows.UI.App();
+                application = new Glide.Windows.UI.App { IsIntegrationTestHost = true };
                 application.InitializeComponent();
                 foreach (string icon in new[]
                 {
@@ -167,6 +167,8 @@ public sealed class WindowsSendUiIntegrationTests
                 Assert.Equal(0, Grid.GetRow(historyActions));
                 Assert.True(historyActions.TranslatePoint(new Point(), window).X >
                     activityPage.TranslatePoint(new Point(), window).X + activityPage.ActualWidth / 2);
+                activityPage.ScrollToTop();
+                window.UpdateLayout();
                 var progressBar = Assert.IsType<ProgressBar>(window.FindName("ActivityTransferProgressBar"));
                 Guid progressRun = Guid.NewGuid();
                 viewModel.Transfer.ApplySnapshot(new DesktopTransferSnapshot(
