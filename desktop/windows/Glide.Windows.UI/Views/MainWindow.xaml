@@ -178,8 +178,8 @@
                                 <TextBlock Text="Pair devices" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,12" />
                                 <WrapPanel x:Name="PairMethodActions">
                                     <Button Style="{StaticResource PrimaryButtonStyle}" Content="Find devices" Command="{Binding FindPairDevicesCommand}" Margin="0,0,8,8" AutomationProperties.Name="Find pair-ready Glide devices" />
-                                    <Button Style="{StaticResource SecondaryButtonStyle}" Content="Ready to pair" Command="{Binding ReadyToPairCommand}" Margin="0,0,8,8" AutomationProperties.Name="Show pairing code for this PC" />
-                                    <Button Style="{StaticResource SecondaryButtonStyle}" Content="Use QR or link" Command="{Binding ShowPairLinkCommand}" Margin="0,0,8,8" />
+                                    <Button Style="{StaticResource SecondaryButtonStyle}" Content="Show my QR and code" Command="{Binding ReadyToPairCommand}" Margin="0,0,8,8" AutomationProperties.Name="Show this PC's pairing QR and code" />
+                                    <Button Style="{StaticResource SecondaryButtonStyle}" Content="Enter pairing link" Command="{Binding ShowPairLinkCommand}" Margin="0,0,8,8" />
                                     <Button Style="{StaticResource SecondaryButtonStyle}" Content="Pair by address" Command="{Binding ShowPairAddressCommand}" Margin="0,0,0,8" />
                                 </WrapPanel>
                                 <StackPanel Visibility="{Binding IsPairDiscovery, Converter={StaticResource BoolToVis}}" Margin="0,12,0,0">
@@ -194,14 +194,19 @@
                                     <Button Style="{StaticResource SecondaryButtonStyle}" Content="Try again" Command="{Binding FindPairDevicesCommand}" Visibility="{Binding IsPairEmpty, Converter={StaticResource BoolToVis}}" HorizontalAlignment="Left" Margin="0,8,0,0" />
                                 </StackPanel>
                                 <StackPanel Visibility="{Binding IsPairReady, Converter={StaticResource BoolToVis}}" Margin="0,12,0,0">
-                                    <TextBlock Text="Pairing code" FontWeight="SemiBold" />
-                                    <TextBlock Text="{Binding Pairing.Code}" FontSize="32" FontWeight="Bold" Margin="0,6,0,0" AutomationProperties.Name="Six-digit pairing code" />
-                                    <TextBlock Text="{Binding Pairing.ExpiryText}" Foreground="{DynamicResource TextSecondaryBrush}" AutomationProperties.LiveSetting="Polite" />
-                                    <TextBlock Text="Enter this code on the other computer." Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,0" TextWrapping="Wrap" />
-                                    <Border Background="White" CornerRadius="10" Padding="10" HorizontalAlignment="Left" Margin="0,12,0,0" Visibility="{Binding IsPairQrVisible, Converter={StaticResource BoolToVis}}"><Image Source="{Binding PairOnlyQrImage}" Width="200" Height="200" Stretch="Uniform" RenderOptions.BitmapScalingMode="NearestNeighbor" AutomationProperties.Name="Pair-only QR code" /></Border>
+                                    <TextBlock Text="Scan this code in Glide on your phone to pair." FontWeight="SemiBold" TextWrapping="Wrap" />
                                     <WrapPanel Margin="0,12,0,0">
-                                        <Button Style="{StaticResource SecondaryButtonStyle}" Content="Show QR" Command="{Binding ShowPairQrCommand}" Margin="0,0,8,8" />
+                                        <Border Background="White" CornerRadius="10" Padding="10" HorizontalAlignment="Left" Visibility="{Binding IsPairQrVisible, Converter={StaticResource BoolToVis}}"><Image Source="{Binding PairOnlyQrImage}" Width="240" Height="240" Stretch="Uniform" RenderOptions.BitmapScalingMode="NearestNeighbor" AutomationProperties.Name="Pair-only QR code for this PC" /></Border>
+                                        <StackPanel Margin="20,8,0,0" VerticalAlignment="Center" MaxWidth="260">
+                                            <TextBlock Text="Pairing code for another computer" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                            <TextBlock Text="{Binding Pairing.Code}" FontSize="32" FontWeight="Bold" Margin="0,6,0,0" AutomationProperties.Name="Six-digit pairing code" />
+                                            <TextBlock Text="{Binding Pairing.ExpiryText}" Foreground="{DynamicResource TextSecondaryBrush}" AutomationProperties.LiveSetting="Polite" />
+                                        </StackPanel>
+                                    </WrapPanel>
+                                    <TextBlock Text="QR unavailable. Copy the link or get a new code." Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Visibility="{Binding IsPairQrUnavailable, Converter={StaticResource BoolToVis}}" Margin="0,8,0,0" />
+                                    <WrapPanel Margin="0,12,0,0">
                                         <Button Style="{StaticResource SecondaryButtonStyle}" Content="Copy link" Command="{Binding CopyPairOnlyLinkCommand}" Margin="0,0,8,8" />
+                                        <Button Style="{StaticResource SecondaryButtonStyle}" Content="New code" Command="{Binding ReadyToPairCommand}" Margin="0,0,8,8" />
                                         <Button Style="{StaticResource SecondaryButtonStyle}" Content="Cancel" Command="{Binding CancelPairCommand}" Margin="0,0,0,8" />
                                     </WrapPanel>
                                     <Expander Header="Connection details" Margin="0,8,0,0">
@@ -222,7 +227,7 @@
                                     <WrapPanel Margin="0,12,0,0"><Button Style="{StaticResource PrimaryButtonStyle}" Content="Pair" Command="{Binding SubmitPairAddressCommand}" Margin="0,0,8,8" /><Button Style="{StaticResource SecondaryButtonStyle}" Content="Cancel" Command="{Binding CancelPairCommand}" Margin="0,0,0,8" /></WrapPanel>
                                 </StackPanel>
                                 <StackPanel Visibility="{Binding IsPairLinkEntry, Converter={StaticResource BoolToVis}}" Margin="0,12,0,0">
-                                    <TextBlock Text="Use QR or link" FontWeight="SemiBold" />
+                                    <TextBlock Text="Enter another device's pairing link" FontWeight="SemiBold" />
                                     <TextBox Style="{StaticResource ModernTextBoxStyle}" Text="{Binding PairOnlyLink, UpdateSourceTrigger=PropertyChanged}" Margin="0,8,0,8" AutomationProperties.Name="Pair-only invitation link" />
                                     <WrapPanel><Button Style="{StaticResource PrimaryButtonStyle}" Content="Pair" Command="{Binding SubmitPairLinkCommand}" Margin="0,0,8,8" /><Button Style="{StaticResource SecondaryButtonStyle}" Content="Cancel" Command="{Binding CancelPairCommand}" Margin="0,0,0,8" /></WrapPanel>
                                 </StackPanel>

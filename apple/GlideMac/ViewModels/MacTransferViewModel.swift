@@ -184,7 +184,7 @@ public final class MacTransferViewModel: ObservableObject {
             guard self.pairingPhase == .scanning else { return }
             if self.discoveredPairPeers.isEmpty {
                 self.pairingPhase = .empty
-                self.pairingMessage = "Open Glide on the other computer and choose Ready to pair."
+                self.pairingMessage = "Open Glide on the other computer and choose Show my QR and code."
             } else {
                 self.pairingPhase = .peersFound
                 self.pairingMessage = ""
@@ -232,7 +232,8 @@ public final class MacTransferViewModel: ObservableObject {
             pairingCodeDisplay = window.formattedPinDisplay
             pairingExpirySeconds = Profile2Constants.defaultPairWindowSeconds
             pairingQrUri = window.qrInvitationUri
-            pairingMessage = "Enter this code on the other computer."
+            isPairQrVisible = true
+            pairingMessage = "Scan the QR on your phone or enter the code on another computer."
             pairingDiagnostic = window.qrInvitation.endpoints.map { "\($0.address):\($0.port)" }.joined(separator: ", ")
             pairingPhase = .targetReady
 

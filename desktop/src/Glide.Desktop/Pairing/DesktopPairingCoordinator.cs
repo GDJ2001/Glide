@@ -146,7 +146,7 @@ public sealed class DesktopPairingCoordinator : IDisposable
             Publish(Snapshot with
             {
                 Phase = _peerCount > 0 ? DesktopPairingPhase.PeersFound : DesktopPairingPhase.Empty,
-                Message = _peerCount > 0 ? "" : "Open Glide on the other computer and choose Ready to pair."
+                Message = _peerCount > 0 ? "" : "Open Glide on the other computer and choose Show my QR and code."
             });
         }, null, TimeSpan.FromSeconds(ScanTimeoutSeconds), Timeout.InfiniteTimeSpan);
     }
@@ -166,7 +166,7 @@ public sealed class DesktopPairingCoordinator : IDisposable
         }
         else if (phase == DesktopPairingPhase.PeersFound && pairReadyPeers == 0)
         {
-            Publish(Snapshot with { Phase = DesktopPairingPhase.Empty, Message = "Open Glide on the other computer and choose Ready to pair." });
+            Publish(Snapshot with { Phase = DesktopPairingPhase.Empty, Message = "Open Glide on the other computer and choose Show my QR and code." });
         }
     }
 

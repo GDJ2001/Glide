@@ -65,6 +65,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     private string _pairAddress = "";
     private string _pairOnlyLink = "";
     private ImageSource? _pairOnlyQrImage;
+    private string _renderedPairOnlyQrUri = "";
     private bool _isPairQrVisible;
 
     public DesktopPairingSnapshot Pairing => _pairing.Snapshot;
@@ -80,6 +81,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     public bool IsPairFailed => Pairing.Phase == DesktopPairingPhase.Failed;
     public bool IsPairResult => Pairing.Phase is DesktopPairingPhase.Success or DesktopPairingPhase.Failed or DesktopPairingPhase.Verifying;
     public bool HasPairDiagnostic => !string.IsNullOrWhiteSpace(Pairing.Diagnostic);
+    public bool IsPairQrUnavailable => IsPairReady && PairOnlyQrImage is null;
     public bool IsPairQrVisible { get => _isPairQrVisible; set => SetProperty(ref _isPairQrVisible, value); }
     public string PairPin { get => _pairPin; set => SetProperty(ref _pairPin, value); }
     public string PairAddress { get => _pairAddress; set => SetProperty(ref _pairAddress, value); }
@@ -169,7 +171,6 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     public RelayCommand ShowPairLinkCommand { get; }
     public RelayCommand SubmitPairLinkCommand { get; }
     public RelayCommand CopyPairOnlyLinkCommand { get; }
-    public RelayCommand ShowPairQrCommand { get; }
     public RelayCommand PairRecoveryCommand { get; }
     public RelayCommand ApprovePairCommand { get; }
     public RelayCommand DeclinePairCommand { get; }
@@ -231,14 +232,18 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         {
             if (snapshot.Phase is DesktopPairingPhase.Idle or DesktopPairingPhase.Success or DesktopPairingPhase.Failed)
                 PairPin = "";
-            if (snapshot.Phase != DesktopPairingPhase.TargetReady)
-                IsPairQrVisible = false;
-            PairOnlyQrImage = string.IsNullOrWhiteSpace(snapshot.QrUri)
-                ? null : QrImageHelper.GenerateQrImageSource(snapshot.QrUri);
+            if (!string.Equals(_renderedPairOnlyQrUri, snapshot.QrUri, StringComparison.Ordinal))
+            {
+                _renderedPairOnlyQrUri = snapshot.QrUri;
+                PairOnlyQrImage = string.IsNullOrWhiteSpace(snapshot.QrUri)
+                    ? null : QrImageHelper.GenerateQrImageSource(snapshot.QrUri);
+            }
+            IsPairQrVisible = snapshot.Phase == DesktopPairingPhase.TargetReady && PairOnlyQrImage is not null;
             OnPropertyChanged(nameof(Pairing));
             OnPropertyChanged(nameof(IsPairDiscovery));
             OnPropertyChanged(nameof(IsPairEmpty));
             OnPropertyChanged(nameof(IsPairReady));
+            OnPropertyChanged(nameof(IsPairQrUnavailable));
             OnPropertyChanged(nameof(IsPairPinEntry));
             OnPropertyChanged(nameof(IsPairManualEntry));
             OnPropertyChanged(nameof(IsPairLinkEntry));
@@ -271,7 +276,6 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         {
             if (!string.IsNullOrWhiteSpace(Pairing.QrUri)) Clipboard.SetText(Pairing.QrUri);
         });
-        ShowPairQrCommand = new RelayCommand(() => IsPairQrVisible = !IsPairQrVisible);
         PairRecoveryCommand = new RelayCommand(() =>
         {
             if (string.Equals(Pairing.RecoveryAction, "Get a new code", StringComparison.Ordinal))

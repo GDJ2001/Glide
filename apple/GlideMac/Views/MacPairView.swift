@@ -60,7 +60,7 @@ public struct MacPairView: View {
                         }
 
                     case .empty:
-                        Text("Open Glide on the other computer and choose Ready to pair.")
+                        Text("Open Glide on the other computer and choose Show my QR and code.")
                             .font(.body)
                         HStack(spacing: 10) {
                             Button("Try again") {
@@ -75,27 +75,36 @@ public struct MacPairView: View {
                         }
 
                     case .targetReady:
-                        Text("Pairing code")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                        Text(viewModel.pairingCodeDisplay)
-                            .font(.system(size: 32, weight: .bold, design: .monospaced))
-                            .accessibilityLabel("Pairing code \(viewModel.pairingCodeDisplay)")
-                        Text("Enter this code on the other computer.")
-                            .font(.body)
-                        Text(viewModel.pairingExpiryText)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                        Text("Scan this code in Glide on your phone to pair.")
+                            .font(.headline)
 
-                        if viewModel.isPairQrVisible, let qr = qrImage {
-                            qr
-                                .interpolation(.none)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 180, height: 180)
-                                .padding(10)
-                                .background(Color.white)
-                                .cornerRadius(10)
+                        HStack(alignment: .center, spacing: 20) {
+                            if viewModel.isPairQrVisible, let qr = qrImage {
+                                qr
+                                    .interpolation(.none)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 240, height: 240)
+                                    .padding(10)
+                                    .background(Color.white)
+                                    .cornerRadius(10)
+                                    .accessibilityLabel("Pair-only QR code for this Mac")
+                            } else {
+                                Text("QR unavailable. Copy the link or get a new code.")
+                                    .foregroundColor(.secondary)
+                            }
+
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Pairing code for another computer")
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                Text(viewModel.pairingCodeDisplay)
+                                    .font(.system(size: 32, weight: .bold, design: .monospaced))
+                                    .accessibilityLabel("Pairing code \(viewModel.pairingCodeDisplay)")
+                                Text(viewModel.pairingExpiryText)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
                         }
 
                         if !viewModel.pairingDiagnostic.isEmpty {
@@ -107,15 +116,14 @@ public struct MacPairView: View {
                         }
 
                         HStack(spacing: 10) {
-                            Button("Show QR") {
-                                generateQr()
-                                viewModel.isPairQrVisible.toggle()
-                            }
                             Button("Copy link") {
                                 #if os(macOS)
                                 NSPasteboard.general.clearContents()
                                 NSPasteboard.general.setString(viewModel.pairingQrUri, forType: .string)
                                 #endif
+                            }
+                            Button("New code") {
+                                viewModel.startReadyToPair()
                             }
                             Button("Cancel") {
                                 viewModel.cancelPairing()
@@ -160,7 +168,7 @@ public struct MacPairView: View {
                                 viewModel.submitInitiatorPinPairing()
                             }
                             .buttonStyle(.borderedProminent)
-                            Button("Use QR or link") {
+                            Button("Enter pairing link") {
                                 viewModel.showPairLinkEntry()
                             }
                             Button("Cancel") {
@@ -272,6 +280,10 @@ public struct MacPairView: View {
         }
         .onAppear {
             viewModel.refreshTrustedPeers()
+            generateQr()
+        }
+        .onChange(of: viewModel.pairingQrUri) { _ in
+            generateQr()
         }
     }
 
@@ -279,16 +291,16 @@ public struct MacPairView: View {
         HStack(spacing: 8) {
             Button("Find devices") { viewModel.beginFindDevices() }
                 .buttonStyle(.borderedProminent)
-            Button("Ready to pair") {
+            Button("Show my QR and code") {
                 viewModel.startReadyToPair()
-                generateQr()
             }
-            Button("Use QR or link") { viewModel.showPairLinkEntry() }
+            Button("Enter pairing link") { viewModel.showPairLinkEntry() }
             Button("Pair by address") { viewModel.showManualPairEntry() }
         }
     }
 
     private func generateQr() {
+        qrImage = nil
         guard !viewModel.pairingQrUri.isEmpty else { return }
         filter.message = Data(viewModel.pairingQrUri.utf8)
 

@@ -134,6 +134,7 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
     private string _pairLink = "";
     private Bitmap? _pairQrImage;
     private bool _isPairQrVisible;
+    private string _renderedPairQrUri = "";
 
     public DesktopPairingSnapshot Pairing => _pairing.Snapshot;
     public bool IsPairIdle => Pairing.Phase == DesktopPairingPhase.Idle;
@@ -149,6 +150,7 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
     public bool IsPairFailed => Pairing.Phase == DesktopPairingPhase.Failed;
     public bool IsPairResult => Pairing.Phase is DesktopPairingPhase.Success or DesktopPairingPhase.Failed or DesktopPairingPhase.Verifying;
     public bool IsPairQrVisible { get => _isPairQrVisible; set => SetProperty(ref _isPairQrVisible, value); }
+    public bool IsPairQrUnavailable => IsPairReady && PairQrImage is null;
     public string PairPin { get => _pairPin; set => SetProperty(ref _pairPin, value); }
     public string PairAddress { get => _pairAddress; set => SetProperty(ref _pairAddress, value); }
     public string PairLink { get => _pairLink; set => SetProperty(ref _pairLink, value); }
@@ -566,7 +568,6 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
     public AsyncRelayCommand SubmitPairAddressCommand { get; }
     public RelayCommand ShowPairLinkCommand { get; }
     public AsyncRelayCommand SubmitPairLinkCommand { get; }
-    public RelayCommand ShowPairQrCommand { get; }
     public RelayCommand PairRecoveryCommand { get; }
     public RelayCommand ApprovePairCommand { get; }
     public RelayCommand DeclinePairCommand { get; }
@@ -638,14 +639,18 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
         {
             if (snapshot.Phase is DesktopPairingPhase.Idle or DesktopPairingPhase.Success or DesktopPairingPhase.Failed)
                 PairPin = "";
-            if (snapshot.Phase != DesktopPairingPhase.TargetReady)
-                IsPairQrVisible = false;
-            PairQrImage?.Dispose();
-            PairQrImage = string.IsNullOrWhiteSpace(snapshot.QrUri) ? null : LinuxQrImageHelper.Create(snapshot.QrUri);
+            if (!string.Equals(_renderedPairQrUri, snapshot.QrUri, StringComparison.Ordinal))
+            {
+                _renderedPairQrUri = snapshot.QrUri;
+                PairQrImage?.Dispose();
+                PairQrImage = string.IsNullOrWhiteSpace(snapshot.QrUri) ? null : LinuxQrImageHelper.Create(snapshot.QrUri);
+            }
+            IsPairQrVisible = snapshot.Phase == DesktopPairingPhase.TargetReady && PairQrImage is not null;
             OnPropertyChanged(nameof(Pairing));
             OnPropertyChanged(nameof(IsPairIdle));
             OnPropertyChanged(nameof(IsPairEmpty));
             OnPropertyChanged(nameof(IsPairReady));
+            OnPropertyChanged(nameof(IsPairQrUnavailable));
             OnPropertyChanged(nameof(IsPairApproval));
             OnPropertyChanged(nameof(IsPairPinEntry));
             OnPropertyChanged(nameof(IsPairManualEntry));
@@ -680,7 +685,6 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
         SubmitPairAddressCommand = new AsyncRelayCommand(() => _pairing.PairWithAddressAsync(PairAddress, PairPin));
         ShowPairLinkCommand = new RelayCommand(() => _pairing.ShowLinkEntry());
         SubmitPairLinkCommand = new AsyncRelayCommand(() => _pairing.PairWithLinkAsync(PairLink));
-        ShowPairQrCommand = new RelayCommand(() => IsPairQrVisible = !IsPairQrVisible);
         PairRecoveryCommand = new RelayCommand(() =>
         {
             if (string.Equals(Pairing.RecoveryAction, "Get a new code", StringComparison.Ordinal))

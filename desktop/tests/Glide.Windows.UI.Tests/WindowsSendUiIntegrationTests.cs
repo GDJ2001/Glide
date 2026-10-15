@@ -331,7 +331,7 @@ public sealed class WindowsSendUiIntegrationTests
                 Assert.Contains(Descendants(window).OfType<Button>(), button =>
                     AutomationProperties.GetName(button) == "Find pair-ready Glide devices");
                 Assert.Contains(Descendants(window).OfType<Button>(), button =>
-                    AutomationProperties.GetName(button) == "Show pairing code for this PC");
+                    AutomationProperties.GetName(button) == "Show this PC's pairing QR and code");
                 viewModel.CurrentTab = "Send";
                 Assert.DoesNotContain(Descendants(window).OfType<RadioButton>(), button =>
                     AutomationProperties.GetName(button) == "Nearby device");

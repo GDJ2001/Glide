@@ -17,10 +17,10 @@
             <Button Content="Find devices" Command="{Binding FindPairDevicesCommand}"
                     Classes="primary" Margin="0,0,8,8"
                     AutomationProperties.Name="Find pair-ready Glide devices" />
-            <Button Content="Ready to pair" Command="{Binding ReadyToPairCommand}"
+            <Button Content="Show my QR and code" Command="{Binding ReadyToPairCommand}"
                     Classes="secondary" Margin="0,0,8,8"
-                    AutomationProperties.Name="Show pairing code for this computer" />
-            <Button Content="Use QR or link" Command="{Binding ShowPairLinkCommand}"
+                    AutomationProperties.Name="Show this computer's pairing QR and code" />
+            <Button Content="Enter pairing link" Command="{Binding ShowPairLinkCommand}"
                     Classes="secondary" Margin="0,0,8,8" />
             <Button Content="Pair by address" Command="{Binding ShowPairAddressCommand}"
                     Classes="secondary" Margin="0,0,0,8" />
@@ -48,19 +48,25 @@
           </StackPanel>
 
           <StackPanel Spacing="10" IsVisible="{Binding IsPairReady}">
-            <TextBlock Text="Pairing code" Classes="h3" />
-            <TextBlock Text="{Binding Pairing.Code}" FontSize="32" FontWeight="Bold"
-                       AutomationProperties.Name="Pairing code" />
-            <TextBlock Text="{Binding Pairing.ExpiryText}" Classes="muted" />
-            <TextBlock Text="Enter this code on the other computer." Classes="secondary" TextWrapping="Wrap" />
-            <Border Background="White" Padding="10" CornerRadius="10" HorizontalAlignment="Left"
-                    IsVisible="{Binding IsPairQrVisible}">
-              <Image Source="{Binding PairQrImage}" Width="200" Height="200"
-                     Stretch="Uniform" AutomationProperties.Name="Pair-only QR code" />
-            </Border>
+            <TextBlock Text="Scan this code in Glide on your phone to pair." Classes="h3" TextWrapping="Wrap" />
             <WrapPanel>
-              <Button Content="Show QR" Command="{Binding ShowPairQrCommand}" Classes="secondary" Margin="0,0,8,8" />
+              <Border Background="White" Padding="10" CornerRadius="10" HorizontalAlignment="Left"
+                      IsVisible="{Binding IsPairQrVisible}">
+                <Image Source="{Binding PairQrImage}" Width="240" Height="240"
+                       Stretch="Uniform" AutomationProperties.Name="Pair-only QR code for this computer" />
+              </Border>
+              <StackPanel Spacing="6" Margin="20,8,0,0" VerticalAlignment="Center" MaxWidth="260">
+                <TextBlock Text="Pairing code for another computer" Classes="h3" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding Pairing.Code}" FontSize="32" FontWeight="Bold"
+                           AutomationProperties.Name="Six-digit pairing code" />
+                <TextBlock Text="{Binding Pairing.ExpiryText}" Classes="muted" />
+              </StackPanel>
+            </WrapPanel>
+            <TextBlock Text="QR unavailable. Copy the link or get a new code." Classes="secondary"
+                       TextWrapping="Wrap" IsVisible="{Binding IsPairQrUnavailable}" />
+            <WrapPanel>
               <Button x:Name="CopyPairLinkButton" Content="Copy link" Classes="secondary" Margin="0,0,8,8" />
+              <Button Content="New code" Command="{Binding ReadyToPairCommand}" Classes="secondary" Margin="0,0,8,8" />
               <Button Content="Cancel" Command="{Binding CancelPairCommand}" Classes="secondary" Margin="0,0,0,8" />
             </WrapPanel>
             <Expander Header="Connection details" IsExpanded="False" HorizontalAlignment="Stretch">
@@ -97,7 +103,7 @@
           </StackPanel>
 
           <StackPanel Spacing="10" IsVisible="{Binding IsPairLinkEntry}">
-            <TextBlock Text="Use QR or link" Classes="h3" />
+            <TextBlock Text="Enter another device's pairing link" Classes="h3" />
             <TextBox Text="{Binding PairLink}" PlaceholderText="glide://pair/v2#…"
                      AutomationProperties.Name="Pair-only invitation link" />
             <WrapPanel>
