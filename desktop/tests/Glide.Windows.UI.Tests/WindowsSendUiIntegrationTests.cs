@@ -332,6 +332,18 @@ public sealed class WindowsSendUiIntegrationTests
                     AutomationProperties.GetName(button) == "Find pair-ready Glide devices");
                 Assert.Contains(Descendants(window).OfType<Button>(), button =>
                     AutomationProperties.GetName(button) == "Show this PC's pairing QR and code");
+                viewModel.ShowPairAddressCommand.Execute(null);
+                window.UpdateLayout();
+                var addressLabel = Descendants(window).OfType<TextBlock>()
+                    .Single(label => label.Text == "Local address" && label.IsVisible);
+                var codeLabel = Descendants(window).OfType<TextBlock>()
+                    .Single(label => label.Text == "Six-digit pairing code" && label.IsVisible);
+                var addressInput = Assert.IsType<TextBox>(window.FindName("PairManualAddressInput"));
+                var codeInput = Assert.IsType<TextBox>(window.FindName("PairManualPinInput"));
+                Assert.InRange(Math.Abs(addressLabel.TranslatePoint(new Point(), window).X -
+                    addressInput.TranslatePoint(new Point(), window).X), 0, 2);
+                Assert.InRange(Math.Abs(codeLabel.TranslatePoint(new Point(), window).X -
+                    codeInput.TranslatePoint(new Point(), window).X), 0, 2);
                 viewModel.CurrentTab = "Send";
                 Assert.DoesNotContain(Descendants(window).OfType<RadioButton>(), button =>
                     AutomationProperties.GetName(button) == "Nearby device");
