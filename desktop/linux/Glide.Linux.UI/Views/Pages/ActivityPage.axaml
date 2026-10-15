@@ -95,7 +95,8 @@
           <Grid x:Name="HistoryHeaderGrid" ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
             <TextBlock Grid.Column="0" Text="Verified history" Classes="h3" VerticalAlignment="Center" />
             <StackPanel x:Name="HistoryHeaderActions" Grid.Column="1" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
-              <TextBox Text="{Binding History.SearchQuery}" Width="170" PlaceholderText="Search history" AutomationProperties.Name="Search transfer history" />
+              <TextBox x:Name="ActivitySearchTextBox" Text="{Binding History.SearchQuery}" Width="170"
+                       PlaceholderText="Search history" AutomationProperties.Name="Search transfer history" />
               <!-- Filter Buttons: All, Sent, Received -->
               <Button Content="All" Command="{Binding SelectActivityFilterCommand}" CommandParameter="All"
                       Classes="method-tab"

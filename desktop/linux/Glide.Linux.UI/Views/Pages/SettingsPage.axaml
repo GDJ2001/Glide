@@ -44,7 +44,7 @@
           <StackPanel Spacing="6">
             <TextBlock Text="Device Name" FontWeight="Medium" Classes="body" />
             <TextBlock Text="The name shown to other devices on your local network during transfers:" Classes="muted" />
-            <TextBox Text="{Binding DeviceName}" Classes="body" />
+            <TextBox x:Name="DeviceNameTextBox" Text="{Binding DeviceName}" AutomationProperties.Name="Device name" />
           </StackPanel>
 
           <!-- Download Directory -->
@@ -52,8 +52,8 @@
             <TextBlock Text="Download Directory" FontWeight="Medium" Classes="body" />
             <TextBlock Text="Inbound files are staged in private quarantine and verified before moving here:" Classes="muted" />
             <Grid ColumnDefinitions="*,Auto">
-              <TextBox Grid.Column="0" Text="{Binding DownloadDirectory}" IsReadOnly="True"
-                       Classes="body" Margin="0,0,10,0" />
+              <TextBox x:Name="DownloadDirectoryTextBox" Grid.Column="0" Text="{Binding DownloadDirectory}"
+                       IsReadOnly="True" Margin="0,0,10,0" AutomationProperties.Name="Download directory" />
               <Button Grid.Column="1" x:Name="BrowseDownloadDirButton" Content="Browse..."
                       Classes="secondary"
                       AutomationProperties.Name="Browse download destination folder" />

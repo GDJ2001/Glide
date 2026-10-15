@@ -46,6 +46,81 @@ public static class HeadlessSetup
 public sealed class LinuxRenderedUiTests
 {
     [Fact]
+    public async Task FormControls_FollowGlidePalette_InDarkAndLightThemes()
+    {
+        await HeadlessSetup.GetSession().Dispatch(() =>
+        {
+            using var vm = new LinuxMainViewModel();
+            var window = new MainWindow { DataContext = vm };
+            window.Show();
+            try
+            {
+                var activity = window.GetVisualDescendants().OfType<ActivityPage>().Single();
+                var settings = window.GetVisualDescendants().OfType<SettingsPage>().Single();
+                var search = activity.FindControl<TextBox>("ActivitySearchTextBox")!;
+                var name = settings.FindControl<TextBox>("DeviceNameTextBox")!;
+                var destination = settings.FindControl<TextBox>("DownloadDirectoryTextBox")!;
+
+                foreach (var (theme, fieldColor, textColor, hintColor, borderColor) in new[]
+                {
+                    (AppThemePreference.Dark, "#1D2D47", "#F3F7FF", "#8F9DB6", "#2A3B57"),
+                    (AppThemePreference.Light, "#F1F5FB", "#14213D", "#75839A", "#DCE4F2")
+                })
+                {
+                    vm.CurrentThemePreference = theme;
+                    window.UpdateLayout();
+                    foreach (var field in new[] { search, name, destination })
+                    {
+                        Assert.Equal(Color.Parse(fieldColor), ((ISolidColorBrush)field.Background!).Color);
+                        Assert.Equal(Color.Parse(textColor), ((ISolidColorBrush)field.Foreground!).Color);
+                        Assert.Equal(Color.Parse(hintColor), ((ISolidColorBrush)field.PlaceholderForeground!).Color);
+                        Assert.Equal(Color.Parse(borderColor), ((ISolidColorBrush)field.BorderBrush!).Color);
+                    }
+                }
+            }
+            finally
+            {
+                window.Close();
+                Application.Current!.RequestedThemeVariant = ThemeVariant.Default;
+            }
+        }, CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task TrustedDeviceDetailsHeader_FollowsGlidePalette_InDarkAndLightThemes()
+    {
+        await HeadlessSetup.GetSession().Dispatch(() =>
+        {
+            var window = new Window { Content = new Expander { Header = "Details" } };
+            window.Show();
+            try
+            {
+                foreach (var (theme, surfaceColor) in new[]
+                {
+                    (ThemeVariant.Dark, "#1D2D47"),
+                    (ThemeVariant.Light, "#F1F5FB")
+                })
+                {
+                    Application.Current!.RequestedThemeVariant = theme;
+                    window.UpdateLayout();
+                    var header = window.GetVisualDescendants()
+                        .OfType<Avalonia.Controls.Primitives.ToggleButton>()
+                        .Single(button => button.Name == "ExpanderHeader");
+                    Assert.Equal(Color.Parse(surfaceColor), ((ISolidColorBrush)header.Background!).Color);
+                    var headerSurface = header.GetVisualDescendants().OfType<Border>()
+                        .Single(border => border.Name == "ToggleButtonBackground");
+                    Assert.Equal(Color.Parse(surfaceColor), ((ISolidColorBrush)headerSurface.Background!).Color);
+                }
+            }
+            finally
+            {
+                window.Close();
+                Application.Current!.RequestedThemeVariant = ThemeVariant.Default;
+            }
+        }, CancellationToken.None);
+    }
+
+    [Fact]
     public async Task ActivityHistoryControls_MoveBelowHeadingAtNarrowWidth()
     {
         await HeadlessSetup.GetSession().Dispatch(() =>
