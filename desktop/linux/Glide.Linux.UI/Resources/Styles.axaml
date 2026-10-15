@@ -207,6 +207,13 @@
     <Setter Property="MinHeight" Value="40" />
   </Style>
 
+  <!-- Keep entered text and placeholders centered in the desktop's single-line fields.
+       The wrapped invitation field retains the Fluent theme's top alignment. -->
+  <Style Selector="TextBox[TextWrapping=NoWrap]">
+    <Setter Property="Padding" Value="12,0" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+
   <Style Selector="TextBox:pointerover /template/ Border#PART_BorderElement">
     <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource BorderStrongBrush}" />
