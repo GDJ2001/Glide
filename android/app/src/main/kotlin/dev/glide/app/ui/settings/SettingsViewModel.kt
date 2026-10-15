@@ -85,6 +85,23 @@ class SettingsViewModel(
         }
     }
 
+    fun setReceivedFilesFolder(treeUri: String?) {
+        viewModelScope.launch {
+            val result = settingsStore.updateReceivedFilesTreeUri(treeUri)
+            _uiState.update {
+                it.copy(feedbackMessage = if (result.isSuccess) {
+                    if (treeUri == null) "Save location reset to Download/Glide" else "Save location updated"
+                } else {
+                    result.exceptionOrNull()?.message ?: "Could not update save location"
+                })
+            }
+        }
+    }
+
+    fun showSaveLocationError(message: String) {
+        _uiState.update { it.copy(feedbackMessage = message) }
+    }
+
     fun startEditDeviceName() {
         _uiState.update {
             it.copy(

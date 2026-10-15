@@ -21,7 +21,9 @@ data class GlideSettings(
     val dynamicColor: Boolean = false,
     val reducedMotion: ReducedMotionPreference = ReducedMotionPreference.SYSTEM,
     val notificationDetails: Boolean = false,
-    val keepScreenAwake: Boolean = false
+    val keepScreenAwake: Boolean = false,
+    /** Persisted SAF tree grant for an optional public save destination. Null uses Download/Glide. */
+    val receivedFilesTreeUri: String? = null
 ) {
     companion object {
         const val DEFAULT_DEVICE_NAME = "Glide device"
@@ -80,6 +82,8 @@ interface SettingsStore {
     suspend fun updateReducedMotion(motion: ReducedMotionPreference): Result<Unit>
     suspend fun updateNotificationDetails(enabled: Boolean): Result<Unit>
     suspend fun updateKeepScreenAwake(enabled: Boolean): Result<Unit>
+    suspend fun updateReceivedFilesTreeUri(uri: String?): Result<Unit> =
+        Result.failure(UnsupportedOperationException("Custom receive folders are unavailable"))
 }
 
 data class ReceivedFileInfo(

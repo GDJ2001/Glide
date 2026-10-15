@@ -41,6 +41,7 @@ class DataStoreSettingsStore(
         val KEY_REDUCED_MOTION = stringPreferencesKey("reduced_motion")
         val KEY_NOTIFICATION_DETAILS = booleanPreferencesKey("notification_details")
         val KEY_KEEP_SCREEN_AWAKE = booleanPreferencesKey("keep_screen_awake")
+        val KEY_RECEIVED_FILES_TREE_URI = stringPreferencesKey("received_files_tree_uri")
     }
 
     override val settingsFlow: Flow<GlideSettings> = dataStore.data
@@ -121,6 +122,19 @@ class DataStoreSettingsStore(
         }
     }
 
+    override suspend fun updateReceivedFilesTreeUri(uri: String?): Result<Unit> = withContext(ioDispatcher) {
+        if (uri != null && (!uri.startsWith("content://com.android.externalstorage.documents/") || uri.length > 4096)) {
+            return@withContext Result.failure(IllegalArgumentException("Invalid folder selection"))
+        }
+        runCatching {
+            dataStore.edit { preferences ->
+                if (uri == null) preferences.remove(KEY_RECEIVED_FILES_TREE_URI)
+                else preferences[KEY_RECEIVED_FILES_TREE_URI] = uri
+            }
+            Unit
+        }
+    }
+
     private fun mapPreferencesToSettings(preferences: Preferences): GlideSettings {
         val deviceName = preferences[KEY_DEVICE_NAME] ?: GlideSettings.DEFAULT_DEVICE_NAME
 
@@ -145,7 +159,8 @@ class DataStoreSettingsStore(
             dynamicColor = dynamicColor,
             reducedMotion = reducedMotion,
             notificationDetails = notificationDetails,
-            keepScreenAwake = keepScreenAwake
+            keepScreenAwake = keepScreenAwake,
+            receivedFilesTreeUri = preferences[KEY_RECEIVED_FILES_TREE_URI]
         )
     }
 }

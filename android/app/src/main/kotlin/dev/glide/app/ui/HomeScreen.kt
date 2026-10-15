@@ -21,7 +21,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Settings
 import dev.glide.core.domain.TrustedPeerRecord
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -29,7 +28,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -70,7 +68,6 @@ fun HomeScreen(
     onNavigateToSend: () -> Unit,
     onNavigateToReceive: () -> Unit,
     onNavigateToHistory: () -> Unit = {},
-    onNavigateToSettings: () -> Unit = {},
     activeSessionId: String? = null,
     onNavigateToTransfer: (String) -> Unit = {},
     pairedDevices: List<TrustedPeerRecord> = emptyList(),
@@ -102,7 +99,7 @@ fun HomeScreen(
                 ),
             verticalArrangement = Arrangement.spacedBy(verticalSpacing)
         ) {
-        // App Identity Header with Settings Action
+        // App identity; Settings is available in the persistent navigation bar.
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -132,22 +129,6 @@ fun HomeScreen(
                         .padding(vertical = 4.dp)
                 )
 
-                IconButton(
-                    onClick = onNavigateToSettings,
-                    modifier = Modifier
-                        .size(48.dp)
-                        .glideHoverHand()
-                        .semantics {
-                            role = Role.Button
-                            contentDescription = "Open settings"
-                        }
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Settings,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
             }
         }
 

@@ -46,6 +46,7 @@ class DataStoreSettingsStoreTest {
             assertEquals(ReducedMotionPreference.SYSTEM, settings.reducedMotion)
             assertFalse(settings.notificationDetails)
             assertFalse(settings.keepScreenAwake)
+            assertEquals(null, settings.receivedFilesTreeUri)
         } finally {
             cleanup()
         }
@@ -63,6 +64,22 @@ class DataStoreSettingsStoreTest {
 
             val fromFlow = store.settingsFlow.first()
             assertEquals("Pixel 10 Pro", fromFlow.deviceName)
+        } finally {
+            cleanup()
+        }
+    }
+
+    @Test
+    fun `received files folder persists and can return to Download Glide default`() = runTest(testDispatcher) {
+        val (store, cleanup) = createStore(this)
+        try {
+            val tree = "content://com.android.externalstorage.documents/tree/primary%3ADocuments%2FGlide"
+            assertTrue(store.updateReceivedFilesTreeUri(tree).isSuccess)
+            assertEquals(tree, store.getSettings().receivedFilesTreeUri)
+            assertTrue(store.updateReceivedFilesTreeUri("file:///unsafe").isFailure)
+            assertEquals(tree, store.getSettings().receivedFilesTreeUri)
+            assertTrue(store.updateReceivedFilesTreeUri(null).isSuccess)
+            assertEquals(null, store.getSettings().receivedFilesTreeUri)
         } finally {
             cleanup()
         }

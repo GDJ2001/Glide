@@ -1,5 +1,6 @@
 package dev.glide.app.service
 
+import android.content.Context
 import dev.glide.app.discovery.ProductionDiscoveryController
 import dev.glide.app.lan.LanReceiverRuntimeState
 import dev.glide.app.lan.ProductionLanController
@@ -10,6 +11,10 @@ import dev.glide.app.ui.discovery.ReceiveReadinessUiState
 import dev.glide.app.ui.pairing.PairingUiState
 import dev.glide.app.ui.selection.SelectedTransferStore
 import dev.glide.app.ui.transfer.TransferUiState
+import dev.glide.app.ui.transfer.ExportUiStatus
+import dev.glide.app.util.FileOpener
+import dev.glide.app.util.ReceivedFileSaver
+import dev.glide.data.export.AndroidFileExporter
 import dev.glide.app.ui.transfer.toUiState
 import dev.glide.core.coordinator.ItemPhase
 import dev.glide.core.coordinator.SessionState
@@ -37,6 +42,7 @@ import kotlinx.coroutines.launch
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
+import dagger.hilt.android.qualifiers.ApplicationContext
 
 /**
  * Service-owned Android transfer runtime (HARD-005).
@@ -53,6 +59,7 @@ class TransferRuntime private constructor(
     private val lanController: ProductionLanController?,
     private val persistentTrustManager: PersistentTrustManager?,
     private val resumableStagingStore: ResumableStagingStore?,
+    private val applicationContext: Context?,
     @Suppress("unused") private val testInstance: Boolean
 ) {
 
@@ -62,13 +69,15 @@ class TransferRuntime private constructor(
         discoveryController: ProductionDiscoveryController,
         lanController: ProductionLanController,
         persistentTrustManager: PersistentTrustManager,
-        resumableStagingStore: ResumableStagingStore
+        resumableStagingStore: ResumableStagingStore,
+        @ApplicationContext applicationContext: Context
     ) : this(
         sessionFactory,
         discoveryController,
         lanController,
         persistentTrustManager,
         resumableStagingStore,
+        applicationContext,
         false
     )
 
@@ -77,6 +86,7 @@ class TransferRuntime private constructor(
     private var serviceScope: CoroutineScope? = null
     private var terminalCallback: (() -> Unit)? = null
     private var terminalCallbackSessionId: String? = null
+    private var autoSavedSessionId: String? = null
 
     private var activeCoordinator: TransferCoordinator? = null
     private var activeCoordinatorJob: Job? = null
@@ -93,6 +103,10 @@ class TransferRuntime private constructor(
 
     private val _transferState = MutableStateFlow<TransferUiState>(TransferUiState.Idle)
     val transferState: StateFlow<TransferUiState> = _transferState.asStateFlow()
+    private val _autoSaveStatus = MutableStateFlow<ExportUiStatus>(ExportUiStatus.Idle)
+    val autoSaveStatus: StateFlow<ExportUiStatus> = _autoSaveStatus.asStateFlow()
+    private val _autoSavedItemIds = MutableStateFlow<Set<String>>(emptySet())
+    val autoSavedItemIds: StateFlow<Set<String>> = _autoSavedItemIds.asStateFlow()
 
     private val _pairingState = MutableStateFlow<PairingUiState>(PairingUiState.Idle)
     val pairingState: StateFlow<PairingUiState> = _pairingState.asStateFlow()
@@ -157,6 +171,7 @@ class TransferRuntime private constructor(
             serviceScope = scope
             terminalCallback = onTerminal
             terminalCallbackSessionId = null
+            autoSavedSessionId = null
         }
 
         startTrustObservation(scope)
@@ -679,9 +694,12 @@ class TransferRuntime private constructor(
             activeCoordinator = coordinator
             activePeerDisplayName = peerDisplayName
             terminalCallbackSessionId = null
+            autoSavedSessionId = null
             lastTerminalState = null
             lastSenderBatch = null
             lastSourceMap = emptyMap()
+            _autoSaveStatus.value = ExportUiStatus.Idle
+            _autoSavedItemIds.value = emptySet()
             _activeSessionId.value = coordinator.sessionId.value
             _isSessionActive.value = true
             statePresenter.reset()
@@ -717,7 +735,12 @@ class TransferRuntime private constructor(
                     )
                     if (nextUiState != null) _transferState.value = nextUiState
 
-                    val active = !sessionState.phase.isTerminal
+                    // Keep the service and its single-operation gate active while verified
+                    // received files are being published to the selected public folder.
+                    val pendingPublicSave = nextUiState is TransferUiState.Completed &&
+                        nextUiState.role == dev.glide.core.domain.DeviceRole.Receiver &&
+                        applicationContext != null
+                    val active = !sessionState.phase.isTerminal || pendingPublicSave
                     _isSessionActive.value = active
                     _activeSessionId.value = coordinator.sessionId.value.takeIf { active }
 
@@ -727,6 +750,24 @@ class TransferRuntime private constructor(
                             activeCoordinator === coordinator
                         }
                         if (!stillOwned) return@collect
+                        val shouldSave = synchronized(lock) {
+                            if (autoSavedSessionId == coordinator.sessionId.value) false
+                            else {
+                                autoSavedSessionId = coordinator.sessionId.value
+                                true
+                            }
+                        }
+                        if (shouldSave && nextUiState is TransferUiState.Completed &&
+                            nextUiState.role == dev.glide.core.domain.DeviceRole.Receiver
+                        ) {
+                            try {
+                                autoSaveVerifiedFiles(nextUiState)
+                            } catch (e: Exception) {
+                                _autoSaveStatus.value = ExportUiStatus.Failed(
+                                    "Could not save the verified files: ${e.message ?: "Unknown error"}"
+                                )
+                            }
+                        }
                         finalizeTerminalCoordinator(coordinator)
                     }
                 }
@@ -797,6 +838,21 @@ class TransferRuntime private constructor(
             }
         }
         return true
+    }
+
+    private suspend fun autoSaveVerifiedFiles(state: TransferUiState.Completed) {
+        val context = applicationContext ?: return
+        _autoSaveStatus.value = ExportUiStatus.Exporting
+        val exporter = AndroidFileExporter(context)
+        _autoSaveStatus.value = publishVerifiedReceive(
+            state = state,
+            resolve = { FileOpener.resolveReceivedFile(context, it) },
+            save = { file, item ->
+                ReceivedFileSaver.save(context, exporter, file, item.displayName,
+                    item.mimeType, item.relativePath)
+            },
+            onSaved = { _autoSavedItemIds.value = _autoSavedItemIds.value + it }
+        )
     }
 
     private fun confirmPairing(peerId: PeerId): Boolean {
@@ -1392,6 +1448,7 @@ class TransferRuntime private constructor(
                 lanController,
                 persistentTrustManager,
                 resumableStagingStore,
+                null,
                 true
             )
         }

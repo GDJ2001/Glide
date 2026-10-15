@@ -65,6 +65,14 @@ interface FileExporter {
         displayName: String,
         relativePath: String? = null
     ): ExportResult = exportToUri(sourceFile, destinationUri.toString(), displayName, relativePath)
+
+    suspend fun exportToTree(
+        sourceFile: File,
+        treeUriString: String,
+        displayName: String,
+        mimeType: String = "*/*",
+        relativePath: String? = null
+    ): ExportResult = ExportResult.Failure("Custom folder export is unavailable")
 }
 
 /**
@@ -89,6 +97,15 @@ class DefaultMediaStoreExportAdapter(
     private val context: Context
 ) : MediaStoreExportAdapter {
 
+    companion object {
+        internal fun downloadRelativePath(
+            subfolder: String?,
+            downloadsDirectory: String = Environment.DIRECTORY_DOWNLOADS
+        ): String =
+            "$downloadsDirectory/Glide" +
+                (subfolder?.takeIf { it.isNotBlank() }?.let { "/${it.trim('/')}" } ?: "")
+    }
+
     override fun queryExistingDownloadNames(): Set<String> = queryExistingDownloadNames(null)
 
     override fun queryExistingDownloadNames(subfolder: String?): Set<String> {
@@ -96,14 +113,11 @@ class DefaultMediaStoreExportAdapter(
         val names = mutableSetOf<String>()
         val projection = arrayOf(MediaStore.MediaColumns.DISPLAY_NAME)
         val queryUri = MediaStore.Downloads.EXTERNAL_CONTENT_URI
-        val (selection, selectionArgs) = if (!subfolder.isNullOrBlank()) {
-            val cleanSub = subfolder.trim('/')
-            val withTrailing = "${Environment.DIRECTORY_DOWNLOADS}/Glide/$cleanSub/"
-            val withoutTrailing = "${Environment.DIRECTORY_DOWNLOADS}/Glide/$cleanSub"
-            "${MediaStore.MediaColumns.RELATIVE_PATH} = ? OR ${MediaStore.MediaColumns.RELATIVE_PATH} = ?" to arrayOf(withTrailing, withoutTrailing)
-        } else {
-            null to null
-        }
+        val folder = downloadRelativePath(subfolder)
+        val withTrailing = "$folder/"
+        val withoutTrailing = folder
+        val selection = "${MediaStore.MediaColumns.RELATIVE_PATH} = ? OR ${MediaStore.MediaColumns.RELATIVE_PATH} = ?"
+        val selectionArgs = arrayOf(withTrailing, withoutTrailing)
         try {
             context.contentResolver.query(queryUri, projection, selection, selectionArgs, null)?.use { cursor ->
                 val nameIndex = cursor.getColumnIndex(MediaStore.MediaColumns.DISPLAY_NAME)
@@ -127,11 +141,7 @@ class DefaultMediaStoreExportAdapter(
 
     override fun insertPendingDownload(displayName: String, mimeType: String, subfolder: String?): String? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
-        val targetRelPath = if (!subfolder.isNullOrBlank()) {
-            "${Environment.DIRECTORY_DOWNLOADS}/Glide/${subfolder.trim('/')}"
-        } else {
-            Environment.DIRECTORY_DOWNLOADS
-        }
+        val targetRelPath = downloadRelativePath(subfolder)
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
             put(MediaStore.MediaColumns.MIME_TYPE, mimeType.ifBlank { "*/*" })
@@ -203,7 +213,8 @@ class AndroidFileExporter(
     private val adapter: MediaStoreExportAdapter,
     private val sdkInt: Int = Build.VERSION.SDK_INT,
     private val uriDeleteHandler: ((String) -> Boolean)? = null,
-    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val documentContext: Context? = null
 ) : FileExporter {
 
     constructor(context: Context) : this(
@@ -220,7 +231,8 @@ class AndroidFileExporter(
             } catch (_: Exception) {
                 false
             }
-        }
+        },
+        documentContext = context.applicationContext
     )
 
     companion object {
@@ -375,5 +387,100 @@ class AndroidFileExporter(
                 cause = e
             )
         }
+    }
+
+    override suspend fun exportToTree(
+        sourceFile: File,
+        treeUriString: String,
+        displayName: String,
+        mimeType: String,
+        relativePath: String?
+    ): ExportResult = withContext(ioDispatcher) {
+        val context = documentContext ?: return@withContext ExportResult.Failure("Folder access is unavailable")
+        if (!sourceFile.isFile) return@withContext ExportResult.Failure("Verified file is missing")
+        if (adapter.getAvailableBytes() < sourceFile.length()) {
+            return@withContext ExportResult.Failure("Insufficient storage space")
+        }
+        val treeUri = try { Uri.parse(treeUriString) } catch (_: Exception) { null }
+        if (treeUri?.scheme != "content" || treeUri.authority != "com.android.externalstorage.documents") {
+            return@withContext ExportResult.Failure("Choose a local device or SD-card folder")
+        }
+
+        val resolver = context.contentResolver
+        var created: Uri? = null
+        try {
+            val treeId = DocumentsContract.getTreeDocumentId(treeUri)
+            var parentId = treeId
+            val subfolder = relativePath?.let {
+                SafeRelativePath.parse(it).getOrNull()?.parentPath
+            }
+            for (segment in subfolder?.split('/')?.filter { it.isNotBlank() }.orEmpty()) {
+                val existing = findChild(resolver, treeUri, parentId, segment, true)
+                val folder = existing ?: DocumentsContract.createDocument(
+                    resolver,
+                    DocumentsContract.buildDocumentUriUsingTree(treeUri, parentId),
+                    "vnd.android.document/directory",
+                    segment
+                ) ?: throw IOException("Cannot create folder")
+                parentId = DocumentsContract.getDocumentId(folder)
+            }
+
+            val safeName = FilenameSanitizer.sanitize(displayName)
+            val name = FilenameSanitizer.resolveUniqueName(
+                desiredName = safeName,
+                existsPredicate = { candidate ->
+                    findChild(resolver, treeUri, parentId, candidate, false) != null
+                }
+            )
+            val parentUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, parentId)
+            val createdUri = DocumentsContract.createDocument(resolver, parentUri, mimeType.ifBlank { "*/*" }, name)
+                ?: throw IOException("Cannot create file in selected folder")
+            created = createdUri
+            var copied = 0L
+            FileInputStream(sourceFile).use { input ->
+                (resolver.openOutputStream(createdUri, "wt") ?: throw IOException("Cannot write selected folder")).use { output ->
+                    val buffer = ByteArray(BUFFER_SIZE)
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        output.write(buffer, 0, read)
+                        copied += read
+                    }
+                    output.flush()
+                }
+            }
+            ExportResult.Success(createdUri.toString(), name, copied)
+        } catch (e: Exception) {
+            val removed = created?.let { uri ->
+                try { DocumentsContract.deleteDocument(resolver, uri) } catch (_: Exception) { false }
+            } ?: true
+            ExportResult.Failure("Could not save to selected folder: ${e.message ?: "Access denied"}", removed, e)
+        }
+    }
+
+    private fun findChild(
+        resolver: android.content.ContentResolver,
+        treeUri: Uri,
+        parentId: String,
+        name: String,
+        directory: Boolean
+    ): Uri? {
+        val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentId)
+        val projection = arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+            DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+            DocumentsContract.Document.COLUMN_MIME_TYPE)
+        resolver.query(childrenUri, projection, null, null, null)?.use { cursor ->
+            val idColumn = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+            val nameColumn = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+            val mimeColumn = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_MIME_TYPE)
+            while (cursor.moveToNext()) {
+                if (cursor.getString(nameColumn) == name &&
+                    (!directory || cursor.getString(mimeColumn) == DocumentsContract.Document.MIME_TYPE_DIR)
+                ) {
+                    return DocumentsContract.buildDocumentUriUsingTree(treeUri, cursor.getString(idColumn))
+                }
+            }
+        }
+        return null
     }
 }

@@ -1,5 +1,10 @@
 package dev.glide.app.ui.settings
 
+import android.content.Intent
+import android.net.Uri
+import android.provider.DocumentsContract
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -77,6 +82,24 @@ fun SettingsScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val scrollState = rememberScrollState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            if (uri.authority != "com.android.externalstorage.documents") {
+                viewModel.showSaveLocationError("Choose a folder on this device or an SD card.")
+                return@rememberLauncherForActivityResult
+            }
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+                viewModel.setReceivedFilesFolder(uri.toString())
+            } catch (_: SecurityException) {
+                viewModel.showSaveLocationError("Glide needs folder access to save there. Choose another folder.")
+            }
+        }
+    }
 
     LaunchedEffect(uiState.feedbackMessage) {
         val message = uiState.feedbackMessage
@@ -192,6 +215,12 @@ fun SettingsScreen(
                     haptics.performSelection()
                     viewModel.requestDeleteAllFiles()
                 }
+            )
+
+            ReceiveSaveLocationSection(
+                treeUri = uiState.settings.receivedFilesTreeUri,
+                onChooseFolder = { folderPicker.launch(null) },
+                onUseDefault = { viewModel.setReceivedFilesFolder(null) }
             )
 
             // 5. Nearby & Local Privacy Section
@@ -343,6 +372,36 @@ fun SettingsScreen(
             },
             onDismiss = { viewModel.dismissTrustedDevicesDialog() }
         )
+    }
+}
+
+@Composable
+private fun ReceiveSaveLocationSection(
+    treeUri: String?,
+    onChooseFolder: () -> Unit,
+    onUseDefault: () -> Unit
+) {
+    val location = if (treeUri == null) "Download/Glide" else runCatching {
+        DocumentsContract.getTreeDocumentId(Uri.parse(treeUri)).substringAfter(':')
+    }.getOrDefault("Selected folder")
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("Received file save location", style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+        Text(location, style = MaterialTheme.typography.bodyLarge)
+        Text("Verified files save here automatically. Glide also keeps a private copy.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (android.os.Build.VERSION.SDK_INT < 29 && treeUri == null) {
+            Text("On this Android version, choose a local folder to enable automatic saving.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error)
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = onChooseFolder) { Text("Choose folder") }
+            if (treeUri != null) {
+                TextButton(onClick = onUseDefault) { Text("Use Download/Glide") }
+            }
+        }
     }
 }
 

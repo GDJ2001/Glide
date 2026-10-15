@@ -9,6 +9,7 @@ import dev.glide.app.service.TrustRuntimeState
 import dev.glide.app.ui.pairing.PairingUiState
 import dev.glide.app.util.FileOpenResult
 import dev.glide.app.util.FileOpener
+import dev.glide.app.util.ReceivedFileSaver
 import dev.glide.core.coordinator.TransferCoordinator
 import dev.glide.core.domain.BatchId
 import dev.glide.core.domain.DeviceRole
@@ -48,6 +49,12 @@ class TransferViewModel(
 
     private val _exportStatus = MutableStateFlow<ExportUiStatus>(ExportUiStatus.Idle)
     val exportStatus: StateFlow<ExportUiStatus> = _exportStatus.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            runtime.autoSaveStatus.collect { _exportStatus.value = it }
+        }
+    }
 
     fun clearOpenFileFeedback() {
         _openFileFeedback.value = null
@@ -89,9 +96,12 @@ class TransferViewModel(
         _exportStatus.value = ExportUiStatus.Exporting
 
         viewModelScope.launch {
-            val result = exporter.exportToDownloads(
+            val result = ReceivedFileSaver.save(
+                context = context,
+                exporter = exporter,
                 sourceFile = file,
-                displayName = state.itemName
+                displayName = state.itemName,
+                useSavedDestination = fileExporter == null
             )
             when (result) {
                 is ExportResult.Success -> {
@@ -247,11 +257,14 @@ class TransferViewModel(
         _exportStatus.value = ExportUiStatus.Exporting
 
         viewModelScope.launch {
-            val result = exporter.exportToDownloads(
+            val result = ReceivedFileSaver.save(
+                context = context,
+                exporter = exporter,
                 sourceFile = file,
                 displayName = item.displayName,
                 mimeType = item.mimeType,
-                relativePath = item.relativePath
+                relativePath = item.relativePath,
+                useSavedDestination = fileExporter == null
             )
             when (result) {
                 is ExportResult.Success -> {
@@ -324,13 +337,17 @@ class TransferViewModel(
             var exportedCount = 0
             var lastDestination = ""
             for (item in state.verifiedItems) {
+                if (item.itemId in runtime.autoSavedItemIds.value) continue
                 val key = item.committedFileKey ?: continue
                 val file = fileResolver(key)?.takeIf { it.exists() } ?: continue
-                val result = exporter.exportToDownloads(
+                val result = ReceivedFileSaver.save(
+                    context = context,
+                    exporter = exporter,
                     sourceFile = file,
                     displayName = item.displayName,
                     mimeType = item.mimeType,
-                    relativePath = item.relativePath
+                    relativePath = item.relativePath,
+                    useSavedDestination = fileExporter == null
                 )
                 when (result) {
                     is ExportResult.Success -> {

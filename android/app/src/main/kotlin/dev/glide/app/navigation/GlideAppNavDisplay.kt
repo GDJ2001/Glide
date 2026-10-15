@@ -174,9 +174,6 @@ fun GlideAppNavDisplay(
                     onNavigateToHistory = {
                         backStack.add(GlideRoute.History())
                     },
-                    onNavigateToSettings = {
-                        backStack.add(GlideRoute.Settings)
-                    },
                     activeSessionId = activeSessionId,
                     onNavigateToTransfer = { sid ->
                         backStack.add(GlideRoute.Transfer(sid))
@@ -567,6 +564,19 @@ fun GlideAppNavDisplay(
                 val openFileFeedback by viewModel.openFileFeedback.collectAsStateWithLifecycle()
                 val exportStatus by viewModel.exportStatus.collectAsStateWithLifecycle()
                 val context = androidx.compose.ui.platform.LocalContext.current
+
+                androidx.compose.runtime.LaunchedEffect(route, uiState) {
+                    if (uiState is dev.glide.app.ui.transfer.TransferUiState.Completed &&
+                        uiState.role == dev.glide.core.domain.DeviceRole.Sender
+                    ) {
+                        val sourceUris = route.batchId?.let { batchId ->
+                            dev.glide.app.ui.selection.SelectedTransferStore.get(
+                                dev.glide.core.domain.BatchId(batchId)
+                            )?.sourceMap?.values?.map { it.value }
+                        }.orEmpty()
+                        returnToFileSelectionAfterSend(backStack, route, sourceUris)
+                    }
+                }
                 TransferScreen(
                     route = route,
                     uiState = uiState,

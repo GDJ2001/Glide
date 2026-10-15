@@ -98,6 +98,12 @@ class FakeMediaStoreExportAdapter : MediaStoreExportAdapter {
 
 class FileExporterTest {
 
+    @Test
+    fun `public saves use Download Glide and preserve safe batch folders`() {
+        assertEquals("Download/Glide", DefaultMediaStoreExportAdapter.downloadRelativePath(null, "Download"))
+        assertEquals("Download/Glide/Photos", DefaultMediaStoreExportAdapter.downloadRelativePath("Photos", "Download"))
+    }
+
     @get:Rule
     val tempFolder = TemporaryFolder()
 

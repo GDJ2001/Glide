@@ -5,6 +5,7 @@ import androidx.navigation3.runtime.NavKey
 import dev.glide.app.navigation.GlideRoute
 import dev.glide.app.navigation.QrScanPurpose
 import dev.glide.app.navigation.restartQrScanAfterPairingFailure
+import dev.glide.app.navigation.returnToFileSelectionAfterSend
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.polymorphic
@@ -141,5 +142,29 @@ class NavigationTest {
         assertEquals(restarted, backStack.last())
         assertEquals(QrScanPurpose.RECEIVE_FROM_SENDER, restarted?.purpose)
         assertEquals("retry-receive", restarted?.scanAttemptId)
+    }
+
+    @Test
+    fun completedSenderQrTransfer_returnsToExistingSelectionAndRemovesScanner() {
+        val selection = GlideRoute.Selection(listOf("content://selected-file"))
+        val transfer = GlideRoute.Transfer("send-lan-complete", "batch-1")
+        val backStack = NavBackStack<NavKey>(GlideRoute.Home)
+        backStack.add(selection)
+        backStack.add(GlideRoute.Discovery(batchId = "batch-1"))
+        backStack.add(GlideRoute.QrScanner(batchId = "batch-1"))
+        backStack.add(transfer)
+
+        assertTrue(returnToFileSelectionAfterSend(backStack, transfer))
+        assertEquals(listOf(GlideRoute.Home, selection), backStack.toList())
+    }
+
+    @Test
+    fun completedSenderWithoutSelection_opensFileSelectionWithPreviousSources() {
+        val transfer = GlideRoute.Transfer("send-saved-device", "batch-2")
+        val backStack = NavBackStack<NavKey>(GlideRoute.Home)
+        backStack.add(transfer)
+
+        assertTrue(returnToFileSelectionAfterSend(backStack, transfer, listOf("content://selected-file")))
+        assertEquals(GlideRoute.Selection(listOf("content://selected-file")), backStack.last())
     }
 }

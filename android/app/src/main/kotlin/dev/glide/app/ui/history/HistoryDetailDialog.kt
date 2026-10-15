@@ -254,7 +254,7 @@ fun HistoryDetailContent(
                     ) {
                         CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Exporting to Downloads...", style = MaterialTheme.typography.bodySmall)
+                        Text("Saving to selected folder...", style = MaterialTheme.typography.bodySmall)
                     }
                 }
                 is ExportUiStatus.Success -> {
@@ -274,7 +274,7 @@ fun HistoryDetailContent(
                             Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "Saved as ${exportStatus.destinationName} in Downloads",
+                                text = "Saved as ${exportStatus.destinationName} in selected folder",
                                 style = MaterialTheme.typography.bodySmall
                             )
                         }
@@ -503,12 +503,12 @@ fun HistoryItemCard(
                                 .glideHoverHand()
                                 .semantics {
                                     role = Role.Button
-                                    contentDescription = "Export ${item.displayName.isolateBidi()} to Downloads"
+                                    contentDescription = "Save ${item.displayName.isolateBidi()} to selected folder"
                                 }
                         ) {
                             Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(15.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Export", style = MaterialTheme.typography.labelMedium, maxLines = 1, softWrap = false)
+                            Text("Save", style = MaterialTheme.typography.labelMedium, maxLines = 1, softWrap = false)
                         }
                     }
                 } else {

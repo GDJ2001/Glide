@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import dev.glide.app.ui.transfer.ExportUiStatus
 import dev.glide.app.util.FileOpenResult
 import dev.glide.app.util.FileOpener
+import dev.glide.app.util.ReceivedFileSaver
 import dev.glide.core.domain.DeviceRole
 import dev.glide.core.domain.ItemId
 import dev.glide.core.domain.SessionId
@@ -259,11 +260,14 @@ class HistoryViewModel(
 
         viewModelScope.launch {
             val exporter = fileExporterFactory(context)
-            val result = exporter.exportToDownloads(
+            val result = ReceivedFileSaver.save(
+                context = context,
+                exporter = exporter,
                 sourceFile = file,
                 displayName = item.displayName,
                 mimeType = item.mimeType,
-                relativePath = item.relativePath
+                relativePath = item.relativePath,
+                useSavedDestination = exporter is AndroidFileExporter
             )
             when (result) {
                 is ExportResult.Success -> {

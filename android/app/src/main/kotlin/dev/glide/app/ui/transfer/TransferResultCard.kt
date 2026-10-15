@@ -355,7 +355,7 @@ private fun CompletedResultCard(
                                             Text("Share", style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
                                         }
 
-                                        Button(
+                                        if (exportStatus !is ExportUiStatus.Success) Button(
                                             onClick = { onExportItem(item) },
                                             shape = RoundedCornerShape(10.dp),
                                             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 6.dp),
@@ -365,12 +365,12 @@ private fun CompletedResultCard(
                                                 .glideHoverHand()
                                                 .semantics {
                                                     role = Role.Button
-                                                    contentDescription = "Export ${item.displayName.isolateBidi()} to Downloads"
+                                                    contentDescription = "Save ${item.displayName.isolateBidi()} to selected folder"
                                                 }
                                         ) {
                                             Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(14.dp))
                                             Spacer(modifier = Modifier.width(4.dp))
-                                            Text("Export", style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+                                            Text("Save", style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
                                         }
                                     }
                                 }
@@ -397,24 +397,24 @@ private fun CompletedResultCard(
                 is ExportUiStatus.Idle -> {}
                 is ExportUiStatus.Exporting -> {
                     Text(
-                        text = "Exporting to Downloads…",
+                        text = "Saving verified files…",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.primary,
                         textAlign = TextAlign.Center,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .semantics { contentDescription = "Exporting to Downloads" }
+                            .semantics { contentDescription = "Saving verified files" }
                     )
                 }
                 is ExportUiStatus.Success -> {
                     Text(
-                        text = "Exported to Downloads as ${exportStatus.destinationName}",
+                        text = "Saved ${exportStatus.destinationName} to your selected folder",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.primary,
                         textAlign = TextAlign.Center,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .semantics { contentDescription = "Exported to Downloads as ${exportStatus.destinationName}" }
+                            .semantics { contentDescription = "Saved ${exportStatus.destinationName} to your selected folder" }
                     )
                 }
                 is ExportUiStatus.Failed -> {
@@ -439,7 +439,7 @@ private fun CompletedResultCard(
             ) {
                 if (isReceiver && (state.committedFileKey != null || state.verifiedItems.any { it.committedFileKey != null })) {
                     if (state.verifiedItems.size > 1) {
-                        Button(
+                        if (exportStatus !is ExportUiStatus.Success) Button(
                             onClick = onExportAll,
                             enabled = exportStatus !is ExportUiStatus.Exporting,
                             shape = PrimaryButtonShape,
@@ -452,11 +452,11 @@ private fun CompletedResultCard(
                                 .heightIn(min = 56.dp)
                                 .semantics {
                                     role = Role.Button
-                                    contentDescription = "Export all ${state.verifiedItems.size} files to Downloads"
+                                    contentDescription = "Save all ${state.verifiedItems.size} files to selected folder"
                                 }
                         ) {
                             Text(
-                                text = if (exportStatus is ExportUiStatus.Exporting) "Exporting…" else "Export all to Downloads",
+                                text = if (exportStatus is ExportUiStatus.Exporting) "Saving…" else "Save all files",
                                 style = MaterialTheme.typography.titleMedium
                             )
                         }
@@ -477,7 +477,7 @@ private fun CompletedResultCard(
                             Text(text = "Share all files", style = MaterialTheme.typography.labelLarge)
                         }
                     } else {
-                        Button(
+                        if (exportStatus !is ExportUiStatus.Success) Button(
                             onClick = onExportFile,
                             enabled = exportStatus !is ExportUiStatus.Exporting,
                             shape = PrimaryButtonShape,
@@ -490,11 +490,11 @@ private fun CompletedResultCard(
                                 .heightIn(min = 56.dp)
                                 .semantics {
                                     role = Role.Button
-                                    contentDescription = "Export received file ${state.itemName.isolateBidi()} to Downloads"
+                                    contentDescription = "Save received file ${state.itemName.isolateBidi()} to selected folder"
                                 }
                         ) {
                             Text(
-                                text = if (exportStatus is ExportUiStatus.Exporting) "Exporting…" else "Export to Downloads",
+                                text = if (exportStatus is ExportUiStatus.Exporting) "Saving…" else "Save file",
                                 style = MaterialTheme.typography.titleMedium
                             )
                         }
