@@ -200,7 +200,7 @@
     <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
     <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
     <Setter Property="CaretBrush" Value="{DynamicResource TextPrimaryBrush}" />
-    <Setter Property="PlaceholderForeground" Value="{DynamicResource TextMutedBrush}" />
+    <Setter Property="PlaceholderForeground" Value="{DynamicResource TextSecondaryBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="8" />

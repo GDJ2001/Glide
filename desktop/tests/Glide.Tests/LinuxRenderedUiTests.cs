@@ -63,11 +63,12 @@ public sealed class LinuxRenderedUiTests
 
                 foreach (var (theme, fieldColor, textColor, hintColor, borderColor) in new[]
                 {
-                    (AppThemePreference.Dark, "#1D2D47", "#F3F7FF", "#8F9DB6", "#2A3B57"),
-                    (AppThemePreference.Light, "#F1F5FB", "#14213D", "#75839A", "#DCE4F2")
+                    (AppThemePreference.Dark, "#1D2D47", "#F3F7FF", "#B7C3D8", "#2A3B57"),
+                    (AppThemePreference.Light, "#F1F5FB", "#14213D", "#55627A", "#DCE4F2")
                 })
                 {
                     vm.CurrentThemePreference = theme;
+                    vm.SwitchTabCommand.Execute("Activity");
                     window.UpdateLayout();
                     foreach (var field in new[] { search, name, destination })
                     {
@@ -76,6 +77,9 @@ public sealed class LinuxRenderedUiTests
                         Assert.Equal(Color.Parse(hintColor), ((ISolidColorBrush)field.PlaceholderForeground!).Color);
                         Assert.Equal(Color.Parse(borderColor), ((ISolidColorBrush)field.BorderBrush!).Color);
                     }
+                    var placeholder = search.GetVisualDescendants().OfType<TextBlock>()
+                        .Single(block => block.Name == "PART_Placeholder");
+                    Assert.Equal(1, placeholder.Opacity);
                 }
             }
             finally

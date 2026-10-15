@@ -5,6 +5,8 @@
   <!-- Shared Universal Tokens -->
   <Color x:Key="GlideBlueColor">#2457E6</Color>
   <SolidColorBrush x:Key="GlideBlueBrush" Color="{StaticResource GlideBlueColor}" />
+  <!-- Fluent halves placeholder opacity by default; Glide supplies a muted brush already. -->
+  <x:Double x:Key="TextControlPlaceholderOpacity">1</x:Double>
   <local:AssetBitmap x:Key="GlideAppIcon">
     <x:Arguments>
       <x:String>avares://Glide.Linux.UI/Assets/glide-128.png</x:String>
