@@ -30,10 +30,26 @@ if (Test-Path -LiteralPath $OutputPath) {
 $previousNetwork = Get-NetAdapterStatistics -Name $AdapterName
 $previousCpu = $null
 $previousProcessId = $null
+$previousReadBytes = $null
+$previousWriteBytes = $null
 $previousTime = [System.Diagnostics.Stopwatch]::GetTimestamp()
+$fixedVolumes = @(Get-CimInstance Win32_LogicalDisk -Filter 'DriveType = 3' |
+    Select-Object -ExpandProperty DeviceID)
+$diskCounterPaths = @($fixedVolumes | ForEach-Object {
+    "\LogicalDisk($_)\Disk Read Bytes/sec"
+    "\LogicalDisk($_)\Disk Write Bytes/sec"
+})
 
 for ($sample = 1; $sample -le $DurationSeconds; $sample++) {
-    Start-Sleep -Seconds 1
+    # Get-Counter supplies the sample interval. Fall back to a timed sample if
+    # disk counters are unavailable on this installation of Windows.
+    $diskSamples = $null
+    try {
+        if ($diskCounterPaths.Count -gt 0) {
+            $diskSamples = (Get-Counter -Counter $diskCounterPaths -MaxSamples 1 -ErrorAction Stop).CounterSamples
+        }
+    } catch { $diskSamples = $null }
+    if ($null -eq $diskSamples) { Start-Sleep -Seconds 1 }
     $now = [System.Diagnostics.Stopwatch]::GetTimestamp()
     $elapsed = [System.Diagnostics.Stopwatch]::GetElapsedTime($previousTime, $now).TotalSeconds
     $network = Get-NetAdapterStatistics -Name $AdapterName
@@ -44,11 +60,33 @@ for ($sample = 1; $sample -le $DurationSeconds; $sample++) {
         $null -ne $previousCpu) {
         [math]::Round(($cpuSeconds - $previousCpu) / $elapsed * 100, 1)
     } else { $null }
+    $processIo = if ($null -ne $processId) {
+        Get-CimInstance Win32_Process -Filter "ProcessId = $processId" -ErrorAction SilentlyContinue
+    } else { $null }
+    $readBytes = if ($null -ne $processIo) { [long]$processIo.ReadTransferCount } else { $null }
+    $writeBytes = if ($null -ne $processIo) { [long]$processIo.WriteTransferCount } else { $null }
+    $readMiBPerSecond = if ($null -ne $readBytes -and $processId -eq $previousProcessId -and
+        $null -ne $previousReadBytes) {
+        [math]::Round(($readBytes - $previousReadBytes) / $elapsed / 1MB, 2)
+    } else { $null }
+    $writeMiBPerSecond = if ($null -ne $writeBytes -and $processId -eq $previousProcessId -and
+        $null -ne $previousWriteBytes) {
+        [math]::Round(($writeBytes - $previousWriteBytes) / $elapsed / 1MB, 2)
+    } else { $null }
     $peer = if ($null -ne $processId) {
         (Get-NetTCPConnection -OwningProcess $processId -State Established -ErrorAction SilentlyContinue |
             Where-Object RemoteAddress -ne '127.0.0.1' |
             Select-Object -First 1 -ExpandProperty RemoteAddress)
     } else { $null }
+    $volumeReadRates = @()
+    $volumeWriteRates = @()
+    foreach ($counter in @($diskSamples)) {
+        if ($counter.Path -match 'logicaldisk\(([^)]+)\)\\disk (read|write) bytes/sec$') {
+            $entry = '{0}={1}' -f $Matches[1], [math]::Round($counter.CookedValue / 1MB, 2)
+            if ($Matches[2] -eq 'read') { $volumeReadRates += $entry }
+            else { $volumeWriteRates += $entry }
+        }
+    }
 
     [pscustomobject]@{
         UtcTime = (Get-Date).ToUniversalTime().ToString('o')
@@ -59,12 +97,19 @@ for ($sample = 1; $sample -le $DurationSeconds; $sample++) {
         SentMiBPerSecond = [math]::Round(($network.SentBytes - $previousNetwork.SentBytes) / $elapsed / 1MB, 2)
         ReceivedMiBPerSecond = [math]::Round(($network.ReceivedBytes - $previousNetwork.ReceivedBytes) / $elapsed / 1MB, 2)
         GlideCpuCorePercent = $cpuCorePercent
+        GlideReadIoMiBPerSecond = $readMiBPerSecond
+        GlideWrittenIoMiBPerSecond = $writeMiBPerSecond
+        GlideWorkingSetMiB = if ($null -ne $glideProcess) { [math]::Round($glideProcess.WorkingSet64 / 1MB, 1) } else { $null }
+        DiskReadMiBPerSecondByVolume = $volumeReadRates -join ';'
+        DiskWriteMiBPerSecondByVolume = $volumeWriteRates -join ';'
         OutboundPacketErrors = $network.OutboundPacketErrors
         ReceivedPacketErrors = $network.ReceivedPacketErrors
     } | Export-Csv -LiteralPath $OutputPath -NoTypeInformation -Append
 
     $previousNetwork = $network
     $previousCpu = $cpuSeconds
+    $previousReadBytes = $readBytes
+    $previousWriteBytes = $writeBytes
     $previousProcessId = $processId
     $previousTime = $now
 }
