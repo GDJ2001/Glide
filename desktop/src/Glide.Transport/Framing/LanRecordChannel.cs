@@ -84,8 +84,7 @@ public sealed class LanRecordChannel : IAsyncDisposable, IDisposable
 
         try
         {
-            if (!_disposed && _pendingWriteBytes > 0 &&
-                Stopwatch.GetElapsedTime(_firstPendingTimestamp).TotalMilliseconds >= _maxCoalesceDelayMs)
+            if (!_disposed && _pendingWriteBytes > 0)
             {
                 await FlushPendingCoreAsync(flushUnderlyingStream: true, CancellationToken.None).ConfigureAwait(false);
             }

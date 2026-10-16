@@ -80,6 +80,8 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
     private string _currentTransferFile = "";
     private CancellationTokenSource? _activeTransferCts;
     private readonly DesktopTransferRateCalculator _rateCalculator = new();
+    private DesktopTransferProgress? _coalescedProgress;
+    private TransferEvent.ProgressUpdated? _coalescedProgressEvent;
 
     // SAS Modal
     private bool _isSasModalVisible = false;
@@ -1484,19 +1486,37 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
 
     private void OnRuntimeEventOccurred(object? sender, TransferEvent ev)
     {
+        if (ev is TransferEvent.ProgressUpdated progressEvent)
+        {
+            if (Interlocked.Exchange(ref _coalescedProgressEvent, progressEvent) == null)
+            {
+                OnUi(() =>
+                {
+                    var latest = Interlocked.Exchange(ref _coalescedProgressEvent, null);
+                    if (latest != null && Transfer.IsActive)
+                    {
+                        Transfer.ApplyEvent(latest);
+                        TransferProgressFraction = latest.Progress.Fraction;
+                        TransferredBytesText = latest.TransferredBytesText;
+                        TransferRateText = latest.RateText;
+                    }
+                });
+            }
+            return;
+        }
+
+        if (ev is TransferEvent.Completed or TransferEvent.Failed)
+        {
+            Interlocked.Exchange(ref _coalescedProgressEvent, null);
+            Interlocked.Exchange(ref _coalescedProgress, null);
+        }
+
         OnUi(() =>
         {
             Transfer.ApplyEvent(ev);
-            switch (ev)
+            if (ev is TransferEvent.ItemStatusChanged item)
             {
-                case TransferEvent.ProgressUpdated progress:
-                    TransferProgressFraction = progress.Progress.Fraction;
-                    TransferredBytesText = progress.TransferredBytesText;
-                    TransferRateText = progress.RateText;
-                    break;
-                case TransferEvent.ItemStatusChanged item:
-                    CurrentTransferFile = $"{item.ItemName} ({item.Status})";
-                    break;
+                CurrentTransferFile = $"{item.ItemName} ({item.Status})";
             }
         });
     }
@@ -1554,10 +1574,17 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
 
     public void OnProgress(DesktopTransferProgress progress)
     {
+        if (Interlocked.Exchange(ref _coalescedProgress, progress) != null)
+        {
+            return;
+        }
+
         OnUi(() =>
         {
-            TransferProgressFraction = progress.Fraction;
-            var (_, rateText, transferredText) = _rateCalculator.Update(progress.TransferredBytes, progress.TotalBytes);
+            var latest = Interlocked.Exchange(ref _coalescedProgress, null);
+            if (latest == null) return;
+            TransferProgressFraction = latest.Fraction;
+            var (_, rateText, transferredText) = _rateCalculator.Update(latest.TransferredBytes, latest.TotalBytes);
             TransferredBytesText = transferredText;
             TransferRateText = rateText;
         });

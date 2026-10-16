@@ -94,6 +94,27 @@ public sealed class QuarantineStagingStore
                 // Fall back to default LocalApplicationData staging root
             }
         }
+        else if (OperatingSystem.IsLinux() && enableSameVolumeStaging)
+        {
+            try
+            {
+                if (IsEligibleLinuxSameVolumeDestination(destinationRoot, out string? linuxStaging) &&
+                    linuxStaging != null)
+                {
+                    if (AreOnSameVolume(defaultStaging, destinationRoot))
+                    {
+                        return defaultStaging;
+                    }
+
+                    // Place private application-managed staging on the destination volume
+                    return linuxStaging;
+                }
+            }
+            catch
+            {
+                // Fall back to default XDG staging root
+            }
+        }
 
         return defaultStaging;
     }
@@ -286,6 +307,23 @@ public sealed class QuarantineStagingStore
             return IsEligibleWindowsNtfsVolume(_destinationRoot, out _) &&
                    IsEligibleWindowsNtfsVolume(_stagingRoot, out _) &&
                    AreOnSameVolume(_stagingRoot, _destinationRoot);
+        }
+
+        if (OperatingSystem.IsLinux())
+        {
+            if (TryGetLinuxFileIdentityByPath(_stagingRoot, out LinuxStatx stagingStat) &&
+                TryGetLinuxFileIdentityByPath(_destinationRoot, out LinuxStatx destStat))
+            {
+                uint euid = LinuxGeteuid();
+                return stagingStat.StxDevMajor == destStat.StxDevMajor &&
+                       stagingStat.StxDevMinor == destStat.StxDevMinor &&
+                       stagingStat.StxUid == euid &&
+                       destStat.StxUid == euid &&
+                       (stagingStat.StxMode & LinuxSIfmt) == LinuxSIfdir &&
+                       (destStat.StxMode & LinuxSIfmt) == LinuxSIfdir;
+            }
+
+            return false;
         }
 
         return AreOnSameVolume(_stagingRoot, _destinationRoot);
@@ -766,7 +804,24 @@ public sealed class QuarantineStagingStore
         string targetDirectory = Path.GetDirectoryName(initialFinalPath)!;
         string baseFileName = Path.GetFileName( WindowsPathSanitizer.SanitizeRelativePath(rawRelativePath).Split('/')[^1]);
 
-        if (!AreOnSameVolume(quarantinePath, targetDirectory))
+        if (OperatingSystem.IsWindows())
+        {
+            if (!AreOnSameVolume(quarantinePath, targetDirectory))
+            {
+                return null;
+            }
+        }
+        else if (OperatingSystem.IsLinux())
+        {
+            if (!TryGetLinuxFileIdentityByPath(quarantinePath, out LinuxStatx qStat) ||
+                !TryGetLinuxFileIdentityByPath(targetDirectory, out LinuxStatx tStat) ||
+                qStat.StxDevMajor != tStat.StxDevMajor ||
+                qStat.StxDevMinor != tStat.StxDevMinor)
+            {
+                return null;
+            }
+        }
+        else if (!AreOnSameVolume(quarantinePath, targetDirectory))
         {
             return null;
         }
@@ -777,6 +832,8 @@ public sealed class QuarantineStagingStore
         string committedPath = initialFinalPath;
         ByHandleFileInformation sourceHandleInfo = default;
         bool hasWindowsHandleInfo = false;
+        LinuxStatx sourceLinuxStatx = default;
+        bool hasLinuxHandleInfo = false;
 
         // 1. Open staged file with exclusive lock (FileShare.None), flush to disk, validate handle, and independently re-verify length & SHA-256
         await using (var source = OpenExclusiveVerificationStream(quarantinePath))
@@ -794,6 +851,21 @@ public sealed class QuarantineStagingStore
                 }
 
                 hasWindowsHandleInfo = true;
+            }
+            else if (OperatingSystem.IsLinux())
+            {
+                if (!TryGetLinuxFileIdentityByFd(source.SafeFileHandle.DangerousGetHandle().ToInt32(), out sourceLinuxStatx))
+                {
+                    return null;
+                }
+
+                if ((sourceLinuxStatx.StxMode & LinuxSIfmt) != LinuxSIfreg ||
+                    sourceLinuxStatx.StxUid != LinuxGeteuid())
+                {
+                    throw new IOException("The quarantine file descriptor is not a valid user-owned regular file.");
+                }
+
+                hasLinuxHandleInfo = true;
             }
 
             source.Flush(flushToDisk: true);
@@ -831,91 +903,152 @@ public sealed class QuarantineStagingStore
                 CryptographicOperations.ZeroMemory(buffer.AsSpan(0, VerificationReadBufferBytes));
                 ArrayPool<byte>.Shared.Return(buffer);
             }
-        verifyTicks = Stopwatch.GetTimestamp() - verifyStart;
-        onBeforePublish?.Invoke();
-        long commitStart = Stopwatch.GetTimestamp();
+            verifyTicks = Stopwatch.GetTimestamp() - verifyStart;
+            onBeforePublish?.Invoke();
+            long commitStart = Stopwatch.GetTimestamp();
 
-        // 2. Bind destination directory handle so path replacement cannot substitute a symlink/junction during commit
-        using SafeFileHandle? targetDirHandle = OperatingSystem.IsWindows()
-            ? OpenValidatedWindowsDirectoryHandle(targetDirectory, out ByHandleFileInformation dirHandleInfo)
-            : null;
+            // 2. Bind destination directory handle so path replacement cannot substitute a symlink/junction during commit
+            using SafeFileHandle? targetDirHandle = OperatingSystem.IsWindows()
+                ? OpenValidatedWindowsDirectoryHandle(targetDirectory, out ByHandleFileInformation dirHandleInfo)
+                : null;
 
-        if (OperatingSystem.IsWindows() && hasWindowsHandleInfo)
-        {
-            if (targetDirHandle == null || targetDirHandle.IsInvalid)
+            if (OperatingSystem.IsWindows() && hasWindowsHandleInfo)
             {
-                return null;
-            }
-
-            if (!TryGetWindowsHandleInfo(targetDirHandle, out ByHandleFileInformation validatedDirInfo) ||
-                (validatedDirInfo.FileAttributes & (uint)FileAttributes.ReparsePoint) != 0)
-            {
-                throw new IOException("The destination directory is a symbolic link or reparse point.");
-            }
-
-            if (validatedDirInfo.VolumeSerialNumber != sourceHandleInfo.VolumeSerialNumber)
-            {
-                // Different volume at handle level -> fall back to verified copy
-                return null;
-            }
-        }
-
-        // 3. Publish using same-volume atomic rename with collision handling (overwrite: false)
-        committedPath = ResolveSafeDestinationPath(rawRelativePath);
-        if (!string.Equals(
-                Path.GetDirectoryName(committedPath),
-                targetDirectory,
-                OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
-        {
-            throw new IOException("The destination directory changed before commit.");
-        }
-
-        for (int attempt = 0; ; attempt++)
-        {
-            try
-            {
-                if (OperatingSystem.IsWindows())
+                if (targetDirHandle == null || targetDirHandle.IsInvalid)
                 {
-                    RenameVerifiedWindowsFile(
-                        source.SafeFileHandle,
-                        targetDirHandle!,
-                        Path.GetFileName(committedPath));
+                    return null;
                 }
-                else
+
+                if (!TryGetWindowsHandleInfo(targetDirHandle, out ByHandleFileInformation validatedDirInfo) ||
+                    (validatedDirInfo.FileAttributes & (uint)FileAttributes.ReparsePoint) != 0)
                 {
-                    File.Move(quarantinePath, committedPath, overwrite: false);
+                    throw new IOException("The destination directory is a symbolic link or reparse point.");
                 }
-                break;
-            }
-            catch (Win32Exception error) when (
-                attempt < 32 &&
-                error.NativeErrorCode is 80 or 183)
-            {
-                committedPath = ResolveCollision(Path.Combine(targetDirectory, baseFileName));
-            }
-            catch (IOException) when (
-                !OperatingSystem.IsWindows() &&
-                attempt < 32 && File.Exists(committedPath) && File.Exists(quarantinePath))
-            {
-                committedPath = ResolveCollision(Path.Combine(targetDirectory, baseFileName));
-            }
-        }
 
-        // The same exclusive source handle was verified and renamed relative to
-        // the validated destination directory handle. It has not been reopened
-        // by path between verification and publication.
-        if (OperatingSystem.IsWindows() && hasWindowsHandleInfo)
-        {
-            if (!TryGetWindowsHandleInfo(source.SafeFileHandle, out ByHandleFileInformation publishedInfo) ||
-                publishedInfo.VolumeSerialNumber != sourceHandleInfo.VolumeSerialNumber ||
-                publishedInfo.FileIndexHigh != sourceHandleInfo.FileIndexHigh ||
-                publishedInfo.FileIndexLow != sourceHandleInfo.FileIndexLow)
-            {
-                throw new IOException("Destination file handle identity changed during atomic commit.");
+                if (validatedDirInfo.VolumeSerialNumber != sourceHandleInfo.VolumeSerialNumber)
+                {
+                    // Different volume at handle level -> fall back to verified copy
+                    return null;
+                }
             }
-        }
 
-        commitTicks = Stopwatch.GetTimestamp() - commitStart;
+            LinuxStatx validatedLinuxDirInfo = default;
+            using SafeFileHandle? linuxTargetDirHandle = OperatingSystem.IsLinux() && hasLinuxHandleInfo
+                ? OpenValidatedLinuxDirectoryHandle(targetDirectory, out validatedLinuxDirInfo)
+                : null;
+
+            LinuxStatx validatedLinuxStagingDirInfo = default;
+            using SafeFileHandle? linuxStagingDirHandle = OperatingSystem.IsLinux() && hasLinuxHandleInfo
+                ? OpenValidatedLinuxDirectoryHandle(Path.GetDirectoryName(quarantinePath)!, out validatedLinuxStagingDirInfo)
+                : null;
+
+            if (OperatingSystem.IsLinux() && hasLinuxHandleInfo)
+            {
+                if (linuxTargetDirHandle == null || linuxTargetDirHandle.IsInvalid ||
+                    linuxStagingDirHandle == null || linuxStagingDirHandle.IsInvalid)
+                {
+                    return null;
+                }
+
+                if (validatedLinuxDirInfo.StxDevMajor != sourceLinuxStatx.StxDevMajor ||
+                    validatedLinuxDirInfo.StxDevMinor != sourceLinuxStatx.StxDevMinor ||
+                    validatedLinuxStagingDirInfo.StxDevMajor != sourceLinuxStatx.StxDevMajor ||
+                    validatedLinuxStagingDirInfo.StxDevMinor != sourceLinuxStatx.StxDevMinor)
+                {
+                    return null;
+                }
+            }
+
+            // 3. Publish using same-volume atomic rename with collision handling (overwrite: false)
+            committedPath = ResolveSafeDestinationPath(rawRelativePath);
+            if (!string.Equals(
+                    Path.GetDirectoryName(committedPath),
+                    targetDirectory,
+                    OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+            {
+                throw new IOException("The destination directory changed before commit.");
+            }
+
+            for (int attempt = 0; ; attempt++)
+            {
+                try
+                {
+                    if (OperatingSystem.IsWindows())
+                    {
+                        RenameVerifiedWindowsFile(
+                            source.SafeFileHandle,
+                            targetDirHandle!,
+                            Path.GetFileName(committedPath));
+                    }
+                    else if (OperatingSystem.IsLinux() && hasLinuxHandleInfo)
+                    {
+                        RenameVerifiedLinuxFile(
+                            linuxStagingDirHandle!,
+                            Path.GetFileName(quarantinePath),
+                            linuxTargetDirHandle!,
+                            Path.GetFileName(committedPath));
+                    }
+                    else
+                    {
+                        File.Move(quarantinePath, committedPath, overwrite: false);
+                    }
+                    break;
+                }
+                catch (Win32Exception error) when (
+                    OperatingSystem.IsWindows() &&
+                    attempt < 32 &&
+                    error.NativeErrorCode is 80 or 183)
+                {
+                    committedPath = ResolveCollision(Path.Combine(targetDirectory, baseFileName));
+                }
+                catch (Win32Exception error) when (
+                    OperatingSystem.IsLinux() &&
+                    attempt < 32 &&
+                    error.NativeErrorCode == 17) // EEXIST
+                {
+                    committedPath = ResolveCollision(Path.Combine(targetDirectory, baseFileName));
+                }
+                catch (IOException) when (
+                    !OperatingSystem.IsWindows() && !OperatingSystem.IsLinux() &&
+                    attempt < 32 && File.Exists(committedPath) && File.Exists(quarantinePath))
+                {
+                    committedPath = ResolveCollision(Path.Combine(targetDirectory, baseFileName));
+                }
+            }
+
+            // The same exclusive source handle was verified and renamed relative to
+            // the validated destination directory handle. It has not been reopened
+            // by path between verification and publication.
+            if (OperatingSystem.IsWindows() && hasWindowsHandleInfo)
+            {
+                if (!TryGetWindowsHandleInfo(source.SafeFileHandle, out ByHandleFileInformation publishedInfo) ||
+                    publishedInfo.VolumeSerialNumber != sourceHandleInfo.VolumeSerialNumber ||
+                    publishedInfo.FileIndexHigh != sourceHandleInfo.FileIndexHigh ||
+                    publishedInfo.FileIndexLow != sourceHandleInfo.FileIndexLow)
+                {
+                    throw new IOException("Destination file handle identity changed during atomic commit.");
+                }
+            }
+            else if (OperatingSystem.IsLinux() && hasLinuxHandleInfo)
+            {
+                if (!TryGetLinuxFileIdentityByFd(source.SafeFileHandle.DangerousGetHandle().ToInt32(), out LinuxStatx publishedInfo) ||
+                    publishedInfo.StxDevMajor != sourceLinuxStatx.StxDevMajor ||
+                    publishedInfo.StxDevMinor != sourceLinuxStatx.StxDevMinor ||
+                    publishedInfo.StxIno != sourceLinuxStatx.StxIno)
+                {
+                    throw new IOException("Destination file descriptor identity changed during atomic commit.");
+                }
+
+                if (!TryGetLinuxFileIdentityByPath(committedPath, out LinuxStatx committedInfo) ||
+                    committedInfo.StxDevMajor != sourceLinuxStatx.StxDevMajor ||
+                    committedInfo.StxDevMinor != sourceLinuxStatx.StxDevMinor ||
+                    committedInfo.StxIno != sourceLinuxStatx.StxIno)
+                {
+                    throw new IOException("Published destination file identity does not match verified source file.");
+                }
+            }
+
+            commitTicks = Stopwatch.GetTimestamp() - commitStart;
         }
 
         // The verification handle is now closed, so metadata operations can
@@ -1288,6 +1421,11 @@ public sealed class QuarantineStagingStore
             RejectLink(path);
             File.SetUnixFileMode(path,
                 UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+
+            if (OperatingSystem.IsLinux() && !TryConfigureAndVerifyLinuxDirectorySecurity(path))
+            {
+                sameVolumeSecurityVerified = false;
+            }
         }
         RejectLinkedAncestors(path);
     }
@@ -1630,5 +1768,273 @@ public sealed class QuarantineStagingStore
         }
 
         return handle;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct LinuxStatxTimestamp
+    {
+        public long TvSec;
+        public uint TvNsec;
+        public int Pad;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Size = 256)]
+    private struct LinuxStatx
+    {
+        public uint StxMask;
+        public uint StxBlksize;
+        public ulong StxAttributes;
+        public uint StxNlink;
+        public uint StxUid;
+        public uint StxGid;
+        public ushort StxMode;
+        public ushort Spare0;
+        public ulong StxIno;
+        public ulong StxSize;
+        public ulong StxBlocks;
+        public ulong StxAttributesMask;
+        public LinuxStatxTimestamp StxAtime;
+        public LinuxStatxTimestamp StxBtime;
+        public LinuxStatxTimestamp StxCtime;
+        public LinuxStatxTimestamp StxMtime;
+        public uint StxRdevMajor;
+        public uint StxRdevMinor;
+        public uint StxDevMajor;
+        public uint StxDevMinor;
+        public ulong StxMntId;
+        public uint StxDioMemAlign;
+        public uint StxDioOffsetAlign;
+        public ulong Spare3_0, Spare3_1, Spare3_2, Spare3_3;
+        public ulong Spare3_4, Spare3_5, Spare3_6, Spare3_7;
+        public ulong Spare3_8, Spare3_9, Spare3_10, Spare3_11;
+    }
+
+    private const int LinuxAtFdcwd = -100;
+    private const int LinuxAtSymlinkNofollow = 0x100;
+    private const int LinuxAtEmptyPath = 0x1000;
+    private const uint LinuxStatxBasicStats = 0x000007ffU;
+    private const int LinuxRenameNoreplace = 1;
+    private const int LinuxORdOnly = 0;
+    private const int LinuxODirectory = 0x10000;
+    private const int LinuxONofollow = 0x20000;
+    private const int LinuxOCloexec = 0x80000;
+    private const int LinuxSIfmt = 0xF000;
+    private const int LinuxSIfdir = 0x4000;
+    private const int LinuxSIfreg = 0x8000;
+    private const int LinuxS_Iflnk = 0xA000;
+
+    [DllImport("libc", EntryPoint = "geteuid", SetLastError = true)]
+    private static extern uint LinuxGeteuid();
+
+    [DllImport("libc", EntryPoint = "open", SetLastError = true)]
+    private static extern int LinuxOpen(
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string pathname,
+        int flags,
+        int mode = 0);
+
+    [DllImport("libc", EntryPoint = "statx", SetLastError = true)]
+    private static extern int LinuxStatxCall(
+        int dirfd,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string pathname,
+        int flags,
+        uint mask,
+        out LinuxStatx statxbuf);
+
+    [DllImport("libc", EntryPoint = "renameat2", SetLastError = true)]
+    private static extern int LinuxRenameat2(
+        int olddirfd,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string oldpath,
+        int newdirfd,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string newpath,
+        uint flags);
+
+    private static bool TryGetLinuxFileIdentityByFd(int fd, out LinuxStatx statx)
+    {
+        statx = default;
+        if (!OperatingSystem.IsLinux() || fd < 0)
+        {
+            return false;
+        }
+
+        return LinuxStatxCall(fd, string.Empty, LinuxAtEmptyPath, LinuxStatxBasicStats, out statx) == 0;
+    }
+
+    private static bool TryGetLinuxFileIdentityByPath(string path, out LinuxStatx statx)
+    {
+        statx = default;
+        if (!OperatingSystem.IsLinux() || string.IsNullOrWhiteSpace(path))
+        {
+            return false;
+        }
+
+        return LinuxStatxCall(LinuxAtFdcwd, path, LinuxAtSymlinkNofollow, LinuxStatxBasicStats, out statx) == 0;
+    }
+
+    private static SafeFileHandle? OpenValidatedLinuxDirectoryHandle(string directoryPath, out LinuxStatx dirStat)
+    {
+        dirStat = default;
+        if (!OperatingSystem.IsLinux() || string.IsNullOrWhiteSpace(directoryPath))
+        {
+            return null;
+        }
+
+        int fd = LinuxOpen(directoryPath, LinuxORdOnly | LinuxODirectory | LinuxONofollow | LinuxOCloexec);
+        if (fd < 0)
+        {
+            return null;
+        }
+
+        var handle = new SafeFileHandle((IntPtr)fd, ownsHandle: true);
+        if (!TryGetLinuxFileIdentityByFd(fd, out dirStat))
+        {
+            handle.Dispose();
+            return null;
+        }
+
+        if ((dirStat.StxMode & LinuxSIfmt) != LinuxSIfdir ||
+            dirStat.StxUid != LinuxGeteuid())
+        {
+            handle.Dispose();
+            return null;
+        }
+
+        return handle;
+    }
+
+    private static void RenameVerifiedLinuxFile(
+        SafeFileHandle stagingDirectoryHandle,
+        string sourceFileName,
+        SafeFileHandle targetDirectoryHandle,
+        string destinationFileName)
+    {
+        if (string.IsNullOrWhiteSpace(sourceFileName) ||
+            sourceFileName.IndexOfAny(['/', '\0']) >= 0 ||
+            sourceFileName is "." or "..")
+        {
+            throw new IOException("Invalid quarantine filename.");
+        }
+
+        if (string.IsNullOrWhiteSpace(destinationFileName) ||
+            destinationFileName.IndexOfAny(['/', '\0']) >= 0 ||
+            destinationFileName is "." or "..")
+        {
+            throw new IOException("Invalid committed filename.");
+        }
+
+        int oldDirFd = stagingDirectoryHandle.DangerousGetHandle().ToInt32();
+        int newDirFd = targetDirectoryHandle.DangerousGetHandle().ToInt32();
+
+        int res = LinuxRenameat2(
+            oldDirFd,
+            sourceFileName,
+            newDirFd,
+            destinationFileName,
+            (uint)LinuxRenameNoreplace);
+
+        if (res != 0)
+        {
+            int errno = Marshal.GetLastWin32Error();
+            throw new Win32Exception(errno, $"Linux renameat2 failed with errno {errno}");
+        }
+    }
+
+    private static bool TryConfigureAndVerifyLinuxDirectorySecurity(string path)
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return false;
+        }
+
+        try
+        {
+            if (!TryGetLinuxFileIdentityByPath(path, out LinuxStatx stat))
+            {
+                return false;
+            }
+
+            uint euid = LinuxGeteuid();
+            if (stat.StxUid != euid)
+            {
+                return false;
+            }
+
+            if ((stat.StxMode & LinuxSIfmt) != LinuxSIfdir)
+            {
+                return false;
+            }
+
+            return (stat.StxMode & 0x003F) == 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool IsEligibleLinuxSameVolumeDestination(string path, out string? stagingCandidate)
+    {
+        stagingCandidate = null;
+        if (!OperatingSystem.IsLinux() || string.IsNullOrWhiteSpace(path))
+        {
+            return false;
+        }
+
+        try
+        {
+            string fullPath = Path.GetFullPath(path);
+            if (!Directory.Exists(fullPath))
+            {
+                return false;
+            }
+
+            RejectLinkedAncestors(fullPath);
+
+            using SafeFileHandle? destHandle = OpenValidatedLinuxDirectoryHandle(fullPath, out LinuxStatx destStat);
+            if (destHandle == null || destHandle.IsInvalid)
+            {
+                return false;
+            }
+
+            uint euid = LinuxGeteuid();
+            if (destStat.StxUid != euid)
+            {
+                return false;
+            }
+
+            // Reject world-writable directories without sticky bit
+            if ((destStat.StxMode & 0x0002) != 0 && (destStat.StxMode & 0x0200) == 0)
+            {
+                return false;
+            }
+
+            string candidate = Path.Combine(fullPath, SameVolumeStagingSubdirectoryName);
+            bool stagingVerified = true;
+            EnsurePrivateDirectory(candidate, ref stagingVerified);
+            if (!stagingVerified)
+            {
+                return false;
+            }
+
+            if (!TryGetLinuxFileIdentityByPath(candidate, out LinuxStatx stagingStat))
+            {
+                return false;
+            }
+
+            if (stagingStat.StxDevMajor != destStat.StxDevMajor ||
+                stagingStat.StxDevMinor != destStat.StxDevMinor ||
+                stagingStat.StxUid != euid ||
+                (stagingStat.StxMode & LinuxSIfmt) != LinuxSIfdir ||
+                (stagingStat.StxMode & 0x003F) != 0)
+            {
+                return false;
+            }
+
+            stagingCandidate = candidate;
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 }

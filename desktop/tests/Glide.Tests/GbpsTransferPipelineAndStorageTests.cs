@@ -312,6 +312,47 @@ public sealed class GbpsTransferPipelineAndStorageTests : IDisposable
     }
 
     [Fact]
+    public async Task LinuxAtomicCommit_VerifiesSameVolumeRenameAndCollision()
+    {
+        if (!OperatingSystem.IsLinux()) return;
+
+        string stagingDir = Path.Combine(_testRoot, "linux_atomic_staging");
+        string destDir = Path.Combine(_testRoot, "linux_atomic_dest");
+        Directory.CreateDirectory(stagingDir);
+        Directory.CreateDirectory(destDir);
+        var store = new QuarantineStagingStore(stagingDir, destDir, enableSameVolumeStaging: true);
+        var session = SessionId.NewRandom();
+        var item1 = ItemId.NewRandom();
+        var item2 = ItemId.NewRandom();
+        byte[] payload1 = RandomNumberGenerator.GetBytes(64 * 1024);
+        byte[] payload2 = RandomNumberGenerator.GetBytes(64 * 1024);
+        var digest1 = new Sha256Digest(Convert.ToHexStringLower(SHA256.HashData(payload1)));
+        var digest2 = new Sha256Digest(Convert.ToHexStringLower(SHA256.HashData(payload2)));
+
+        // Write and commit first file
+        using (var in1 = new MemoryStream(payload1))
+        {
+            var (path1, d1) = await store.WriteAndCommitAsync(session, item1, "sample.dat", in1, digest1, payload1.Length);
+            Assert.Equal(digest1, d1);
+            Assert.True(File.Exists(path1));
+            Assert.Equal("sample.dat", Path.GetFileName(path1));
+            Assert.Equal(QuarantineCommitStrategy.SameVolumeAtomicRename, store.LastCommitStrategy);
+        }
+
+        // Commit second file with same relative name -> collision resolution with RENAME_NOREPLACE
+        using (var in2 = new MemoryStream(payload2))
+        {
+            var (path2, d2) = await store.WriteAndCommitAsync(session, item2, "sample.dat", in2, digest2, payload2.Length);
+            Assert.Equal(digest2, d2);
+            Assert.True(File.Exists(path2));
+            Assert.Equal("sample (1).dat", Path.GetFileName(path2));
+            Assert.Equal(QuarantineCommitStrategy.SameVolumeAtomicRename, store.LastCommitStrategy);
+            Assert.Equal(payload2, await File.ReadAllBytesAsync(path2));
+            Assert.Equal(payload1, await File.ReadAllBytesAsync(Path.Combine(destDir, "sample.dat")));
+        }
+    }
+
+    [Fact]
     public void QuarantineStagingStore_ActiveSessionLease_PreventsCleanupOfOldInFlightSession()
     {
         string stagingDir = Path.Combine(_testRoot, "lease_staging");

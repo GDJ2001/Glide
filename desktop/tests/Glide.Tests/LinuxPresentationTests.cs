@@ -233,4 +233,37 @@ public sealed class LinuxPresentationTests
         Assert.Single(vm.HistoryItems);
         Assert.Equal("Android Phone", vm.HistoryItems[0].PeerName);
     }
+
+    [Fact]
+    public void RapidProgressUpdates_CoalescedGracefully()
+    {
+        using var vm = new LinuxMainViewModel();
+        const int totalBytes = 10_000_000;
+
+        for (int i = 1; i <= 100; i++)
+        {
+            long transferred = (totalBytes * i) / 100;
+            vm.OnProgress(new DesktopTransferProgress(
+                Direction: DesktopTransferDirection.Send,
+                PeerName: "Workstation",
+                ItemName: "dataset.bin",
+                TransferredBytes: transferred,
+                TotalBytes: totalBytes));
+        }
+
+        // Final state reflects progress without exception or UI lockup
+        Assert.True(vm.TransferProgressFraction > 0);
+        Assert.True(vm.TransferProgressPercent > 0);
+    }
+
+    [Theory]
+    [InlineData("Transferring")]
+    [InlineData("Verifying")]
+    [InlineData("Saving")]
+    public void ItemStatus_DistinctPhases_ReportCorrectLabels(string phase)
+    {
+        using var vm = new LinuxMainViewModel();
+        vm.OnItemStatus(DesktopTransferDirection.Receive, "file.iso", phase);
+        Assert.Equal($"file.iso ({phase})", vm.CurrentTransferFile);
+    }
 }

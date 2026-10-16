@@ -1,13 +1,37 @@
 # Cross-platform LAN throughput and stability execution plan
 
-Status: **source work started; installed performance gates open** (2026-10-16). This plan is an implementation contract, not a claim that every platform has reached the Windows result. Keep GitHub Actions disabled. Run Apple builds on an available Mac host; without one, record those gates as blocked.
+Status: **source implemented; automated gates verified; physical & Mac target gates open/blocked** (2026-10-16). This plan is an implementation contract, not a claim that every platform has reached the physical Windows result. Keep GitHub Actions disabled. Run Apple builds on an available Mac host; without one, record those gates as blocked.
 
-Current execution checkpoint, before an artifact manifest or physical benchmark:
+Current execution checkpoint:
 
-- Android production Profile 1 writers use optional ordered DATA batching, and the reader avoids a second DATA chunk copy. The new framing test compares old/new exact wire bytes and verifies record order. `:android:transport-lan:testDebugUnitTest`, `:android:app:testDebugUnitTest`, `:android:app:lintDebug`, and `:android:app:assembleDebug` passed on Windows (Gradle: 219 actionable tasks; 30 executed, 189 up to date).
-- Apple `LanRecordChannel.readExact` no longer prints every socket read. The 10-check Apple source-spec audit passed, but there is no Swift compiler or Mac target build on this host for this source revision.
-- Architecture checks passed. On Windows, the isolated full desktop run passed 382 shared and 4 UI tests. On Ubuntu 24.04 WSL, the shared test project passed 382 tests. A concurrent Windows run had one process-memory test failure while Android/desktop work ran together; the isolated full rerun passed. This is not physical Linux throughput evidence.
-- No Android or Apple native-device speed claim, Linux physical-host claim, or cross-platform SHA-256 result is established by these checks.
+- **Linux Shared Engine & Storage (Stage 1 Implemented & Verified)**:
+  - `LinuxMainViewModel`: added non-blocking progress coalescing (`_coalescedProgress` and `_coalescedProgressEvent`) using atomic exchange to throttle rapid UI dispatches during high-speed transfers without blocking streaming IO or accumulating dispatcher tasks.
+  - `QuarantineStagingStore`: implemented opt-in Linux same-volume staging (`IsEligibleLinuxSameVolumeDestination`) verifying filesystem device identity (`stx_dev_major`, `stx_dev_minor`), user ownership (`stx_uid == geteuid()`), restrictive permissions (`0700`), sticky-bit handling, and world-writable directory rejection.
+  - Linux atomic commit: implemented using 256-byte `struct statx` (matching Linux kernel `<linux/stat.h>`), descriptor-relative `renameat2` with `RENAME_NOREPLACE = 1`, and post-rename handle-bound inode/device re-verification.
+  - Presentation and storage tests: added `LinuxAtomicCommit_VerifiesSameVolumeRenameAndCollision` in `GbpsTransferPipelineAndStorageTests.cs`, and `RapidProgressUpdates_CoalescedGracefully` and `ItemStatus_DistinctPhases_ReportCorrectLabels` in `LinuxPresentationTests.cs`.
+  - `LanRecordChannel`: fixed coalescing timer callback flush condition to unconditionally flush pending bytes when `_pendingWriteBytes > 0` upon timer expiration, eliminating timer granularity / early-firing races under heavy test parallelism.
+  - Automated tests: all 387 `Glide.Tests` passed on Linux WSL 2 (Ubuntu 24.04 x86_64).
+- **Android Native LAN (Stage 2 Implemented & Verified)**:
+  - Android production Profile 1 writers use bounded 256 KiB ordered DATA batching, and the reader avoids a second DATA chunk copy. `:android:transport-lan:testDebugUnitTest`, `:android:app:testDebugUnitTest`, `:android:app:lintDebug`, and `:android:app:assembleDebug` passed on Windows.
+  - Benchmark: `LanTransportPerformanceBenchmarkTest` passed all 6/6 tests (TLS 1.3 loopback 111–384 MB/s, 1,000 files in 283 ms, memory delta <= 0.55 MiB, 5 GiB stream boundary without overflow).
+- **Apple macOS / iOS (Stage 3 Source Implemented; Target Host BLOCKED)**:
+  - Hot-path debug logging removed from `apple/GlideCoreKit/.../LanRecordChannel.swift`.
+  - Previous GitHub Actions run `37054781795` verified all 91 Swift Package unit tests across macOS native and iOS/iPadOS Simulators at commit `a0e2dda`.
+  - Local Mac host and Swift compiler are unavailable on this Windows machine; target-host build and physical device gates remain **BLOCKED**.
+- **Automated Verification Gates**:
+  - `tools/check-architecture.ps1 -FailFast`: PASSED (0 issues).
+  - `tools/verify-windows-companion.ps1`: PASSED (0 violations, 387/387 tests).
+  - `tools/verify.ps1`: PASSED (6/6 gates: documentation, architecture, companion audit, debug build, test suites, and lint).
+  - `dotnet test desktop/Glide.slnx -c Release`: PASSED (387 shared tests + 4 Windows UI tests = 391 passed).
+  - `tools/lint.ps1 -Target All`: PASSED (Android lint and Desktop analyzers clean).
+- **Packaged Artifacts**:
+  - Windows x64: `build/distributions/windows/glide-windows-win-x64.zip` (SHA-256 `6edccc452bab73eb99327860c6dea258c9e51017c45d5ad6ae7449582805f35c`), `Glide-Setup-1.0.0-win-x64.exe` (SHA-256 `99702ee3beff65344f32440ae642fca2f688c8b90ba494ecec207f0e4a967c52`).
+  - Android: `build/distributions/android/app-debug.apk` (SHA-256 `d310c9cfddab35885f24aba8223e8099e064275a25eb729563b1ce885d8ffe1f`), `app-debug.aab` (SHA-256 `1bd3f8022ba86fe0f9dfa3209fc20f993f7804af3666347755af33bb53f46093`).
+- **Open / Blocked Gates**:
+  - Windows: 2-PC continuous 1 Gbps physical throughput trace gate remains open for physical test setup.
+  - Linux: dedicated physical Linux host remains BLOCKED (verified in WSL 2 Ubuntu 24.04).
+  - Android: physical phone testing on 1 Gbps Wi-Fi/LAN remains BLOCKED (no ADB device connected).
+  - Apple: Mac build host and developer provisioning remain BLOCKED (no local Mac host).
 
 ## Objective and evidence rule
 
