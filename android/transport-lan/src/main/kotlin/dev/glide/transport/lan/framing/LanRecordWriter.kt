@@ -4,6 +4,7 @@ import dev.glide.core.domain.BulkRef
 import dev.glide.core.transport.lan.LanRecord
 import dev.glide.core.transport.lan.LanRecordKind
 import dev.glide.core.transport.lan.LanUuidCodec
+import java.io.BufferedOutputStream
 import java.io.IOException
 import java.io.OutputStream
 
@@ -14,8 +15,33 @@ import java.io.OutputStream
  * Thread-safe: synchronizes write operations to prevent interleaving of frame headers and bodies.
  */
 class LanRecordWriter(
-    private val outputStream: OutputStream
+    outputStream: OutputStream,
+    private val coalesceDataWrites: Boolean = false
 ) {
+    private val outputStream: OutputStream = if (coalesceDataWrites) {
+        BufferedOutputStream(outputStream, WRITE_BUFFER_BYTES)
+    } else {
+        outputStream
+    }
+    private val header = ByteArray(5)
+    private var pendingDataBytes = 0
+    private var lastFlushNanos = System.nanoTime()
+    private var cachedBulkRef: BulkRef? = null
+    private var cachedBulkRefBytes: ByteArray? = null
+
+    private fun bulkRefBytes(bulkRef: BulkRef): ByteArray {
+        if (cachedBulkRef != bulkRef) {
+            cachedBulkRef = bulkRef
+            cachedBulkRefBytes = LanUuidCodec.bulkRefToNetworkBytes(bulkRef)
+        }
+        return checkNotNull(cachedBulkRefBytes)
+    }
+
+    private fun flushPending() {
+        outputStream.flush()
+        pendingDataBytes = 0
+        lastFlushNanos = System.nanoTime()
+    }
 
     @Throws(IOException::class)
     @Synchronized
@@ -48,8 +74,8 @@ class LanRecordWriter(
     @Synchronized
     fun writeData(bulkRef: BulkRef, chunk: ByteArray, offset: Int = 0, length: Int = chunk.size - offset) {
         require(length in 1..65520) { "DATA chunk size $length out of bounds [1..65520]" }
+        require(offset >= 0 && offset <= chunk.size - length) { "DATA chunk range is invalid" }
         val totalLength = LanUuidCodec.UUID_BYTE_LENGTH + length
-        val header = ByteArray(5)
         header[0] = LanRecordKind.DATA.byteValue
         header[1] = ((totalLength shr 24) and 0xFF).toByte()
         header[2] = ((totalLength shr 16) and 0xFF).toByte()
@@ -57,9 +83,18 @@ class LanRecordWriter(
         header[4] = (totalLength and 0xFF).toByte()
 
         outputStream.write(header)
-        outputStream.write(LanUuidCodec.bulkRefToNetworkBytes(bulkRef))
+        outputStream.write(bulkRefBytes(bulkRef))
         outputStream.write(chunk, offset, length)
-        outputStream.flush()
+        if (coalesceDataWrites) {
+            pendingDataBytes += 5 + totalLength
+            if (pendingDataBytes >= DATA_FLUSH_THRESHOLD_BYTES ||
+                System.nanoTime() - lastFlushNanos >= MAX_BATCH_DELAY_NANOS
+            ) {
+                flushPending()
+            }
+        } else {
+            flushPending()
+        }
     }
 
     @Throws(IOException::class)
@@ -67,7 +102,6 @@ class LanRecordWriter(
     fun writeStreamEnd(bulkRef: BulkRef, actualBytes: Long) {
         require(actualBytes >= 0L) { "actualBytes must be non-negative, got: $actualBytes" }
         val totalLength = LanRecordKind.STREAM_END.maxPayloadSize
-        val header = ByteArray(5)
         header[0] = LanRecordKind.STREAM_END.byteValue
         header[1] = 0
         header[2] = 0
@@ -75,7 +109,7 @@ class LanRecordWriter(
         header[4] = totalLength.toByte()
 
         val payload = ByteArray(totalLength)
-        val uuidBytes = LanUuidCodec.bulkRefToNetworkBytes(bulkRef)
+        val uuidBytes = bulkRefBytes(bulkRef)
         System.arraycopy(uuidBytes, 0, payload, 0, LanUuidCodec.UUID_BYTE_LENGTH)
 
         var v = actualBytes
@@ -86,7 +120,7 @@ class LanRecordWriter(
 
         outputStream.write(header)
         outputStream.write(payload)
-        outputStream.flush()
+        flushPending()
     }
 
     @Throws(IOException::class)
@@ -104,7 +138,6 @@ class LanRecordWriter(
     @Throws(IOException::class)
     private fun writeHeaderAndPayload(kindByte: Byte, payload: ByteArray) {
         val length = payload.size
-        val header = ByteArray(5)
         header[0] = kindByte
         header[1] = ((length shr 24) and 0xFF).toByte()
         header[2] = ((length shr 16) and 0xFF).toByte()
@@ -113,6 +146,12 @@ class LanRecordWriter(
 
         outputStream.write(header)
         outputStream.write(payload)
-        outputStream.flush()
+        flushPending()
+    }
+
+    private companion object {
+        const val WRITE_BUFFER_BYTES = 256 * 1024
+        const val DATA_FLUSH_THRESHOLD_BYTES = 3 * (5 + 16 + 65520)
+        const val MAX_BATCH_DELAY_NANOS = 5_000_000L
     }
 }

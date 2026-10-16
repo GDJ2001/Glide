@@ -89,22 +89,17 @@ public actor LanRecordChannel {
         }
         while accumulated.count < count {
             let needed = count - accumulated.count
-            print("DEBUG: [readExact] calling connection.receive for needed=\(needed)...")
             let chunk: Data = try await withCheckedThrowingContinuation { continuation in
                 connection.receive(minimumIncompleteLength: 1, maximumLength: needed) { content, _, isComplete, error in
                     if let error = error {
-                        print("DEBUG: [readExact] connection.receive error: \(error)")
                         continuation.resume(throwing: error)
                         return
                     }
                     if let data = content, !data.isEmpty {
-                        print("DEBUG: [readExact] connection.receive got \(data.count) bytes (isComplete=\(isComplete))")
                         continuation.resume(returning: data)
                     } else if isComplete {
-                        print("DEBUG: [readExact] connection.receive EOF isComplete=true")
                         continuation.resume(throwing: LanChannelError.connectionClosed)
                     } else {
-                        print("DEBUG: [readExact] connection.receive empty data, returning Data()")
                         continuation.resume(returning: Data())
                     }
                 }

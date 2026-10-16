@@ -234,7 +234,7 @@ class LanTransferTransport(
             )
 
             // 3. Send BOOTSTRAP_RESULT
-            val writer = LanRecordWriter(outputStream)
+            val writer = LanRecordWriter(outputStream, coalesceDataWrites = true)
             val resultBytes = LanBootstrapCodec.encodeResult(result)
             writer.writeBootstrapResult(resultBytes)
 
@@ -338,7 +338,7 @@ class LanTransferTransport(
             ?: throw IOException("Authenticated LAN listener identity is unavailable.")
         val peerId = PeerId("lan-${open.sessionId}")
         val peerDevice = PeerDevice(id = peerId, displayName = open.initiatorDeviceName)
-        val writer = LanRecordWriter(output)
+        val writer = LanRecordWriter(output, coalesceDataWrites = true)
         socket.soTimeout = 0
         val readerJob = coroutineScope.launch(start = CoroutineStart.LAZY) { readLoop(peerId, socket, input) }
         activeConnections[peerId] = ActiveConnection(
@@ -447,7 +447,7 @@ class LanTransferTransport(
 
         val inputStream = sslSocket.inputStream
         val outputStream = sslSocket.outputStream
-        val writer = LanRecordWriter(outputStream)
+        val writer = LanRecordWriter(outputStream, coalesceDataWrites = true)
 
         // 2. Send BOOTSTRAP record
         val senderSessionId = UUID.randomUUID().toString()
@@ -592,7 +592,7 @@ class LanTransferTransport(
                 throw IOException("Identity changed — pair again")
             }
 
-            val writer = LanRecordWriter(outputStream)
+            val writer = LanRecordWriter(outputStream, coalesceDataWrites = true)
             val peerDevice = PeerDevice(
                 id = peerId,
                 displayName = ack.responderDeviceName ?: trustedPeer.displayName

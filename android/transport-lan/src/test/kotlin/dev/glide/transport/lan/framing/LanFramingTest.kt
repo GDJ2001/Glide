@@ -59,6 +59,40 @@ class LanFramingTest {
     }
 
     @Test
+    fun coalescedDataWritesKeepTheExactProfile1BytesAndControlOrder() {
+        val chunks = listOf(
+            ByteArray(65520) { it.toByte() },
+            ByteArray(65520) { (it * 3).toByte() },
+            ByteArray(65520) { (it * 7).toByte() },
+            ByteArray(42) { 0x5a.toByte() }
+        )
+        val control = "{\"type\":\"ITEM_END\"}".toByteArray()
+        val expected = ByteArrayOutputStream()
+        val actual = ByteArrayOutputStream()
+        val legacy = LanRecordWriter(expected)
+        val coalesced = LanRecordWriter(actual, coalesceDataWrites = true)
+
+        for (chunk in chunks) {
+            legacy.writeData(testBulkRef, chunk)
+            coalesced.writeData(testBulkRef, chunk)
+        }
+        legacy.writeStreamEnd(testBulkRef, chunks.sumOf { it.size }.toLong())
+        coalesced.writeStreamEnd(testBulkRef, chunks.sumOf { it.size }.toLong())
+        legacy.writeControl(control)
+        coalesced.writeControl(control)
+
+        assertArrayEquals(expected.toByteArray(), actual.toByteArray())
+        val input = ByteArrayInputStream(actual.toByteArray())
+        for (chunk in chunks) {
+            val record = LanRecordReader.readRecord(input) as LanRecord.Data
+            assertEquals(testBulkRef, record.bulkRef)
+            assertArrayEquals(chunk, record.chunk)
+        }
+        assertTrue(LanRecordReader.readRecord(input) is LanRecord.StreamEnd)
+        assertArrayEquals(control, (LanRecordReader.readRecord(input) as LanRecord.Control).payload)
+    }
+
+    @Test
     fun testOneByteChunkedReading() {
         val out = ByteArrayOutputStream()
         val writer = LanRecordWriter(out)

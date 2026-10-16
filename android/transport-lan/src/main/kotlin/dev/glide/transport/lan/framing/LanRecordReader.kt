@@ -42,6 +42,14 @@ object LanRecordReader {
 
         validateLength(kind, payloadLength)
 
+        if (kind == LanRecordKind.DATA) {
+            val uuid = ByteArray(LanUuidCodec.UUID_BYTE_LENGTH)
+            readFully(inputStream, uuid)
+            val chunk = ByteArray(payloadLength - uuid.size)
+            readFully(inputStream, chunk)
+            return LanRecord.Data(LanUuidCodec.networkBytesToBulkRef(uuid, 0), chunk)
+        }
+
         val payload = ByteArray(payloadLength)
         readFully(inputStream, payload)
 
@@ -49,11 +57,7 @@ object LanRecordReader {
             LanRecordKind.BOOTSTRAP -> LanRecord.Bootstrap(payload)
             LanRecordKind.BOOTSTRAP_RESULT -> LanRecord.BootstrapResult(payload)
             LanRecordKind.CONTROL -> LanRecord.Control(payload)
-            LanRecordKind.DATA -> {
-                val bulkRef = LanUuidCodec.networkBytesToBulkRef(payload, 0)
-                val chunk = payload.copyOfRange(LanUuidCodec.UUID_BYTE_LENGTH, payload.size)
-                LanRecord.Data(bulkRef, chunk)
-            }
+            LanRecordKind.DATA -> error("DATA was decoded before the control payload switch")
             LanRecordKind.STREAM_END -> {
                 val bulkRef = LanUuidCodec.networkBytesToBulkRef(payload, 0)
                 var actualBytes: Long = 0L
