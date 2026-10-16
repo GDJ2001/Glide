@@ -1,12 +1,15 @@
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Nodes;
+using System.Threading.Channels;
 using Glide.Core.Codec;
 using Glide.Core.Models;
 using Glide.Core.Pairing;
 using Glide.Core.Security;
 using Glide.Core.Storage;
 using Glide.Core.Transport.Lan;
+using Glide.Desktop.Diagnostics;
 using Glide.Transport.Framing;
 using Glide.Transport.Sockets;
 
@@ -29,6 +32,32 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
     private const int MaxOfferPageItems = 32;
     private const int SafeOfferPagePayloadBytes = 14_000;
     private const int StreamBufferBytes = 65_520;
+
+    private readonly IDesktopTransferDiagnostics _diagnostics;
+    private readonly DesktopTransferIoOptions _ioOptions;
+    private readonly TransferBufferPool _bufferPool;
+
+    public DesktopTransferEngine(
+        IDesktopTransferDiagnostics? diagnostics = null,
+        DesktopTransferIoOptions? ioOptions = null,
+        TransferBufferPool? bufferPool = null)
+    {
+        _diagnostics = diagnostics ?? BoundedTransferDiagnosticSink.CreateDefault();
+        _ioOptions = ioOptions ?? DesktopTransferIoOptions.Default;
+        _bufferPool = bufferPool ?? (
+            _ioOptions.MaxProcessTransferBufferBytes == TransferBufferPool.DefaultMaxProcessBytes &&
+            _ioOptions.ChunkBufferBytes <= TransferBufferPool.DefaultBufferBytes
+                ? TransferBufferPool.Shared
+                : new TransferBufferPool(
+                    (int)Math.Min(int.MaxValue, _ioOptions.MaxProcessTransferBufferBytes),
+                    Math.Max(4096, _ioOptions.ChunkBufferBytes)));
+    }
+
+    public IDesktopTransferDiagnostics Diagnostics => _diagnostics;
+    public DesktopTransferIoOptions IoOptions => _ioOptions;
+    public TransferBufferPool BufferPool => _bufferPool;
+    public DesktopTransferDiagnosticSample? LastDiagnosticSample { get; private set; }
+    public IReadOnlyList<DesktopTransferDiagnosticSample> LastDiagnosticSamples { get; private set; } = [];
 
     private sealed record PreparedSendItem(
         ItemId ItemId,
@@ -815,7 +844,16 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
         return "unknown";
     }
 
-    private static async Task<DesktopTransferResult> RunSenderSessionAsync(
+    private DesktopTransferResult CompleteAttempt(
+        IDesktopTransferAttemptDiagnostics diag,
+        DesktopTransferResult result)
+    {
+        LastDiagnosticSample = diag.Complete(result);
+        LastDiagnosticSamples = diag.GetRecordedSamples();
+        return result;
+    }
+
+    private async Task<DesktopTransferResult> RunSenderSessionAsync(
         TlsSocketConnection connection,
         DesktopSendRequest request,
         long totalBytes,
@@ -825,8 +863,51 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
         SessionId? preEstablishedTrustedSessionId = null,
         string? trustedPeerFallbackName = null)
     {
+        await using IDesktopTransferAttemptDiagnostics diag =
+            _diagnostics.BeginAttempt(DesktopTransferDirection.Send, totalBytes);
+        try
+        {
+            return await RunSenderSessionCoreAsync(
+                connection,
+                request,
+                totalBytes,
+                interaction,
+                diag,
+                cancellationToken,
+                hostedInvitationAuthority,
+                preEstablishedTrustedSessionId,
+                trustedPeerFallbackName);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            CompleteAttempt(diag, DesktopTransferResult.CancelledByUser("Transfer cancelled."));
+            throw;
+        }
+        catch (Exception ex)
+        {
+            CompleteAttempt(diag, DesktopTransferResult.Failed(ex.Message, DesktopTransferFailures.Classify(ex)));
+            throw;
+        }
+    }
+
+    private async Task<DesktopTransferResult> RunSenderSessionCoreAsync(
+        TlsSocketConnection connection,
+        DesktopSendRequest request,
+        long totalBytes,
+        IDesktopTransferInteraction interaction,
+        IDesktopTransferAttemptDiagnostics diag,
+        CancellationToken cancellationToken,
+        LanInvitationAuthority? hostedInvitationAuthority = null,
+        SessionId? preEstablishedTrustedSessionId = null,
+        string? trustedPeerFallbackName = null)
+    {
         await using var channel =
-            new LanRecordChannel(connection.TransportStream);
+            new LanRecordChannel(
+                connection.TransportStream,
+                coalesceWrites: _ioOptions.EnableCoalescedFraming,
+                coalesceBufferBytes: _ioOptions.WriteCoalesceBufferBytes,
+                maxCoalesceDelayMs: (int)Math.Max(1, _ioOptions.MaxWriteBatchDelay.TotalMilliseconds),
+                bufferPool: _bufferPool);
         var sequence = new DesktopControlSequence();
         SessionId sessionId;
 
@@ -876,9 +957,11 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                 await channel.WriteBootstrapResultAsync(bootstrapResult, cancellationToken);
                 if (!bootstrapResult.IsAccepted)
                 {
-                    return DesktopTransferResult.RejectedByPeer(
-                        $"Pairing bootstrap rejected: {bootstrapResult.Code}",
-                        DesktopTransferFailures.FromBootstrapCode(bootstrapResult.Code));
+                    return CompleteAttempt(
+                        diag,
+                        DesktopTransferResult.RejectedByPeer(
+                            $"Pairing bootstrap rejected: {bootstrapResult.Code}",
+                            DesktopTransferFailures.FromBootstrapCode(bootstrapResult.Code)));
                 }
 
                 sessionId = new SessionId(bootstrap.SessionId);
@@ -886,9 +969,11 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
 
             if (!bootstrapResult.IsAccepted)
             {
-                return DesktopTransferResult.RejectedByPeer(
-                    $"Pairing bootstrap rejected by peer: {bootstrapResult.Code}",
-                    DesktopTransferFailures.FromBootstrapCode(bootstrapResult.Code));
+                return CompleteAttempt(
+                    diag,
+                    DesktopTransferResult.RejectedByPeer(
+                        $"Pairing bootstrap rejected by peer: {bootstrapResult.Code}",
+                        DesktopTransferFailures.FromBootstrapCode(bootstrapResult.Code)));
             }
 
             if (!string.Equals(
@@ -981,10 +1066,13 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
             interaction.OnStatus(
                 DesktopTransferDirection.Send,
                 $"{peerName} connected. Confirm the receiving device before sending.");
+            diag.OnPhaseChanged(DesktopTransferPhase.AwaitingConsent);
             if (!await interaction.ConfirmRecipientAsync(peerName, cancellationToken))
             {
-                return DesktopTransferResult.RejectedByPeer(
-                    "You did not approve the connected receiving device.");
+                return CompleteAttempt(
+                    diag,
+                    DesktopTransferResult.RejectedByPeer(
+                        "You did not approve the connected receiving device."));
             }
         }
 
@@ -1089,6 +1177,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
             DesktopTransferDirection.Send,
             "Waiting for peer approval...");
         interaction.OnPhase(DesktopTransferDirection.Send, DesktopTransferPhase.AwaitingConsent);
+        diag.OnPhaseChanged(DesktopTransferPhase.AwaitingConsent);
 
         Envelope offerDecision =
             await sequence.ReadExpectedAsync(
@@ -1112,15 +1201,21 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                 ?? WireErrorCodes.UserRejected;
             if (code == WireErrorCodes.InsufficientStorage)
             {
-                return DesktopTransferResult.Failed(
-                    "The receiving device cannot save these files. Ask its user to choose a writable folder in Settings or free space, then try again.",
-                    TransferErrorCategory.Storage);
+                return CompleteAttempt(
+                    diag,
+                    DesktopTransferResult.Failed(
+                        "The receiving device cannot save these files. Ask its user to choose a writable folder in Settings or free space, then try again.",
+                        TransferErrorCategory.Storage));
             }
-            return DesktopTransferResult.RejectedByPeer(
-                $"Peer rejected the transfer offer ({code}).");
+            return CompleteAttempt(
+                diag,
+                DesktopTransferResult.RejectedByPeer(
+                    $"Peer rejected the transfer offer ({code})."));
         }
 
+        diag.OnConsentCompleted();
         interaction.OnPhase(DesktopTransferDirection.Send, DesktopTransferPhase.Transferring);
+        diag.OnPhaseChanged(DesktopTransferPhase.Transferring);
 
         long cumulativeTransferred = 0;
         int verifiedCount = 0;
@@ -1131,6 +1226,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
         {
             cancellationToken.ThrowIfCancellationRequested();
             interaction.OnPhase(DesktopTransferDirection.Send, DesktopTransferPhase.Transferring);
+            diag.OnPhaseChanged(DesktopTransferPhase.Transferring);
             DesktopTransferFile file = prepared.File;
 
             interaction.OnItemStatus(
@@ -1185,44 +1281,76 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                     StreamBufferBytes,
                     useAsync: true);
 
-            byte[] buffer =
-                new byte[StreamBufferBytes];
-            int read;
-            while ((read = await stream.ReadAsync(
-                buffer.AsMemory(0, buffer.Length),
-                cancellationToken)) > 0)
+            if (_ioOptions.EnableBoundedPipeline)
             {
-                actualBytes = checked(
-                    actualBytes + read);
-                if (actualBytes >
-                    prepared.DeclaredSize)
-                {
-                    throw new ProtocolViolationException(
-                        WireErrorCodes.SourceUnavailable,
-                        $"Source '{file.Name}' grew while it was being transferred.");
-                }
-
-                hash.AppendData(
-                    buffer,
-                    0,
-                    read);
-                await channel.WriteDataChunkAsync(
+                (actualBytes, cumulativeTransferred) = await StreamSenderItemBoundedAsync(
+                    stream,
+                    hash,
+                    channel,
                     bulkRef,
-                    buffer.AsMemory(0, read),
-                    cancellationToken);
+                    prepared,
+                    peerName,
+                    cumulativeTransferred,
+                    totalBytes,
+                    interaction,
+                    diag,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                byte[] buffer =
+                    new byte[StreamBufferBytes];
+                while (true)
+                {
+                    long readStart = Stopwatch.GetTimestamp();
+                    int read = await stream.ReadAsync(
+                        buffer.AsMemory(0, buffer.Length),
+                        cancellationToken).ConfigureAwait(false);
+                    diag.AddSourceRead(read, Stopwatch.GetTimestamp() - readStart);
+                    if (read <= 0)
+                    {
+                        break;
+                    }
 
-                cumulativeTransferred += read;
-                interaction.OnProgress(
-                    new DesktopTransferProgress(
-                        DesktopTransferDirection.Send,
-                        peerName,
-                        file.Name,
-                        cumulativeTransferred,
-                        totalBytes));
+                    actualBytes = checked(
+                        actualBytes + read);
+                    if (actualBytes >
+                        prepared.DeclaredSize)
+                    {
+                        throw new ProtocolViolationException(
+                            WireErrorCodes.SourceUnavailable,
+                            $"Source '{file.Name}' grew while it was being transferred.");
+                    }
+
+                    long hashStart = Stopwatch.GetTimestamp();
+                    hash.AppendData(
+                        buffer,
+                        0,
+                        read);
+                    diag.AddHashCompute(Stopwatch.GetTimestamp() - hashStart);
+
+                    long writeStart = Stopwatch.GetTimestamp();
+                    await channel.WriteDataChunkAsync(
+                        bulkRef,
+                        buffer.AsMemory(0, read),
+                        cancellationToken).ConfigureAwait(false);
+                    diag.AddTlsWrite(read, Stopwatch.GetTimestamp() - writeStart);
+
+                    cumulativeTransferred += read;
+                    interaction.OnProgress(
+                        new DesktopTransferProgress(
+                            DesktopTransferDirection.Send,
+                            peerName,
+                            file.Name,
+                            cumulativeTransferred,
+                            totalBytes));
+                }
             }
 
+            long finalHashStart = Stopwatch.GetTimestamp();
             byte[] digestBytes =
                 hash.GetHashAndReset();
+            diag.AddHashCompute(Stopwatch.GetTimestamp() - finalHashStart);
 
             if (actualBytes != prepared.DeclaredSize)
             {
@@ -1250,7 +1378,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
             await channel.WriteStreamEndAsync(
                 bulkRef,
                 actualBytes,
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
 
             await channel.WriteEnvelopeAsync(
                 sequence.Create(
@@ -1264,15 +1392,35 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                             actualBytes.ToString(),
                         ["sha256"] = digest
                     }),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
 
             interaction.OnPhase(DesktopTransferDirection.Send, DesktopTransferPhase.Verifying);
-            Envelope itemResult =
-                await sequence.ReadExpectedAsync(
-                    channel,
-                    MessageTypes.ItemResult,
-                    sessionId,
-                    cancellationToken);
+            diag.OnPhaseChanged(DesktopTransferPhase.Verifying);
+            Envelope itemResult;
+            try
+            {
+                itemResult =
+                    await sequence.ReadExpectedAsync(
+                        channel,
+                        MessageTypes.ItemResult,
+                        sessionId,
+                        cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ackError) when (!cancellationToken.IsCancellationRequested && IsUncertainAckFailure(ackError))
+            {
+                string uncertainMessage =
+                    $"Confirmation uncertain for '{file.Name}': the connection closed after all bytes and digest were sent, " +
+                    "while waiting for final receiver confirmation. The receiving device may have already verified and saved the file; " +
+                    "check the receiver before resending.";
+                interaction.OnStatus(DesktopTransferDirection.Send, uncertainMessage);
+                return CompleteAttempt(
+                    diag,
+                    DesktopTransferResult.Failed(
+                        uncertainMessage,
+                        TransferErrorCategory.Network,
+                        verifiedCount,
+                        verifiedBytes));
+            }
             RequireExactString(
                 itemResult,
                 "batchId",
@@ -1299,6 +1447,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
 
                 verifiedCount++;
                 verifiedBytes += actualBytes;
+                diag.OnItemVerified(actualBytes);
                 interaction.OnItemStatus(
                     DesktopTransferDirection.Send,
                     file.Name,
@@ -1330,15 +1479,35 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                 {
                     ["batchId"] = batchId.Value
                 }),
-            cancellationToken);
+            cancellationToken).ConfigureAwait(false);
 
         interaction.OnPhase(DesktopTransferDirection.Send, DesktopTransferPhase.Verifying);
-        Envelope terminal =
-            await sequence.ReadExpectedOneOfAsync(
-                channel,
-                [MessageTypes.BatchResult, MessageTypes.Error],
-                sessionId,
-                cancellationToken);
+        diag.OnPhaseChanged(DesktopTransferPhase.Verifying);
+        Envelope terminal;
+        try
+        {
+            terminal =
+                await sequence.ReadExpectedOneOfAsync(
+                    channel,
+                    [MessageTypes.BatchResult, MessageTypes.Error],
+                    sessionId,
+                    cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ackError) when (!cancellationToken.IsCancellationRequested && IsUncertainAckFailure(ackError))
+        {
+            string uncertainBatchMessage =
+                $"Confirmation uncertain: the connection closed while waiting for final batch acknowledgment " +
+                $"after {verifiedCount} item(s) were verified ({verifiedBytes} bytes). " +
+                "The receiving device may have already saved the files; check the receiver before resending.";
+            interaction.OnStatus(DesktopTransferDirection.Send, uncertainBatchMessage);
+            return CompleteAttempt(
+                diag,
+                DesktopTransferResult.Failed(
+                    uncertainBatchMessage,
+                    TransferErrorCategory.Network,
+                    verifiedCount,
+                    verifiedBytes));
+        }
 
         if (terminal.Type == MessageTypes.Error)
         {
@@ -1350,8 +1519,10 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
             interaction.OnStatus(
                 DesktopTransferDirection.Send,
                 message);
-            return DesktopTransferResult.Failed(
-                message, TransferErrorCategory.Protocol, verifiedCount, verifiedBytes);
+            return CompleteAttempt(
+                diag,
+                DesktopTransferResult.Failed(
+                    message, TransferErrorCategory.Protocol, verifiedCount, verifiedBytes));
         }
 
         RequireExactString(
@@ -1385,8 +1556,10 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
             interaction.OnStatus(
                 DesktopTransferDirection.Send,
                 partialMessage);
-            return DesktopTransferResult.Failed(
-                partialMessage, TransferErrorCategory.Security, verifiedCount, verifiedBytes);
+            return CompleteAttempt(
+                diag,
+                DesktopTransferResult.Failed(
+                    partialMessage, TransferErrorCategory.Security, verifiedCount, verifiedBytes));
         }
 
         string successMessage =
@@ -1394,13 +1567,15 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
         interaction.OnStatus(
             DesktopTransferDirection.Send,
             successMessage);
-        return DesktopTransferResult.Completed(
-            successMessage,
-            verifiedCount,
-            verifiedBytes);
+        return CompleteAttempt(
+            diag,
+            DesktopTransferResult.Completed(
+                successMessage,
+                verifiedCount,
+                verifiedBytes));
     }
 
-    private static async Task<DesktopTransferResult> RunReceiverSessionAsync(
+    private async Task<DesktopTransferResult> RunReceiverSessionAsync(
         TlsSocketConnection connection,
         DesktopReceiveRequest request,
         IDesktopTransferInteraction interaction,
@@ -1408,8 +1583,47 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
         bool localEndpointHostsTls = true,
         SessionId? preEstablishedTrustedSessionId = null)
     {
+        await using IDesktopTransferAttemptDiagnostics diag =
+            _diagnostics.BeginAttempt(DesktopTransferDirection.Receive, 0);
+        try
+        {
+            return await RunReceiverSessionCoreAsync(
+                connection,
+                request,
+                interaction,
+                diag,
+                cancellationToken,
+                localEndpointHostsTls,
+                preEstablishedTrustedSessionId);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            CompleteAttempt(diag, DesktopTransferResult.CancelledByUser("Transfer cancelled."));
+            throw;
+        }
+        catch (Exception ex)
+        {
+            CompleteAttempt(diag, DesktopTransferResult.Failed(ex.Message, DesktopTransferFailures.Classify(ex)));
+            throw;
+        }
+    }
+
+    private async Task<DesktopTransferResult> RunReceiverSessionCoreAsync(
+        TlsSocketConnection connection,
+        DesktopReceiveRequest request,
+        IDesktopTransferInteraction interaction,
+        IDesktopTransferAttemptDiagnostics diag,
+        CancellationToken cancellationToken,
+        bool localEndpointHostsTls = true,
+        SessionId? preEstablishedTrustedSessionId = null)
+    {
         await using var channel =
-            new LanRecordChannel(connection.TransportStream);
+            new LanRecordChannel(
+                connection.TransportStream,
+                coalesceWrites: _ioOptions.EnableCoalescedFraming,
+                coalesceBufferBytes: _ioOptions.WriteCoalesceBufferBytes,
+                maxCoalesceDelayMs: (int)Math.Max(1, _ioOptions.MaxWriteBatchDelay.TotalMilliseconds),
+                bufferPool: _bufferPool);
 
         LanBootstrapResult bootstrapResult;
         SessionId sessionId;
@@ -1432,8 +1646,10 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                     cancellationToken);
             if (firstRecord == null)
             {
-                return DesktopTransferResult.Failed(
-                    "Peer disconnected before sending the first record.");
+                return CompleteAttempt(
+                    diag,
+                    DesktopTransferResult.Failed(
+                        "Peer disconnected before sending the first record."));
             }
 
             if (firstRecord is not LanRecord.Bootstrap bootstrapRecord)
@@ -1456,9 +1672,11 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
 
             if (!bootstrapResult.IsAccepted)
             {
-                return DesktopTransferResult.RejectedByPeer(
-                    $"Inbound pairing bootstrap rejected: {bootstrapResult.Code}.",
-                    DesktopTransferFailures.FromBootstrapCode(bootstrapResult.Code));
+                return CompleteAttempt(
+                    diag,
+                    DesktopTransferResult.RejectedByPeer(
+                        $"Inbound pairing bootstrap rejected: {bootstrapResult.Code}.",
+                        DesktopTransferFailures.FromBootstrapCode(bootstrapResult.Code)));
             }
 
             sessionId = new SessionId(bootstrap.SessionId);
@@ -1483,9 +1701,11 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
 
             if (!bootstrapResult.IsAccepted)
             {
-                return DesktopTransferResult.RejectedByPeer(
-                    $"Pairing bootstrap rejected by peer: {bootstrapResult.Code}.",
-                    DesktopTransferFailures.FromBootstrapCode(bootstrapResult.Code));
+                return CompleteAttempt(
+                    diag,
+                    DesktopTransferResult.RejectedByPeer(
+                        $"Pairing bootstrap rejected by peer: {bootstrapResult.Code}.",
+                        DesktopTransferFailures.FromBootstrapCode(bootstrapResult.Code)));
             }
 
             if (!string.Equals(
@@ -1659,6 +1879,8 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                     offerBegin.Body["pageCount"]!
                         .ToString()));
 
+            diag.SetDeclaredTotalBytes(totalBytes);
+
             var items =
                 new List<DesktopOfferItem>(
                     itemCount);
@@ -1783,20 +2005,24 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                     $"Offer declared {totalBytes} bytes but item metadata totals {offeredBytes}.");
             }
 
-            bool hasStorage =
-                request.StagingStore.GetAvailableFreeSpaceBytes() >= totalBytes &&
-                request.StagingStore.GetDestinationAvailableFreeSpaceBytes() >= totalBytes;
-            if (hasStorage)
+            bool discardStorage = _ioOptions.DiscardStorageForBenchmark;
+            long maxItemBytes = items.Count > 0 ? items.Max(static item => item.SizeBytes) : 0;
+            bool hasStorage = discardStorage ||
+                request.StagingStore.HasSufficientFreeSpaceForBatch(totalBytes, maxItemBytes);
+            if (hasStorage && !discardStorage)
             {
                 try
                 {
-                    await request.StagingStore.VerifyDestinationWritableAsync(cancellationToken);
+                    await request.StagingStore.VerifyDestinationWritableAsync(cancellationToken).ConfigureAwait(false);
                 }
                 catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException)
                 {
                     hasStorage = false;
                 }
             }
+
+            interaction.OnPhase(DesktopTransferDirection.Receive, DesktopTransferPhase.AwaitingConsent);
+            diag.OnPhaseChanged(DesktopTransferPhase.AwaitingConsent);
 
             bool offerAccepted =
                 hasStorage &&
@@ -1808,7 +2034,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                         totalBytes,
                         AuthenticatedPeerFingerprintHex:
                             authenticatedPeerFingerprint),
-                    cancellationToken);
+                    cancellationToken).ConfigureAwait(false);
 
             var decisionBody =
                 new JsonObject
@@ -1829,18 +2055,23 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                     MessageTypes.OfferDecision,
                     sessionId,
                     decisionBody),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
 
             if (!offerAccepted)
             {
-                return hasStorage
-                    ? DesktopTransferResult.RejectedByPeer("Transfer offer was rejected.")
-                    : DesktopTransferResult.Failed(
-                        "The receiving folder is unavailable, read-only, or short of space. Choose a writable folder in Settings and try again.",
-                        TransferErrorCategory.Storage);
+                return CompleteAttempt(
+                    diag,
+                    hasStorage
+                        ? DesktopTransferResult.RejectedByPeer("Transfer offer was rejected.")
+                        : DesktopTransferResult.Failed(
+                            "The receiving folder is unavailable, read-only, or short of space. Choose a writable folder in Settings and try again.",
+                            TransferErrorCategory.Storage));
             }
 
+            using IDisposable sessionLease = request.StagingStore.AcquireSessionLease(sessionId);
+            diag.OnConsentCompleted();
             interaction.OnPhase(DesktopTransferDirection.Receive, DesktopTransferPhase.Transferring);
+            diag.OnPhaseChanged(DesktopTransferPhase.Transferring);
 
             long cumulativeTransferred = 0;
             int verifiedCount = 0;
@@ -1851,6 +2082,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 interaction.OnPhase(DesktopTransferDirection.Receive, DesktopTransferPhase.Transferring);
+                diag.OnPhaseChanged(DesktopTransferPhase.Transferring);
                 interaction.OnItemStatus(
                     DesktopTransferDirection.Receive,
                     item.Name,
@@ -1898,120 +2130,216 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                 long receivedBytes = 0;
                 try
                 {
-                    await using var fileStream =
-                        request.StagingStore.OpenQuarantineWrite(sessionId, itemId);
+                    await using Stream fileStream = discardStorage
+                        ? Stream.Null
+                        : request.StagingStore.OpenQuarantineWrite(sessionId, itemId);
                     using var sha256 =
                         IncrementalHash.CreateHash(
                             HashAlgorithmName.SHA256);
 
-                    while (true)
+                    using var itemTimeoutCts =
+                        CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+                    if (_ioOptions.EnableBoundedPipeline)
                     {
-                        LanRecord? record =
-                            await DesktopControlSequence
-                                .ReadRecordAsync(
-                                    channel,
-                                    cancellationToken);
-                        if (record == null)
+                        (receivedBytes, cumulativeTransferred) = await StreamReceiverItemBoundedAsync(
+                            channel,
+                            fileStream,
+                            sha256,
+                            bulkRef,
+                            item,
+                            peerName,
+                            discardStorage,
+                            cumulativeTransferred,
+                            totalBytes,
+                            itemTimeoutCts,
+                            interaction,
+                            diag,
+                            cancellationToken).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        while (true)
                         {
-                            throw new EndOfStreamException(
-                                "Connection terminated during payload transfer.");
-                        }
-
-                        if (record is
-                            LanRecord.Data dataRecord)
-                        {
-                            if (!string.Equals(
-                                    dataRecord.BulkRef.Value,
-                                    bulkRef.Value,
-                                    StringComparison.Ordinal))
+                            long readStart = Stopwatch.GetTimestamp();
+                            LanRecord? record =
+                                await DesktopControlSequence
+                                    .ReadOwnedRecordWithDeadlineAsync(
+                                        channel,
+                                        bulkRef,
+                                        itemTimeoutCts,
+                                        cancellationToken).ConfigureAwait(false);
+                            long readTicks = Stopwatch.GetTimestamp() - readStart;
+                            if (record == null)
                             {
-                                throw new ProtocolViolationException(
-                                    WireErrorCodes.MalformedMessage,
-                                    "Unmatched bulkRef in DATA record.");
+                                throw new EndOfStreamException(
+                                    "Connection terminated during payload transfer.");
                             }
 
-                            receivedBytes =
-                                checked(
-                                    receivedBytes +
-                                    dataRecord.Chunk.Length);
-                            if (receivedBytes >
-                                item.SizeBytes)
+                            if (record is LanRecord.OwnedData ownedData)
                             {
-                                throw new ProtocolViolationException(
-                                    WireErrorCodes.LimitExceeded,
-                                    $"Item '{item.Name}' exceeded its declared size.");
+                                using (ownedData)
+                                {
+                                    int chunkLength = ownedData.ChunkLength;
+                                    diag.AddTlsRead(chunkLength, readTicks);
+                                    if (!string.Equals(
+                                            ownedData.BulkRef.Value,
+                                            bulkRef.Value,
+                                            StringComparison.Ordinal))
+                                    {
+                                        throw new ProtocolViolationException(
+                                            WireErrorCodes.MalformedMessage,
+                                            "Unmatched bulkRef in DATA record.");
+                                    }
+
+                                    receivedBytes = checked(receivedBytes + chunkLength);
+                                    if (receivedBytes > item.SizeBytes)
+                                    {
+                                        throw new ProtocolViolationException(
+                                            WireErrorCodes.LimitExceeded,
+                                            $"Item '{item.Name}' exceeded its declared size.");
+                                    }
+
+                                    if (!discardStorage)
+                                    {
+                                        long writeStart = Stopwatch.GetTimestamp();
+                                        await fileStream.WriteAsync(
+                                            ownedData.ChunkMemory,
+                                            cancellationToken).ConfigureAwait(false);
+                                        diag.AddStagingWrite(chunkLength, Stopwatch.GetTimestamp() - writeStart);
+                                    }
+
+                                    long hashStart = Stopwatch.GetTimestamp();
+                                    sha256.AppendData(ownedData.ChunkSpan);
+                                    diag.AddHashCompute(Stopwatch.GetTimestamp() - hashStart);
+
+                                    cumulativeTransferred += chunkLength;
+                                    interaction.OnProgress(
+                                        new DesktopTransferProgress(
+                                            DesktopTransferDirection.Receive,
+                                            peerName,
+                                            item.Name,
+                                            cumulativeTransferred,
+                                            totalBytes));
+                                }
                             }
-
-                            await fileStream.WriteAsync(
-                                dataRecord.Chunk.AsMemory(),
-                                cancellationToken);
-                            sha256.AppendData(
-                                dataRecord.Chunk);
-
-                            cumulativeTransferred +=
-                                dataRecord.Chunk.Length;
-                            interaction.OnProgress(
-                                new DesktopTransferProgress(
-                                    DesktopTransferDirection.Receive,
-                                    peerName,
-                                    item.Name,
-                                    cumulativeTransferred,
-                                    totalBytes));
-                        }
-                        else if (record is
-                            LanRecord.StreamEnd streamEnd)
-                        {
-                            if (!string.Equals(
-                                    streamEnd.BulkRef.Value,
-                                    bulkRef.Value,
-                                    StringComparison.Ordinal))
+                            else if (record is
+                                LanRecord.Data dataRecord)
                             {
-                                throw new ProtocolViolationException(
-                                    WireErrorCodes.MalformedMessage,
-                                    "Unmatched bulkRef in STREAM_END record.");
-                            }
+                                diag.AddTlsRead(dataRecord.Chunk.Length, readTicks);
+                                if (!string.Equals(
+                                        dataRecord.BulkRef.Value,
+                                        bulkRef.Value,
+                                        StringComparison.Ordinal))
+                                {
+                                    throw new ProtocolViolationException(
+                                        WireErrorCodes.MalformedMessage,
+                                        "Unmatched bulkRef in DATA record.");
+                                }
 
-                            if (streamEnd.ActualBytes !=
-                                    receivedBytes ||
-                                receivedBytes !=
+                                receivedBytes =
+                                    checked(
+                                        receivedBytes +
+                                        dataRecord.Chunk.Length);
+                                if (receivedBytes >
                                     item.SizeBytes)
+                                {
+                                    throw new ProtocolViolationException(
+                                        WireErrorCodes.LimitExceeded,
+                                        $"Item '{item.Name}' exceeded its declared size.");
+                                }
+
+                                if (!discardStorage)
+                                {
+                                    long writeStart = Stopwatch.GetTimestamp();
+                                    await fileStream.WriteAsync(
+                                        dataRecord.Chunk.AsMemory(),
+                                        cancellationToken).ConfigureAwait(false);
+                                    diag.AddStagingWrite(dataRecord.Chunk.Length, Stopwatch.GetTimestamp() - writeStart);
+                                }
+
+                                long hashStart = Stopwatch.GetTimestamp();
+                                sha256.AppendData(
+                                    dataRecord.Chunk);
+                                diag.AddHashCompute(Stopwatch.GetTimestamp() - hashStart);
+
+                                cumulativeTransferred +=
+                                    dataRecord.Chunk.Length;
+                                interaction.OnProgress(
+                                    new DesktopTransferProgress(
+                                        DesktopTransferDirection.Receive,
+                                        peerName,
+                                        item.Name,
+                                        cumulativeTransferred,
+                                        totalBytes));
+                            }
+                            else if (record is
+                                LanRecord.StreamEnd streamEnd)
+                            {
+                                if (!string.Equals(
+                                        streamEnd.BulkRef.Value,
+                                        bulkRef.Value,
+                                        StringComparison.Ordinal))
+                                {
+                                    throw new ProtocolViolationException(
+                                        WireErrorCodes.MalformedMessage,
+                                        "Unmatched bulkRef in STREAM_END record.");
+                                }
+
+                                if (streamEnd.ActualBytes !=
+                                        receivedBytes ||
+                                    receivedBytes !=
+                                        item.SizeBytes)
+                                {
+                                    throw new ProtocolViolationException(
+                                        WireErrorCodes.IntegrityMismatch,
+                                        $"STREAM_END actualBytes {streamEnd.ActualBytes} does not match expected {item.SizeBytes}.");
+                                }
+
+                                break;
+                            }
+                            else
                             {
                                 throw new ProtocolViolationException(
-                                    WireErrorCodes.IntegrityMismatch,
-                                    $"STREAM_END actualBytes {streamEnd.ActualBytes} does not match expected {item.SizeBytes}.");
+                                    WireErrorCodes.ProtocolOrder,
+                                    $"Unexpected record kind during data stream: {record.Kind}.");
                             }
-
-                            break;
-                        }
-                        else
-                        {
-                            throw new ProtocolViolationException(
-                                WireErrorCodes.ProtocolOrder,
-                                $"Unexpected record kind during data stream: {record.Kind}.");
                         }
                     }
 
-                    await fileStream.FlushAsync(
-                        cancellationToken);
+                    if (!discardStorage)
+                    {
+                        long flushStart = Stopwatch.GetTimestamp();
+                        await fileStream.FlushAsync(
+                            cancellationToken).ConfigureAwait(false);
+                        diag.AddStagingWrite(0, Stopwatch.GetTimestamp() - flushStart);
+                    }
+
+                    long finalHashStart = Stopwatch.GetTimestamp();
                     hash =
                         sha256.GetHashAndReset();
+                    diag.AddHashCompute(Stopwatch.GetTimestamp() - finalHashStart);
                 }
                 catch
                 {
-                    request.StagingStore
-                        .PurgeQuarantine(
-                            sessionId,
-                            itemId);
+                    if (!discardStorage)
+                    {
+                        request.StagingStore
+                            .PurgeQuarantine(
+                                sessionId,
+                                itemId);
+                    }
                     throw;
                 }
 
                 interaction.OnPhase(DesktopTransferDirection.Receive, DesktopTransferPhase.Verifying);
+                diag.OnPhaseChanged(DesktopTransferPhase.Verifying);
                 Envelope itemEnd =
                     await sequence.ReadExpectedAsync(
                         channel,
                         MessageTypes.ItemEnd,
                         sessionId,
-                        cancellationToken);
+                        cancellationToken).ConfigureAwait(false);
                 RequireExactString(
                     itemEnd,
                     "batchId",
@@ -2037,10 +2365,13 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                         declaredSha,
                         StringComparison.Ordinal))
                 {
-                    request.StagingStore
-                        .PurgeQuarantine(
-                            sessionId,
-                            itemId);
+                    if (!discardStorage)
+                    {
+                        request.StagingStore
+                            .PurgeQuarantine(
+                                sessionId,
+                                itemId);
+                    }
 
                     await channel.WriteEnvelopeAsync(
                         sequence.Create(
@@ -2055,7 +2386,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                                     WireErrorCodes
                                         .IntegrityMismatch
                             }),
-                        cancellationToken);
+                        cancellationToken).ConfigureAwait(false);
 
                     failedCount++;
                     interaction.OnItemStatus(
@@ -2065,19 +2396,38 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                     continue;
                 }
 
-                string finalPath =
-                    await request.StagingStore
-                        .CommitVerifiedQuarantineFileAsync(
-                            sessionId,
-                            itemId,
-                            item.RelativePath,
-                            new Sha256Digest(actualSha),
-                            receivedBytes,
-                            cancellationToken);
+                string finalPath;
+                if (discardStorage)
+                {
+                    interaction.OnPhase(DesktopTransferDirection.Receive, DesktopTransferPhase.Saving);
+                    diag.OnPhaseChanged(DesktopTransferPhase.Saving);
+                    finalPath = Path.Combine(request.StagingStore.DestinationRoot, item.RelativePath);
+                }
+                else
+                {
+                    QuarantineCommitResult commitResult =
+                        await request.StagingStore
+                            .CommitVerifiedQuarantineFileWithMetricsAsync(
+                                sessionId,
+                                itemId,
+                                item.RelativePath,
+                                new Sha256Digest(actualSha),
+                                receivedBytes,
+                                cancellationToken,
+                                onBeforePublish: () =>
+                                {
+                                    interaction.OnPhase(DesktopTransferDirection.Receive, DesktopTransferPhase.Saving);
+                                    diag.OnPhaseChanged(DesktopTransferPhase.Saving);
+                                }).ConfigureAwait(false);
+                    finalPath = commitResult.CommittedPath;
+                    diag.AddVerificationRead(receivedBytes, commitResult.VerificationReadStopwatchTicks);
+                    diag.AddCommit(commitResult.CommitStopwatchTicks);
+                }
 
                 verifiedCount++;
                 verifiedBytes +=
                     item.SizeBytes;
+                diag.OnItemVerified(item.SizeBytes);
 
                 await channel.WriteEnvelopeAsync(
                     sequence.Create(
@@ -2092,7 +2442,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                                 item.SizeBytes.ToString(),
                             ["sha256"] = actualSha
                         }),
-                    cancellationToken);
+                    cancellationToken).ConfigureAwait(false);
 
                 interaction.OnItemStatus(
                     DesktopTransferDirection.Receive,
@@ -2142,8 +2492,10 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                 interaction.OnStatus(
                     DesktopTransferDirection.Receive,
                     failedMessage);
-                return DesktopTransferResult.Failed(
-                    failedMessage, TransferErrorCategory.Security);
+                return CompleteAttempt(
+                    diag,
+                    DesktopTransferResult.Failed(
+                        failedMessage, TransferErrorCategory.Security));
             }
 
             await channel.WriteEnvelopeAsync(
@@ -2169,9 +2521,14 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                 interaction.OnStatus(
                     DesktopTransferDirection.Receive,
                     partialMessage);
-                request.StagingStore.PurgeSession(sessionId);
-                return DesktopTransferResult.Failed(
-                    partialMessage, TransferErrorCategory.Security, verifiedCount, verifiedBytes);
+                if (!discardStorage)
+                {
+                    request.StagingStore.PurgeSession(sessionId);
+                }
+                return CompleteAttempt(
+                    diag,
+                    DesktopTransferResult.Failed(
+                        partialMessage, TransferErrorCategory.Security, verifiedCount, verifiedBytes));
             }
 
             string message =
@@ -2179,16 +2536,24 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
             interaction.OnStatus(
                 DesktopTransferDirection.Receive,
                 message);
-            request.StagingStore.PurgeSession(sessionId);
-            return DesktopTransferResult.Completed(
-                message,
-                verifiedCount,
-                verifiedBytes);
+            if (!discardStorage)
+            {
+                request.StagingStore.PurgeSession(sessionId);
+            }
+            return CompleteAttempt(
+                diag,
+                DesktopTransferResult.Completed(
+                    message,
+                    verifiedCount,
+                    verifiedBytes));
         }
         catch
         {
-            request.StagingStore.PurgeSession(
-                sessionId);
+            if (!_ioOptions.DiscardStorageForBenchmark)
+            {
+                request.StagingStore.PurgeSession(
+                    sessionId);
+            }
             throw;
         }
     }
@@ -2453,6 +2818,435 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                 $"{envelope.Type} '{key}' value '{value}' does not match expected '{expected}'.");
         }
     }
+
+    private async Task<(long ActualBytes, long CumulativeTransferred)> StreamSenderItemBoundedAsync(
+        Stream stream,
+        IncrementalHash hash,
+        LanRecordChannel channel,
+        BulkRef bulkRef,
+        PreparedSendItem prepared,
+        string peerName,
+        long cumulativeTransferred,
+        long totalBytes,
+        IDesktopTransferInteraction interaction,
+        IDesktopTransferAttemptDiagnostics diag,
+        CancellationToken cancellationToken)
+    {
+        int queueCapacity = Math.Clamp(_ioOptions.QueueBufferCount, 1, 64);
+        int chunkBytes = Math.Clamp(_ioOptions.ChunkBufferBytes, 4096, Math.Min(StreamBufferBytes, _bufferPool.BufferBytes));
+
+        var boundedQueue = Channel.CreateBounded<OwnedTransferBuffer>(
+            new BoundedChannelOptions(queueCapacity)
+            {
+                FullMode = BoundedChannelFullMode.Wait,
+                SingleWriter = true,
+                SingleReader = true,
+                AllowSynchronousContinuations = false
+            });
+
+        using var pipelineCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        long actualBytes = 0;
+        long cumulative = cumulativeTransferred;
+        int currentDepth = 0;
+        int maxDepth = 0;
+
+        Task producerTask = Task.Run(async () =>
+        {
+            Exception? producerError = null;
+            try
+            {
+                while (true)
+                {
+                    OwnedTransferBuffer leased = await _bufferPool.RentAsync(chunkBytes, pipelineCts.Token).ConfigureAwait(false);
+                    bool handedOff = false;
+                    try
+                    {
+                        long readStart = Stopwatch.GetTimestamp();
+                        int read = await stream.ReadAsync(
+                            leased.GetAvailableMemory(chunkBytes),
+                            pipelineCts.Token).ConfigureAwait(false);
+                        diag.AddSourceRead(read, Stopwatch.GetTimestamp() - readStart);
+
+                        if (read <= 0)
+                        {
+                            break;
+                        }
+
+                        actualBytes = checked(actualBytes + read);
+                        if (actualBytes > prepared.DeclaredSize)
+                        {
+                            throw new ProtocolViolationException(
+                                WireErrorCodes.SourceUnavailable,
+                                $"Source '{prepared.File.Name}' grew while it was being transferred.");
+                        }
+
+                        leased.Length = read;
+
+                        long hashStart = Stopwatch.GetTimestamp();
+                        hash.AppendData(leased.Span);
+                        diag.AddHashCompute(Stopwatch.GetTimestamp() - hashStart);
+
+                        int depth = Interlocked.Increment(ref currentDepth);
+                        UpdateMax(ref maxDepth, depth);
+                        diag.UpdateQueueOccupancy(depth, Volatile.Read(ref maxDepth), 0, 0, _bufferPool.RentedBufferCount, _bufferPool.RentedBytes);
+
+                        await boundedQueue.Writer.WriteAsync(leased, pipelineCts.Token).ConfigureAwait(false);
+                        handedOff = true;
+                    }
+                    finally
+                    {
+                        if (!handedOff)
+                        {
+                            leased.Dispose();
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                producerError = ex;
+                throw;
+            }
+            finally
+            {
+                boundedQueue.Writer.TryComplete(producerError);
+            }
+        }, CancellationToken.None);
+
+        try
+        {
+            await foreach (OwnedTransferBuffer ownedChunk in boundedQueue.Reader.ReadAllAsync(pipelineCts.Token).ConfigureAwait(false))
+            {
+                using (ownedChunk)
+                {
+                    int depth = Interlocked.Decrement(ref currentDepth);
+                    diag.UpdateQueueOccupancy(Math.Max(0, depth), Volatile.Read(ref maxDepth), 0, 0, _bufferPool.RentedBufferCount, _bufferPool.RentedBytes);
+
+                    int len = ownedChunk.Length;
+                    long writeStart = Stopwatch.GetTimestamp();
+                    await channel.WriteDataChunkAsync(
+                        bulkRef,
+                        ownedChunk.ReadOnlyMemory,
+                        pipelineCts.Token).ConfigureAwait(false);
+                    diag.AddTlsWrite(len, Stopwatch.GetTimestamp() - writeStart);
+
+                    cumulative += len;
+                    interaction.OnProgress(
+                        new DesktopTransferProgress(
+                            DesktopTransferDirection.Send,
+                            peerName,
+                            prepared.File.Name,
+                            cumulative,
+                            totalBytes));
+                }
+            }
+
+            await producerTask.ConfigureAwait(false);
+            return (actualBytes, cumulative);
+        }
+        catch
+        {
+            pipelineCts.Cancel();
+            DrainAndDisposeChannel(boundedQueue.Reader, ref currentDepth);
+            try
+            {
+                await producerTask.ConfigureAwait(false);
+            }
+            catch
+            {
+                // Primary exception or producer exception handled by caller
+            }
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+
+            throw;
+        }
+        finally
+        {
+            DrainAndDisposeChannel(boundedQueue.Reader, ref currentDepth);
+            diag.UpdateQueueOccupancy(0, Volatile.Read(ref maxDepth), 0, 0, _bufferPool.RentedBufferCount, _bufferPool.RentedBytes);
+        }
+    }
+
+    private async Task<(long ReceivedBytes, long CumulativeTransferred)> StreamReceiverItemBoundedAsync(
+        LanRecordChannel channel,
+        Stream fileStream,
+        IncrementalHash sha256,
+        BulkRef bulkRef,
+        DesktopOfferItem item,
+        string peerName,
+        bool discardStorage,
+        long cumulativeTransferred,
+        long totalBytes,
+        CancellationTokenSource itemTimeoutCts,
+        IDesktopTransferInteraction interaction,
+        IDesktopTransferAttemptDiagnostics diag,
+        CancellationToken cancellationToken)
+    {
+        int queueCapacity = Math.Clamp(_ioOptions.QueueBufferCount, 1, 64);
+
+        var boundedQueue = Channel.CreateBounded<OwnedTransferBuffer>(
+            new BoundedChannelOptions(queueCapacity)
+            {
+                FullMode = BoundedChannelFullMode.Wait,
+                SingleWriter = true,
+                SingleReader = true,
+                AllowSynchronousContinuations = false
+            });
+
+        using var pipelineCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        long receivedBytes = 0;
+        long cumulative = cumulativeTransferred;
+        int currentDepth = 0;
+        int maxDepth = 0;
+
+        Task consumerTask = Task.Run(async () =>
+        {
+            try
+            {
+                await foreach (OwnedTransferBuffer ownedChunk in boundedQueue.Reader.ReadAllAsync(pipelineCts.Token).ConfigureAwait(false))
+                {
+                    using (ownedChunk)
+                    {
+                        int depth = Interlocked.Decrement(ref currentDepth);
+                        diag.UpdateQueueOccupancy(0, 0, Math.Max(0, depth), Volatile.Read(ref maxDepth), _bufferPool.RentedBufferCount, _bufferPool.RentedBytes);
+
+                        int chunkLength = ownedChunk.Length;
+
+                        long hashStart = Stopwatch.GetTimestamp();
+                        sha256.AppendData(ownedChunk.Span);
+                        diag.AddHashCompute(Stopwatch.GetTimestamp() - hashStart);
+
+                        if (!discardStorage)
+                        {
+                            long writeStart = Stopwatch.GetTimestamp();
+                            await fileStream.WriteAsync(
+                                ownedChunk.ReadOnlyMemory,
+                                pipelineCts.Token).ConfigureAwait(false);
+                            diag.AddStagingWrite(chunkLength, Stopwatch.GetTimestamp() - writeStart);
+                        }
+
+                        cumulative += chunkLength;
+                        interaction.OnProgress(
+                            new DesktopTransferProgress(
+                                DesktopTransferDirection.Receive,
+                                peerName,
+                                item.Name,
+                                cumulative,
+                                totalBytes));
+                    }
+                }
+            }
+            catch
+            {
+                pipelineCts.Cancel();
+                throw;
+            }
+        }, CancellationToken.None);
+
+        Exception? producerError = null;
+        try
+        {
+            while (true)
+            {
+                long readStart = Stopwatch.GetTimestamp();
+                LanRecord? record = await DesktopControlSequence
+                    .ReadOwnedRecordWithDeadlineAsync(
+                        channel,
+                        bulkRef,
+                        itemTimeoutCts,
+                        pipelineCts.Token).ConfigureAwait(false);
+                long readTicks = Stopwatch.GetTimestamp() - readStart;
+
+                if (record == null)
+                {
+                    throw new EndOfStreamException(
+                        "Connection terminated during payload transfer.");
+                }
+
+                if (record is LanRecord.OwnedData ownedData)
+                {
+                    bool handedOff = false;
+                    try
+                    {
+                        int chunkLength = ownedData.ChunkLength;
+                        diag.AddTlsRead(chunkLength, readTicks);
+
+                        if (!string.Equals(
+                                ownedData.BulkRef.Value,
+                                bulkRef.Value,
+                                StringComparison.Ordinal))
+                        {
+                            throw new ProtocolViolationException(
+                                WireErrorCodes.MalformedMessage,
+                                "Unmatched bulkRef in DATA record.");
+                        }
+
+                        receivedBytes = checked(receivedBytes + chunkLength);
+                        if (receivedBytes > item.SizeBytes)
+                        {
+                            throw new ProtocolViolationException(
+                                WireErrorCodes.LimitExceeded,
+                                $"Item '{item.Name}' exceeded its declared size.");
+                        }
+
+                        int depth = Interlocked.Increment(ref currentDepth);
+                        UpdateMax(ref maxDepth, depth);
+                        diag.UpdateQueueOccupancy(0, 0, depth, Volatile.Read(ref maxDepth), _bufferPool.RentedBufferCount, _bufferPool.RentedBytes);
+
+                        await boundedQueue.Writer.WriteAsync(ownedData.Buffer, pipelineCts.Token).ConfigureAwait(false);
+                        handedOff = true;
+                    }
+                    finally
+                    {
+                        if (!handedOff)
+                        {
+                            ownedData.Dispose();
+                        }
+                    }
+                }
+                else if (record is LanRecord.Data dataRecord)
+                {
+                    int chunkLength = dataRecord.Chunk.Length;
+                    diag.AddTlsRead(chunkLength, readTicks);
+
+                    if (!string.Equals(
+                            dataRecord.BulkRef.Value,
+                            bulkRef.Value,
+                            StringComparison.Ordinal))
+                    {
+                        throw new ProtocolViolationException(
+                            WireErrorCodes.MalformedMessage,
+                            "Unmatched bulkRef in DATA record.");
+                    }
+
+                    receivedBytes = checked(receivedBytes + chunkLength);
+                    if (receivedBytes > item.SizeBytes)
+                    {
+                        throw new ProtocolViolationException(
+                            WireErrorCodes.LimitExceeded,
+                            $"Item '{item.Name}' exceeded its declared size.");
+                    }
+
+                    OwnedTransferBuffer copyBuffer = await _bufferPool.RentAsync(chunkLength, pipelineCts.Token).ConfigureAwait(false);
+                    bool handedOff = false;
+                    try
+                    {
+                        dataRecord.Chunk.AsSpan().CopyTo(copyBuffer.Span);
+                        int depth = Interlocked.Increment(ref currentDepth);
+                        UpdateMax(ref maxDepth, depth);
+                        diag.UpdateQueueOccupancy(0, 0, depth, Volatile.Read(ref maxDepth), _bufferPool.RentedBufferCount, _bufferPool.RentedBytes);
+                        await boundedQueue.Writer.WriteAsync(copyBuffer, pipelineCts.Token).ConfigureAwait(false);
+                        handedOff = true;
+                    }
+                    finally
+                    {
+                        if (!handedOff)
+                        {
+                            copyBuffer.Dispose();
+                        }
+                    }
+                }
+                else if (record is LanRecord.StreamEnd streamEnd)
+                {
+                    if (!string.Equals(
+                            streamEnd.BulkRef.Value,
+                            bulkRef.Value,
+                            StringComparison.Ordinal))
+                    {
+                        throw new ProtocolViolationException(
+                            WireErrorCodes.MalformedMessage,
+                            "Unmatched bulkRef in STREAM_END record.");
+                    }
+
+                    if (streamEnd.ActualBytes != receivedBytes ||
+                        receivedBytes != item.SizeBytes)
+                    {
+                        throw new ProtocolViolationException(
+                            WireErrorCodes.IntegrityMismatch,
+                            $"STREAM_END actualBytes {streamEnd.ActualBytes} does not match expected {item.SizeBytes}.");
+                    }
+
+                    break;
+                }
+                else
+                {
+                    throw new ProtocolViolationException(
+                        WireErrorCodes.ProtocolOrder,
+                        $"Unexpected record kind during data stream: {record.Kind}.");
+                }
+            }
+
+            boundedQueue.Writer.TryComplete();
+            await consumerTask.ConfigureAwait(false);
+            return (receivedBytes, cumulative);
+        }
+        catch (Exception ex)
+        {
+            producerError = ex;
+            boundedQueue.Writer.TryComplete(ex);
+            pipelineCts.Cancel();
+            DrainAndDisposeChannel(boundedQueue.Reader, ref currentDepth);
+
+            try
+            {
+                await consumerTask.ConfigureAwait(false);
+            }
+            catch (Exception consumerEx) when (producerError is OperationCanceledException && consumerEx is not OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                // Primary exception handled below
+            }
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+
+            throw;
+        }
+        finally
+        {
+            boundedQueue.Writer.TryComplete(producerError);
+            DrainAndDisposeChannel(boundedQueue.Reader, ref currentDepth);
+            diag.UpdateQueueOccupancy(0, 0, 0, Volatile.Read(ref maxDepth), _bufferPool.RentedBufferCount, _bufferPool.RentedBytes);
+        }
+    }
+
+    private static void UpdateMax(ref int targetMax, int candidate)
+    {
+        int current = Volatile.Read(ref targetMax);
+        while (candidate > current)
+        {
+            int prev = Interlocked.CompareExchange(ref targetMax, candidate, current);
+            if (prev == current)
+            {
+                break;
+            }
+            current = prev;
+        }
+    }
+
+    private static void DrainAndDisposeChannel(ChannelReader<OwnedTransferBuffer> reader, ref int currentDepth)
+    {
+        while (reader.TryRead(out OwnedTransferBuffer? leftover))
+        {
+            Interlocked.Decrement(ref currentDepth);
+            leftover.Dispose();
+        }
+    }
+
+    private static bool IsUncertainAckFailure(Exception error) =>
+        error is EndOfStreamException
+            or IOException
+            or System.Net.Sockets.SocketException
+            or TimeoutException;
 
     private static SessionId NewSessionId() =>
         new(

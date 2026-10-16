@@ -14,38 +14,97 @@ public static class LanUuidCodec
 
     public static byte[] ToNetworkBytes(Guid uuid)
     {
-        // Guid string without hyphens: 32 hex chars
-        string hex = uuid.ToString("N");
-        return Convert.FromHexString(hex);
+        byte[] bytes = new byte[UuidByteLength];
+        uuid.TryWriteBytes(bytes, bigEndian: true, out _);
+        return bytes;
+    }
+
+    public static void WriteNetworkBytes(Guid uuid, Span<byte> destination)
+    {
+        if (destination.Length < UuidByteLength)
+        {
+            throw new ArgumentException($"Destination span must be at least {UuidByteLength} bytes.", nameof(destination));
+        }
+        uuid.TryWriteBytes(destination, bigEndian: true, out _);
     }
 
     public static Guid FromNetworkBytes(byte[] bytes, int offset = 0)
     {
         ArgumentNullException.ThrowIfNull(bytes);
-        if (bytes.Length < offset + UuidByteLength)
+        if (offset < 0 || bytes.Length < offset + UuidByteLength)
         {
             throw new ArgumentException($"Insufficient bytes for UUID: required {UuidByteLength}, available {bytes.Length - offset}", nameof(bytes));
         }
 
-        string hex = Convert.ToHexString(bytes, offset, UuidByteLength).ToLowerInvariant();
-        string formatted = $"{hex[..8]}-{hex[8..12]}-{hex[12..16]}-{hex[16..20]}-{hex[20..32]}";
-        return Guid.Parse(formatted);
+        return FromNetworkBytes(bytes.AsSpan(offset, UuidByteLength));
+    }
+
+    public static Guid FromNetworkBytes(ReadOnlySpan<byte> bytes)
+    {
+        if (bytes.Length < UuidByteLength)
+        {
+            throw new ArgumentException($"Insufficient bytes for UUID: required {UuidByteLength}, available {bytes.Length}", nameof(bytes));
+        }
+
+        return new Guid(bytes[..UuidByteLength], bigEndian: true);
     }
 
     public static byte[] BulkRefToNetworkBytes(BulkRef bulkRef)
     {
-        if (!IdentifierValidation.IsValidUuidV4(bulkRef.Value))
+        byte[] bytes = new byte[UuidByteLength];
+        WriteBulkRefNetworkBytes(bulkRef, bytes);
+        return bytes;
+    }
+
+    public static void WriteBulkRefNetworkBytes(BulkRef bulkRef, Span<byte> destination)
+    {
+        if (!IdentifierValidation.IsValidUuidV4(bulkRef.Value) ||
+            !Guid.TryParseExact(bulkRef.Value, "D", out Guid guid))
         {
             throw new ArgumentException($"LAN bulkRef must be a canonical UUIDv4, got: '{bulkRef.Value}'", nameof(bulkRef));
         }
-        Guid guid = Guid.Parse(bulkRef.Value);
-        return ToNetworkBytes(guid);
+        WriteNetworkBytes(guid, destination);
     }
 
     public static BulkRef NetworkBytesToBulkRef(byte[] bytes, int offset = 0)
     {
-        Guid guid = FromNetworkBytes(bytes, offset);
-        string canonical = guid.ToString().ToLowerInvariant();
+        ArgumentNullException.ThrowIfNull(bytes);
+        if (offset < 0 || bytes.Length < offset + UuidByteLength)
+        {
+            throw new ArgumentException($"Insufficient bytes for UUID: required {UuidByteLength}, available {bytes.Length - offset}", nameof(bytes));
+        }
+        return NetworkBytesToBulkRef(bytes.AsSpan(offset, UuidByteLength));
+    }
+
+    public static BulkRef NetworkBytesToBulkRef(ReadOnlySpan<byte> bytes, BulkRef? expectedBulkRef = null)
+    {
+        if (bytes.Length < UuidByteLength)
+        {
+            throw new ArgumentException($"Insufficient bytes for UUID: required {UuidByteLength}, available {bytes.Length}", nameof(bytes));
+        }
+
+        ReadOnlySpan<byte> uuidSlice = bytes[..UuidByteLength];
+
+        // Check RFC 4122 UUIDv4 version (byte 6 high nibble == 4) and variant (byte 8 high 2 bits == 0b10)
+        if ((uuidSlice[6] >> 4) != 4 || (uuidSlice[8] & 0xC0) != 0x80)
+        {
+            Guid badGuid = FromNetworkBytes(uuidSlice);
+            throw new ArgumentException($"Decoded UUID from network bytes is not a canonical UUIDv4: '{badGuid:D}'");
+        }
+
+        if (expectedBulkRef is { } expected &&
+            Guid.TryParseExact(expected.Value, "D", out Guid expectedGuid))
+        {
+            Span<byte> expectedBytes = stackalloc byte[UuidByteLength];
+            expectedGuid.TryWriteBytes(expectedBytes, bigEndian: true, out _);
+            if (uuidSlice.SequenceEqual(expectedBytes))
+            {
+                return expected;
+            }
+        }
+
+        Guid guid = FromNetworkBytes(uuidSlice);
+        string canonical = guid.ToString("D");
         if (!IdentifierValidation.IsValidUuidV4(canonical))
         {
             throw new ArgumentException($"Decoded UUID from network bytes is not a canonical UUIDv4: '{canonical}'");
@@ -148,6 +207,21 @@ public abstract record LanRecord(LanRecordKind Kind)
             hash.AddBytes(Chunk);
             return hash.ToHashCode();
         }
+    }
+
+    /// <summary>
+    /// Pooled binary data chunk whose payload buffer is explicitly owned and returned to the pool on Dispose.
+    /// </summary>
+    public sealed record OwnedData(BulkRef BulkRef, OwnedTransferBuffer Buffer) : LanRecord(LanRecordKind.Data), IDisposable
+    {
+        public BulkRef BulkRef { get; } = BulkRef;
+        public OwnedTransferBuffer Buffer { get; } = Buffer ?? throw new ArgumentNullException(nameof(Buffer));
+
+        public ReadOnlyMemory<byte> ChunkMemory => Buffer.ReadOnlyMemory;
+        public ReadOnlySpan<byte> ChunkSpan => Buffer.Span;
+        public int ChunkLength => Buffer.Length;
+
+        public void Dispose() => Buffer.Dispose();
     }
 
     /// <summary>

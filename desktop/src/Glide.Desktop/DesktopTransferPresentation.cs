@@ -31,9 +31,10 @@ public sealed class DesktopTransferPresentation : INotifyPropertyChanged
         DesktopTransferPhase.AwaitingConsent => "Waiting for approval…",
         DesktopTransferPhase.Transferring => "Transferring…",
         DesktopTransferPhase.Verifying => "Verifying files…",
+        DesktopTransferPhase.Saving => "Saving files…",
         _ => ""
     };
-    public bool IsIndeterminate => IsActive && _snapshot.Phase is DesktopTransferPhase.Preparing or DesktopTransferPhase.AwaitingConsent or DesktopTransferPhase.Verifying;
+    public bool IsIndeterminate => IsActive && _snapshot.Phase is DesktopTransferPhase.Preparing or DesktopTransferPhase.AwaitingConsent or DesktopTransferPhase.Verifying or DesktopTransferPhase.Saving;
     public string CurrentFile => _currentFile;
     public double Progress => _progress;
     public string BytesText => _bytes;
@@ -85,7 +86,7 @@ public sealed class DesktopTransferPresentation : INotifyPropertyChanged
             _receivedFolder = null;
         }
         _snapshot = snapshot;
-        if (snapshot.Phase == DesktopTransferPhase.Verifying)
+        if (snapshot.Phase is DesktopTransferPhase.Verifying or DesktopTransferPhase.Saving)
             _rate = "";
         if (IsSuccess) _progress = 100;
         bool navigate = !_navigated && (snapshot.Phase == DesktopTransferPhase.Transferring ||
@@ -100,10 +101,11 @@ public sealed class DesktopTransferPresentation : INotifyPropertyChanged
         switch (ev)
         {
             case TransferEvent.ProgressUpdated p:
+                if (!IsActive) return;
                 _currentFile = p.Progress.ItemName;
                 _progress = p.Progress.Fraction * 100;
                 _bytes = p.TransferredBytesText;
-                _rate = p.RateText;
+                _rate = _snapshot.Phase == DesktopTransferPhase.Transferring ? p.RateText : "";
                 break;
             case TransferEvent.ItemStatusChanged item: _currentFile = item.ItemName; break;
         }
@@ -118,7 +120,7 @@ public sealed class DesktopTransferPresentation : INotifyPropertyChanged
     private static string ResultTitle(DesktopTransferResult result) => result.Success ? "Transfer complete" :
         result.Cancelled ? "Transfer cancelled" : result.ErrorCategory == TransferErrorCategory.UserRejected
             ? "Transfer declined" : "Transfer failed";
-    public static string FormatBytes(long bytes) => bytes >= 1L << 30 ? $"{bytes / (double)(1L << 30):0.##} GB" :
-        bytes >= 1L << 20 ? $"{bytes / (double)(1L << 20):0.##} MB" : bytes >= 1024 ? $"{bytes / 1024.0:0.##} KB" : $"{bytes} B";
+    public static string FormatBytes(long bytes) => bytes >= 1_000_000_000L ? $"{bytes / 1_000_000_000.0:0.##} GB" :
+        bytes >= 1_000_000L ? $"{bytes / 1_000_000.0:0.##} MB" : bytes >= 1_000L ? $"{bytes / 1_000.0:0.##} KB" : $"{bytes} B";
 }
 public sealed record DesktopTransferSessionResult(string Title, string PeerName, string Summary);

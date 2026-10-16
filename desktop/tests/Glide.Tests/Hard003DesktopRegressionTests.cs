@@ -319,8 +319,10 @@ public sealed class Hard003DesktopRegressionTests : IDisposable
         GC.Collect();
         GC.WaitForPendingFinalizers();
         GC.Collect();
-        long before =
-            GC.GetTotalAllocatedBytes(precise: true);
+        // Other runtime work can allocate while the two TLS peers exchange
+        // the offer. The regression is retained file data at the offer, not
+        // process-wide allocation by background tasks during that interval.
+        long before = GC.GetTotalMemory(forceFullCollection: true);
 
         using var listener = new TlsSocketListener(port: 0);
         LanInvitation invitation = CreateInvitation(listener);
@@ -339,7 +341,7 @@ public sealed class Hard003DesktopRegressionTests : IDisposable
             await channel.ReadEnvelopeAsync(); // OFFER_BEGIN
             await channel.ReadEnvelopeAsync(); // OFFER_PAGE
             allocationAtOfferPage =
-                GC.GetTotalAllocatedBytes(precise: true) - before;
+                GC.GetTotalMemory(forceFullCollection: true) - before;
         });
 
         try

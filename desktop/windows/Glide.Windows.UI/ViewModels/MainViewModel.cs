@@ -49,6 +49,8 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     private CancellationTokenSource? _activeTransferCts;
     private readonly DesktopTransferRuntime _transferRuntime = new();
     private bool _pendingTrustedSend;
+    private TransferEvent.ProgressUpdated? _coalescedProgressEvent;
+    private DesktopTransferProgress? _coalescedProgress;
     public DesktopTransferPresentation Transfer { get; } = new();
     private readonly DesktopStateStore _stateStore = new();
     private readonly Stopwatch _transferStopwatch = new();
@@ -177,13 +179,45 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
 
     public MainViewModel()
     {
-        _transferRuntime.SnapshotChanged += (_, snapshot) => RunOnUi(() =>
+        _transferRuntime.SnapshotChanged += (_, snapshot) =>
         {
-            bool trustedSend = _pendingTrustedSend && snapshot.Direction == DesktopTransferDirection.Send;
-            if (Transfer.ApplySnapshot(snapshot, navigateOnPreparation: trustedSend)) CurrentTab = "Activity";
-            OnPropertyChanged(nameof(IsTransferBannerVisible));
-        });
-        _transferRuntime.EventOccurred += (_, ev) => RunOnUi(() => Transfer.ApplyEvent(ev));
+            if (!snapshot.IsActive)
+            {
+                Interlocked.Exchange(ref _coalescedProgressEvent, null);
+                Interlocked.Exchange(ref _coalescedProgress, null);
+            }
+            RunOnUi(() =>
+            {
+                bool trustedSend = _pendingTrustedSend && snapshot.Direction == DesktopTransferDirection.Send;
+                if (Transfer.ApplySnapshot(snapshot, navigateOnPreparation: trustedSend)) CurrentTab = "Activity";
+                OnPropertyChanged(nameof(IsTransferBannerVisible));
+            });
+        };
+        _transferRuntime.EventOccurred += (_, ev) =>
+        {
+            if (ev is TransferEvent.ProgressUpdated progressEvent)
+            {
+                if (Interlocked.Exchange(ref _coalescedProgressEvent, progressEvent) == null)
+                {
+                    RunOnUiNonBlocking(() =>
+                    {
+                        var latest = Interlocked.Exchange(ref _coalescedProgressEvent, null);
+                        if (latest != null && Transfer.IsActive)
+                        {
+                            Transfer.ApplyEvent(latest);
+                        }
+                    });
+                }
+                return;
+            }
+
+            if (ev is TransferEvent.Completed or TransferEvent.Failed)
+            {
+                Interlocked.Exchange(ref _coalescedProgressEvent, null);
+                Interlocked.Exchange(ref _coalescedProgress, null);
+            }
+            RunOnUi(() => Transfer.ApplyEvent(ev));
+        };
         _appearanceMode = _uiPreferences.Load().AppearanceMode;
         ApplyAppearance();
         try
@@ -1351,11 +1385,17 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     {
         await using (connection)
         {
+            _activeTransferCts?.Dispose();
+            _activeTransferCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var linkedToken = _activeTransferCts.Token;
+
             RunOnUi(() =>
             {
                 CurrentTab = "Receive";
                 IsTransferActive = true;
                 TransferTitle = "Receiving from paired device…";
+                TotalProgress = 0;
+                _transferStopwatch.Restart();
             });
             try
             {
@@ -1364,14 +1404,16 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                     LocalDeviceName: Environment.MachineName,
                     TrustManager: _trustManager);
                 DesktopTransferResult result = await _transferRuntime.ReceiveTrustedAsync(
-                    connection, open, request, this, cancellationToken);
+                    connection, open, request, this, linkedToken);
                 RunOnUi(() => StatusMessage = result.Message);
             }
             finally
             {
                 RunOnUi(() =>
                 {
+                    _transferStopwatch.Stop();
                     IsTransferActive = _transferRuntime.Snapshot.IsActive;
+                    Consent.IsOfferModalVisible = false;
                     RefreshTrustedDevices();
                 });
             }
@@ -1730,22 +1772,35 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
 
     public void OnProgress(DesktopTransferProgress progress)
     {
-        RunOnUi(() =>
+        if (Interlocked.Exchange(ref _coalescedProgress, progress) != null)
         {
-            CurrentFileName = progress.ItemName;
-            TotalProgress = progress.Fraction * 100.0;
+            return;
+        }
+
+        RunOnUiNonBlocking(() =>
+        {
+            var latest = Interlocked.Exchange(ref _coalescedProgress, null);
+            if (latest == null || !IsTransferActive)
+            {
+                return;
+            }
+
+            CurrentFileName = latest.ItemName;
+            TotalProgress = latest.Fraction * 100.0;
 
             double elapsedSeconds = Math.Max(
                 0.01,
                 _transferStopwatch.Elapsed.TotalSeconds);
             double megabytesPerSecond =
-                (progress.TransferredBytes / (1024.0 * 1024.0)) /
+                (latest.TransferredBytes / 1_000_000.0) /
                 elapsedSeconds;
 
-            TransferRateText = $"{megabytesPerSecond:F1} MB/s";
+            TransferRateText = _transferRuntime.Snapshot.Phase == DesktopTransferPhase.Transferring
+                ? $"{megabytesPerSecond:F1} MB/s"
+                : "";
             TransferredBytesText =
-                $"{TransferItemViewModel.FormatSize(progress.TransferredBytes)} / " +
-                $"{TransferItemViewModel.FormatSize(progress.TotalBytes)}";
+                $"{TransferItemViewModel.FormatSize(latest.TransferredBytes)} / " +
+                $"{TransferItemViewModel.FormatSize(latest.TotalBytes)}";
         });
     }
 
@@ -2067,6 +2122,18 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         }
 
         dispatcher.Invoke(action);
+    }
+
+    private static void RunOnUiNonBlocking(Action action)
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher == null || dispatcher.CheckAccess())
+        {
+            action();
+            return;
+        }
+
+        _ = dispatcher.BeginInvoke(DispatcherPriority.Background, action);
     }
 
     private async void ExecuteBrowseReceiveFolder()

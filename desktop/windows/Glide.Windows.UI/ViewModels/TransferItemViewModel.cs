@@ -62,9 +62,9 @@ public class TransferItemViewModel : ViewModelBase
     {
         return bytes switch
         {
-            >= 1024 * 1024 * 1024 => $"{bytes / (1024.0 * 1024.0 * 1024.0):F2} GB",
-            >= 1024 * 1024 => $"{bytes / (1024.0 * 1024.0):F2} MB",
-            >= 1024 => $"{bytes / 1024.0:F1} KB",
+            >= 1_000_000_000L => $"{bytes / 1_000_000_000.0:F2} GB",
+            >= 1_000_000L => $"{bytes / 1_000_000.0:F2} MB",
+            >= 1_000L => $"{bytes / 1_000.0:F1} KB",
             _ => $"{bytes} B"
         };
     }

@@ -38,4 +38,27 @@ public static class DesktopTransferFailures
         WireErrorCodes.UserCancelled or WireErrorCodes.SystemCancelled => TransferErrorCategory.UserCancelled,
         _ => TransferErrorCategory.Protocol
     };
+
+    public static bool IsDiskFull(Exception error)
+    {
+        if (error is ProtocolViolationException pve &&
+            string.Equals(pve.FailureCode, WireErrorCodes.InsufficientStorage, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        if (error is IOException io)
+        {
+            const int HrErrorDiskFull = unchecked((int)0x80070070);
+            const int HrErrorHandleDiskFull = unchecked((int)0x80070027);
+            const int Enospc = 28;
+            return io.HResult == HrErrorDiskFull ||
+                   io.HResult == HrErrorHandleDiskFull ||
+                   io.HResult == Enospc ||
+                   io.Message.Contains("not enough space", StringComparison.OrdinalIgnoreCase) ||
+                   io.Message.Contains("disk full", StringComparison.OrdinalIgnoreCase);
+        }
+
+        return false;
+    }
 }

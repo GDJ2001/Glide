@@ -214,7 +214,7 @@ public sealed class LinuxPresentationTests
         vm.OnProgress(progress);
         Assert.Equal(0.5, vm.TransferProgressFraction);
         Assert.Equal(50, vm.TransferProgressPercent);
-        Assert.Contains("512.0 KB", vm.TransferredBytesText);
+        Assert.Contains("524.3 KB", vm.TransferredBytesText);
 
         // Simulate item status update
         vm.OnItemStatus(DesktopTransferDirection.Send, "archive.zip", "Transferring");

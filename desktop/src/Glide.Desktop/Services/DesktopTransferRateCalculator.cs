@@ -1,24 +1,26 @@
+using System.Diagnostics;
+
 namespace Glide.Desktop.Services;
 
 public sealed class DesktopTransferRateCalculator
 {
     private long _lastBytes;
-    private DateTimeOffset _lastTime = DateTimeOffset.UtcNow;
+    private long _lastTimestamp = Stopwatch.GetTimestamp();
     private double _smoothedRate;
 
     public void Reset(long initialBytes = 0)
     {
         _lastBytes = initialBytes;
-        _lastTime = DateTimeOffset.UtcNow;
+        _lastTimestamp = Stopwatch.GetTimestamp();
         _smoothedRate = 0;
     }
 
     public (double BytesPerSecond, string RateText, string TransferredBytesText) Update(long currentBytes, long totalBytes)
     {
-        var now = DateTimeOffset.UtcNow;
-        double elapsed = (now - _lastTime).TotalSeconds;
+        long now = Stopwatch.GetTimestamp();
+        double elapsed = Stopwatch.GetElapsedTime(_lastTimestamp, now).TotalSeconds;
 
-        if (elapsed >= 0.25)
+        if (elapsed >= 0.15 || (_smoothedRate <= 0 && elapsed >= 0.001 && currentBytes > _lastBytes))
         {
             long deltaBytes = Math.Max(0, currentBytes - _lastBytes);
             double currentRate = deltaBytes / elapsed;
@@ -28,7 +30,7 @@ public sealed class DesktopTransferRateCalculator
                 : (_smoothedRate * 0.7) + (currentRate * 0.3);
 
             _lastBytes = currentBytes;
-            _lastTime = now;
+            _lastTimestamp = now;
         }
 
         string rateText = FormatRate(_smoothedRate);
@@ -43,10 +45,10 @@ public sealed class DesktopTransferRateCalculator
         string[] suffixes = ["B", "KB", "MB", "GB", "TB"];
         int order = 0;
         double len = bytes;
-        while (len >= 1024 && order < suffixes.Length - 1)
+        while (len >= 1000.0 && order < suffixes.Length - 1)
         {
             order++;
-            len /= 1024;
+            len /= 1000.0;
         }
         return order == 0 ? $"{len:0} {suffixes[order]}" : $"{len:0.0} {suffixes[order]}";
     }
@@ -54,6 +56,10 @@ public sealed class DesktopTransferRateCalculator
     public static string FormatRate(double bytesPerSecond)
     {
         if (bytesPerSecond <= 0) return "0 B/s";
+        if (bytesPerSecond >= 100_000.0)
+        {
+            return $"{bytesPerSecond / 1_000_000.0:0.0} MB/s";
+        }
         return $"{FormatBytes((long)bytesPerSecond)}/s";
     }
 }

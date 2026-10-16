@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
@@ -12,6 +13,7 @@ using Glide.Core.Security;
 using Glide.Core.Storage;
 using Glide.Core.Transport.Lan;
 using Glide.Desktop;
+using Glide.Desktop.Diagnostics;
 using Glide.Desktop.Services;
 using Glide.Transport.Discovery;
 using Glide.Transport.Framing;
@@ -47,6 +49,7 @@ public static class Program
                 "test-trust" => await RunTestTrustAsync(args[1..]),
                 "test-discovery" => await RunTestDiscoveryAsync(args[1..]),
                 "test-ownership" => await RunTestOwnershipAsync(args[1..]),
+                "benchmark" => await RunBenchmarkAsync(args[1..]),
                 _ => PrintUnknownCommand(command)
             };
         }
@@ -82,6 +85,7 @@ public static class Program
         Console.Error.WriteLine("  test-trust");
         Console.Error.WriteLine("  test-discovery");
         Console.Error.WriteLine("  test-ownership");
+        Console.Error.WriteLine("  benchmark [--size-mb N] [--mode legacy|current] [--path all|1|2|3|4] [--run both|cold|warm] [--stage NAME] [--output-json PATH] [--output-log PATH]");
     }
 
     private static int PrintUnknownCommand(string command)
@@ -1499,6 +1503,639 @@ public static class Program
         };
         Console.WriteLine(result.ToJsonString());
         return Task.FromResult(duplicateAcquisitionRejected ? 0 : 1);
+    }
+
+    #endregion
+
+    #region Reproducible 4-Path Benchmark Harness
+
+    private sealed class SimulatedWpfSynchronizationContext : SynchronizationContext, IDisposable
+    {
+        private readonly BlockingCollection<(SendOrPostCallback Callback, object? State, ManualResetEventSlim? Done, Action<Exception>? OnError)> _queue = new();
+        private readonly Thread _uiThread;
+        private readonly int _simulatedCallbackWorkSpinIterations;
+        private long _dispatchedCallbackCount;
+
+        public SimulatedWpfSynchronizationContext(int simulatedCallbackWorkSpinIterations = 1200)
+        {
+            _simulatedCallbackWorkSpinIterations = simulatedCallbackWorkSpinIterations;
+            _uiThread = new Thread(RunMessagePump)
+            {
+                IsBackground = true,
+                Name = "Simulated-WPF-Dispatcher"
+            };
+            _uiThread.Start();
+        }
+
+        public long DispatchedCallbackCount => Interlocked.Read(ref _dispatchedCallbackCount);
+
+        private void RunMessagePump()
+        {
+            SetSynchronizationContext(this);
+            foreach (var item in _queue.GetConsumingEnumerable())
+            {
+                try
+                {
+                    if (_simulatedCallbackWorkSpinIterations > 0)
+                    {
+                        Thread.SpinWait(_simulatedCallbackWorkSpinIterations);
+                    }
+                    Interlocked.Increment(ref _dispatchedCallbackCount);
+                    item.Callback(item.State);
+                }
+                catch (Exception ex)
+                {
+                    item.OnError?.Invoke(ex);
+                }
+                finally
+                {
+                    item.Done?.Set();
+                }
+            }
+        }
+
+        public override void Post(SendOrPostCallback d, object? state)
+        {
+            if (!_queue.IsAddingCompleted)
+            {
+                try
+                {
+                    _queue.Add((d, state, null, null));
+                }
+                catch (InvalidOperationException) { }
+            }
+        }
+
+        public override void Send(SendOrPostCallback d, object? state)
+        {
+            if (Thread.CurrentThread == _uiThread)
+            {
+                if (_simulatedCallbackWorkSpinIterations > 0)
+                {
+                    Thread.SpinWait(_simulatedCallbackWorkSpinIterations);
+                }
+                Interlocked.Increment(ref _dispatchedCallbackCount);
+                d(state);
+                return;
+            }
+
+            using var done = new ManualResetEventSlim(false);
+            Exception? error = null;
+            _queue.Add((d, state, done, ex => error = ex));
+            done.Wait();
+            if (error != null)
+            {
+                throw new AggregateException(error);
+            }
+        }
+
+        public Task<T> InvokeOnUiThreadAsync<T>(Func<Task<T>> func)
+        {
+            var tcs = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+            Post(async _ =>
+            {
+                try
+                {
+                    T res = await func();
+                    tcs.TrySetResult(res);
+                }
+                catch (Exception ex)
+                {
+                    tcs.TrySetException(ex);
+                }
+            }, null);
+            return tcs.Task;
+        }
+
+        public void Dispose()
+        {
+            _queue.CompleteAdding();
+            _uiThread.Join(TimeSpan.FromSeconds(2));
+            _queue.Dispose();
+        }
+    }
+
+    private sealed class BenchmarkProgressTracker : IDesktopTransferInteraction
+    {
+        private readonly SimulatedWpfSynchronizationContext? _uiContext;
+        private readonly bool _useBlockingUiInvoke;
+        private readonly DesktopTransferRateCalculator _rateCalculator = new();
+        private readonly long _totalBytes;
+        private long _startTimestamp;
+        private long _firstQuarterStartTimestamp;
+        private long _firstQuarterEndTimestamp;
+        private long _finalQuarterStartTimestamp;
+        private long _finalQuarterEndTimestamp;
+        private long _firstQuarterStartBytes;
+        private long _firstQuarterEndBytes;
+        private long _finalQuarterStartBytes;
+        private long _finalQuarterEndBytes;
+        private long _lastProgressCallbacks;
+
+        public BenchmarkProgressTracker(
+            long totalBytes,
+            SimulatedWpfSynchronizationContext? uiContext = null,
+            bool useBlockingUiInvoke = false)
+        {
+            _totalBytes = totalBytes;
+            _uiContext = uiContext;
+            _useBlockingUiInvoke = useBlockingUiInvoke;
+            _rateCalculator.Reset(0);
+        }
+
+        public long ProgressCallbacks => Interlocked.Read(ref _lastProgressCallbacks);
+
+        public double? FirstQuarterMBps
+        {
+            get
+            {
+                if (_firstQuarterStartTimestamp == 0 || _firstQuarterEndTimestamp <= _firstQuarterStartTimestamp ||
+                    _firstQuarterEndBytes <= _firstQuarterStartBytes)
+                    return null;
+                double sec = Stopwatch.GetElapsedTime(_firstQuarterStartTimestamp, _firstQuarterEndTimestamp).TotalSeconds;
+                double bytes = _firstQuarterEndBytes - _firstQuarterStartBytes;
+                return sec > 0.0001 ? Math.Round((bytes / sec) / 1_000_000.0, 2) : null;
+            }
+        }
+
+        public double? FinalQuarterMBps
+        {
+            get
+            {
+                if (_finalQuarterStartTimestamp == 0 || _finalQuarterEndTimestamp <= _finalQuarterStartTimestamp ||
+                    _finalQuarterEndBytes <= _finalQuarterStartBytes)
+                    return null;
+                double sec = Stopwatch.GetElapsedTime(_finalQuarterStartTimestamp, _finalQuarterEndTimestamp).TotalSeconds;
+                double bytes = _finalQuarterEndBytes - _finalQuarterStartBytes;
+                return sec > 0.0001 ? Math.Round((bytes / sec) / 1_000_000.0, 2) : null;
+            }
+        }
+
+        public Task<bool> ConfirmRecipientAsync(string peerName, CancellationToken cancellationToken) =>
+            Task.FromResult(true);
+
+        public Task<bool> ConfirmOfferAsync(DesktopOffer offer, CancellationToken cancellationToken) =>
+            Task.FromResult(true);
+
+        public Task<bool> ConfirmPeerEnrollmentAsync(VerifiedDesktopPeerIdentity peer, CancellationToken cancellationToken) =>
+            Task.FromResult(true);
+
+        public void OnInvitationConsumed(DesktopTransferDirection direction) { }
+        public void OnPeerIdentified(DesktopTransferDirection direction, string peerName) { }
+        public void OnStatus(DesktopTransferDirection direction, string message) { }
+        public void OnItemStatus(DesktopTransferDirection direction, string itemName, string status) { }
+        public void OnHistory(DesktopHistoryEntry entry) { }
+
+        public void OnProgress(DesktopTransferProgress progress)
+        {
+            Interlocked.Increment(ref _lastProgressCallbacks);
+            long now = Stopwatch.GetTimestamp();
+            if (_startTimestamp == 0)
+            {
+                _startTimestamp = now;
+                _firstQuarterStartTimestamp = now;
+                _firstQuarterStartBytes = progress.TransferredBytes;
+            }
+
+            long q1Bytes = _totalBytes / 4;
+            long q3Bytes = (_totalBytes * 3) / 4;
+
+            if (_firstQuarterEndTimestamp == 0 && progress.TransferredBytes >= q1Bytes)
+            {
+                _firstQuarterEndTimestamp = now;
+                _firstQuarterEndBytes = progress.TransferredBytes;
+            }
+            if (_finalQuarterStartTimestamp == 0 && progress.TransferredBytes >= q3Bytes)
+            {
+                _finalQuarterStartTimestamp = now;
+                _finalQuarterStartBytes = progress.TransferredBytes;
+            }
+            if (progress.TransferredBytes >= _totalBytes)
+            {
+                _finalQuarterEndTimestamp = now;
+                _finalQuarterEndBytes = progress.TransferredBytes;
+            }
+
+            if (_uiContext != null)
+            {
+                if (_useBlockingUiInvoke)
+                {
+                    _uiContext.Send(_ => _rateCalculator.Update(progress.TransferredBytes, progress.TotalBytes), null);
+                }
+                else
+                {
+                    _uiContext.Post(_ => _rateCalculator.Update(progress.TransferredBytes, progress.TotalBytes), null);
+                }
+            }
+        }
+    }
+
+    private static async Task<int> RunBenchmarkAsync(string[] args)
+    {
+        long sizeDecimalMB = 256;
+        string mode = "current";
+        string selectedPath = "all";
+        string selectedRun = "both";
+        string stageName = "unspecified";
+        string? outputJson = null;
+        string? outputLog = null;
+
+        for (int i = 0; i < args.Length; i++)
+        {
+            switch (args[i])
+            {
+                case "--size-mb" when i + 1 < args.Length: sizeDecimalMB = long.Parse(args[++i]); break;
+                case "--mode" when i + 1 < args.Length: mode = args[++i].ToLowerInvariant(); break;
+                case "--path" when i + 1 < args.Length: selectedPath = args[++i].ToLowerInvariant(); break;
+                case "--run" when i + 1 < args.Length: selectedRun = args[++i].ToLowerInvariant(); break;
+                case "--stage" when i + 1 < args.Length: stageName = args[++i]; break;
+                case "--output-json" when i + 1 < args.Length: outputJson = args[++i]; break;
+                case "--output-log" when i + 1 < args.Length: outputLog = args[++i]; break;
+            }
+        }
+
+        if (sizeDecimalMB <= 0 || sizeDecimalMB > 20_000 ||
+            selectedPath is not ("all" or "1" or "2" or "3" or "4") ||
+            selectedRun is not ("both" or "cold" or "warm"))
+        {
+            throw new ArgumentException("Invalid benchmark size, path, or run selection.");
+        }
+
+        long totalBytes = sizeDecimalMB * 1_000_000L;
+        string benchRoot = Path.Combine(Path.GetTempPath(), "glide-bench-" + Guid.NewGuid().ToString("N"));
+        string sourceDir = Path.Combine(benchRoot, "src");
+        string stagingDir = Path.Combine(benchRoot, "staging");
+        string destDir = Path.Combine(benchRoot, "dest");
+        Directory.CreateDirectory(sourceDir);
+        Directory.CreateDirectory(stagingDir);
+        Directory.CreateDirectory(destDir);
+
+        string sourceFile = Path.Combine(sourceDir, $"benchmark-{sizeDecimalMB}mb.bin");
+        byte[] patternBuf = new byte[256 * 1024];
+        WritePatternFile(sourceFile, totalBytes, 42, patternBuf);
+
+        string expectedSha256;
+        using (var srcStream = File.OpenRead(sourceFile))
+        {
+            expectedSha256 = Convert.ToHexStringLower(SHA256.HashData(srcStream));
+        }
+
+        string diagLogFile = outputLog ?? Path.Combine(benchRoot, "diagnostics.jsonl");
+        await using var diagSink = new BoundedTransferDiagnosticSink(diagLogFile);
+
+        bool isLegacy = string.Equals(mode, "legacy", StringComparison.OrdinalIgnoreCase);
+        DesktopTransferIoOptions baseOptions = isLegacy
+            ? DesktopTransferIoOptions.LegacyBaseline
+            : DesktopTransferIoOptions.Default;
+
+        var resultsArray = new JsonArray();
+
+        try
+        {
+            // Path 1: Independent raw TLS 1.3 socket baseline (cold + warm)
+            if (selectedPath is "all" or "1")
+            {
+                if (selectedRun is "both" or "cold") resultsArray.Add(await RunPath1RawTlsBaselineAsync(totalBytes, "cold"));
+                if (selectedRun is "both" or "warm") resultsArray.Add(await RunPath1RawTlsBaselineAsync(totalBytes, "warm"));
+            }
+
+            // Path 2: Glide TLS + framing without file storage (cold + warm)
+            if (selectedPath is "all" or "2" && selectedRun is "both" or "cold") resultsArray.Add(await RunGlideBenchmarkPathAsync(
+                pathName: "2_GlideTlsAndFramingNoStorage",
+                runType: "cold",
+                sourceFile: sourceFile,
+                expectedSha256: expectedSha256,
+                stagingDir: stagingDir,
+                destDir: destDir,
+                diagSink: diagSink,
+                ioOptions: baseOptions with { DiscardStorageForBenchmark = true },
+                useUiRuntime: false,
+                useLegacyBlockingUi: false));
+            if (selectedPath is "all" or "2" && selectedRun is "both" or "warm") resultsArray.Add(await RunGlideBenchmarkPathAsync(
+                pathName: "2_GlideTlsAndFramingNoStorage",
+                runType: "warm",
+                sourceFile: sourceFile,
+                expectedSha256: expectedSha256,
+                stagingDir: stagingDir,
+                destDir: destDir,
+                diagSink: diagSink,
+                ioOptions: baseOptions with { DiscardStorageForBenchmark = true },
+                useUiRuntime: false,
+                useLegacyBlockingUi: false));
+
+            // Path 3: Glide complete backend with staging, hashing, verification, and commit (cold + warm)
+            if (selectedPath is "all" or "3" && selectedRun is "both" or "cold") resultsArray.Add(await RunGlideBenchmarkPathAsync(
+                pathName: "3_GlideCompleteBackend",
+                runType: "cold",
+                sourceFile: sourceFile,
+                expectedSha256: expectedSha256,
+                stagingDir: stagingDir,
+                destDir: destDir,
+                diagSink: diagSink,
+                ioOptions: baseOptions with { DiscardStorageForBenchmark = false },
+                useUiRuntime: false,
+                useLegacyBlockingUi: false));
+            if (selectedPath is "all" or "3" && selectedRun is "both" or "warm") resultsArray.Add(await RunGlideBenchmarkPathAsync(
+                pathName: "3_GlideCompleteBackend",
+                runType: "warm",
+                sourceFile: sourceFile,
+                expectedSha256: expectedSha256,
+                stagingDir: stagingDir,
+                destDir: destDir,
+                diagSink: diagSink,
+                ioOptions: baseOptions with { DiscardStorageForBenchmark = false },
+                useUiRuntime: false,
+                useLegacyBlockingUi: false));
+
+            // Path 4: Desktop runtime with simulated WPF dispatcher callbacks (cold + warm).
+            if (selectedPath is "all" or "4" && selectedRun is "both" or "cold") resultsArray.Add(await RunGlideBenchmarkPathAsync(
+                pathName: "4_GlideUiRuntimeCallbacks",
+                runType: "cold",
+                sourceFile: sourceFile,
+                expectedSha256: expectedSha256,
+                stagingDir: stagingDir,
+                destDir: destDir,
+                diagSink: diagSink,
+                ioOptions: baseOptions with { DiscardStorageForBenchmark = false },
+                useUiRuntime: true,
+                useLegacyBlockingUi: isLegacy));
+            if (selectedPath is "all" or "4" && selectedRun is "both" or "warm") resultsArray.Add(await RunGlideBenchmarkPathAsync(
+                pathName: "4_GlideUiRuntimeCallbacks",
+                runType: "warm",
+                sourceFile: sourceFile,
+                expectedSha256: expectedSha256,
+                stagingDir: stagingDir,
+                destDir: destDir,
+                diagSink: diagSink,
+                ioOptions: baseOptions with { DiscardStorageForBenchmark = false },
+                useUiRuntime: true,
+                useLegacyBlockingUi: isLegacy));
+
+            var summaryReport = new JsonObject
+            {
+                ["event"] = "benchmark_complete",
+                ["timestampUtc"] = DateTimeOffset.UtcNow.ToString("O"),
+                ["buildCommit"] = BoundedTransferDiagnosticSink.ResolveBuildCommit(),
+                ["stage"] = stageName,
+                ["mode"] = mode,
+                ["selectedPath"] = selectedPath,
+                ["selectedRun"] = selectedRun,
+                ["sizeDecimalMB"] = sizeDecimalMB,
+                ["totalBytes"] = totalBytes,
+                ["expectedSha256"] = expectedSha256,
+                ["results"] = resultsArray
+            };
+
+            string jsonText = summaryReport.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+            if (!string.IsNullOrWhiteSpace(outputJson))
+            {
+                string fullOut = Path.GetFullPath(outputJson);
+                Directory.CreateDirectory(Path.GetDirectoryName(fullOut)!);
+                await File.WriteAllTextAsync(fullOut, jsonText);
+            }
+
+            Console.WriteLine(summaryReport.ToJsonString());
+            return 0;
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(benchRoot, recursive: true);
+            }
+            catch { }
+        }
+    }
+
+    private static async Task<JsonObject> RunPath1RawTlsBaselineAsync(long totalBytes, string runType)
+    {
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+
+        long allocBefore = GC.GetTotalAllocatedBytes(precise: false);
+        TimeSpan gcPauseBefore = GC.GetTotalPauseDuration();
+        long startTick = Stopwatch.GetTimestamp();
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(120));
+        using var listener = new TlsSocketListener(0);
+        int port = listener.BoundPort;
+        string spki = listener.LocalSpkiSha256;
+
+        Task<long> receiverTask = Task.Run(async () =>
+        {
+            await using TlsSocketConnection serverConn = await listener.AcceptConnectionAsync(cts.Token).ConfigureAwait(false);
+            byte[] recvBuf = new byte[256 * 1024];
+            long received = 0;
+            while (received < totalBytes)
+            {
+                int r = await serverConn.TransportStream.ReadAsync(recvBuf, cts.Token).ConfigureAwait(false);
+                if (r <= 0) break;
+                received += r;
+            }
+            return received;
+        }, cts.Token);
+
+        var client = new TlsSocketClient();
+        await using TlsSocketConnection clientConn = await client.ConnectAsync("127.0.0.1", port, spki, cts.Token).ConfigureAwait(false);
+        long payloadStartTick = Stopwatch.GetTimestamp();
+
+        byte[] sendBuf = new byte[256 * 1024];
+        Array.Fill(sendBuf, (byte)0x5A);
+        long remaining = totalBytes;
+        while (remaining > 0)
+        {
+            int toWrite = (int)Math.Min(sendBuf.Length, remaining);
+            await clientConn.TransportStream.WriteAsync(sendBuf.AsMemory(0, toWrite), cts.Token).ConfigureAwait(false);
+            remaining -= toWrite;
+        }
+        await clientConn.TransportStream.FlushAsync(cts.Token).ConfigureAwait(false);
+
+        long totalReceived = await receiverTask.ConfigureAwait(false);
+        long endTick = Stopwatch.GetTimestamp();
+
+        double prepMs = Stopwatch.GetElapsedTime(startTick, payloadStartTick).TotalMilliseconds;
+        double payloadMs = Stopwatch.GetElapsedTime(payloadStartTick, endTick).TotalMilliseconds;
+        double rateMBps = (totalReceived / (payloadMs / 1000.0)) / 1_000_000.0;
+        double allocMB = (GC.GetTotalAllocatedBytes(precise: false) - allocBefore) / 1_000_000.0;
+        double gcPauseMs = (GC.GetTotalPauseDuration() - gcPauseBefore).TotalMilliseconds;
+
+        return new JsonObject
+        {
+            ["path"] = "1_RawTlsBaseline",
+            ["runType"] = runType,
+            ["sizeBytes"] = totalReceived,
+            ["preparationMs"] = Math.Round(prepMs, 2),
+            ["payloadTransferMs"] = Math.Round(payloadMs, 2),
+            ["acceptanceToVerifiedMs"] = Math.Round(payloadMs, 2),
+            ["payloadRateMBps"] = Math.Round(rateMBps, 2),
+            ["acceptanceToVerifiedRateMBps"] = Math.Round(rateMBps, 2),
+            ["totalAllocatedMB"] = Math.Round(allocMB, 2),
+            ["gcPauseMs"] = Math.Round(gcPauseMs, 2),
+            ["sha256Verified"] = totalReceived == totalBytes
+        };
+    }
+
+    private static async Task<JsonObject> RunGlideBenchmarkPathAsync(
+        string pathName,
+        string runType,
+        string sourceFile,
+        string expectedSha256,
+        string stagingDir,
+        string destDir,
+        BoundedTransferDiagnosticSink diagSink,
+        DesktopTransferIoOptions ioOptions,
+        bool useUiRuntime,
+        bool useLegacyBlockingUi)
+    {
+        foreach (string f in Directory.GetFiles(destDir, "*", SearchOption.AllDirectories))
+        {
+            File.Delete(f);
+        }
+        foreach (string f in Directory.GetFiles(stagingDir, "*", SearchOption.AllDirectories))
+        {
+            File.Delete(f);
+        }
+
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+
+        var fileInfo = new FileInfo(sourceFile);
+        long totalBytes = fileInfo.Length;
+        long heapBefore = GC.GetTotalMemory(forceFullCollection: false);
+        long allocBefore = GC.GetTotalAllocatedBytes(precise: false);
+        TimeSpan gcPauseBefore = GC.GetTotalPauseDuration();
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(180));
+        using var listener = new TlsSocketListener(0);
+        var authority = new LanInvitationAuthority();
+        LanInvitation invitation = CreateInvitation(listener, "127.0.0.1", authority, "Bench-Receiver");
+
+        var store = new QuarantineStagingStore(stagingDir, destDir);
+        var receiverEngine = new DesktopTransferEngine(diagSink, ioOptions);
+        var senderEngine = new DesktopTransferEngine(diagSink, ioOptions);
+
+        using var uiContext = useUiRuntime ? new SimulatedWpfSynchronizationContext() : null;
+        var senderInteraction = new BenchmarkProgressTracker(totalBytes, uiContext, useLegacyBlockingUi);
+        var receiverInteraction = new BenchmarkProgressTracker(totalBytes, uiContext: null, useBlockingUiInvoke: false);
+
+        Task<DesktopTransferResult> receiverTask = Task.Run(async () =>
+        {
+            await using TlsSocketConnection conn = await listener.AcceptConnectionAsync(cts.Token).ConfigureAwait(false);
+            var recvReq = new DesktopReceiveRequest(
+                StagingStore: store,
+                InvitationAuthority: authority,
+                LocalDeviceName: "Bench-Receiver");
+            return await receiverEngine.ReceiveAsync(conn, recvReq, receiverInteraction, cts.Token).ConfigureAwait(false);
+        }, cts.Token);
+
+        var sendReq = new DesktopSendRequest(
+            Host: "127.0.0.1",
+            Port: listener.BoundPort,
+            Files: [new DesktopTransferFile(sourceFile)],
+            Invitation: invitation,
+            LocalDeviceName: "Bench-Sender");
+
+        DesktopTransferResult sendResult;
+        if (useUiRuntime && uiContext != null)
+        {
+            var runtime = new DesktopTransferRuntime(senderEngine);
+            var presentation = new DesktopTransferPresentation();
+            runtime.SnapshotChanged += (_, s) =>
+            {
+                if (useLegacyBlockingUi)
+                    uiContext.Send(_ => presentation.ApplySnapshot(s), null);
+                else
+                    uiContext.Post(_ => presentation.ApplySnapshot(s), null);
+            };
+            runtime.EventOccurred += (_, ev) =>
+            {
+                if (useLegacyBlockingUi)
+                    uiContext.Send(_ => presentation.ApplyEvent(ev), null);
+                else
+                    uiContext.Post(_ => presentation.ApplyEvent(ev), null);
+            };
+
+            sendResult = await uiContext.InvokeOnUiThreadAsync(
+                () => runtime.SendAsync(sendReq, senderInteraction, cts.Token));
+        }
+        else
+        {
+            sendResult = await senderEngine.SendAsync(sendReq, senderInteraction, cts.Token);
+        }
+
+        DesktopTransferResult recvResult = await receiverTask;
+
+        long allocAfter = GC.GetTotalAllocatedBytes(precise: false);
+        long heapAfter = GC.GetTotalMemory(forceFullCollection: false);
+        TimeSpan gcPauseAfter = GC.GetTotalPauseDuration();
+
+        bool shaVerified = false;
+        if (ioOptions.DiscardStorageForBenchmark)
+        {
+            shaVerified = sendResult.Success && recvResult.Success && recvResult.VerifiedBytes == totalBytes;
+        }
+        else
+        {
+            string committedFile = Path.Combine(destDir, Path.GetFileName(sourceFile));
+            if (File.Exists(committedFile))
+            {
+                var committedInfo = new FileInfo(committedFile);
+                using var fs = File.OpenRead(committedFile);
+                string actualSha = Convert.ToHexStringLower(SHA256.HashData(fs));
+                shaVerified = committedInfo.Length == totalBytes &&
+                              string.Equals(actualSha, expectedSha256, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        DesktopTransferDiagnosticSample? sendDiag = senderEngine.LastDiagnosticSample;
+        DesktopTransferDiagnosticSample? recvDiag = receiverEngine.LastDiagnosticSample;
+
+        double payloadMs = Math.Max(sendDiag?.PayloadTransferMs ?? 0, recvDiag?.PayloadTransferMs ?? 0);
+        double acceptToVerifiedMs = Math.Max(sendDiag?.AcceptanceToVerifiedMs ?? 0, recvDiag?.AcceptanceToVerifiedMs ?? 0);
+        double payloadRateMBps = payloadMs > 0.1 ? (totalBytes / (payloadMs / 1000.0)) / 1_000_000.0 : 0.0;
+        double acceptToVerifiedRateMBps = acceptToVerifiedMs > 0.1 ? (totalBytes / (acceptToVerifiedMs / 1000.0)) / 1_000_000.0 : 0.0;
+        double? firstQ = senderInteraction.FirstQuarterMBps;
+        double? finalQ = senderInteraction.FinalQuarterMBps;
+        double? qRatio = firstQ > 0.1 && finalQ.HasValue
+            ? Math.Round(finalQ.Value / firstQ.Value, 3)
+            : null;
+
+        return new JsonObject
+        {
+            ["path"] = pathName,
+            ["runType"] = runType,
+            ["success"] = sendResult.Success && recvResult.Success && shaVerified,
+            ["sizeBytes"] = totalBytes,
+            ["preparationMs"] = sendDiag?.PreparationMs ?? 0,
+            ["payloadTransferMs"] = Math.Round(payloadMs, 2),
+            ["verificationMs"] = recvDiag?.VerificationMs ?? 0,
+            ["commitMs"] = recvDiag?.CommitMs ?? 0,
+            ["acceptanceToVerifiedMs"] = Math.Round(acceptToVerifiedMs, 2),
+            ["payloadRateMBps"] = Math.Round(payloadRateMBps, 2),
+            ["acceptanceToVerifiedRateMBps"] = Math.Round(acceptToVerifiedRateMBps, 2),
+            ["firstQuarterPayloadRateMBps"] = firstQ,
+            ["finalQuarterPayloadRateMBps"] = finalQ,
+            ["finalToFirstQuarterRatio"] = qRatio,
+            ["senderSourceReadMs"] = sendDiag?.SourceReadMs ?? 0,
+            ["senderHashMs"] = sendDiag?.HashComputeMs ?? 0,
+            ["senderTlsWriteMs"] = sendDiag?.TlsWriteMs ?? 0,
+            ["receiverTlsReadMs"] = recvDiag?.TlsReadMs ?? 0,
+            ["receiverStagingWriteMs"] = recvDiag?.StagingWriteMs ?? 0,
+            ["receiverHashMs"] = recvDiag?.HashComputeMs ?? 0,
+            ["receiverVerificationReadMs"] = recvDiag?.VerificationReadMs ?? 0,
+            ["receiverCommitMs"] = recvDiag?.CommitMs ?? 0,
+            ["progressCallbacks"] = senderInteraction.ProgressCallbacks,
+            ["uiDispatchedCallbacks"] = uiContext?.DispatchedCallbackCount ?? 0,
+            ["totalAllocatedMB"] = Math.Round((allocAfter - allocBefore) / 1_000_000.0, 2),
+            ["managedHeapDeltaMiB"] = Math.Round((heapAfter - heapBefore) / (1024.0 * 1024.0), 2),
+            ["gcPauseMs"] = Math.Round((gcPauseAfter - gcPauseBefore).TotalMilliseconds, 2),
+            ["gen0"] = (sendDiag?.Gen0Collections ?? 0) + (recvDiag?.Gen0Collections ?? 0),
+            ["gen1"] = (sendDiag?.Gen1Collections ?? 0) + (recvDiag?.Gen1Collections ?? 0),
+            ["gen2"] = (sendDiag?.Gen2Collections ?? 0) + (recvDiag?.Gen2Collections ?? 0),
+            ["sha256Verified"] = shaVerified
+        };
     }
 
     #endregion

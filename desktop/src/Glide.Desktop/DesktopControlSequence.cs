@@ -107,6 +107,8 @@ internal sealed class DesktopControlSequence
         return envelope;
     }
 
+    internal static readonly TimeSpan RecordTimeout = DefaultRecordTimeout;
+
     public static Task<LanRecord?> ReadRecordAsync(
         LanRecordChannel channel,
         CancellationToken cancellationToken,
@@ -116,6 +118,37 @@ internal sealed class DesktopControlSequence
             timeout ?? DefaultRecordTimeout,
             cancellationToken,
             "Timed out waiting for transfer data.");
+
+    public static ValueTask<LanRecord?> ReadOwnedRecordWithDeadlineAsync(
+        LanRecordChannel channel,
+        BulkRef? expectedBulkRef,
+        CancellationTokenSource slidingTimeoutCts,
+        CancellationToken callerCancellationToken,
+        TimeSpan? timeout = null)
+    {
+        slidingTimeoutCts.CancelAfter(timeout ?? DefaultRecordTimeout);
+        return ReadOwnedCoreAsync(channel, expectedBulkRef, slidingTimeoutCts.Token, callerCancellationToken);
+    }
+
+    private static async ValueTask<LanRecord?> ReadOwnedCoreAsync(
+        LanRecordChannel channel,
+        BulkRef? expectedBulkRef,
+        CancellationToken combinedToken,
+        CancellationToken callerCancellationToken)
+    {
+        try
+        {
+            return await channel.ReadOwnedRecordAsync(expectedBulkRef, combinedToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+            when (!callerCancellationToken.IsCancellationRequested)
+        {
+            throw new ProtocolViolationException(
+                WireErrorCodes.Timeout,
+                "Timed out waiting for transfer data.");
+        }
+    }
 
     public static Task<LanBootstrapResult> ReadBootstrapResultAsync(
         LanRecordChannel channel,

@@ -140,9 +140,10 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(operation);
 
-        if (!await _activeBatch.WaitAsync(0, cancellationToken))
+        if (!await _activeBatch.WaitAsync(0, cancellationToken).ConfigureAwait(false))
         {
-            if (busyOperation is not null) return await busyOperation(cancellationToken);
+            if (busyOperation is not null)
+                return await Task.Run(() => busyOperation(cancellationToken), CancellationToken.None).ConfigureAwait(false);
             return DesktopTransferResult.Failed(
                 "Glide is busy with another transfer. Wait for it to finish or cancel it before starting a new one.",
                 TransferErrorCategory.Protocol);
@@ -165,7 +166,10 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
 
         try
         {
-            DesktopTransferResult result = await operation(observer, linkedCancellation.Token);
+            DesktopTransferResult result = await Task.Run(
+                () => operation(observer, linkedCancellation.Token),
+                CancellationToken.None).ConfigureAwait(false);
+            observer.MarkCompleted();
             DesktopTransferPhase phase = result switch
             {
                 { Success: true } => DesktopTransferPhase.Completed,
@@ -180,6 +184,7 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
         }
         catch (OperationCanceledException) when (linkedCancellation.IsCancellationRequested)
         {
+            observer.MarkCompleted();
             const string message = "Transfer cancelled.";
             DesktopTransferResult result = DesktopTransferResult.CancelledByUser(message);
             SetSnapshot(new DesktopTransferSnapshot(
@@ -192,6 +197,7 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
         }
         catch (Exception error)
         {
+            observer.MarkCompleted();
             DesktopTransferResult result = DesktopTransferResult.Failed(error.Message, DesktopTransferFailures.Classify(error));
             SetSnapshot(new DesktopTransferSnapshot(
                 DesktopTransferPhase.Failed, direction, observer.PeerName, result.Message, result, runId));
@@ -200,6 +206,7 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
         }
         finally
         {
+            observer.MarkCompleted();
             lock (_gate)
             {
                 _activeCancellation = null;
@@ -238,7 +245,8 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
         private string? _lastProgressItem;
         private long _lastProgressBytes;
         private DesktopTransferPhase _lastPhase = DesktopTransferPhase.Preparing;
-        private const long ProgressIntervalMilliseconds = 100;
+        private int _completed;
+        private const long ProgressIntervalMilliseconds = 200; // <= 5 Hz max
         public string PeerName { get; private set; }
 
         public RuntimeInteraction(DesktopTransferRuntime owner, IDesktopTransferInteraction inner,
@@ -252,12 +260,14 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
             _rate.Reset();
         }
 
+        public void MarkCompleted() => Interlocked.Exchange(ref _completed, 1);
+
         public override async Task<bool> ConfirmRecipientAsync(string peerName, CancellationToken cancellationToken)
         {
             OnPhase(_direction, DesktopTransferPhase.AwaitingConsent);
             // Recipient confirmation only authenticates the peer. The transfer engine reports
             // Transferring after the offer has been accepted and it is ready to send data.
-            return await _inner.ConfirmRecipientAsync(peerName, cancellationToken);
+            return await _inner.ConfirmRecipientAsync(peerName, cancellationToken).ConfigureAwait(false);
         }
 
         public override async Task<bool> ConfirmOfferAsync(DesktopOffer offer, CancellationToken cancellationToken)
@@ -265,7 +275,7 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
             _owner.NotifyEvent(new TransferEvent.OfferReceived(offer));
             OnPhase(_direction, DesktopTransferPhase.AwaitingConsent);
             // The decision must be written to the peer before the engine can enter its data phase.
-            return await _inner.ConfirmOfferAsync(offer, cancellationToken);
+            return await _inner.ConfirmOfferAsync(offer, cancellationToken).ConfigureAwait(false);
         }
 
         public override Task<bool> ConfirmPeerEnrollmentAsync(VerifiedDesktopPeerIdentity peer,
@@ -273,14 +283,20 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
         public override void OnInvitationConsumed(DesktopTransferDirection direction) => _inner.OnInvitationConsumed(direction);
         public override void OnPeerIdentified(DesktopTransferDirection direction, string peerName)
         {
+            if (Volatile.Read(ref _completed) != 0) return;
             PeerName = peerName;
             _inner.OnPeerIdentified(direction, peerName);
             DesktopTransferSnapshot current = _owner.Snapshot;
             if (current.RunId == _runId) _owner.SetSnapshot(current with { PeerName = peerName });
         }
-        public override void OnStatus(DesktopTransferDirection direction, string message) => _inner.OnStatus(direction, message);
+        public override void OnStatus(DesktopTransferDirection direction, string message)
+        {
+            if (Volatile.Read(ref _completed) != 0) return;
+            _inner.OnStatus(direction, message);
+        }
         public override void OnProgress(DesktopTransferProgress progress)
         {
+            if (Volatile.Read(ref _completed) != 0) return;
             _lastProgressBytes = progress.TransferredBytes;
             // File streaming must not wait for a UI dispatch on every 64 KiB record.
             // Always publish the first update, item changes, and the final byte.
@@ -301,12 +317,14 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
         }
         public override void OnItemStatus(DesktopTransferDirection direction, string itemName, string status)
         {
+            if (Volatile.Read(ref _completed) != 0) return;
             _inner.OnItemStatus(direction, itemName, status);
             _owner.NotifyEvent(new TransferEvent.ItemStatusChanged(direction, itemName, status));
         }
         public override void OnHistory(DesktopHistoryEntry entry) => _inner.OnHistory(entry);
         public override void OnPhase(DesktopTransferDirection direction, DesktopTransferPhase phase)
         {
+            if (Volatile.Read(ref _completed) != 0) return;
             // Verification and destination commit can take time after the last network byte.
             // Do not fold that pause into the rate of the next file in the batch.
             if (phase == DesktopTransferPhase.Transferring && _lastPhase != phase)
@@ -318,6 +336,7 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
                 DesktopTransferPhase.AwaitingConsent => "Waiting for approval…",
                 DesktopTransferPhase.Transferring => "Transferring…",
                 DesktopTransferPhase.Verifying => "Verifying files…",
+                DesktopTransferPhase.Saving => "Saving files…",
                 _ => "Connecting…"
             };
             _owner.SetSnapshot(new DesktopTransferSnapshot(phase, direction, PeerName, message, RunId: _runId));
@@ -345,6 +364,7 @@ public enum DesktopTransferPhase
     Paused,
     Interrupted,
     Verifying,
+    Saving,
     Completed,
     Cancelled,
     Failed
@@ -363,5 +383,5 @@ public sealed record DesktopTransferSnapshot(
 
     public bool IsActive => Phase is DesktopTransferPhase.Preparing or
         DesktopTransferPhase.AwaitingConsent or DesktopTransferPhase.Transferring or
-        DesktopTransferPhase.Paused or DesktopTransferPhase.Verifying;
+        DesktopTransferPhase.Paused or DesktopTransferPhase.Verifying or DesktopTransferPhase.Saving;
 }
