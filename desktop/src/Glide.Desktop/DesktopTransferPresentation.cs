@@ -85,6 +85,8 @@ public sealed class DesktopTransferPresentation : INotifyPropertyChanged
             _receivedFolder = null;
         }
         _snapshot = snapshot;
+        if (snapshot.Phase == DesktopTransferPhase.Verifying)
+            _rate = "";
         if (IsSuccess) _progress = 100;
         bool navigate = !_navigated && (snapshot.Phase == DesktopTransferPhase.Transferring ||
             (navigateOnPreparation && snapshot.Phase == DesktopTransferPhase.Preparing));

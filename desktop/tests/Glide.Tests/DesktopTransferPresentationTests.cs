@@ -69,4 +69,23 @@ public sealed class DesktopTransferPresentationTests
         Assert.True(state.CanOpenFolder);
         Assert.Equal(Path.GetDirectoryName(path), state.ReceivedFolder);
     }
+
+    [Fact]
+    public void Verification_HidesTheLastNetworkRate()
+    {
+        var state = new DesktopTransferPresentation();
+        Guid run = Guid.NewGuid();
+        state.ApplySnapshot(new(DesktopTransferPhase.Transferring,
+            DesktopTransferDirection.Send, "Desktop", "Sending", RunId: run));
+        state.ApplyEvent(new TransferEvent.ProgressUpdated(
+            new DesktopTransferProgress(DesktopTransferDirection.Send, "Desktop", "large.bin", 100, 200),
+            100, "100 B/s", "100 B / 200 B"));
+        Assert.Equal("100 B/s", state.RateText);
+
+        state.ApplySnapshot(new(DesktopTransferPhase.Verifying,
+            DesktopTransferDirection.Send, "Desktop", "Checking", RunId: run));
+
+        Assert.Equal("Verifying files…", state.PhaseText);
+        Assert.Equal("", state.RateText);
+    }
 }

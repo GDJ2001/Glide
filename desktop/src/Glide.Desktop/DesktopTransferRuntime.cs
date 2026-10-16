@@ -236,6 +236,8 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
         private readonly DesktopTransferRateCalculator _rate = new();
         private long _lastProgressTimestamp;
         private string? _lastProgressItem;
+        private long _lastProgressBytes;
+        private DesktopTransferPhase _lastPhase = DesktopTransferPhase.Preparing;
         private const long ProgressIntervalMilliseconds = 100;
         public string PeerName { get; private set; }
 
@@ -279,6 +281,7 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
         public override void OnStatus(DesktopTransferDirection direction, string message) => _inner.OnStatus(direction, message);
         public override void OnProgress(DesktopTransferProgress progress)
         {
+            _lastProgressBytes = progress.TransferredBytes;
             // File streaming must not wait for a UI dispatch on every 64 KiB record.
             // Always publish the first update, item changes, and the final byte.
             long now = Stopwatch.GetTimestamp();
@@ -304,6 +307,11 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
         public override void OnHistory(DesktopHistoryEntry entry) => _inner.OnHistory(entry);
         public override void OnPhase(DesktopTransferDirection direction, DesktopTransferPhase phase)
         {
+            // Verification and destination commit can take time after the last network byte.
+            // Do not fold that pause into the rate of the next file in the batch.
+            if (phase == DesktopTransferPhase.Transferring && _lastPhase != phase)
+                _rate.Reset(_lastProgressBytes);
+            _lastPhase = phase;
             _inner.OnPhase(direction, phase);
             string message = phase switch
             {
