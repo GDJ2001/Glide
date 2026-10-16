@@ -99,6 +99,41 @@ public sealed class DesktopTransferRuntimeTests
         Assert.Equal(result, runtime.Snapshot.Result);
     }
 
+    [Fact]
+    public async Task Runtime_CoalescesChunkProgressButKeepsFirstItemChangeAndCompletion()
+    {
+        var executor = new BlockingExecutor();
+        await using var runtime = new DesktopTransferRuntime(executor);
+        var updates = new List<TransferEvent.ProgressUpdated>();
+        var interaction = new ProgressInteraction();
+        runtime.EventOccurred += (_, ev) =>
+        {
+            if (ev is TransferEvent.ProgressUpdated update) updates.Add(update);
+        };
+
+        Task<DesktopTransferResult> active = runtime.SendAsync(Request(), interaction);
+        await executor.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        for (int i = 1; i <= 100; i++)
+        {
+            executor.Interaction!.OnProgress(new DesktopTransferProgress(
+                DesktopTransferDirection.Send, "Peer", "first.bin", i * 64_000, 10_000_000));
+        }
+        executor.Interaction!.OnProgress(new DesktopTransferProgress(
+            DesktopTransferDirection.Send, "Peer", "second.bin", 7_000_000, 10_000_000));
+        executor.Interaction.OnProgress(new DesktopTransferProgress(
+            DesktopTransferDirection.Send, "Peer", "second.bin", 10_000_000, 10_000_000));
+
+        Assert.InRange(updates.Count, 3, 10);
+        Assert.Equal(updates.Count, interaction.ProgressCount);
+        Assert.Equal("first.bin", updates[0].Progress.ItemName);
+        Assert.Contains(updates, update => update.Progress.ItemName == "second.bin");
+        Assert.Equal(10_000_000, updates[^1].Progress.TransferredBytes);
+
+        executor.Complete(DesktopTransferResult.Completed("Done", 2, 10_000_000));
+        Assert.True((await active).Success);
+    }
+
     private static DesktopSendRequest Request() =>
         new("unused", 1, []);
 
@@ -159,5 +194,11 @@ public sealed class DesktopTransferRuntimeTests
 
         public override Task<bool> ConfirmOfferAsync(DesktopOffer offer, CancellationToken cancellationToken) =>
             Task.FromResult(true);
+    }
+
+    private sealed class ProgressInteraction : DesktopTransferInteractionBase
+    {
+        public int ProgressCount { get; private set; }
+        public override void OnProgress(DesktopTransferProgress progress) => ProgressCount++;
     }
 }

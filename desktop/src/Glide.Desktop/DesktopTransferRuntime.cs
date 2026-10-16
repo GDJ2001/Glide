@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Glide.Transport.Sockets;
 using Glide.Desktop.Services;
 using Glide.Core.Security;
@@ -233,6 +234,9 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
         private readonly DesktopTransferDirection _direction;
         private readonly Guid _runId;
         private readonly DesktopTransferRateCalculator _rate = new();
+        private long _lastProgressTimestamp;
+        private string? _lastProgressItem;
+        private const long ProgressIntervalMilliseconds = 100;
         public string PeerName { get; private set; }
 
         public RuntimeInteraction(DesktopTransferRuntime owner, IDesktopTransferInteraction inner,
@@ -275,6 +279,19 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
         public override void OnStatus(DesktopTransferDirection direction, string message) => _inner.OnStatus(direction, message);
         public override void OnProgress(DesktopTransferProgress progress)
         {
+            // File streaming must not wait for a UI dispatch on every 64 KiB record.
+            // Always publish the first update, item changes, and the final byte.
+            long now = Stopwatch.GetTimestamp();
+            bool isFinal = progress.TransferredBytes >= progress.TotalBytes;
+            bool itemChanged = !string.Equals(_lastProgressItem, progress.ItemName, StringComparison.Ordinal);
+            if (!isFinal && !itemChanged &&
+                Stopwatch.GetElapsedTime(_lastProgressTimestamp, now).TotalMilliseconds < ProgressIntervalMilliseconds)
+            {
+                return;
+            }
+
+            _lastProgressTimestamp = now;
+            _lastProgressItem = progress.ItemName;
             _inner.OnProgress(progress);
             var rate = _rate.Update(progress.TransferredBytes, progress.TotalBytes);
             _owner.NotifyEvent(new TransferEvent.ProgressUpdated(progress, rate.BytesPerSecond, rate.RateText, rate.TransferredBytesText));
