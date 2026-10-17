@@ -39,17 +39,37 @@ public sealed class TlsSocketClient
         string host,
         int port,
         string? expectedSpkiSha256 = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        TimeSpan? tcpConnectTimeout = null,
+        TimeSpan? tlsHandshakeTimeout = null)
     {
         var tcpClient = new TcpClient
         {
             NoDelay = true
         };
 
+        TimeSpan effectiveConnectTimeout = tcpConnectTimeout ?? TimeSpan.FromSeconds(5);
+        TimeSpan effectiveHandshakeTimeout = tlsHandshakeTimeout ?? TimeSpan.FromSeconds(15);
+
         SslStream? sslStream = null;
         try
         {
-            await tcpClient.ConnectAsync(host, port, cancellationToken);
+            using (var connectCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+            {
+                if (effectiveConnectTimeout > TimeSpan.Zero && effectiveConnectTimeout != Timeout.InfiniteTimeSpan)
+                {
+                    connectCts.CancelAfter(effectiveConnectTimeout);
+                }
+
+                try
+                {
+                    await tcpClient.ConnectAsync(host, port, connectCts.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                {
+                    throw new TimeoutException($"TCP connection to {host}:{port} timed out after {effectiveConnectTimeout.TotalSeconds:F1}s.");
+                }
+            }
 
             byte[]? remotePublicKey = null;
             string? remoteSpkiSha256 = null;
@@ -114,9 +134,24 @@ public sealed class TlsSocketClient
                     (_, _, _, _, _) => _clientCertificate;
             }
 
-            await sslStream.AuthenticateAsClientAsync(
-                options,
-                cancellationToken);
+            using (var handshakeCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+            {
+                if (effectiveHandshakeTimeout > TimeSpan.Zero && effectiveHandshakeTimeout != Timeout.InfiniteTimeSpan)
+                {
+                    handshakeCts.CancelAfter(effectiveHandshakeTimeout);
+                }
+
+                try
+                {
+                    await sslStream.AuthenticateAsClientAsync(
+                        options,
+                        handshakeCts.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                {
+                    throw new TimeoutException($"TLS 1.3 handshake with {host}:{port} timed out after {effectiveHandshakeTimeout.TotalSeconds:F1}s.");
+                }
+            }
 
             if (sslStream.SslProtocol != SslProtocols.Tls13)
             {

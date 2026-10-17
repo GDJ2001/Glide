@@ -32,9 +32,10 @@ public sealed class DesktopTransferPresentation : INotifyPropertyChanged
         DesktopTransferPhase.Transferring => "Transferring…",
         DesktopTransferPhase.Verifying => "Verifying files…",
         DesktopTransferPhase.Saving => "Saving files…",
+        DesktopTransferPhase.WaitingForConfirmation => "Waiting for receiver confirmation…",
         _ => ""
     };
-    public bool IsIndeterminate => IsActive && _snapshot.Phase is DesktopTransferPhase.Preparing or DesktopTransferPhase.AwaitingConsent or DesktopTransferPhase.Verifying or DesktopTransferPhase.Saving;
+    public bool IsIndeterminate => IsActive && _snapshot.Phase is DesktopTransferPhase.Preparing or DesktopTransferPhase.AwaitingConsent or DesktopTransferPhase.Verifying or DesktopTransferPhase.Saving or DesktopTransferPhase.WaitingForConfirmation;
     public string CurrentFile => _currentFile;
     public double Progress => _progress;
     public string BytesText => _bytes;
@@ -46,6 +47,11 @@ public sealed class DesktopTransferPresentation : INotifyPropertyChanged
     public bool CanRetry => IsFailure && _snapshot.Direction == DesktopTransferDirection.Send &&
         _snapshot.Result!.ErrorCategory is TransferErrorCategory.Network or TransferErrorCategory.Storage or
             TransferErrorCategory.Protocol or TransferErrorCategory.Unknown;
+    public bool CanStartReceiving => IsFailure && _snapshot.Direction == DesktopTransferDirection.Receive;
+    public bool CanPairByAddress => IsFailure &&
+        _snapshot.Result!.ErrorCategory is TransferErrorCategory.Network or TransferErrorCategory.Security;
+    public bool CanOpenSettings => IsFailure &&
+        _snapshot.Result!.ErrorCategory is TransferErrorCategory.Storage or TransferErrorCategory.Security;
     public bool CanOpenFolder => HasResult && _snapshot.Direction == DesktopTransferDirection.Receive &&
         _snapshot.Result!.VerifiedCount > 0 && !string.IsNullOrWhiteSpace(_receivedFolder);
     public string? ReceivedFolder => _receivedFolder;
@@ -65,7 +71,7 @@ public sealed class DesktopTransferPresentation : INotifyPropertyChanged
     public string VerifiedSummary => HasResult && !IsSuccess && _snapshot.Result!.VerifiedCount > 0
         ? $"{_snapshot.Result.VerifiedCount} file(s) verified · {FormatBytes(_snapshot.Result.VerifiedBytes)}" : "";
     public bool HasVerifiedSummary => VerifiedSummary.Length > 0;
-    public string Details => _snapshot.Result?.Message ?? "";
+    public string Details => Diagnostics.BoundedTransferDiagnosticSink.SanitizeDiagnosticText(_snapshot.Result?.Message ?? "");
     public bool HasDetails => HasResult && !IsSuccess && Details.Length > 0;
 
     /// <returns>True once when this operation should open Activity.</returns>
@@ -86,7 +92,7 @@ public sealed class DesktopTransferPresentation : INotifyPropertyChanged
             _receivedFolder = null;
         }
         _snapshot = snapshot;
-        if (snapshot.Phase is DesktopTransferPhase.Verifying or DesktopTransferPhase.Saving)
+        if (snapshot.Phase is DesktopTransferPhase.Verifying or DesktopTransferPhase.Saving or DesktopTransferPhase.WaitingForConfirmation)
             _rate = "";
         if (IsSuccess) _progress = 100;
         bool navigate = !_navigated && (snapshot.Phase == DesktopTransferPhase.Transferring ||

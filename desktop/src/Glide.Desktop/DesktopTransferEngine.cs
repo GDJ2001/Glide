@@ -10,6 +10,7 @@ using Glide.Core.Security;
 using Glide.Core.Storage;
 using Glide.Core.Transport.Lan;
 using Glide.Desktop.Diagnostics;
+using Glide.Desktop.Services;
 using Glide.Transport.Framing;
 using Glide.Transport.Sockets;
 
@@ -25,10 +26,6 @@ namespace Glide.Desktop;
 /// </summary>
 public sealed class DesktopTransferEngine : IDesktopTransferExecutor
 {
-    // A person must be able to inspect and accept an incoming offer. The
-    // protocol gives that decision 120 seconds; the generic 30-second control
-    // timeout is only suitable for machine-to-machine responses.
-    private static readonly TimeSpan OfferDecisionTimeout = TimeSpan.FromSeconds(120);
     private const int MaxOfferPageItems = 32;
     private const int SafeOfferPagePayloadBytes = 14_000;
     private const int StreamBufferBytes = 65_520;
@@ -36,14 +33,17 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
     private readonly IDesktopTransferDiagnostics _diagnostics;
     private readonly DesktopTransferIoOptions _ioOptions;
     private readonly TransferBufferPool _bufferPool;
+    private readonly DesktopTimeoutPolicy _timeoutPolicy;
 
     public DesktopTransferEngine(
         IDesktopTransferDiagnostics? diagnostics = null,
         DesktopTransferIoOptions? ioOptions = null,
-        TransferBufferPool? bufferPool = null)
+        TransferBufferPool? bufferPool = null,
+        DesktopTimeoutPolicy? timeoutPolicy = null)
     {
         _diagnostics = diagnostics ?? BoundedTransferDiagnosticSink.CreateDefault();
         _ioOptions = ioOptions ?? DesktopTransferIoOptions.Default;
+        _timeoutPolicy = timeoutPolicy ?? DesktopTimeoutPolicy.Default;
         _bufferPool = bufferPool ?? (
             _ioOptions.MaxProcessTransferBufferBytes == TransferBufferPool.DefaultMaxProcessBytes &&
             _ioOptions.ChunkBufferBytes <= TransferBufferPool.DefaultBufferBytes
@@ -56,6 +56,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
     public IDesktopTransferDiagnostics Diagnostics => _diagnostics;
     public DesktopTransferIoOptions IoOptions => _ioOptions;
     public TransferBufferPool BufferPool => _bufferPool;
+    public DesktopTimeoutPolicy TimeoutPolicy => _timeoutPolicy;
     public DesktopTransferDiagnosticSample? LastDiagnosticSample { get; private set; }
     public IReadOnlyList<DesktopTransferDiagnosticSample> LastDiagnosticSamples { get; private set; } = [];
 
@@ -171,7 +172,9 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                         host,
                         port,
                         expectedSpkiSha256: invitation.SpkiSha256,
-                        cancellationToken);
+                        cancellationToken,
+                        tcpConnectTimeout: _timeoutPolicy.TcpConnectTimeout,
+                        tlsHandshakeTimeout: _timeoutPolicy.TlsHandshakeTimeout);
                     break;
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
@@ -205,11 +208,12 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
         }
         catch (Exception ex)
         {
+            string msg = DesktopTransferFailures.DescribeUserMessage(DesktopTransferDirection.Send, ex);
             interaction.OnStatus(
                 DesktopTransferDirection.Send,
-                $"Send failed: {ex.Message}");
+                msg);
             return DesktopTransferResult.Failed(
-                $"Send failed: {ex.Message}", DesktopTransferFailures.Classify(ex));
+                msg, DesktopTransferFailures.Classify(ex));
         }
     }
 
@@ -242,11 +246,12 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
         }
         catch (Exception ex)
         {
+            string msg = DesktopTransferFailures.DescribeUserMessage(DesktopTransferDirection.Receive, ex);
             interaction.OnStatus(
                 DesktopTransferDirection.Receive,
-                $"Receive failed: {ex.Message}");
+                msg);
             return DesktopTransferResult.Failed(
-                $"Receive failed: {ex.Message}", DesktopTransferFailures.Classify(ex));
+                msg, DesktopTransferFailures.Classify(ex));
         }
     }
 
@@ -303,7 +308,9 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                         host,
                         port,
                         expectedSpkiSha256: invitation.SpkiSha256,
-                        cancellationToken);
+                        cancellationToken,
+                        tcpConnectTimeout: _timeoutPolicy.TcpConnectTimeout,
+                        tlsHandshakeTimeout: _timeoutPolicy.TlsHandshakeTimeout);
                     break;
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
@@ -337,11 +344,12 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
         }
         catch (Exception ex)
         {
+            string msg = DesktopTransferFailures.DescribeUserMessage(DesktopTransferDirection.Receive, ex);
             interaction.OnStatus(
                 DesktopTransferDirection.Receive,
-                $"Receive failed: {ex.Message}");
+                msg);
             return DesktopTransferResult.Failed(
-                $"Receive failed: {ex.Message}", DesktopTransferFailures.Classify(ex));
+                msg, DesktopTransferFailures.Classify(ex));
         }
     }
 
@@ -489,187 +497,302 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
             }
         }
 
-        IReadOnlyList<LanEndpoint> endpointsToTry;
-        if (request.CandidateEndpoints is { Count: > 0 })
+        IReadOnlyList<TrustedEndpointCandidate> candidates =
+            TrustedEndpointResolver.BuildSendCandidates(request, enrolledPeer);
+        if (candidates.Count == 0)
         {
-            endpointsToTry = request.CandidateEndpoints;
-        }
-        else if (!string.IsNullOrWhiteSpace(request.Host))
-        {
-            endpointsToTry =
-            [
-                new LanEndpoint(
-                    request.Host,
-                    request.Port > 0 ? request.Port : enrolledPeer.LastKnownPort ?? 42424)
-            ];
-        }
-        else if (!string.IsNullOrWhiteSpace(enrolledPeer.LastKnownHost))
-        {
-            endpointsToTry =
-            [
-                new LanEndpoint(
-                    enrolledPeer.LastKnownHost,
-                    enrolledPeer.LastKnownPort ?? 42424)
-            ];
-        }
-        else
-        {
-            return DesktopTransferResult.Failed("Couldn’t reach this device — check the local network", TransferErrorCategory.Network);
+            interaction.OnStatus(
+                DesktopTransferDirection.Send,
+                TrustedEndpointResolver.DeviceUnavailableMessage);
+            return DesktopTransferResult.Failed(
+                TrustedEndpointResolver.DeviceUnavailableMessage,
+                TransferErrorCategory.Network);
         }
 
-        TlsSocketConnection? connectedSocket = null;
-        string? connectedHost = null;
-        int connectedPort = 0;
-        try
+        using CancellationTokenSource resolutionBudgetCts =
+            _timeoutPolicy.CreateTimeoutTokenSource(
+                _timeoutPolicy.TrustedCandidateBudget,
+                cancellationToken);
+
+        bool sawBusyOnSavedOrVerified = false;
+        bool sawSavedEndpointIdentityChanged = false;
+        bool sawUnrelatedCandidateIdentity = false;
+        var client = new TlsSocketClient();
+
+        string localName = string.IsNullOrWhiteSpace(request.LocalDeviceName)
+            ? Environment.MachineName
+            : request.LocalDeviceName;
+        string localPublicKeyB64 =
+            InvitationCodec.ToUnpaddedBase64Url(request.TrustManager.LocalPublicKeyDer());
+
+        foreach (TrustedEndpointCandidate candidate in candidates)
         {
-            var client = new TlsSocketClient();
-            foreach (LanEndpoint endpoint in endpointsToTry)
+            cancellationToken.ThrowIfCancellationRequested();
+            if (resolutionBudgetCts.IsCancellationRequested)
             {
-                interaction.OnStatus(
-                    DesktopTransferDirection.Send,
-                    $"Connecting to {enrolledPeer.DisplayName} ({endpoint.Address}:{endpoint.Port})...");
-
-                try
-                {
-                    connectedSocket = await client.ConnectAsync(
-                        endpoint.Address,
-                        endpoint.Port,
-                        expectedSpkiSha256: null,
-                        cancellationToken);
-                    connectedHost = endpoint.Address;
-                    connectedPort = endpoint.Port;
-                    break;
-                }
-                catch (Exception ex) when (ex is not OperationCanceledException)
-                {
-                    // Try next candidate endpoint
-                }
+                sawUnrelatedCandidateIdentity = true;
+                break;
             }
 
-            if (connectedSocket == null)
+            LanEndpoint endpoint = candidate.Endpoint;
+            interaction.OnStatus(
+                DesktopTransferDirection.Send,
+                $"Connecting to {enrolledPeer.DisplayName} ({endpoint.Address}:{endpoint.Port})...");
+
+            TlsSocketConnection? connectedSocket = null;
+            try
             {
-                interaction.OnStatus(
-                    DesktopTransferDirection.Send,
-                    "Couldn’t reach this device — check the local network");
-                return DesktopTransferResult.Failed("Couldn’t reach this device — check the local network", TransferErrorCategory.Network);
+                connectedSocket = await client.ConnectAsync(
+                    endpoint.Address,
+                    endpoint.Port,
+                    expectedSpkiSha256: null,
+                    resolutionBudgetCts.Token,
+                    tcpConnectTimeout: _timeoutPolicy.TcpConnectTimeout,
+                    tlsHandshakeTimeout: _timeoutPolicy.TlsHandshakeTimeout);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                interaction.OnStatus(DesktopTransferDirection.Send, "Transfer cancelled.");
+                return DesktopTransferResult.CancelledByUser("Transfer cancelled.");
+            }
+            catch
+            {
+                // Candidate unreachable within connect/TLS budget; try next candidate.
+                continue;
             }
 
             await using TlsSocketConnection connection = connectedSocket;
-
-            await LanSessionPreambleInspector.WriteGld2PreambleAsync(
-                connection.TransportStream,
-                cancellationToken);
-
             SessionId sessionId = NewSessionId();
-            string localName = string.IsNullOrWhiteSpace(request.LocalDeviceName)
-                ? Environment.MachineName
-                : request.LocalDeviceName;
+            Profile2Message.SessionOpenAck ack;
 
-            var open = new Profile2Message.SessionOpen(
-                SessionId: sessionId.Value,
-                Purpose: Profile2Constants.PurposeTrustedSend,
-                AuthMethod: Profile2Constants.AuthMethodIdentityV1,
-                InitiatorNonce: InvitationCodec.ToUnpaddedBase64Url(RandomNumberGenerator.GetBytes(32)),
-                InitiatorDeviceName: localName,
-                InitiatorPlatform: GetLocalPlatformString(),
-                InitiatorIdentityPublicKey: InvitationCodec.ToUnpaddedBase64Url(request.TrustManager.LocalPublicKeyDer()),
-                ExpectedPresenceId: request.ExpectedPresenceId);
-
-            await Profile2WireCodec.WriteMessageAsync(
-                connection.TransportStream,
-                open,
-                cancellationToken);
-
-            Profile2Message ackRaw = await Profile2WireCodec.ReadMessageAsync(
-                connection.TransportStream,
-                cancellationToken);
-
-            if (ackRaw is not Profile2Message.SessionOpenAck ack ||
-                !string.Equals(ack.SessionId, sessionId.Value, StringComparison.Ordinal))
+            try
             {
-            return DesktopTransferResult.Failed("Identity changed — pair again", TransferErrorCategory.Security);
+                using CancellationTokenSource openCts =
+                    _timeoutPolicy.CreateTimeoutTokenSource(
+                        _timeoutPolicy.PreambleAndSessionOpenTimeout,
+                        resolutionBudgetCts.Token);
+
+                await LanSessionPreambleInspector.WriteGld2PreambleAsync(
+                    connection.TransportStream,
+                    openCts.Token);
+
+                var open = new Profile2Message.SessionOpen(
+                    SessionId: sessionId.Value,
+                    Purpose: Profile2Constants.PurposeTrustedSend,
+                    AuthMethod: Profile2Constants.AuthMethodIdentityV1,
+                    InitiatorNonce: InvitationCodec.ToUnpaddedBase64Url(RandomNumberGenerator.GetBytes(32)),
+                    InitiatorDeviceName: localName,
+                    InitiatorPlatform: GetLocalPlatformString(),
+                    InitiatorIdentityPublicKey: localPublicKeyB64,
+                    ExpectedPresenceId: candidate.AdvertisedPresenceId ?? request.ExpectedPresenceId,
+                    ExpectedPeerIdentityFingerprint: enrolledPeer.FingerprintHex);
+
+                await Profile2WireCodec.WriteMessageAsync(
+                    connection.TransportStream,
+                    open,
+                    openCts.Token);
+
+                Profile2Message ackRaw = await Profile2WireCodec.ReadMessageAsync(
+                    connection.TransportStream,
+                    openCts.Token);
+
+                if (ackRaw is not Profile2Message.SessionOpenAck parsedAck ||
+                    !string.Equals(parsedAck.SessionId, sessionId.Value, StringComparison.Ordinal))
+                {
+                    sawUnrelatedCandidateIdentity = true;
+                    continue;
+                }
+
+                ack = parsedAck;
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                interaction.OnStatus(DesktopTransferDirection.Send, "Transfer cancelled.");
+                return DesktopTransferResult.CancelledByUser("Transfer cancelled.");
+            }
+            catch
+            {
+                sawUnrelatedCandidateIdentity = true;
+                continue;
+            }
+
+            string? responderFp = null;
+            string? responderPubHex = null;
+            if (!string.IsNullOrWhiteSpace(ack.ResponderIdentityPublicKey))
+            {
+                try
+                {
+                    byte[] responderSpki = InvitationCodec.FromUnpaddedBase64Url(ack.ResponderIdentityPublicKey);
+                    responderFp = Convert.ToHexStringLower(SHA256.HashData(responderSpki));
+                    responderPubHex = Convert.ToHexStringLower(responderSpki);
+                }
+                catch
+                {
+                    // Malformed responder identity key
+                }
+            }
+
+            bool responderMatchesExpectedFp =
+                responderFp != null &&
+                string.Equals(responderFp, enrolledPeer.FingerprintHex, StringComparison.Ordinal);
 
             if (!ack.Accepted)
             {
-                string mapped = ack.ErrorCode switch
+                if (responderFp != null && !responderMatchesExpectedFp)
                 {
-                    Profile2Constants.ErrorBusy => "This device is busy — try again",
-                    Profile2Constants.ErrorIdentityChanged or
-                    Profile2Constants.ErrorUntrustedPeer or
-                    Profile2Constants.ErrorAuthFailed => "Identity changed — pair again",
-                    Profile2Constants.ErrorExpired => "Code expired — get a new code",
-                    _ => Glide.Transport.Pairing.Profile2PairingEngine.MapErrorToUserCopy(
-                        ack.ErrorCode,
-                        enrolledPeer.DisplayName,
-                        ack.Message)
-                };
-                interaction.OnStatus(DesktopTransferDirection.Send, mapped);
-                return DesktopTransferResult.Failed(mapped, ack.ErrorCode switch
+                    // Connected peer proved a different identity key (e.g. another "ubuntu" device).
+                    if (candidate.IsSavedEndpoint)
+                    {
+                        sawSavedEndpointIdentityChanged = true;
+                    }
+                    else
+                    {
+                        sawUnrelatedCandidateIdentity = true;
+                    }
+                    continue;
+                }
+
+                if (string.Equals(ack.ErrorCode, Profile2Constants.ErrorBusy, StringComparison.Ordinal))
                 {
-                    Profile2Constants.ErrorBusy => TransferErrorCategory.Protocol,
-                    Profile2Constants.ErrorIdentityChanged or Profile2Constants.ErrorUntrustedPeer or
-                        Profile2Constants.ErrorAuthFailed => TransferErrorCategory.Security,
-                    _ => TransferErrorCategory.Protocol
-                });
+                    if (responderMatchesExpectedFp || candidate.IsSavedEndpoint)
+                    {
+                        sawBusyOnSavedOrVerified = true;
+                    }
+                    else
+                    {
+                        sawUnrelatedCandidateIdentity = true;
+                    }
+                    continue;
+                }
+
+                if (ack.ErrorCode is Profile2Constants.ErrorIdentityChanged
+                    or Profile2Constants.ErrorUntrustedPeer
+                    or Profile2Constants.ErrorAuthFailed)
+                {
+                    if (responderMatchesExpectedFp || candidate.IsSavedEndpoint)
+                    {
+                        sawSavedEndpointIdentityChanged = true;
+                    }
+                    else
+                    {
+                        sawUnrelatedCandidateIdentity = true;
+                    }
+                    continue;
+                }
+
+                if (responderMatchesExpectedFp)
+                {
+                    string mapped = ack.ErrorCode switch
+                    {
+                        Profile2Constants.ErrorExpired => "Code expired — get a new code",
+                        _ => Glide.Transport.Pairing.Profile2PairingEngine.MapErrorToUserCopy(
+                            ack.ErrorCode,
+                            enrolledPeer.DisplayName,
+                            ack.Message)
+                    };
+                    interaction.OnStatus(DesktopTransferDirection.Send, mapped);
+                    return DesktopTransferResult.Failed(mapped, TransferErrorCategory.Protocol);
+                }
+
+                sawUnrelatedCandidateIdentity = true;
+                continue;
             }
 
-            byte[] responderSpki = InvitationCodec.FromUnpaddedBase64Url(ack.ResponderIdentityPublicKey ?? string.Empty);
-            string responderFp = Convert.ToHexStringLower(SHA256.HashData(responderSpki));
-            string responderPubHex = Convert.ToHexStringLower(responderSpki);
-
-            if (!string.Equals(responderFp, enrolledPeer.FingerprintHex, StringComparison.Ordinal) ||
+            if (!responderMatchesExpectedFp ||
                 !string.Equals(responderPubHex, enrolledPeer.PublicKeyDerHex, StringComparison.Ordinal))
             {
-                interaction.OnStatus(DesktopTransferDirection.Send, "Identity changed — pair again");
-            return DesktopTransferResult.Failed("Identity changed — pair again", TransferErrorCategory.Security);
+                if (candidate.IsSavedEndpoint)
+                {
+                    sawSavedEndpointIdentityChanged = true;
+                }
+                else
+                {
+                    sawUnrelatedCandidateIdentity = true;
+                }
+                continue;
             }
 
-            DesktopTransferResult result = await RunSenderSessionAsync(
-                connection,
-                request,
-                totalBytes,
-                interaction,
-                cancellationToken,
-                hostedInvitationAuthority: null,
-                preEstablishedTrustedSessionId: sessionId,
-                trustedPeerFallbackName: ack.ResponderDeviceName ?? enrolledPeer.DisplayName);
-
-            if (connectedHost != null)
+            bool peerAuthenticated = false;
+            try
             {
-                request.TrustManager.EnrollVerifiedPeer(
-                    new VerifiedDesktopPeerIdentity(
-                        enrolledPeer.FingerprintHex,
-                        enrolledPeer.PublicKeyDerHex,
-                        ack.ResponderDeviceName ?? enrolledPeer.DisplayName,
-                        ack.ResponderPlatform ?? enrolledPeer.Platform,
-                        connectedHost,
-                        connectedPort),
-                    userApproved: true);
-            }
+                DesktopTransferResult result = await RunSenderSessionAsync(
+                    connection,
+                    request,
+                    totalBytes,
+                    interaction,
+                    cancellationToken,
+                    hostedInvitationAuthority: null,
+                    preEstablishedTrustedSessionId: sessionId,
+                    trustedPeerFallbackName: ack.ResponderDeviceName ?? enrolledPeer.DisplayName,
+                    preOfferAuthToken: resolutionBudgetCts.Token,
+                    onPeerCryptographicallyAuthenticated: () =>
+                    {
+                        peerAuthenticated = true;
+                        request.TrustManager.EnrollVerifiedPeer(
+                            new VerifiedDesktopPeerIdentity(
+                                enrolledPeer.FingerprintHex,
+                                enrolledPeer.PublicKeyDerHex,
+                                ack.ResponderDeviceName ?? enrolledPeer.DisplayName,
+                                ack.ResponderPlatform ?? enrolledPeer.Platform,
+                                endpoint.Address,
+                                endpoint.Port),
+                            userApproved: true);
+                    });
 
-            return result;
+                return result;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                interaction.OnStatus(DesktopTransferDirection.Send, "Transfer cancelled.");
+                return DesktopTransferResult.CancelledByUser("Transfer cancelled.");
+            }
+            catch (Exception ex) when (!peerAuthenticated)
+            {
+                if (ex is CryptographicException ||
+                    (ex is ProtocolViolationException pve &&
+                     string.Equals(pve.FailureCode, WireErrorCodes.AuthenticationFailed, StringComparison.Ordinal)))
+                {
+                    if (candidate.IsSavedEndpoint)
+                    {
+                        sawSavedEndpointIdentityChanged = true;
+                    }
+                    else
+                    {
+                        sawUnrelatedCandidateIdentity = true;
+                    }
+                }
+                else
+                {
+                    sawUnrelatedCandidateIdentity = true;
+                }
+                continue;
+            }
+            catch (CryptographicException)
+            {
+                interaction.OnStatus(DesktopTransferDirection.Send, TrustedEndpointResolver.SavedIdentityChangedMessage);
+                return DesktopTransferResult.Failed(TrustedEndpointResolver.SavedIdentityChangedMessage, TransferErrorCategory.Security);
+            }
+            catch (ProtocolViolationException ex) when (string.Equals(ex.FailureCode, WireErrorCodes.AuthenticationFailed, StringComparison.Ordinal))
+            {
+                interaction.OnStatus(DesktopTransferDirection.Send, TrustedEndpointResolver.SavedIdentityChangedMessage);
+                return DesktopTransferResult.Failed(TrustedEndpointResolver.SavedIdentityChangedMessage, TransferErrorCategory.Security);
+            }
+            catch (Exception ex)
+            {
+                string msg = DesktopTransferFailures.DescribeUserMessage(DesktopTransferDirection.Send, ex);
+                interaction.OnStatus(DesktopTransferDirection.Send, msg);
+                return DesktopTransferResult.Failed(msg, DesktopTransferFailures.Classify(ex));
+            }
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            interaction.OnStatus(DesktopTransferDirection.Send, "Transfer cancelled.");
-            return DesktopTransferResult.CancelledByUser("Transfer cancelled.");
-        }
-        catch (CryptographicException)
-        {
-            interaction.OnStatus(DesktopTransferDirection.Send, "Identity changed — pair again");
-            return DesktopTransferResult.Failed("Identity changed — pair again", TransferErrorCategory.Security);
-        }
-        catch (ProtocolViolationException ex) when (string.Equals(ex.FailureCode, WireErrorCodes.AuthenticationFailed, StringComparison.Ordinal))
-        {
-            interaction.OnStatus(DesktopTransferDirection.Send, "Identity changed — pair again");
-            return DesktopTransferResult.Failed("Identity changed — pair again", TransferErrorCategory.Security);
-        }
-        catch (Exception ex)
-        {
-            interaction.OnStatus(DesktopTransferDirection.Send, $"Send failed: {ex.Message}");
-            return DesktopTransferResult.Failed($"Send failed: {ex.Message}", DesktopTransferFailures.Classify(ex));
-        }
+
+        TrustedResolutionFailureKind failureKind =
+            TrustedEndpointResolver.ClassifyExhaustedCandidates(
+                sawBusyOnSavedOrVerified,
+                sawSavedEndpointIdentityChanged,
+                sawUnrelatedCandidateIdentity);
+        DesktopTransferResult failureResult = TrustedEndpointResolver.CreateFailureResult(failureKind);
+        interaction.OnStatus(DesktopTransferDirection.Send, failureResult.Message);
+        return failureResult;
     }
 
     public async Task<DesktopTransferResult> ReceiveTrustedAsync(
@@ -691,6 +814,17 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
 
         try
         {
+            string? localResponderPublicKeyB64 = null;
+            string? localResponderFingerprintHex = null;
+            if (request.TrustManager != null)
+            {
+                request.TrustManager.Initialize();
+                localResponderPublicKeyB64 =
+                    InvitationCodec.ToUnpaddedBase64Url(request.TrustManager.LocalPublicKeyDer());
+                localResponderFingerprintHex =
+                    request.TrustManager.LocalFingerprintHex();
+            }
+
             if (!string.Equals(open.Purpose, Profile2Constants.PurposeTrustedSend, StringComparison.Ordinal))
             {
                 await Profile2WireCodec.WriteMessageAsync(
@@ -700,23 +834,10 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                         Accepted: false,
                         ErrorCode: Profile2Constants.ErrorProtocolOrder,
                         Message: "Invalid session purpose for TRUSTED_SEND",
-                        ResponderDeviceName: localName),
+                        ResponderDeviceName: localName,
+                        ResponderIdentityPublicKey: localResponderPublicKeyB64),
                     cancellationToken);
                 return DesktopTransferResult.Failed("Invalid session purpose for TRUSTED_SEND.");
-            }
-
-            if (isBusy)
-            {
-                await Profile2WireCodec.WriteMessageAsync(
-                    connection.TransportStream,
-                    new Profile2Message.SessionOpenAck(
-                        SessionId: open.SessionId,
-                        Accepted: false,
-                        ErrorCode: Profile2Constants.ErrorBusy,
-                        Message: "This device is busy — try again",
-                        ResponderDeviceName: localName),
-                    cancellationToken);
-                return DesktopTransferResult.RejectedByPeer("This device is busy — try again", TransferErrorCategory.Protocol);
             }
 
             if (!string.Equals(open.AuthMethod, Profile2Constants.AuthMethodIdentityV1, StringComparison.Ordinal))
@@ -728,12 +849,13 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                         Accepted: false,
                         ErrorCode: Profile2Constants.ErrorUnsupportedVersion,
                         Message: "Update Glide to pair this device",
-                        ResponderDeviceName: localName),
+                        ResponderDeviceName: localName,
+                        ResponderIdentityPublicKey: localResponderPublicKeyB64),
                     cancellationToken);
                 return DesktopTransferResult.RejectedByPeer("Unsupported trusted send authentication method.", TransferErrorCategory.Protocol);
             }
 
-            if (request.TrustManager == null)
+            if (request.TrustManager == null || localResponderFingerprintHex == null)
             {
                 await Profile2WireCodec.WriteMessageAsync(
                     connection.TransportStream,
@@ -747,7 +869,22 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                 return DesktopTransferResult.RejectedByPeer("Trusted reconnect requires a persistent trust manager.", TransferErrorCategory.Security);
             }
 
-            request.TrustManager.Initialize();
+            if (!string.IsNullOrWhiteSpace(open.ExpectedPeerIdentityFingerprint) &&
+                !string.Equals(open.ExpectedPeerIdentityFingerprint, localResponderFingerprintHex, StringComparison.OrdinalIgnoreCase))
+            {
+                await Profile2WireCodec.WriteMessageAsync(
+                    connection.TransportStream,
+                    new Profile2Message.SessionOpenAck(
+                        SessionId: open.SessionId,
+                        Accepted: false,
+                        ErrorCode: Profile2Constants.ErrorUntrustedPeer,
+                        Message: "Target device identity does not match this receiver",
+                        ResponderDeviceName: localName,
+                        ResponderPlatform: GetLocalPlatformString(),
+                        ResponderIdentityPublicKey: localResponderPublicKeyB64),
+                    cancellationToken);
+                return DesktopTransferResult.RejectedByPeer("Trusted reconnect rejected: sender targeted a different device identity.", TransferErrorCategory.Security);
+            }
 
             byte[] initiatorSpki;
             try
@@ -763,7 +900,8 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                         Accepted: false,
                         ErrorCode: Profile2Constants.ErrorAuthFailed,
                         Message: "Identity changed — pair again",
-                        ResponderDeviceName: localName),
+                        ResponderDeviceName: localName,
+                        ResponderIdentityPublicKey: localResponderPublicKeyB64),
                     cancellationToken);
                 return DesktopTransferResult.RejectedByPeer("Malformed initiator identity key.", TransferErrorCategory.Security);
             }
@@ -781,7 +919,9 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                         Accepted: false,
                         ErrorCode: Profile2Constants.ErrorUntrustedPeer,
                         Message: "Identity changed — pair again",
-                        ResponderDeviceName: localName),
+                        ResponderDeviceName: localName,
+                        ResponderPlatform: GetLocalPlatformString(),
+                        ResponderIdentityPublicKey: localResponderPublicKeyB64),
                     cancellationToken);
                 return DesktopTransferResult.RejectedByPeer("Trusted reconnect rejected: sender is not enrolled.", TransferErrorCategory.Security);
             }
@@ -795,9 +935,27 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                         Accepted: false,
                         ErrorCode: Profile2Constants.ErrorIdentityChanged,
                         Message: "Identity changed — pair again",
-                        ResponderDeviceName: localName),
+                        ResponderDeviceName: localName,
+                        ResponderPlatform: GetLocalPlatformString(),
+                        ResponderIdentityPublicKey: localResponderPublicKeyB64),
                     cancellationToken);
                 return DesktopTransferResult.RejectedByPeer("Trusted reconnect rejected: sender identity key changed.", TransferErrorCategory.Security);
+            }
+
+            if (isBusy)
+            {
+                await Profile2WireCodec.WriteMessageAsync(
+                    connection.TransportStream,
+                    new Profile2Message.SessionOpenAck(
+                        SessionId: open.SessionId,
+                        Accepted: false,
+                        ErrorCode: Profile2Constants.ErrorBusy,
+                        Message: "This device is busy — try again",
+                        ResponderDeviceName: localName,
+                        ResponderPlatform: GetLocalPlatformString(),
+                        ResponderIdentityPublicKey: localResponderPublicKeyB64),
+                    cancellationToken);
+                return DesktopTransferResult.RejectedByPeer("This device is busy — try again", TransferErrorCategory.Protocol);
             }
 
             await Profile2WireCodec.WriteMessageAsync(
@@ -808,7 +966,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                     ResponderNonce: InvitationCodec.ToUnpaddedBase64Url(RandomNumberGenerator.GetBytes(32)),
                     ResponderDeviceName: localName,
                     ResponderPlatform: GetLocalPlatformString(),
-                    ResponderIdentityPublicKey: InvitationCodec.ToUnpaddedBase64Url(request.TrustManager.LocalPublicKeyDer())),
+                    ResponderIdentityPublicKey: localResponderPublicKeyB64),
                 cancellationToken);
 
             DesktopReceiveRequest enforcedRequest = request with
@@ -831,8 +989,9 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
         }
         catch (Exception ex)
         {
-            interaction.OnStatus(DesktopTransferDirection.Receive, $"Receive failed: {ex.Message}");
-            return DesktopTransferResult.Failed($"Receive failed: {ex.Message}", DesktopTransferFailures.Classify(ex));
+            string msg = DesktopTransferFailures.DescribeUserMessage(DesktopTransferDirection.Receive, ex);
+            interaction.OnStatus(DesktopTransferDirection.Receive, msg);
+            return DesktopTransferResult.Failed(msg, DesktopTransferFailures.Classify(ex));
         }
     }
 
@@ -861,7 +1020,9 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
         CancellationToken cancellationToken,
         LanInvitationAuthority? hostedInvitationAuthority = null,
         SessionId? preEstablishedTrustedSessionId = null,
-        string? trustedPeerFallbackName = null)
+        string? trustedPeerFallbackName = null,
+        CancellationToken? preOfferAuthToken = null,
+        Action? onPeerCryptographicallyAuthenticated = null)
     {
         await using IDesktopTransferAttemptDiagnostics diag =
             _diagnostics.BeginAttempt(DesktopTransferDirection.Send, totalBytes);
@@ -876,7 +1037,9 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                 cancellationToken,
                 hostedInvitationAuthority,
                 preEstablishedTrustedSessionId,
-                trustedPeerFallbackName);
+                trustedPeerFallbackName,
+                preOfferAuthToken,
+                onPeerCryptographicallyAuthenticated);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -899,15 +1062,20 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
         CancellationToken cancellationToken,
         LanInvitationAuthority? hostedInvitationAuthority = null,
         SessionId? preEstablishedTrustedSessionId = null,
-        string? trustedPeerFallbackName = null)
+        string? trustedPeerFallbackName = null,
+        CancellationToken? preOfferAuthToken = null,
+        Action? onPeerCryptographicallyAuthenticated = null)
     {
+        CancellationToken authToken = preOfferAuthToken ?? cancellationToken;
         await using var channel =
             new LanRecordChannel(
                 connection.TransportStream,
                 coalesceWrites: _ioOptions.EnableCoalescedFraming,
                 coalesceBufferBytes: _ioOptions.WriteCoalesceBufferBytes,
                 maxCoalesceDelayMs: (int)Math.Max(1, _ioOptions.MaxWriteBatchDelay.TotalMilliseconds),
-                bufferPool: _bufferPool);
+                bufferPool: _bufferPool,
+                lifetimeToken: cancellationToken,
+                abortTransport: connection.AbortTransport);
         var sequence = new DesktopControlSequence();
         SessionId sessionId;
 
@@ -1035,14 +1203,15 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                             .ToLowerInvariant(),
                     ["displayName"] = localName
                 }),
-            cancellationToken);
+            authToken);
 
         Envelope helloAck =
             await sequence.ReadExpectedAsync(
                 channel,
                 MessageTypes.HelloAck,
                 sessionId,
-                cancellationToken);
+                authToken,
+                timeout: _timeoutPolicy.MachineAuthTimeout);
 
         HashSet<string> negotiatedCapabilities =
             ValidateHelloAckCapabilities(
@@ -1100,7 +1269,8 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                         interaction,
                         localEndpointHostsTls:
                             hostedInvitationAuthority != null,
-                        cancellationToken: cancellationToken);
+                        cancellationToken: authToken,
+                        machineAuthTimeout: _timeoutPolicy.MachineAuthTimeout);
 
             interaction.OnStatus(
                 DesktopTransferDirection.Send,
@@ -1108,6 +1278,8 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                     ? $"Trusted identity authenticated: {authenticated.FingerprintHex[..12]}..."
                     : $"Peer identity cryptographically verified: {authenticated.FingerprintHex[..12]}...");
         }
+
+        onPeerCryptographicallyAuthenticated?.Invoke();
 
         var preparedItems =
             new List<PreparedSendItem>(request.Files.Count);
@@ -1185,7 +1357,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                 MessageTypes.OfferDecision,
                 sessionId,
                 cancellationToken,
-                timeout: OfferDecisionTimeout);
+                timeout: _timeoutPolicy.HumanApprovalTimeout);
         RequireExactString(
             offerDecision,
             "batchId",
@@ -1394,8 +1566,13 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                     }),
                 cancellationToken).ConfigureAwait(false);
 
-            interaction.OnPhase(DesktopTransferDirection.Send, DesktopTransferPhase.Verifying);
-            diag.OnPhaseChanged(DesktopTransferPhase.Verifying);
+            interaction.OnStatus(
+                DesktopTransferDirection.Send,
+                "Waiting for receiver confirmation…");
+            interaction.OnPhase(DesktopTransferDirection.Send, DesktopTransferPhase.WaitingForConfirmation);
+            diag.OnPhaseChanged(DesktopTransferPhase.WaitingForConfirmation);
+            TimeSpan itemFinalizationDeadline =
+                _timeoutPolicy.CalculateFinalizationDeadline(actualBytes);
             Envelope itemResult;
             try
             {
@@ -1404,7 +1581,8 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                         channel,
                         MessageTypes.ItemResult,
                         sessionId,
-                        cancellationToken).ConfigureAwait(false);
+                        cancellationToken,
+                        timeout: itemFinalizationDeadline).ConfigureAwait(false);
             }
             catch (Exception ackError) when (!cancellationToken.IsCancellationRequested && IsUncertainAckFailure(ackError))
             {
@@ -1481,8 +1659,13 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                 }),
             cancellationToken).ConfigureAwait(false);
 
-        interaction.OnPhase(DesktopTransferDirection.Send, DesktopTransferPhase.Verifying);
-        diag.OnPhaseChanged(DesktopTransferPhase.Verifying);
+        interaction.OnStatus(
+            DesktopTransferDirection.Send,
+            "Waiting for receiver confirmation…");
+        interaction.OnPhase(DesktopTransferDirection.Send, DesktopTransferPhase.WaitingForConfirmation);
+        diag.OnPhaseChanged(DesktopTransferPhase.WaitingForConfirmation);
+        TimeSpan batchFinalizationDeadline =
+            _timeoutPolicy.CalculateFinalizationDeadline(totalBytes);
         Envelope terminal;
         try
         {
@@ -1491,7 +1674,8 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                     channel,
                     [MessageTypes.BatchResult, MessageTypes.Error],
                     sessionId,
-                    cancellationToken).ConfigureAwait(false);
+                    cancellationToken,
+                    timeout: batchFinalizationDeadline).ConfigureAwait(false);
         }
         catch (Exception ackError) when (!cancellationToken.IsCancellationRequested && IsUncertainAckFailure(ackError))
         {
@@ -1623,7 +1807,9 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                 coalesceWrites: _ioOptions.EnableCoalescedFraming,
                 coalesceBufferBytes: _ioOptions.WriteCoalesceBufferBytes,
                 maxCoalesceDelayMs: (int)Math.Max(1, _ioOptions.MaxWriteBatchDelay.TotalMilliseconds),
-                bufferPool: _bufferPool);
+                bufferPool: _bufferPool,
+                lifetimeToken: cancellationToken,
+                abortTransport: connection.AbortTransport);
 
         LanBootstrapResult bootstrapResult;
         SessionId sessionId;
@@ -1643,7 +1829,8 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
             LanRecord? firstRecord =
                 await DesktopControlSequence.ReadRecordAsync(
                     channel,
-                    cancellationToken);
+                    cancellationToken,
+                    timeout: _timeoutPolicy.PreambleAndSessionOpenTimeout);
             if (firstRecord == null)
             {
                 return CompleteAttempt(
@@ -1732,7 +1919,8 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                     channel,
                     MessageTypes.Hello,
                     sessionId,
-                    cancellationToken);
+                    cancellationToken,
+                    timeout: _timeoutPolicy.MachineAuthTimeout);
 
             if (!string.Equals(
                     hello.Body["role"]?.ToString(),
@@ -1846,7 +2034,8 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                             request.ExpectedPeerFingerprintHex,
                             interaction,
                             localEndpointHostsTls,
-                            cancellationToken);
+                            cancellationToken,
+                            machineAuthTimeout: _timeoutPolicy.MachineAuthTimeout);
                 authenticatedPeerFingerprint =
                     authenticated.FingerprintHex;
 
@@ -2024,17 +2213,33 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
             interaction.OnPhase(DesktopTransferDirection.Receive, DesktopTransferPhase.AwaitingConsent);
             diag.OnPhaseChanged(DesktopTransferPhase.AwaitingConsent);
 
-            bool offerAccepted =
-                hasStorage &&
-                await interaction.ConfirmOfferAsync(
-                    new DesktopOffer(
-                        batchId,
-                        peerName,
-                        items,
-                        totalBytes,
-                        AuthenticatedPeerFingerprintHex:
-                            authenticatedPeerFingerprint),
-                    cancellationToken).ConfigureAwait(false);
+            bool offerAccepted;
+            using (CancellationTokenSource approvalTimeoutCts =
+                   _timeoutPolicy.CreateTimeoutTokenSource(
+                       _timeoutPolicy.HumanApprovalTimeout,
+                       cancellationToken))
+            {
+                try
+                {
+                    offerAccepted =
+                        hasStorage &&
+                        await interaction.ConfirmOfferAsync(
+                            new DesktopOffer(
+                                batchId,
+                                peerName,
+                                items,
+                                totalBytes,
+                                AuthenticatedPeerFingerprintHex:
+                                    authenticatedPeerFingerprint),
+                            approvalTimeoutCts.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                {
+                    throw new ProtocolViolationException(
+                        WireErrorCodes.Timeout,
+                        "Timed out waiting for local approval of the incoming transfer offer.");
+                }
+            }
 
             var decisionBody =
                 new JsonObject
@@ -2168,7 +2373,8 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                                         channel,
                                         bulkRef,
                                         itemTimeoutCts,
-                                        cancellationToken).ConfigureAwait(false);
+                                        cancellationToken,
+                                        timeout: _timeoutPolicy.NoPayloadProgressTimeout).ConfigureAwait(false);
                             long readTicks = Stopwatch.GetTimestamp() - readStart;
                             if (record == null)
                             {
@@ -2405,20 +2611,32 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                 }
                 else
                 {
-                    QuarantineCommitResult commitResult =
-                        await request.StagingStore
-                            .CommitVerifiedQuarantineFileWithMetricsAsync(
-                                sessionId,
-                                itemId,
-                                item.RelativePath,
-                                new Sha256Digest(actualSha),
-                                receivedBytes,
-                                cancellationToken,
-                                onBeforePublish: () =>
-                                {
-                                    interaction.OnPhase(DesktopTransferDirection.Receive, DesktopTransferPhase.Saving);
-                                    diag.OnPhaseChanged(DesktopTransferPhase.Saving);
-                                }).ConfigureAwait(false);
+                    QuarantineCommitResult commitResult;
+                    try
+                    {
+                        commitResult =
+                            await request.StagingStore
+                                .CommitVerifiedQuarantineFileWithMetricsAsync(
+                                    sessionId,
+                                    itemId,
+                                    item.RelativePath,
+                                    new Sha256Digest(actualSha),
+                                    receivedBytes,
+                                    cancellationToken,
+                                    onBeforePublish: () =>
+                                    {
+                                        interaction.OnPhase(DesktopTransferDirection.Receive, DesktopTransferPhase.Saving);
+                                        diag.OnPhaseChanged(DesktopTransferPhase.Saving);
+                                    },
+                                    storageProgressTimeout: _timeoutPolicy.NoPayloadProgressTimeout).ConfigureAwait(false);
+                    }
+                    catch (TimeoutException timeoutEx)
+                    {
+                        interaction.OnStatus(
+                            DesktopTransferDirection.Receive,
+                            "Local verification or saving made no I/O progress for 60 seconds; waiting for operating-system cleanup before releasing staging files.");
+                        throw new IOException(timeoutEx.Message, timeoutEx);
+                    }
                     finalPath = commitResult.CommittedPath;
                     diag.AddVerificationRead(receivedBytes, commitResult.VerificationReadStopwatchTicks);
                     diag.AddCommit(commitResult.CommitStopwatchTicks);
@@ -2998,6 +3216,8 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
             });
 
         using var pipelineCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        using CancellationTokenRegistration abortRegistration =
+            pipelineCts.Token.Register(channel.CancelAndAbortTransport);
         long receivedBytes = 0;
         long cumulative = cumulativeTransferred;
         int currentDepth = 0;
@@ -3043,6 +3263,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
             catch
             {
                 pipelineCts.Cancel();
+                channel.CancelAndAbortTransport();
                 throw;
             }
         }, CancellationToken.None);
@@ -3058,7 +3279,8 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                         channel,
                         bulkRef,
                         itemTimeoutCts,
-                        pipelineCts.Token).ConfigureAwait(false);
+                        pipelineCts.Token,
+                        timeout: _timeoutPolicy.NoPayloadProgressTimeout).ConfigureAwait(false);
                 long readTicks = Stopwatch.GetTimestamp() - readStart;
 
                 if (record == null)

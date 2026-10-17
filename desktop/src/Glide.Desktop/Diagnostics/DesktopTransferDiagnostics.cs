@@ -99,20 +99,30 @@ public sealed class BoundedTransferDiagnosticSink : IDesktopTransferDiagnostics,
 {
     public const string DiagnosticLogPathEnvVar = "GLIDE_DIAGNOSTIC_LOG_PATH";
     public const string BuildCommitEnvVar = "GLIDE_BUILD_COMMIT";
+    public const long DefaultMaxLogFileBytes = 5L * 1024 * 1024; // 5 MiB
+    public const int DefaultMaxLogFiles = 4;
     private const int BoundedQueueCapacity = 256;
 
     private readonly string? _logFilePath;
+    private readonly long _maxFileBytes;
+    private readonly int _maxFileCount;
     private readonly string _buildCommit;
     private readonly Channel<string>? _writeChannel;
     private readonly Task? _writerTask;
     private readonly CancellationTokenSource _disposeCts = new();
     private bool _disposed;
 
-    public BoundedTransferDiagnosticSink(string? logFilePath = null, string? buildCommit = null)
+    public BoundedTransferDiagnosticSink(
+        string? logFilePath = null,
+        string? buildCommit = null,
+        long maxFileBytes = DefaultMaxLogFileBytes,
+        int maxFileCount = DefaultMaxLogFiles)
     {
         _logFilePath = string.IsNullOrWhiteSpace(logFilePath)
             ? Environment.GetEnvironmentVariable(DiagnosticLogPathEnvVar)
             : logFilePath;
+        _maxFileBytes = Math.Max(4096, maxFileBytes);
+        _maxFileCount = Math.Clamp(maxFileCount, 1, 16);
         _buildCommit = ResolveBuildCommit(buildCommit);
 
         if (!string.IsNullOrWhiteSpace(_logFilePath))
@@ -130,12 +140,34 @@ public sealed class BoundedTransferDiagnosticSink : IDesktopTransferDiagnostics,
                 SingleWriter = false,
                 FullMode = BoundedChannelFullMode.DropOldest
             });
-            _writerTask = Task.Run(() => RunFileWriterAsync(fullPath, _writeChannel.Reader));
+            _writerTask = Task.Run(() => RunFileWriterAsync(fullPath, _writeChannel.Reader, _maxFileBytes, _maxFileCount));
         }
+    }
+
+    public string? LogFilePath => _logFilePath;
+
+    public static string GetDefaultRotatingLogPath()
+    {
+        string? envPath = Environment.GetEnvironmentVariable(DiagnosticLogPathEnvVar);
+        if (!string.IsNullOrWhiteSpace(envPath))
+        {
+            return Path.GetFullPath(envPath);
+        }
+
+        string appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        if (string.IsNullOrWhiteSpace(appData))
+        {
+            appData = Path.GetTempPath();
+        }
+
+        return Path.Combine(appData, "Glide", "logs", "glide-diagnostics.jsonl");
     }
 
     public static IDesktopTransferDiagnostics CreateDefault() =>
         new BoundedTransferDiagnosticSink();
+
+    public static BoundedTransferDiagnosticSink CreateDefaultRotating() =>
+        new BoundedTransferDiagnosticSink(GetDefaultRotatingLogPath());
 
     public IDesktopTransferAttemptDiagnostics BeginAttempt(
         DesktopTransferDirection direction,
@@ -148,36 +180,203 @@ public sealed class BoundedTransferDiagnosticSink : IDesktopTransferDiagnostics,
         return new AttemptDiagnostics(this, id, _buildCommit, direction, declaredTotalBytes);
     }
 
+    public void RecordEvent(string category, string message, string? technicalDetail = null)
+    {
+        if (!IsWriting) return;
+        var payload = new
+        {
+            timestampUtc = DateTimeOffset.UtcNow.ToString("O"),
+            buildCommit = _buildCommit,
+            type = "event",
+            category = SanitizeDiagnosticText(category),
+            message = SanitizeDiagnosticText(message),
+            detail = string.IsNullOrWhiteSpace(technicalDetail) ? null : SanitizeDiagnosticText(technicalDetail)
+        };
+        EnqueueLine(JsonSerializer.Serialize(payload));
+    }
+
+    public static string SanitizeDiagnosticText(string? input)
+    {
+        if (string.IsNullOrEmpty(input))
+        {
+            return string.Empty;
+        }
+
+        string s = input;
+        s = System.Text.RegularExpressions.Regex.Replace(
+            s,
+            @"glide://pair/[^\s""']+",
+            "glide://pair/[REDACTED]",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        s = System.Text.RegularExpressions.Regex.Replace(
+            s,
+            @"(token|secret|pin|password|spki|privatekey)\s*[:=]\s*[^\s,;""']+",
+            "$1=[REDACTED]",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        return s;
+    }
+
+    public static async Task<string> ExportSanitizedDiagnosticBundleAsync(
+        string destinationFilePath,
+        string? primaryLogFilePath = null,
+        string? extraSummaryJson = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(destinationFilePath);
+        string fullDest = Path.GetFullPath(destinationFilePath);
+        string? destDir = Path.GetDirectoryName(fullDest);
+        if (!string.IsNullOrWhiteSpace(destDir))
+        {
+            Directory.CreateDirectory(destDir);
+        }
+
+        string logBase = string.IsNullOrWhiteSpace(primaryLogFilePath)
+            ? GetDefaultRotatingLogPath()
+            : Path.GetFullPath(primaryLogFilePath);
+
+        await using var outStream = new FileStream(
+            fullDest,
+            FileMode.Create,
+            FileAccess.Write,
+            FileShare.Read,
+            bufferSize: 16_384,
+            useAsync: true);
+        await using var writer = new StreamWriter(outStream);
+
+        var header = new
+        {
+            exportedAtUtc = DateTimeOffset.UtcNow.ToString("O"),
+            buildCommit = ResolveBuildCommit(),
+            osDescription = System.Runtime.InteropServices.RuntimeInformation.OSDescription,
+            frameworkDescription = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription,
+            summary = string.IsNullOrWhiteSpace(extraSummaryJson) ? null : SanitizeDiagnosticText(extraSummaryJson)
+        };
+        await writer.WriteLineAsync(JsonSerializer.Serialize(header)).ConfigureAwait(false);
+
+        for (int idx = DefaultMaxLogFiles - 1; idx >= 0; idx--)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            string candidate = idx == 0 ? logBase : $"{logBase}.{idx}";
+            if (!File.Exists(candidate))
+            {
+                continue;
+            }
+
+            try
+            {
+                await using var inStream = new FileStream(
+                    candidate,
+                    FileMode.Open,
+                    FileAccess.Read,
+                    FileShare.ReadWrite | FileShare.Delete,
+                    bufferSize: 16_384,
+                    useAsync: true);
+                using var reader = new StreamReader(inStream);
+                while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
+                {
+                    await writer.WriteLineAsync(SanitizeDiagnosticText(line)).ConfigureAwait(false);
+                }
+            }
+            catch
+            {
+                // Best-effort export of active log files
+            }
+        }
+
+        await writer.FlushAsync(cancellationToken).ConfigureAwait(false);
+        return fullDest;
+    }
+
     internal bool IsWriting => !_disposed && _writeChannel != null;
 
     internal void EnqueueLine(string jsonLine)
     {
         if (_disposed || _writeChannel == null) return;
-        _writeChannel.Writer.TryWrite(jsonLine);
+        _writeChannel.Writer.TryWrite(SanitizeDiagnosticText(jsonLine));
     }
 
-    private static async Task RunFileWriterAsync(string filePath, ChannelReader<string> reader)
+    private static async Task RunFileWriterAsync(
+        string filePath,
+        ChannelReader<string> reader,
+        long maxFileBytes,
+        int maxFileCount)
     {
+        FileStream? stream = null;
+        StreamWriter? writer = null;
         try
         {
-            await using var stream = new FileStream(
-                filePath,
-                FileMode.Append,
-                FileAccess.Write,
-                FileShare.ReadWrite,
-                bufferSize: 16_384,
-                useAsync: true);
-            await using var writer = new StreamWriter(stream);
+            void OpenLogStream()
+            {
+                stream = new FileStream(
+                    filePath,
+                    FileMode.Append,
+                    FileAccess.Write,
+                    FileShare.ReadWrite | FileShare.Delete,
+                    bufferSize: 16_384,
+                    useAsync: true);
+                writer = new StreamWriter(stream);
+            }
+
+            void RotateLogsIfNeeded(int upcomingBytes)
+            {
+                if (stream == null)
+                {
+                    OpenLogStream();
+                }
+
+                if (stream!.Length + upcomingBytes <= maxFileBytes)
+                {
+                    return;
+                }
+
+                writer?.Dispose();
+                stream?.Dispose();
+                writer = null;
+                stream = null;
+
+                if (maxFileCount <= 1)
+                {
+                    try { File.Delete(filePath); } catch { }
+                }
+                else
+                {
+                    string oldest = $"{filePath}.{maxFileCount - 1}";
+                    try { if (File.Exists(oldest)) File.Delete(oldest); } catch { }
+
+                    for (int i = maxFileCount - 2; i >= 1; i--)
+                    {
+                        string src = $"{filePath}.{i}";
+                        string dst = $"{filePath}.{i + 1}";
+                        try { if (File.Exists(src)) File.Move(src, dst, overwrite: true); } catch { }
+                    }
+
+                    try { if (File.Exists(filePath)) File.Move(filePath, $"{filePath}.1", overwrite: true); } catch { }
+                }
+
+                OpenLogStream();
+            }
+
+            OpenLogStream();
 
             await foreach (string line in reader.ReadAllAsync().ConfigureAwait(false))
             {
-                await writer.WriteLineAsync(line).ConfigureAwait(false);
-                await writer.FlushAsync().ConfigureAwait(false);
+                int byteEstimate = System.Text.Encoding.UTF8.GetByteCount(line) + 2;
+                RotateLogsIfNeeded(byteEstimate);
+                if (writer != null)
+                {
+                    await writer.WriteLineAsync(line).ConfigureAwait(false);
+                    await writer.FlushAsync().ConfigureAwait(false);
+                }
             }
         }
         catch
         {
             // Diagnostic logging must never crash the host process.
+        }
+        finally
+        {
+            try { writer?.Dispose(); } catch { }
+            try { stream?.Dispose(); } catch { }
         }
     }
 
@@ -394,6 +593,7 @@ public sealed class BoundedTransferDiagnosticSink : IDesktopTransferDiagnostics,
                     _payloadEndTimestamp = now;
                     break;
                 case DesktopTransferPhase.Verifying:
+                case DesktopTransferPhase.WaitingForConfirmation:
                     _verificationTicks += delta;
                     break;
                 case DesktopTransferPhase.Saving:

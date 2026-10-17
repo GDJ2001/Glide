@@ -40,10 +40,17 @@ public sealed class TlsSocketConnection : IAsyncDisposable
         TransportStream = new Framing.PrefixedStream(TransportStream, prefix, leaveInnerOpen: true);
     }
 
+    public void AbortTransport()
+    {
+        try { TcpClient.Client?.Close(0); } catch { }
+        try { TcpClient.Close(); } catch { }
+        try { SslStream.Close(); } catch { }
+    }
+
     public async ValueTask DisposeAsync()
     {
-        await SslStream.DisposeAsync();
-        TcpClient.Dispose();
+        try { await SslStream.DisposeAsync(); } catch { }
+        try { TcpClient.Dispose(); } catch { }
     }
 }
 
@@ -63,9 +70,23 @@ public sealed class TlsSocketListener : IDisposable
         BoundPort = ((IPEndPoint)_listener.LocalEndpoint).Port;
     }
 
-    public async Task<TlsSocketConnection> AcceptConnectionAsync(CancellationToken cancellationToken = default)
+    public Task<TcpClient> AcceptTcpClientAsync(CancellationToken cancellationToken = default) =>
+        _listener.AcceptTcpClientAsync(cancellationToken).AsTask();
+
+    public async Task<TlsSocketConnection> AcceptConnectionAsync(
+        CancellationToken cancellationToken = default,
+        TimeSpan? handshakeTimeout = null)
     {
-        var tcpClient = await _listener.AcceptTcpClientAsync(cancellationToken);
+        var tcpClient = await _listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
+        return await AuthenticateAcceptedClientAsync(tcpClient, cancellationToken, handshakeTimeout).ConfigureAwait(false);
+    }
+
+    public async Task<TlsSocketConnection> AuthenticateAcceptedClientAsync(
+        TcpClient tcpClient,
+        CancellationToken cancellationToken = default,
+        TimeSpan? handshakeTimeout = null)
+    {
+        ArgumentNullException.ThrowIfNull(tcpClient);
         tcpClient.NoDelay = true;
 
         byte[]? remotePublicKey = null;
@@ -110,12 +131,14 @@ public sealed class TlsSocketListener : IDisposable
 
         try
         {
-            // An accepted TCP socket must not hold the single active listener
-            // indefinitely without completing TLS. Leave the idle accept loop
-            // unbounded, but bound each individual handshake.
+            // An accepted TCP socket must not hold the listener indefinitely without completing TLS.
+            TimeSpan effectiveHandshakeTimeout = handshakeTimeout ?? TimeSpan.FromSeconds(15);
             using var handshakeCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            handshakeCts.CancelAfter(TimeSpan.FromSeconds(15));
-            await sslStream.AuthenticateAsServerAsync(options, handshakeCts.Token);
+            if (effectiveHandshakeTimeout > TimeSpan.Zero && effectiveHandshakeTimeout != Timeout.InfiniteTimeSpan)
+            {
+                handshakeCts.CancelAfter(effectiveHandshakeTimeout);
+            }
+            await sslStream.AuthenticateAsServerAsync(options, handshakeCts.Token).ConfigureAwait(false);
 
             if (sslStream.SslProtocol != SslProtocols.Tls13)
             {
@@ -140,8 +163,8 @@ public sealed class TlsSocketListener : IDisposable
         }
         catch
         {
-            await sslStream.DisposeAsync();
-            tcpClient.Dispose();
+            try { await sslStream.DisposeAsync().ConfigureAwait(false); } catch { }
+            try { tcpClient.Dispose(); } catch { }
             throw;
         }
     }

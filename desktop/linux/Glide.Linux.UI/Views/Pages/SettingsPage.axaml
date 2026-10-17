@@ -119,6 +119,14 @@
             <TextBlock Text="The TCP port used for native TLS peer-to-peer transfers (default 53319):" Classes="muted" />
             <TextBox Text="{Binding ListeningPort}" Width="140" HorizontalAlignment="Left" Classes="body" />
           </StackPanel>
+
+          <StackPanel Spacing="6">
+            <TextBlock Text="Diagnostics" FontWeight="Medium" Classes="body" />
+            <TextBlock Text="Export a sanitized diagnostic log bundle (free of tokens, PINs, or file contents):" Classes="muted" TextWrapping="Wrap" />
+            <Button Content="Export diagnostic logs" Command="{Binding ExportDiagnosticsCommand}"
+                    Classes="secondary" HorizontalAlignment="Left"
+                    AutomationProperties.Name="Export sanitized diagnostic logs" />
+          </StackPanel>
         </StackPanel>
       </Border>
 

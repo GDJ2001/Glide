@@ -31,7 +31,8 @@ internal static class DesktopTrustedSessionAuthenticator
         string? expectedPeerFingerprintHex,
         IDesktopTransferInteraction interaction,
         bool localEndpointHostsTls,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        TimeSpan? machineAuthTimeout = null)
     {
         RequireIdentityCapability(negotiatedCapabilities);
         string channelBinding =
@@ -80,7 +81,8 @@ internal static class DesktopTrustedSessionAuthenticator
                 channel,
                 MessageTypes.IdentityResponse,
                 sessionId,
-                cancellationToken);
+                cancellationToken,
+                timeout: machineAuthTimeout);
 
         VerifiedDesktopPeerIdentity peer =
             VerifyResponse(
@@ -110,7 +112,8 @@ internal static class DesktopTrustedSessionAuthenticator
                 channel,
                 MessageTypes.IdentityChallenge,
                 sessionId,
-                cancellationToken);
+                cancellationToken,
+                timeout: machineAuthTimeout);
 
         ValidateChallenge(
             reciprocalChallenge,
@@ -148,7 +151,8 @@ internal static class DesktopTrustedSessionAuthenticator
         string? expectedPeerFingerprintHex,
         IDesktopTransferInteraction interaction,
         bool localEndpointHostsTls = true,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        TimeSpan? machineAuthTimeout = null)
     {
         RequireIdentityCapability(negotiatedCapabilities);
         string channelBinding =
@@ -171,7 +175,8 @@ internal static class DesktopTrustedSessionAuthenticator
                 channel,
                 MessageTypes.IdentityChallenge,
                 sessionId,
-                cancellationToken);
+                cancellationToken,
+                timeout: machineAuthTimeout);
 
         string claimedPeerFingerprint =
             RequireChallengeField(
@@ -235,7 +240,8 @@ internal static class DesktopTrustedSessionAuthenticator
                 channel,
                 MessageTypes.IdentityResponse,
                 sessionId,
-                cancellationToken);
+                cancellationToken,
+                timeout: machineAuthTimeout);
 
         string expectedSigner =
             expectedPeerFingerprintHex

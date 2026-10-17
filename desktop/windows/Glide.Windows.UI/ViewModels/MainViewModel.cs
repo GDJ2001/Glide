@@ -290,7 +290,10 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         });
         _pairing.PeerPaired += _ => RefreshTrustedDevices();
         _pairInvitationManager.SnapshotProvider.NetworkAddressChanged += (_, _) =>
+        {
+            _mdnsService.NotifyNetworkInterfacesChanged();
             RunOnUi(() => { if (_pairing.IsReadyWindowActive) _pairing.Cancel(); });
+        };
 
         SwitchTabCommand = new RelayCommand(param => CurrentTab = param?.ToString() ?? "Send");
         FindPairDevicesCommand = new RelayCommand(() => _pairing.BeginFindDevices());
@@ -584,36 +587,11 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             }
         };
 
-        _mdnsService.PeerDiscovered += peer =>
+        _mdnsService.SnapshotChanged += snapshot =>
         {
-            Application.Current?.Dispatcher?.Invoke(() =>
-            {
-                if (!DiscoveredPeers.Any(p => p.Host == peer.Host && p.Port == peer.Port))
-                {
-                    DiscoveredPeers.Add(new DiscoveredPeerViewModel(peer));
-                }
-                else
-                {
-                    var existing = DiscoveredPeers.First(p => p.Host == peer.Host && p.Port == peer.Port);
-                    DiscoveredPeers.Remove(existing);
-                    DiscoveredPeers.Add(new DiscoveredPeerViewModel(peer));
-                }
-                _pairing.NotifyPeerCount(DiscoveredPeers.Count(p => p.IsPairReady));
-            });
+            RunOnUi(() => ApplyDiscoverySnapshot(snapshot));
         };
-
-        _mdnsService.PeerLost += peer =>
-        {
-            Application.Current?.Dispatcher?.Invoke(() =>
-            {
-                var existing = DiscoveredPeers.FirstOrDefault(p => p.Host == peer.Host && p.Port == peer.Port);
-                if (existing != null)
-                {
-                    DiscoveredPeers.Remove(existing);
-                }
-                _pairing.NotifyPeerCount(DiscoveredPeers.Count(p => p.IsPairReady));
-            });
-        };
+        ApplyDiscoverySnapshot(_mdnsService.Snapshot);
 
         try
         {
@@ -626,6 +604,43 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
 
         RefreshNetworkInfo();
         _ = ToggleListenerAsync();
+    }
+
+    private long _appliedDiscoveryRevision = -1;
+
+    private void ApplyDiscoverySnapshot(DiscoverySnapshot snapshot)
+    {
+        if (snapshot.Revision < _appliedDiscoveryRevision)
+        {
+            return;
+        }
+
+        _appliedDiscoveryRevision = snapshot.Revision;
+        string? selectedPresence = _selectedPeer?.PresenceId;
+        string? selectedHost = _selectedPeer?.Host;
+        int? selectedPort = _selectedPeer?.Port;
+
+        DiscoveredPeers.Clear();
+        DiscoveredPeerViewModel? retainedSelection = null;
+        foreach (DiscoveredPeer peer in snapshot.Peers)
+        {
+            var vm = new DiscoveredPeerViewModel(peer);
+            DiscoveredPeers.Add(vm);
+            if (selectedPresence != null &&
+                string.Equals(peer.PresenceId, selectedPresence, StringComparison.Ordinal) &&
+                string.Equals(peer.Host, selectedHost, StringComparison.Ordinal) &&
+                peer.Port == selectedPort)
+            {
+                retainedSelection = vm;
+            }
+        }
+
+        if (!ReferenceEquals(_selectedPeer, retainedSelection))
+        {
+            _selectedPeer = retainedSelection;
+        }
+
+        _pairing.NotifyPeerCount(DiscoveredPeers.Count(p => p.IsPairReady));
     }
 
     public string CurrentTab
@@ -1572,11 +1587,20 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             TotalProgress = 0;
             _transferStopwatch.Restart();
 
-            var candidates = DiscoveredPeers
-                .Where(p => p.SupportsTrustedReconnect &&
-                    string.Equals(p.DeviceName, peer.DisplayName, StringComparison.Ordinal))
-                .Select(p => new LanEndpoint(p.Host, p.Port))
-                .ToList();
+            var trustedPeerModel = _trustManager.GetTrustedPeers()
+                .FirstOrDefault(p => string.Equals(p.FingerprintHex, peer.FingerprintHex, StringComparison.OrdinalIgnoreCase))
+                ?? new DesktopTrustedPeer(
+                    peer.FingerprintHex,
+                    string.Empty,
+                    peer.DisplayName,
+                    DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                    DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                    Platform: peer.Platform,
+                    LastKnownHost: peer.LastKnownHost,
+                    LastKnownPort: peer.LastKnownPort);
+            var candidates = TrustedEndpointResolver.ResolveEndpoints(
+                trustedPeerModel,
+                _mdnsService.Snapshot.Peers);
             var files = SelectedFiles
                 .Select(item => new DesktopTransferFile(item.FilePath, item.Name))
                 .ToList();

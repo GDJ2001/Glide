@@ -337,6 +337,7 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
                 DesktopTransferPhase.Transferring => "Transferring…",
                 DesktopTransferPhase.Verifying => "Verifying files…",
                 DesktopTransferPhase.Saving => "Saving files…",
+                DesktopTransferPhase.WaitingForConfirmation => "Waiting for receiver confirmation…",
                 _ => "Connecting…"
             };
             _owner.SetSnapshot(new DesktopTransferSnapshot(phase, direction, PeerName, message, RunId: _runId));
@@ -365,6 +366,7 @@ public enum DesktopTransferPhase
     Interrupted,
     Verifying,
     Saving,
+    WaitingForConfirmation,
     Completed,
     Cancelled,
     Failed
@@ -383,5 +385,6 @@ public sealed record DesktopTransferSnapshot(
 
     public bool IsActive => Phase is DesktopTransferPhase.Preparing or
         DesktopTransferPhase.AwaitingConsent or DesktopTransferPhase.Transferring or
-        DesktopTransferPhase.Paused or DesktopTransferPhase.Verifying or DesktopTransferPhase.Saving;
+        DesktopTransferPhase.Paused or DesktopTransferPhase.Verifying or DesktopTransferPhase.Saving or
+        DesktopTransferPhase.WaitingForConfirmation;
 }

@@ -45,6 +45,55 @@ public static class Profile2PairingEngine
         };
     }
 
+    public static readonly TimeSpan DefaultMachineAuthTimeout = TimeSpan.FromSeconds(15);
+    public static readonly TimeSpan DefaultHumanApprovalTimeout = TimeSpan.FromSeconds(120);
+
+    private static async Task<Profile2Message> ReadMessageWithDeadlineAsync(
+        Stream stream,
+        TimeSpan deadline,
+        CancellationToken cancellationToken)
+    {
+        if (deadline <= TimeSpan.Zero || deadline == Timeout.InfiniteTimeSpan)
+        {
+            return await Profile2WireCodec.ReadMessageAsync(stream, cancellationToken).ConfigureAwait(false);
+        }
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cts.CancelAfter(deadline);
+        try
+        {
+            return await Profile2WireCodec.ReadMessageAsync(stream, cts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException($"Profile 2 message read timed out after {deadline.TotalSeconds:F1}s.");
+        }
+    }
+
+    private static async Task WriteMessageWithDeadlineAsync(
+        Stream stream,
+        Profile2Message message,
+        TimeSpan deadline,
+        CancellationToken cancellationToken)
+    {
+        if (deadline <= TimeSpan.Zero || deadline == Timeout.InfiniteTimeSpan)
+        {
+            await Profile2WireCodec.WriteMessageAsync(stream, message, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cts.CancelAfter(deadline);
+        try
+        {
+            await Profile2WireCodec.WriteMessageAsync(stream, message, cts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException($"Profile 2 message write timed out after {deadline.TotalSeconds:F1}s.");
+        }
+    }
+
     public static async Task<Profile2PairOutcome> RunInitiatorPinPairAsync(
         string host,
         int port,
@@ -55,7 +104,11 @@ public static class Profile2PairingEngine
         DesktopPersistentTrustManager trustManager,
         Func<VerifiedDesktopPeerIdentity, CancellationToken, Task<bool>> approvePeerAsync,
         Action? onVerifying = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        TimeSpan? tcpConnectTimeout = null,
+        TimeSpan? tlsHandshakeTimeout = null,
+        TimeSpan? machineAuthTimeout = null,
+        TimeSpan? humanApprovalTimeout = null)
     {
         ArgumentNullException.ThrowIfNull(trustManager);
         ArgumentNullException.ThrowIfNull(approvePeerAsync);
@@ -72,7 +125,13 @@ public static class Profile2PairingEngine
         try
         {
             var client = new TlsSocketClient();
-            connection = await client.ConnectAsync(host, port, expectedSpkiSha256: null, cancellationToken).ConfigureAwait(false);
+            connection = await client.ConnectAsync(
+                host,
+                port,
+                expectedSpkiSha256: null,
+                cancellationToken,
+                tcpConnectTimeout,
+                tlsHandshakeTimeout).ConfigureAwait(false);
             return await RunInitiatorPinPairOverConnectionAsync(
                 connection,
                 host,
@@ -84,7 +143,9 @@ public static class Profile2PairingEngine
                 trustManager,
                 approvePeerAsync,
                 onVerifying,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken,
+                machineAuthTimeout,
+                humanApprovalTimeout).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -116,8 +177,12 @@ public static class Profile2PairingEngine
         DesktopPersistentTrustManager trustManager,
         Func<VerifiedDesktopPeerIdentity, CancellationToken, Task<bool>> approvePeerAsync,
         Action? onVerifying = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        TimeSpan? machineAuthTimeout = null,
+        TimeSpan? humanApprovalTimeout = null)
     {
+        TimeSpan authDeadline = machineAuthTimeout ?? DefaultMachineAuthTimeout;
+        TimeSpan approvalDeadline = humanApprovalTimeout ?? DefaultHumanApprovalTimeout;
         byte[] pinBytes = Encoding.ASCII.GetBytes(sixDigitPin);
         try
         {
@@ -138,9 +203,9 @@ public static class Profile2PairingEngine
                 InitiatorIdentityPublicKey: InvitationCodec.ToUnpaddedBase64Url(initiatorSpki),
                 ExpectedPresenceId: expectedPresenceId);
 
-            await Profile2WireCodec.WriteMessageAsync(stream, open, cancellationToken).ConfigureAwait(false);
+            await WriteMessageWithDeadlineAsync(stream, open, authDeadline, cancellationToken).ConfigureAwait(false);
 
-            var ackMsg = await Profile2WireCodec.ReadMessageAsync(stream, cancellationToken).ConfigureAwait(false);
+            var ackMsg = await ReadMessageWithDeadlineAsync(stream, authDeadline, cancellationToken).ConfigureAwait(false);
             if (ackMsg is not Profile2Message.SessionOpenAck ack)
             {
                 return Profile2PairOutcome.Failure(Profile2Constants.ErrorProtocolOrder, "Pairing failed");
@@ -170,15 +235,16 @@ public static class Profile2PairingEngine
             byte[] mySpakeMsg = spake.GenerateMessage(pinBytes);
             CryptographicOperations.ZeroMemory(pinBytes);
 
-            await Profile2WireCodec.WriteMessageAsync(
+            await WriteMessageWithDeadlineAsync(
                 stream,
                 new Profile2Message.PairMsg(
                     SessionId: sessionId,
                     Role: Profile2Constants.RoleInitiator,
                     SpakePublicValue: InvitationCodec.ToUnpaddedBase64Url(mySpakeMsg)),
+                authDeadline,
                 cancellationToken).ConfigureAwait(false);
 
-            var peerMsgRaw = await Profile2WireCodec.ReadMessageAsync(stream, cancellationToken).ConfigureAwait(false);
+            var peerMsgRaw = await ReadMessageWithDeadlineAsync(stream, authDeadline, cancellationToken).ConfigureAwait(false);
             if (peerMsgRaw is Profile2Message.PairResult earlyFailure)
             {
                 return Profile2PairOutcome.Failure(
@@ -213,6 +279,8 @@ public static class Profile2PairingEngine
                     trustManager,
                     approvePeerAsync,
                     onVerifying,
+                    authDeadline,
+                    approvalDeadline,
                     cancellationToken).ConfigureAwait(false);
             }
             finally
@@ -233,7 +301,11 @@ public static class Profile2PairingEngine
         DesktopPersistentTrustManager trustManager,
         Func<VerifiedDesktopPeerIdentity, CancellationToken, Task<bool>> approvePeerAsync,
         Action? onVerifying = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        TimeSpan? tcpConnectTimeout = null,
+        TimeSpan? tlsHandshakeTimeout = null,
+        TimeSpan? machineAuthTimeout = null,
+        TimeSpan? humanApprovalTimeout = null)
     {
         ArgumentNullException.ThrowIfNull(invitation);
         ArgumentNullException.ThrowIfNull(trustManager);
@@ -246,6 +318,8 @@ public static class Profile2PairingEngine
                 "Code expired — get a new code");
         }
 
+        TimeSpan authDeadline = machineAuthTimeout ?? DefaultMachineAuthTimeout;
+        TimeSpan approvalDeadline = humanApprovalTimeout ?? DefaultHumanApprovalTimeout;
         LanEndpoint endpoint = invitation.Endpoints[0];
         TlsSocketConnection? connection = null;
         try
@@ -255,7 +329,9 @@ public static class Profile2PairingEngine
                 endpoint.Address,
                 endpoint.Port,
                 expectedSpkiSha256: invitation.SpkiSha256,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken,
+                tcpConnectTimeout,
+                tlsHandshakeTimeout).ConfigureAwait(false);
 
             Stream stream = connection.TransportStream;
             await LanSessionPreambleInspector.WriteGld2PreambleAsync(stream, cancellationToken).ConfigureAwait(false);
@@ -275,9 +351,9 @@ public static class Profile2PairingEngine
                 ExpectedPresenceId: invitation.Presence,
                 InvitationId: invitation.InvitationId);
 
-            await Profile2WireCodec.WriteMessageAsync(stream, open, cancellationToken).ConfigureAwait(false);
+            await WriteMessageWithDeadlineAsync(stream, open, authDeadline, cancellationToken).ConfigureAwait(false);
 
-            var ackMsg = await Profile2WireCodec.ReadMessageAsync(stream, cancellationToken).ConfigureAwait(false);
+            var ackMsg = await ReadMessageWithDeadlineAsync(stream, authDeadline, cancellationToken).ConfigureAwait(false);
             if (ackMsg is not Profile2Message.SessionOpenAck ack)
             {
                 return Profile2PairOutcome.Failure(Profile2Constants.ErrorProtocolOrder, "Pairing failed");
@@ -295,15 +371,16 @@ public static class Profile2PairingEngine
             string responderPlatform = ack.ResponderPlatform ?? invitation.Platform;
             string advertisedPresenceId = ack.AdvertisedPresenceId ?? invitation.Presence;
 
-            await Profile2WireCodec.WriteMessageAsync(
+            await WriteMessageWithDeadlineAsync(
                 stream,
                 new Profile2Message.PairMsg(
                     SessionId: sessionId,
                     Role: Profile2Constants.RoleInitiator,
                     InvitationHash: invitation.InvitationHash),
+                authDeadline,
                 cancellationToken).ConfigureAwait(false);
 
-            var peerMsgRaw = await Profile2WireCodec.ReadMessageAsync(stream, cancellationToken).ConfigureAwait(false);
+            var peerMsgRaw = await ReadMessageWithDeadlineAsync(stream, authDeadline, cancellationToken).ConfigureAwait(false);
             if (peerMsgRaw is Profile2Message.PairResult earlyFailure)
             {
                 return Profile2PairOutcome.Failure(
@@ -339,6 +416,8 @@ public static class Profile2PairingEngine
                     trustManager,
                     approvePeerAsync,
                     onVerifying,
+                    authDeadline,
+                    approvalDeadline,
                     cancellationToken).ConfigureAwait(false);
             }
             finally
@@ -383,6 +462,8 @@ public static class Profile2PairingEngine
         DesktopPersistentTrustManager trustManager,
         Func<VerifiedDesktopPeerIdentity, CancellationToken, Task<bool>> approvePeerAsync,
         Action? onVerifying,
+        TimeSpan authDeadline,
+        TimeSpan approvalDeadline,
         CancellationToken cancellationToken)
     {
         onVerifying?.Invoke();
@@ -405,16 +486,17 @@ public static class Profile2PairingEngine
             byte[] myMac = GlideSpake2Session.ComputeConfirmationMac(confirmI2RKey, transcriptHash);
             byte[] mySig = trustManager.SignTranscript(transcriptBytes);
 
-            await Profile2WireCodec.WriteMessageAsync(
+            await WriteMessageWithDeadlineAsync(
                 stream,
                 new Profile2Message.PairConfirm(
                     SessionId: sessionId,
                     Role: Profile2Constants.RoleInitiator,
                     KeyConfirmationMac: InvitationCodec.ToUnpaddedBase64Url(myMac),
                     IdentitySignature: InvitationCodec.ToUnpaddedBase64Url(mySig)),
+                authDeadline,
                 cancellationToken).ConfigureAwait(false);
 
-            var nextMsg = await Profile2WireCodec.ReadMessageAsync(stream, cancellationToken).ConfigureAwait(false);
+            var nextMsg = await ReadMessageWithDeadlineAsync(stream, authDeadline, cancellationToken).ConfigureAwait(false);
             if (nextMsg is Profile2Message.PairResult failureResult)
             {
                 return Profile2PairOutcome.Failure(
@@ -451,18 +533,34 @@ public static class Profile2PairingEngine
                 lastKnownHost: remoteHost,
                 lastKnownPort: remotePort);
 
-            bool initiatorApproved = await approvePeerAsync(verifiedPeer, cancellationToken).ConfigureAwait(false);
+            bool initiatorApproved;
+            using (var approvalCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+            {
+                if (approvalDeadline > TimeSpan.Zero && approvalDeadline != Timeout.InfiniteTimeSpan)
+                {
+                    approvalCts.CancelAfter(approvalDeadline);
+                }
+                try
+                {
+                    initiatorApproved = await approvePeerAsync(verifiedPeer, approvalCts.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                {
+                    initiatorApproved = false;
+                }
+            }
 
-            await Profile2WireCodec.WriteMessageAsync(
+            await WriteMessageWithDeadlineAsync(
                 stream,
                 new Profile2Message.PairApproval(
                     SessionId: sessionId,
                     Role: Profile2Constants.RoleInitiator,
                     Approved: initiatorApproved,
                     Reason: initiatorApproved ? null : Profile2Constants.ErrorDeclined),
+                authDeadline,
                 cancellationToken).ConfigureAwait(false);
 
-            var responderApprovalMsg = await Profile2WireCodec.ReadMessageAsync(stream, cancellationToken).ConfigureAwait(false);
+            var responderApprovalMsg = await ReadMessageWithDeadlineAsync(stream, approvalDeadline, cancellationToken).ConfigureAwait(false);
             if (responderApprovalMsg is Profile2Message.PairResult directResult)
             {
                 return Profile2PairOutcome.Failure(
@@ -474,7 +572,7 @@ public static class Profile2PairingEngine
                 return Profile2PairOutcome.Failure(Profile2Constants.ErrorProtocolOrder, "Pairing failed");
             }
 
-            var finalResultMsg = await Profile2WireCodec.ReadMessageAsync(stream, cancellationToken).ConfigureAwait(false);
+            var finalResultMsg = await ReadMessageWithDeadlineAsync(stream, authDeadline, cancellationToken).ConfigureAwait(false);
             if (finalResultMsg is not Profile2Message.PairResult finalResult || !finalResult.Paired || !initiatorApproved || !responderApproval.Approved)
             {
                 string errCode = (finalResultMsg as Profile2Message.PairResult)?.ErrorCode ?? Profile2Constants.ErrorDeclined;
@@ -510,18 +608,22 @@ public static class Profile2PairingEngine
         DesktopPersistentTrustManager trustManager,
         Func<VerifiedDesktopPeerIdentity, CancellationToken, Task<bool>> approvePeerAsync,
         Action? onVerifying = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        TimeSpan? machineAuthTimeout = null,
+        TimeSpan? humanApprovalTimeout = null)
     {
         ArgumentNullException.ThrowIfNull(connection);
         ArgumentNullException.ThrowIfNull(open);
         ArgumentNullException.ThrowIfNull(trustManager);
         ArgumentNullException.ThrowIfNull(approvePeerAsync);
 
+        TimeSpan authDeadline = machineAuthTimeout ?? DefaultMachineAuthTimeout;
+        TimeSpan approvalDeadline = humanApprovalTimeout ?? DefaultHumanApprovalTimeout;
         Stream stream = connection.TransportStream;
 
         if (!string.Equals(open.Purpose, Profile2Constants.PurposePairOnly, StringComparison.Ordinal))
         {
-            await Profile2WireCodec.WriteMessageAsync(
+            await WriteMessageWithDeadlineAsync(
                 stream,
                 new Profile2Message.SessionOpenAck(
                     SessionId: open.SessionId,
@@ -529,13 +631,14 @@ public static class Profile2PairingEngine
                     ErrorCode: Profile2Constants.ErrorProtocolOrder,
                     Message: "Invalid session purpose for PAIR_ONLY handler",
                     ResponderDeviceName: localDeviceName),
+                authDeadline,
                 cancellationToken).ConfigureAwait(false);
             return Profile2PairOutcome.Failure(Profile2Constants.ErrorProtocolOrder, "Pairing failed");
         }
 
         if (isBusy)
         {
-            await Profile2WireCodec.WriteMessageAsync(
+            await WriteMessageWithDeadlineAsync(
                 stream,
                 new Profile2Message.SessionOpenAck(
                     SessionId: open.SessionId,
@@ -543,13 +646,14 @@ public static class Profile2PairingEngine
                     ErrorCode: Profile2Constants.ErrorBusy,
                     Message: "This device is busy — try again",
                     ResponderDeviceName: localDeviceName),
+                authDeadline,
                 cancellationToken).ConfigureAwait(false);
             return Profile2PairOutcome.Failure(Profile2Constants.ErrorBusy, "This device is busy — try again");
         }
 
         if (activeWindow == null || !activeWindow.IsActive())
         {
-            await Profile2WireCodec.WriteMessageAsync(
+            await WriteMessageWithDeadlineAsync(
                 stream,
                 new Profile2Message.SessionOpenAck(
                     SessionId: open.SessionId,
@@ -557,6 +661,7 @@ public static class Profile2PairingEngine
                     ErrorCode: Profile2Constants.ErrorExpired,
                     Message: "Code expired — get a new code",
                     ResponderDeviceName: localDeviceName),
+                authDeadline,
                 cancellationToken).ConfigureAwait(false);
             return Profile2PairOutcome.Failure(Profile2Constants.ErrorExpired, "Code expired — get a new code");
         }
@@ -564,7 +669,7 @@ public static class Profile2PairingEngine
         if (!string.IsNullOrEmpty(open.ExpectedPresenceId) &&
             !string.Equals(open.ExpectedPresenceId, activeWindow.PresenceId, StringComparison.OrdinalIgnoreCase))
         {
-            await Profile2WireCodec.WriteMessageAsync(
+            await WriteMessageWithDeadlineAsync(
                 stream,
                 new Profile2Message.SessionOpenAck(
                     SessionId: open.SessionId,
@@ -572,6 +677,7 @@ public static class Profile2PairingEngine
                     ErrorCode: Profile2Constants.ErrorExpired,
                     Message: "Code expired — get a new code",
                     ResponderDeviceName: localDeviceName),
+                authDeadline,
                 cancellationToken).ConfigureAwait(false);
             return Profile2PairOutcome.Failure(Profile2Constants.ErrorExpired, "Code expired — get a new code");
         }
@@ -581,7 +687,7 @@ public static class Profile2PairingEngine
         byte[] responderNonce = RandomNumberGenerator.GetBytes(32);
         byte[] responderSpki = trustManager.LocalPublicKeyDer();
 
-        await Profile2WireCodec.WriteMessageAsync(
+        await WriteMessageWithDeadlineAsync(
             stream,
             new Profile2Message.SessionOpenAck(
                 SessionId: open.SessionId,
@@ -591,12 +697,17 @@ public static class Profile2PairingEngine
                 ResponderPlatform: localPlatform,
                 ResponderIdentityPublicKey: InvitationCodec.ToUnpaddedBase64Url(responderSpki),
                 AdvertisedPresenceId: activeWindow.PresenceId),
+            authDeadline,
             cancellationToken).ConfigureAwait(false);
 
         Profile2Message pairMsgRaw;
         try
         {
-            pairMsgRaw = await Profile2WireCodec.ReadMessageAsync(stream, cancellationToken).ConfigureAwait(false);
+            pairMsgRaw = await ReadMessageWithDeadlineAsync(stream, authDeadline, cancellationToken).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            return Profile2PairOutcome.Failure(Profile2Constants.ErrorProtocolOrder, "Pairing failed");
         }
         catch (Glide.Core.Models.ProtocolViolationException)
         {
@@ -615,9 +726,10 @@ public static class Profile2PairingEngine
             {
                 if (!activeWindow.TryCopyPinBytes(out byte[] pinBytes, out string? errCode, out string? errMsg))
                 {
-                    await Profile2WireCodec.WriteMessageAsync(
+                    await WriteMessageWithDeadlineAsync(
                         stream,
                         new Profile2Message.PairResult(open.SessionId, false, errCode, errMsg),
+                        authDeadline,
                         cancellationToken).ConfigureAwait(false);
                     return Profile2PairOutcome.Failure(errCode ?? Profile2Constants.ErrorExpired, errMsg ?? "Code expired — get a new code");
                 }
@@ -638,12 +750,13 @@ public static class Profile2PairingEngine
                     byte[] peerSpakeBytes = InvitationCodec.FromUnpaddedBase64Url(initiatorPairMsg.SpakePublicValue ?? string.Empty);
                     sharedSecret = spake.ProcessPeerMessage(peerSpakeBytes);
 
-                    await Profile2WireCodec.WriteMessageAsync(
+                    await WriteMessageWithDeadlineAsync(
                         stream,
                         new Profile2Message.PairMsg(
                             SessionId: open.SessionId,
                             Role: Profile2Constants.RoleResponder,
                             SpakePublicValue: InvitationCodec.ToUnpaddedBase64Url(mySpakeMsg)),
+                        authDeadline,
                         cancellationToken).ConfigureAwait(false);
                 }
                 finally
@@ -656,36 +769,39 @@ public static class Profile2PairingEngine
                 if (!string.Equals(open.InvitationId, activeWindow.QrInvitation.InvitationId, StringComparison.Ordinal) ||
                     !string.Equals(initiatorPairMsg.InvitationHash, activeWindow.QrInvitation.InvitationHash, StringComparison.Ordinal))
                 {
-                    await Profile2WireCodec.WriteMessageAsync(
+                    await WriteMessageWithDeadlineAsync(
                         stream,
                         new Profile2Message.PairResult(
                             open.SessionId,
                             false,
                             Profile2Constants.ErrorExpired,
                             "Code expired — get a new code"),
+                        authDeadline,
                         cancellationToken).ConfigureAwait(false);
                     return Profile2PairOutcome.Failure(Profile2Constants.ErrorExpired, "Code expired — get a new code");
                 }
 
                 sharedSecret = DeriveQrSharedSecret(activeWindow.QrInvitation.Token, activeWindow.QrInvitation.InvitationHash);
 
-                await Profile2WireCodec.WriteMessageAsync(
+                await WriteMessageWithDeadlineAsync(
                     stream,
                     new Profile2Message.PairMsg(
                         SessionId: open.SessionId,
                         Role: Profile2Constants.RoleResponder,
                         InvitationHash: activeWindow.QrInvitation.InvitationHash),
+                    authDeadline,
                     cancellationToken).ConfigureAwait(false);
             }
             else
             {
-                await Profile2WireCodec.WriteMessageAsync(
+                await WriteMessageWithDeadlineAsync(
                     stream,
                     new Profile2Message.PairResult(
                         open.SessionId,
                         false,
                         Profile2Constants.ErrorUnsupportedVersion,
                         "Update Glide to pair this device"),
+                    authDeadline,
                     cancellationToken).ConfigureAwait(false);
                 return Profile2PairOutcome.Failure(Profile2Constants.ErrorUnsupportedVersion, "Update Glide to pair this device");
             }
@@ -707,7 +823,7 @@ public static class Profile2PairingEngine
             var (confirmI2RKey, confirmR2IKey) = GlideSpake2Session.DeriveConfirmationKeys(sharedSecret, transcriptHash);
             try
             {
-                var confirmRaw = await Profile2WireCodec.ReadMessageAsync(stream, cancellationToken).ConfigureAwait(false);
+                var confirmRaw = await ReadMessageWithDeadlineAsync(stream, authDeadline, cancellationToken).ConfigureAwait(false);
                 if (confirmRaw is not Profile2Message.PairConfirm initiatorConfirm)
                 {
                     return Profile2PairOutcome.Failure(Profile2Constants.ErrorProtocolOrder, "Pairing failed");
@@ -730,9 +846,10 @@ public static class Profile2PairingEngine
                         ? "Code expired — get a new code"
                         : "Incorrect code — check the other screen and try again";
 
-                    await Profile2WireCodec.WriteMessageAsync(
+                    await WriteMessageWithDeadlineAsync(
                         stream,
                         new Profile2Message.PairResult(open.SessionId, false, failCode, failMsg),
+                        authDeadline,
                         cancellationToken).ConfigureAwait(false);
 
                     return Profile2PairOutcome.Failure(failCode, failMsg);
@@ -741,13 +858,14 @@ public static class Profile2PairingEngine
                 byte[] myMac = GlideSpake2Session.ComputeConfirmationMac(confirmR2IKey, transcriptHash);
                 byte[] mySig = trustManager.SignTranscript(transcriptBytes);
 
-                await Profile2WireCodec.WriteMessageAsync(
+                await WriteMessageWithDeadlineAsync(
                     stream,
                     new Profile2Message.PairConfirm(
                         SessionId: open.SessionId,
                         Role: Profile2Constants.RoleResponder,
                         KeyConfirmationMac: InvitationCodec.ToUnpaddedBase64Url(myMac),
                         IdentitySignature: InvitationCodec.ToUnpaddedBase64Url(mySig)),
+                    authDeadline,
                     cancellationToken).ConfigureAwait(false);
 
                 string? remoteHost = (connection.TcpClient.Client.RemoteEndPoint as IPEndPoint)?.Address.ToString();
@@ -759,46 +877,64 @@ public static class Profile2PairingEngine
                     lastKnownHost: remoteHost,
                     lastKnownPort: LanDiscoveryConstants.DefaultPort);
 
-                bool responderApproved = await approvePeerAsync(verifiedPeer, cancellationToken).ConfigureAwait(false);
+                bool responderApproved;
+                using (var approvalCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+                {
+                    if (approvalDeadline > TimeSpan.Zero && approvalDeadline != Timeout.InfiniteTimeSpan)
+                    {
+                        approvalCts.CancelAfter(approvalDeadline);
+                    }
+                    try
+                    {
+                        responderApproved = await approvePeerAsync(verifiedPeer, approvalCts.Token).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                    {
+                        responderApproved = false;
+                    }
+                }
 
-                var initiatorApprovalRaw = await Profile2WireCodec.ReadMessageAsync(stream, cancellationToken).ConfigureAwait(false);
+                var initiatorApprovalRaw = await ReadMessageWithDeadlineAsync(stream, approvalDeadline, cancellationToken).ConfigureAwait(false);
                 if (initiatorApprovalRaw is not Profile2Message.PairApproval initiatorApproval)
                 {
                     return Profile2PairOutcome.Failure(Profile2Constants.ErrorProtocolOrder, "Pairing failed");
                 }
 
-                await Profile2WireCodec.WriteMessageAsync(
+                await WriteMessageWithDeadlineAsync(
                     stream,
                     new Profile2Message.PairApproval(
                         SessionId: open.SessionId,
                         Role: Profile2Constants.RoleResponder,
                         Approved: responderApproved,
                         Reason: responderApproved ? null : Profile2Constants.ErrorDeclined),
+                    authDeadline,
                     cancellationToken).ConfigureAwait(false);
 
                 if (!initiatorApproval.Approved || !responderApproved)
                 {
                     string declineMsg = $"{open.InitiatorDeviceName} declined pairing";
-                    await Profile2WireCodec.WriteMessageAsync(
+                    await WriteMessageWithDeadlineAsync(
                         stream,
                         new Profile2Message.PairResult(
                             open.SessionId,
                             false,
                             Profile2Constants.ErrorDeclined,
                             declineMsg),
+                        authDeadline,
                         cancellationToken).ConfigureAwait(false);
                     return Profile2PairOutcome.Failure(Profile2Constants.ErrorDeclined, responderApproved ? declineMsg : "Pairing declined");
                 }
 
                 if (!activeWindow.TryConsumeSuccess())
                 {
-                    await Profile2WireCodec.WriteMessageAsync(
+                    await WriteMessageWithDeadlineAsync(
                         stream,
                         new Profile2Message.PairResult(
                             open.SessionId,
                             false,
                             Profile2Constants.ErrorExpired,
                             "Code expired — get a new code"),
+                        authDeadline,
                         cancellationToken).ConfigureAwait(false);
                     return Profile2PairOutcome.Failure(Profile2Constants.ErrorExpired, "Code expired — get a new code");
                 }
@@ -806,27 +942,33 @@ public static class Profile2PairingEngine
                 DesktopTrustedPeer? enrolled = trustManager.EnrollVerifiedPeer(verifiedPeer, userApproved: true);
                 if (enrolled == null)
                 {
-                    await Profile2WireCodec.WriteMessageAsync(
+                    await WriteMessageWithDeadlineAsync(
                         stream,
                         new Profile2Message.PairResult(
                             open.SessionId,
                             false,
                             Profile2Constants.ErrorDeclined,
                             "Pairing declined"),
+                        authDeadline,
                         cancellationToken).ConfigureAwait(false);
                     return Profile2PairOutcome.Failure(Profile2Constants.ErrorDeclined, "Pairing declined");
                 }
 
-                await Profile2WireCodec.WriteMessageAsync(
+                await WriteMessageWithDeadlineAsync(
                     stream,
                     new Profile2Message.PairResult(
                         open.SessionId,
                         true,
                         null,
                         $"Paired with {localDeviceName}"),
+                    authDeadline,
                     cancellationToken).ConfigureAwait(false);
 
                 return Profile2PairOutcome.Success(enrolled);
+            }
+            catch (TimeoutException)
+            {
+                return Profile2PairOutcome.Failure(Profile2Constants.ErrorProtocolOrder, "Pairing failed");
             }
             catch (Glide.Core.Models.ProtocolViolationException)
             {

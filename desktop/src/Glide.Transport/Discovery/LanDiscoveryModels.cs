@@ -30,6 +30,12 @@ public static class LanDiscoveryConstants
     public const int MaxDeviceNameCodePoints = 64;
     public const int MaxDeviceNameUtf8Bytes = 128;
 
+    public const uint DefaultTtlSeconds = 120;
+    public const int MinEffectiveTtlSeconds = 1;
+    public const int MaxEffectiveTtlSeconds = 300;
+    public const int DefaultMaxCacheEntries = 256;
+    public const int DefaultReconcileDebounceMs = 500;
+
     private static readonly Regex PresenceRegex =
         new("^[0-9a-f]{32}$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
@@ -77,7 +83,8 @@ public enum LanDiscoveryDiagnosticStatus
 {
     Healthy,
     NoEligibleInterfaces,
-    MulticastBlocked
+    MulticastBlocked,
+    Degraded
 }
 
 public sealed record LanDiscoveryDiagnostics(
@@ -98,3 +105,19 @@ public sealed record DiscoveredPeer(
     bool SupportsTrustedReconnect = false
 );
 
+/// <summary>
+/// Immutable, revisioned snapshot of the authoritative discovery cache and interface diagnostics.
+/// Both desktop shells and <c>DesktopPairingCoordinator</c> consume this snapshot directly.
+/// </summary>
+public sealed record DiscoverySnapshot(
+    long Revision,
+    IReadOnlyList<DiscoveredPeer> Peers,
+    LanDiscoveryDiagnostics Diagnostics,
+    DateTimeOffset TimestampUtc)
+{
+    public static DiscoverySnapshot Initial { get; } = new(
+        Revision: 0,
+        Peers: Array.Empty<DiscoveredPeer>(),
+        Diagnostics: new LanDiscoveryDiagnostics(LanDiscoveryDiagnosticStatus.Healthy, Array.Empty<string>()),
+        TimestampUtc: DateTimeOffset.MinValue);
+}

@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
@@ -27,17 +26,41 @@ public sealed class MdnsDiscoveryService : IDisposable
         "spki", "pin", "token", "trust", "fp"
     };
 
+    private sealed record CachedPeerEntry(
+        DiscoveredPeer Peer,
+        DateTimeOffset LastSeenUtc,
+        DateTimeOffset ExpiresAtUtc,
+        uint AdvertisedTtlSeconds,
+        long Sequence);
+
     private readonly Func<IReadOnlyList<IPAddress>> _interfaceAddressProvider;
-    private readonly ConcurrentDictionary<string, (DiscoveredPeer Peer, DateTime LastSeen)> _peers =
-        new(StringComparer.OrdinalIgnoreCase);
+    private readonly TimeProvider _timeProvider;
+    private readonly int _maxCacheEntries;
+    private readonly TimeSpan _reconcileDebounceDelay;
+    private readonly Func<IPAddress, int, UdpClient>? _interfaceClientFactory;
+
+    private readonly Dictionary<string, CachedPeerEntry> _peers = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Lock _cacheLock = new();
     private readonly Lock _advertisementLock = new();
     private readonly Lock _socketLock = new();
+    private readonly SemaphoreSlim _reconcileGate = new(1, 1);
 
     private UdpClient? _udpClient;
     private readonly List<UdpClient> _interfaceClients = [];
-    private CancellationTokenSource? _cts;
+    private CancellationTokenSource? _listenCts;
+    private CancellationTokenSource? _serviceCts;
     private readonly List<Task> _listenTasks = [];
     private Task? _queryLoopTask;
+    private Timer? _reconcileDebounceTimer;
+
+    private bool _started;
+    private bool _enableBrowsing = true;
+    private long _generation;
+    private long _revision;
+    private long _entrySequence;
+    private int _disposed;
+    private int _querySentCount;
+    private int _reconcileCount;
 
     private bool _isAdvertising;
     private string _advertisedDeviceName = LanDiscoveryConstants.NormalizeDeviceName(Environment.MachineName);
@@ -50,135 +73,399 @@ public sealed class MdnsDiscoveryService : IDisposable
         LanDiscoveryDiagnosticStatus.Healthy,
         Array.Empty<string>());
 
-    public MdnsDiscoveryService(Func<IReadOnlyList<IPAddress>>? interfaceAddressProvider = null)
+    private DiscoverySnapshot _snapshot;
+
+    public MdnsDiscoveryService(
+        Func<IReadOnlyList<IPAddress>>? interfaceAddressProvider = null,
+        TimeProvider? timeProvider = null,
+        int maxCacheEntries = LanDiscoveryConstants.DefaultMaxCacheEntries,
+        TimeSpan? reconcileDebounceDelay = null,
+        Func<IPAddress, int, UdpClient>? interfaceClientFactory = null)
     {
         _interfaceAddressProvider = interfaceAddressProvider ?? EnumerateEligibleIpv4Addresses;
+        _timeProvider = timeProvider ?? TimeProvider.System;
+        _maxCacheEntries = Math.Max(1, maxCacheEntries);
+        _reconcileDebounceDelay = reconcileDebounceDelay ?? TimeSpan.FromMilliseconds(LanDiscoveryConstants.DefaultReconcileDebounceMs);
+        _interfaceClientFactory = interfaceClientFactory;
+        _snapshot = new DiscoverySnapshot(
+            Revision: 0,
+            Peers: Array.Empty<DiscoveredPeer>(),
+            Diagnostics: _diagnostics,
+            TimestampUtc: _timeProvider.GetUtcNow());
     }
 
     public event Action<DiscoveredPeer>? PeerDiscovered;
     public event Action<DiscoveredPeer>? PeerLost;
     public event Action<LanDiscoveryDiagnostics>? DiagnosticsChanged;
+    public event Action<DiscoverySnapshot>? SnapshotChanged;
 
     public LanDiscoveryDiagnostics Diagnostics
     {
         get
         {
-            lock (_socketLock)
+            lock (_cacheLock)
             {
                 return _diagnostics;
             }
         }
     }
 
-    public IReadOnlyCollection<DiscoveredPeer> ActivePeers =>
-        _peers.Values.Select(static value => value.Peer).ToList();
+    public DiscoverySnapshot Snapshot
+    {
+        get
+        {
+            lock (_cacheLock)
+            {
+                return _snapshot;
+            }
+        }
+    }
+
+    public IReadOnlyCollection<DiscoveredPeer> ActivePeers
+    {
+        get
+        {
+            lock (_cacheLock)
+            {
+                return _snapshot.Peers;
+            }
+        }
+    }
+
+    public long CurrentGeneration => Volatile.Read(ref _generation);
+    public int QuerySentCount => Volatile.Read(ref _querySentCount);
+    public int ReconcileCount => Volatile.Read(ref _reconcileCount);
 
     public void Start(bool enableBrowsing = true)
     {
+        if (Volatile.Read(ref _disposed) != 0) return;
+
+        bool shouldStartQueryLoop = false;
+        CancellationToken serviceToken;
+
         lock (_socketLock)
         {
-            if (_udpClient != null || _interfaceClients.Count > 0) return;
+            if (_started) return;
+            _started = true;
+            _enableBrowsing = enableBrowsing;
+            _serviceCts = new CancellationTokenSource();
+            serviceToken = _serviceCts.Token;
+            BindSocketsLocked(out _, out _);
+            shouldStartQueryLoop = enableBrowsing;
+        }
 
-            _cts = new CancellationTokenSource();
-            var eligibleIps = _interfaceAddressProvider();
+        if (shouldStartQueryLoop)
+        {
+            _queryLoopTask = Task.Run(() => QueryLoopAsync(serviceToken), serviceToken);
+        }
+    }
 
-            if (eligibleIps.Count == 0)
+    /// <summary>
+    /// Debounces network interface change notifications (default 500 ms) and triggers serialized reconciliation.
+    /// </summary>
+    public void NotifyNetworkInterfacesChanged()
+    {
+        if (Volatile.Read(ref _disposed) != 0) return;
+
+        lock (_socketLock)
+        {
+            if (_reconcileDebounceTimer == null)
             {
-                UpdateDiagnosticsLocked(new LanDiscoveryDiagnostics(
-                    LanDiscoveryDiagnosticStatus.NoEligibleInterfaces,
-                    Array.Empty<string>(),
-                    "Couldn't reach the local network — check your Wi-Fi or Ethernet connection."));
+                _reconcileDebounceTimer = new Timer(
+                    static state =>
+                    {
+                        var self = (MdnsDiscoveryService)state!;
+                        _ = self.ReconcileInterfacesAsync();
+                    },
+                    this,
+                    _reconcileDebounceDelay,
+                    Timeout.InfiniteTimeSpan);
+            }
+            else
+            {
+                _reconcileDebounceTimer.Change(_reconcileDebounceDelay, Timeout.InfiniteTimeSpan);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Serialized network interface reconciliation:
+    /// 1. Advances discovery generation so obsolete socket callbacks are rejected.
+    /// 2. Cancels and closes obsolete sockets and awaits their receive loops.
+    /// 3. Re-enumerates eligible interfaces and rebinds multicast sockets.
+    /// 4. Reconciles cached endpoints, re-queries the network, and re-announces if advertising.
+    /// </summary>
+    public async Task<DiscoverySnapshot> ReconcileInterfacesAsync(CancellationToken cancellationToken = default)
+    {
+        if (Volatile.Read(ref _disposed) != 0) return Snapshot;
+
+        await _reconcileGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (Volatile.Read(ref _disposed) != 0) return Snapshot;
+
+            List<Task> obsoleteListenTasks;
+            CancellationTokenSource? obsoleteListenCts;
+            UdpClient? obsoletePrimary;
+            List<UdpClient> obsoleteInterfaces;
+
+            lock (_socketLock)
+            {
+                // Advance generation immediately so any in-flight packet from old sockets is rejected.
+                Interlocked.Increment(ref _generation);
+
+                obsoleteListenCts = _listenCts;
+                _listenCts = null;
+
+                obsoletePrimary = _udpClient;
+                _udpClient = null;
+
+                obsoleteInterfaces = [.. _interfaceClients];
+                _interfaceClients.Clear();
+
+                obsoleteListenTasks = [.. _listenTasks];
+                _listenTasks.Clear();
             }
 
-            int joinedCount = 0;
-            Exception? lastSocketError = null;
+            try { obsoleteListenCts?.Cancel(); } catch { }
+            try { obsoletePrimary?.Dispose(); } catch { }
+            foreach (UdpClient client in obsoleteInterfaces)
+            {
+                try { client.Dispose(); } catch { }
+            }
+            obsoleteListenCts?.Dispose();
 
+            if (obsoleteListenTasks.Count > 0)
+            {
+                try
+                {
+                    await Task.WhenAll(obsoleteListenTasks)
+                        .WaitAsync(TimeSpan.FromSeconds(2), cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch
+                {
+                    // Obsolete receive loops exited or timed out after socket disposal.
+                }
+            }
+
+            IReadOnlyList<IPAddress> eligibleIps;
+            bool browsing;
+            lock (_socketLock)
+            {
+                if (Volatile.Read(ref _disposed) != 0) return Snapshot;
+                _started = true;
+                BindSocketsLocked(out eligibleIps, out browsing);
+            }
+
+            Interlocked.Increment(ref _reconcileCount);
+
+            // Reconcile cached endpoints: prune expired entries; if no local interface is available, clear unreachable peers.
+            ReconcileCachedEndpoints(eligibleIps);
+
+            if (browsing)
+            {
+                QueryPeers();
+            }
+
+            bool isAdv;
+            lock (_advertisementLock)
+            {
+                isAdv = _isAdvertising;
+            }
+            if (isAdv)
+            {
+                SendAnnouncement();
+            }
+
+            return Snapshot;
+        }
+        finally
+        {
+            _reconcileGate.Release();
+        }
+    }
+
+    private void BindSocketsLocked(out IReadOnlyList<IPAddress> eligibleIps, out bool browsing)
+    {
+        long gen = Interlocked.Increment(ref _generation);
+        browsing = _enableBrowsing;
+
+        try
+        {
+            eligibleIps = _interfaceAddressProvider() ?? Array.Empty<IPAddress>();
+        }
+        catch (Exception ex)
+        {
+            eligibleIps = Array.Empty<IPAddress>();
+            UpdateDiagnosticsAndSnapshot(new LanDiscoveryDiagnostics(
+                LanDiscoveryDiagnosticStatus.NoEligibleInterfaces,
+                Array.Empty<string>(),
+                ex.Message));
+            return;
+        }
+
+        if (eligibleIps.Count == 0)
+        {
+            UpdateDiagnosticsAndSnapshot(new LanDiscoveryDiagnostics(
+                LanDiscoveryDiagnosticStatus.NoEligibleInterfaces,
+                Array.Empty<string>(),
+                "Couldn't reach the local network — check your Wi-Fi or Ethernet connection."));
+            return;
+        }
+
+        int joinedCount = 0;
+        int failedInterfaceCount = 0;
+        Exception? lastSocketError = null;
+
+        try
+        {
+            _udpClient = CreateSharedMulticastClient(
+                IPAddress.Any,
+                MulticastPort,
+                eligibleIps,
+                ref joinedCount,
+                ref lastSocketError);
+        }
+        catch (Exception ex)
+        {
+            lastSocketError = ex;
             try
             {
                 _udpClient = CreateSharedMulticastClient(
                     IPAddress.Any,
-                    MulticastPort,
+                    0,
                     eligibleIps,
                     ref joinedCount,
                     ref lastSocketError);
+            }
+            catch (Exception fallbackEx)
+            {
+                lastSocketError = fallbackEx;
+                _udpClient = null;
+            }
+        }
+
+        var boundInterfaceIps = new List<string>(eligibleIps.Count);
+        foreach (IPAddress ip in eligibleIps)
+        {
+            try
+            {
+                UdpClient ifaceClient = _interfaceClientFactory != null
+                    ? _interfaceClientFactory(ip, MulticastPort)
+                    : CreatePerInterfaceClient(ip, MulticastPort);
+                _interfaceClients.Add(ifaceClient);
+                boundInterfaceIps.Add(ip.ToString());
+                joinedCount++;
             }
             catch (Exception ex)
             {
                 lastSocketError = ex;
                 try
                 {
-                    _udpClient = CreateSharedMulticastClient(
-                        IPAddress.Any,
-                        0,
-                        eligibleIps,
-                        ref joinedCount,
-                        ref lastSocketError);
+                    UdpClient fallbackClient = _interfaceClientFactory != null
+                        ? _interfaceClientFactory(ip, 0)
+                        : CreatePerInterfaceClient(ip, 0);
+                    _interfaceClients.Add(fallbackClient);
+                    boundInterfaceIps.Add(ip.ToString());
+                    joinedCount++;
                 }
                 catch (Exception fallbackEx)
                 {
                     lastSocketError = fallbackEx;
-                    _udpClient = null;
+                    failedInterfaceCount++;
                 }
             }
+        }
 
-            foreach (IPAddress ip in eligibleIps)
+        if (joinedCount == 0 || (_udpClient == null && _interfaceClients.Count == 0))
+        {
+            UpdateDiagnosticsAndSnapshot(new LanDiscoveryDiagnostics(
+                LanDiscoveryDiagnosticStatus.MulticastBlocked,
+                eligibleIps.Select(static ip => ip.ToString()).ToList(),
+                lastSocketError?.Message ?? "UDP multicast port 5353 is blocked by firewall or network policy."));
+        }
+        else if (failedInterfaceCount > 0)
+        {
+            UpdateDiagnosticsAndSnapshot(new LanDiscoveryDiagnostics(
+                LanDiscoveryDiagnosticStatus.Degraded,
+                boundInterfaceIps.Count > 0 ? boundInterfaceIps : eligibleIps.Select(static ip => ip.ToString()).ToList(),
+                lastSocketError?.Message ?? "Discovery is degraded on one or more network interfaces."));
+        }
+        else
+        {
+            UpdateDiagnosticsAndSnapshot(new LanDiscoveryDiagnostics(
+                LanDiscoveryDiagnosticStatus.Healthy,
+                eligibleIps.Select(static ip => ip.ToString()).ToList()));
+        }
+
+        _listenCts = _serviceCts != null
+            ? CancellationTokenSource.CreateLinkedTokenSource(_serviceCts.Token)
+            : new CancellationTokenSource();
+        CancellationToken token = _listenCts.Token;
+
+        if (_udpClient != null)
+        {
+            UdpClient primary = _udpClient;
+            _listenTasks.Add(Task.Run(() => ListenLoopAsync(primary, gen, token), token));
+        }
+
+        foreach (UdpClient ifaceClient in _interfaceClients)
+        {
+            UdpClient captured = ifaceClient;
+            _listenTasks.Add(Task.Run(() => ListenLoopAsync(captured, gen, token), token));
+        }
+    }
+
+    private void ReconcileCachedEndpoints(IReadOnlyList<IPAddress> eligibleIps)
+    {
+        DateTimeOffset now = _timeProvider.GetUtcNow();
+        List<DiscoveredPeer>? removedPeers = null;
+        DiscoverySnapshot? publishedSnapshot = null;
+
+        lock (_cacheLock)
+        {
+            if (eligibleIps.Count == 0 && _peers.Count > 0)
             {
-                try
+                removedPeers = _peers.Values.Select(static e => e.Peer).ToList();
+                _peers.Clear();
+                publishedSnapshot = CreateAndStoreSnapshotLocked(now);
+            }
+            else
+            {
+                foreach (var (key, entry) in _peers.ToList())
                 {
-                    UdpClient ifaceClient = CreatePerInterfaceClient(ip, MulticastPort);
-                    _interfaceClients.Add(ifaceClient);
-                    joinedCount++;
-                }
-                catch (Exception ex)
-                {
-                    lastSocketError = ex;
-                    try
+                    bool expired = now >= entry.ExpiresAtUtc;
+                    bool invalidHost = !IPAddress.TryParse(entry.Peer.Host, out IPAddress? peerIp) ||
+                                       peerIp.AddressFamily != AddressFamily.InterNetwork;
+                    if (expired || invalidHost)
                     {
-                        UdpClient fallbackClient = CreatePerInterfaceClient(ip, 0);
-                        _interfaceClients.Add(fallbackClient);
-                        joinedCount++;
-                    }
-                    catch (Exception fallbackEx)
-                    {
-                        lastSocketError = fallbackEx;
+                        if (_peers.Remove(key))
+                        {
+                            removedPeers ??= [];
+                            removedPeers.Add(entry.Peer);
+                        }
                     }
                 }
-            }
 
-            if (eligibleIps.Count > 0)
-            {
-                if (joinedCount == 0 && _udpClient == null && _interfaceClients.Count == 0)
+                if (removedPeers is { Count: > 0 })
                 {
-                    UpdateDiagnosticsLocked(new LanDiscoveryDiagnostics(
-                        LanDiscoveryDiagnosticStatus.MulticastBlocked,
-                        eligibleIps.Select(static ip => ip.ToString()).ToList(),
-                        lastSocketError?.Message ?? "UDP multicast port 5353 is blocked by firewall or network policy."));
-                }
-                else
-                {
-                    UpdateDiagnosticsLocked(new LanDiscoveryDiagnostics(
-                        LanDiscoveryDiagnosticStatus.Healthy,
-                        eligibleIps.Select(static ip => ip.ToString()).ToList()));
+                    publishedSnapshot = CreateAndStoreSnapshotLocked(now);
                 }
             }
+        }
 
-            CancellationToken token = _cts.Token;
-            if (_udpClient != null)
+        if (removedPeers != null)
+        {
+            foreach (DiscoveredPeer lost in removedPeers)
             {
-                UdpClient primary = _udpClient;
-                _listenTasks.Add(Task.Run(() => ListenLoopAsync(primary, token), token));
+                PeerLost?.Invoke(lost);
             }
+        }
 
-            foreach (UdpClient ifaceClient in _interfaceClients)
-            {
-                UdpClient captured = ifaceClient;
-                _listenTasks.Add(Task.Run(() => ListenLoopAsync(captured, token), token));
-            }
-
-            if (enableBrowsing)
-            {
-                _queryLoopTask = Task.Run(() => QueryLoopAsync(token), token);
-            }
+        if (publishedSnapshot != null)
+        {
+            SnapshotChanged?.Invoke(publishedSnapshot);
         }
     }
 
@@ -426,6 +713,7 @@ public sealed class MdnsDiscoveryService : IDisposable
 
     public void QueryPeers()
     {
+        Interlocked.Increment(ref _querySentCount);
         byte[] multicastQuery = BuildPtrQueryPacket(ServiceType, unicastResponse: false);
         byte[] unicastQuery = BuildPtrQueryPacket(ServiceType, unicastResponse: true);
         SendMulticastPacket(multicastQuery);
@@ -445,6 +733,7 @@ public sealed class MdnsDiscoveryService : IDisposable
         }
 
         int sentCount = 0;
+        int failCount = 0;
         Exception? lastSendError = null;
 
         foreach (UdpClient client in clients)
@@ -456,6 +745,7 @@ public sealed class MdnsDiscoveryService : IDisposable
             }
             catch (Exception ex)
             {
+                failCount++;
                 lastSendError = ex;
             }
         }
@@ -469,31 +759,68 @@ public sealed class MdnsDiscoveryService : IDisposable
             }
             catch (Exception ex)
             {
+                failCount++;
                 lastSendError = ex;
             }
         }
 
-        if (sentCount == 0 && (clients.Count > 0 || fallbackPrimary != null))
+        if (clients.Count > 0 || fallbackPrimary != null)
         {
-            lock (_socketLock)
+            if (sentCount == 0)
             {
-                UpdateDiagnosticsLocked(new LanDiscoveryDiagnostics(
+                UpdateDiagnosticsAndSnapshot(new LanDiscoveryDiagnostics(
                     LanDiscoveryDiagnosticStatus.MulticastBlocked,
-                    _diagnostics.ActiveInterfaceAddresses,
+                    Diagnostics.ActiveInterfaceAddresses,
                     lastSendError?.Message ?? "Unable to send mDNS multicast packets on the local network."));
+            }
+            else if (failCount > 0 && Diagnostics.Status == LanDiscoveryDiagnosticStatus.Healthy)
+            {
+                UpdateDiagnosticsAndSnapshot(new LanDiscoveryDiagnostics(
+                    LanDiscoveryDiagnosticStatus.Degraded,
+                    Diagnostics.ActiveInterfaceAddresses,
+                    lastSendError?.Message ?? "Multicast send failed on one or more interfaces."));
             }
         }
     }
 
-    private void UpdateDiagnosticsLocked(LanDiscoveryDiagnostics next)
+    private void UpdateDiagnosticsAndSnapshot(LanDiscoveryDiagnostics next)
     {
-        bool changed = _diagnostics.Status != next.Status ||
-                       !string.Equals(_diagnostics.ErrorMessage, next.ErrorMessage, StringComparison.Ordinal);
-        _diagnostics = next;
-        if (changed)
+        bool diagChanged;
+        DiscoverySnapshot? nextSnapshot = null;
+
+        lock (_cacheLock)
+        {
+            diagChanged = _diagnostics.Status != next.Status ||
+                          !string.Equals(_diagnostics.ErrorMessage, next.ErrorMessage, StringComparison.Ordinal) ||
+                          !_diagnostics.ActiveInterfaceAddresses.SequenceEqual(next.ActiveInterfaceAddresses, StringComparer.Ordinal);
+            _diagnostics = next;
+            if (diagChanged)
+            {
+                nextSnapshot = CreateAndStoreSnapshotLocked(_timeProvider.GetUtcNow());
+            }
+        }
+
+        if (diagChanged)
         {
             DiagnosticsChanged?.Invoke(next);
+            if (nextSnapshot != null)
+            {
+                SnapshotChanged?.Invoke(nextSnapshot);
+            }
         }
+    }
+
+    private DiscoverySnapshot CreateAndStoreSnapshotLocked(DateTimeOffset now)
+    {
+        long rev = ++_revision;
+        IReadOnlyList<DiscoveredPeer> peers = _peers.Values
+            .OrderBy(static e => e.Peer.DeviceName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static e => e.Peer.Host, StringComparer.Ordinal)
+            .ThenBy(static e => e.Peer.Port)
+            .Select(static e => e.Peer)
+            .ToList();
+        _snapshot = new DiscoverySnapshot(rev, peers, _diagnostics, now);
+        return _snapshot;
     }
 
     private async Task QueryLoopAsync(CancellationToken cancellationToken)
@@ -501,7 +828,7 @@ public sealed class MdnsDiscoveryService : IDisposable
         while (!cancellationToken.IsCancellationRequested)
         {
             QueryPeers();
-            PruneStalePeers();
+            PruneExpiredPeers();
 
             try
             {
@@ -516,16 +843,22 @@ public sealed class MdnsDiscoveryService : IDisposable
         }
     }
 
-    private async Task ListenLoopAsync(UdpClient client, CancellationToken cancellationToken)
+    private async Task ListenLoopAsync(UdpClient client, long generation, CancellationToken cancellationToken)
     {
-        while (!cancellationToken.IsCancellationRequested)
+        while (!cancellationToken.IsCancellationRequested && Volatile.Read(ref _generation) == generation)
         {
             try
             {
                 var result = await client
                     .ReceiveAsync(cancellationToken)
                     .ConfigureAwait(false);
-                ProcessIncomingPacket(result.Buffer, result.RemoteEndPoint);
+
+                if (Volatile.Read(ref _generation) != generation || cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
+
+                ProcessIncomingPacket(result.Buffer, result.RemoteEndPoint, generation);
             }
             catch (OperationCanceledException)
             {
@@ -537,13 +870,38 @@ public sealed class MdnsDiscoveryService : IDisposable
             }
             catch
             {
-                if (cancellationToken.IsCancellationRequested) break;
+                if (cancellationToken.IsCancellationRequested || Volatile.Read(ref _generation) != generation)
+                {
+                    break;
+                }
+
+                // Avoid tight exception/retry loops when an interface socket faults transiently.
+                try
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
             }
         }
     }
 
-    private void ProcessIncomingPacket(byte[] buffer, IPEndPoint remoteEndPoint)
+    /// <summary>
+    /// Processes a raw incoming mDNS packet. When <paramref name="expectedGeneration"/> is non-zero,
+    /// rejects packets arriving from an obsolete socket generation.
+    /// </summary>
+    public void ProcessIncomingPacketForTesting(byte[] buffer, IPEndPoint remoteEndPoint, long expectedGeneration = 0) =>
+        ProcessIncomingPacket(buffer, remoteEndPoint, expectedGeneration);
+
+    private void ProcessIncomingPacket(byte[] buffer, IPEndPoint remoteEndPoint, long expectedGeneration = 0)
     {
+        if (expectedGeneration != 0 && Volatile.Read(ref _generation) != expectedGeneration)
+        {
+            return;
+        }
+
         if (buffer.Length < 12) return;
 
         ushort flags = (ushort)((buffer[2] << 8) | buffer[3]);
@@ -551,7 +909,7 @@ public sealed class MdnsDiscoveryService : IDisposable
 
         if (isResponse)
         {
-            ParseDnsResponse(buffer, remoteEndPoint);
+            ParseDnsResponse(buffer, remoteEndPoint, expectedGeneration);
             return;
         }
 
@@ -588,7 +946,7 @@ public sealed class MdnsDiscoveryService : IDisposable
                 deviceName,
                 port,
                 presenceId,
-                ttlSeconds: 120,
+                ttlSeconds: LanDiscoveryConstants.DefaultTtlSeconds,
                 pairReady: pairReady,
                 trustedReconnectSupported: trustedReconnect);
             SendMulticastPacket(responsePacket);
@@ -623,8 +981,15 @@ public sealed class MdnsDiscoveryService : IDisposable
         }
     }
 
-    private void ParseDnsResponse(byte[] buffer, IPEndPoint remoteEndPoint)
+    private static string EndpointKey(string hostIp, int port) => $"{hostIp}:{port}";
+
+    private void ParseDnsResponse(byte[] buffer, IPEndPoint remoteEndPoint, long expectedGeneration = 0)
     {
+        if (expectedGeneration != 0 && Volatile.Read(ref _generation) != expectedGeneration)
+        {
+            return;
+        }
+
         try
         {
             int offset = 12;
@@ -719,6 +1084,11 @@ public sealed class MdnsDiscoveryService : IDisposable
                 return;
             }
 
+            if (port is < 1 or > 65535)
+            {
+                return;
+            }
+
             if (!IsCompatibleAvailabilityRecord(txtAttributes))
             {
                 return;
@@ -746,15 +1116,18 @@ public sealed class MdnsDiscoveryService : IDisposable
                 }
             }
 
-            string cacheKey = $"{hostIp}:{port}:{presenceId}";
             if (minTtl == 0)
             {
-                if (_peers.TryRemove(cacheKey, out var removed))
-                {
-                    PeerLost?.Invoke(removed.Peer);
-                }
+                TryRemovePresence(hostIp, port, presenceId);
                 return;
             }
+
+            uint effectiveTtlSeconds = minTtl == uint.MaxValue
+                ? LanDiscoveryConstants.DefaultTtlSeconds
+                : (uint)Math.Clamp(
+                    minTtl,
+                    (uint)LanDiscoveryConstants.MinEffectiveTtlSeconds,
+                    (uint)LanDiscoveryConstants.MaxEffectiveTtlSeconds);
 
             var peer = new DiscoveredPeer(
                 deviceName,
@@ -765,17 +1138,125 @@ public sealed class MdnsDiscoveryService : IDisposable
                 isPairReady,
                 supportsTrustedReconnect);
 
-            bool shouldNotify = !_peers.TryGetValue(cacheKey, out var existing) || existing.Peer != peer;
-            _peers[cacheKey] = (peer, DateTime.UtcNow);
-            if (shouldNotify)
-            {
-                PeerDiscovered?.Invoke(peer);
-            }
+            UpsertPeer(peer, effectiveTtlSeconds);
         }
         catch
         {
             // Malformed or hostile discovery packets are ignored.
         }
+    }
+
+    /// <summary>
+    /// Removes an advertised presence at <paramref name="hostIp"/>:<paramref name="port"/> ONLY if the
+    /// active entry at that endpoint still carries <paramref name="presenceId"/>.
+    /// A goodbye or expiry for an old presence never removes a newer replacement advertisement.
+    /// </summary>
+    public bool TryRemovePresence(string hostIp, int port, string presenceId)
+    {
+        string endpointKey = EndpointKey(hostIp, port);
+        DiscoveredPeer? removedPeer = null;
+        DiscoverySnapshot? nextSnapshot = null;
+
+        lock (_cacheLock)
+        {
+            if (_peers.TryGetValue(endpointKey, out CachedPeerEntry? existing) &&
+                string.Equals(existing.Peer.PresenceId, presenceId, StringComparison.Ordinal))
+            {
+                _peers.Remove(endpointKey);
+                removedPeer = existing.Peer;
+                nextSnapshot = CreateAndStoreSnapshotLocked(_timeProvider.GetUtcNow());
+            }
+        }
+
+        if (removedPeer != null)
+        {
+            PeerLost?.Invoke(removedPeer);
+            if (nextSnapshot != null)
+            {
+                SnapshotChanged?.Invoke(nextSnapshot);
+            }
+            return true;
+        }
+
+        return false;
+    }
+
+    private void UpsertPeer(DiscoveredPeer peer, uint effectiveTtlSeconds)
+    {
+        string endpointKey = EndpointKey(peer.Host, peer.Port);
+        DateTimeOffset now = _timeProvider.GetUtcNow();
+        DateTimeOffset expiresAt = now.AddSeconds(effectiveTtlSeconds);
+
+        bool peerChanged;
+        DiscoveredPeer? evictedPeer = null;
+        DiscoverySnapshot? nextSnapshot = null;
+
+        lock (_cacheLock)
+        {
+            if (_peers.TryGetValue(endpointKey, out CachedPeerEntry? existing))
+            {
+                peerChanged = existing.Peer != peer;
+            }
+            else
+            {
+                peerChanged = true;
+                if (_peers.Count >= _maxCacheEntries)
+                {
+                    // Evict expired first, or the entry with the earliest expiry.
+                    string? evictKey = _peers
+                        .OrderBy(static kv => kv.Value.ExpiresAtUtc)
+                        .ThenBy(static kv => kv.Value.Sequence)
+                        .Select(static kv => kv.Key)
+                        .FirstOrDefault();
+
+                    if (evictKey != null && _peers.Remove(evictKey, out CachedPeerEntry? evicted))
+                    {
+                        evictedPeer = evicted.Peer;
+                    }
+                }
+            }
+
+            _peers[endpointKey] = new CachedPeerEntry(
+                Peer: peer,
+                LastSeenUtc: now,
+                ExpiresAtUtc: expiresAt,
+                AdvertisedTtlSeconds: effectiveTtlSeconds,
+                Sequence: ++_entrySequence);
+
+            if (peerChanged || evictedPeer != null)
+            {
+                nextSnapshot = CreateAndStoreSnapshotLocked(now);
+            }
+        }
+
+        if (evictedPeer != null)
+        {
+            PeerLost?.Invoke(evictedPeer);
+        }
+
+        if (peerChanged)
+        {
+            PeerDiscovered?.Invoke(peer);
+        }
+
+        if (nextSnapshot != null)
+        {
+            SnapshotChanged?.Invoke(nextSnapshot);
+        }
+    }
+
+    public bool TryGetPeerExpiryUtc(string hostIp, int port, out DateTimeOffset expiresAtUtc)
+    {
+        lock (_cacheLock)
+        {
+            if (_peers.TryGetValue(EndpointKey(hostIp, port), out CachedPeerEntry? entry))
+            {
+                expiresAtUtc = entry.ExpiresAtUtc;
+                return true;
+            }
+        }
+        expiresAtUtc = default;
+        return false;
     }
 
     public static bool IsCompatibleAvailabilityRecord(
@@ -820,19 +1301,47 @@ public sealed class MdnsDiscoveryService : IDisposable
         return LanDiscoveryConstants.IsValidDeviceType(deviceType);
     }
 
-    private void PruneStalePeers()
+    /// <summary>
+    /// Removes all cached entries whose <c>ExpiresAtUtc</c> has passed according to the configured <see cref="TimeProvider"/>.
+    /// </summary>
+    public int PruneExpiredPeers()
     {
-        DateTime now = DateTime.UtcNow;
-        TimeSpan staleTimeout = TimeSpan.FromSeconds(15);
+        DateTimeOffset now = _timeProvider.GetUtcNow();
+        List<DiscoveredPeer>? expiredPeers = null;
+        DiscoverySnapshot? nextSnapshot = null;
 
-        foreach (var (key, (_, lastSeen)) in _peers)
+        lock (_cacheLock)
         {
-            if (now - lastSeen <= staleTimeout) continue;
-            if (_peers.TryRemove(key, out var removed))
+            foreach (var (key, entry) in _peers.ToList())
             {
-                PeerLost?.Invoke(removed.Peer);
+                if (now < entry.ExpiresAtUtc) continue;
+                if (_peers.Remove(key))
+                {
+                    expiredPeers ??= [];
+                    expiredPeers.Add(entry.Peer);
+                }
+            }
+
+            if (expiredPeers is { Count: > 0 })
+            {
+                nextSnapshot = CreateAndStoreSnapshotLocked(now);
             }
         }
+
+        if (expiredPeers != null)
+        {
+            foreach (DiscoveredPeer lost in expiredPeers)
+            {
+                PeerLost?.Invoke(lost);
+            }
+        }
+
+        if (nextSnapshot != null)
+        {
+            SnapshotChanged?.Invoke(nextSnapshot);
+        }
+
+        return expiredPeers?.Count ?? 0;
     }
 
     private static byte[] BuildPtrQueryPacket(string service, bool unicastResponse = false)
@@ -858,7 +1367,7 @@ public sealed class MdnsDiscoveryService : IDisposable
         return stream.ToArray();
     }
 
-    internal static byte[] BuildResponsePacketForTesting(
+    public static byte[] BuildResponsePacketForTesting(
         string deviceName,
         int port,
         string presenceId,
@@ -1065,10 +1574,16 @@ public sealed class MdnsDiscoveryService : IDisposable
 
     public void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+
         StopAdvertising();
         lock (_socketLock)
         {
-            _cts?.Cancel();
+            Interlocked.Increment(ref _generation);
+            _reconcileDebounceTimer?.Dispose();
+            _reconcileDebounceTimer = null;
+            try { _listenCts?.Cancel(); } catch { }
+            try { _serviceCts?.Cancel(); } catch { }
             _udpClient?.Dispose();
             _udpClient = null;
             foreach (UdpClient ifaceClient in _interfaceClients)
@@ -1077,8 +1592,11 @@ public sealed class MdnsDiscoveryService : IDisposable
             }
             _interfaceClients.Clear();
             _listenTasks.Clear();
-            _cts?.Dispose();
-            _cts = null;
+            _listenCts?.Dispose();
+            _listenCts = null;
+            _serviceCts?.Dispose();
+            _serviceCts = null;
         }
+        _reconcileGate.Dispose();
     }
 }

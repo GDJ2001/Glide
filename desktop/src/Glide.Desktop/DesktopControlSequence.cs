@@ -127,18 +127,21 @@ internal sealed class DesktopControlSequence
         TimeSpan? timeout = null)
     {
         slidingTimeoutCts.CancelAfter(timeout ?? DefaultRecordTimeout);
-        return ReadOwnedCoreAsync(channel, expectedBulkRef, slidingTimeoutCts.Token, callerCancellationToken);
+        return ReadOwnedCoreAsync(channel, expectedBulkRef, slidingTimeoutCts, callerCancellationToken);
     }
 
     private static async ValueTask<LanRecord?> ReadOwnedCoreAsync(
         LanRecordChannel channel,
         BulkRef? expectedBulkRef,
-        CancellationToken combinedToken,
+        CancellationTokenSource slidingTimeoutCts,
         CancellationToken callerCancellationToken)
     {
+        using CancellationTokenRegistration callerReg = callerCancellationToken.CanBeCanceled
+            ? callerCancellationToken.Register(static state => ((CancellationTokenSource)state!).Cancel(), slidingTimeoutCts)
+            : default;
         try
         {
-            return await channel.ReadOwnedRecordAsync(expectedBulkRef, combinedToken)
+            return await channel.ReadOwnedRecordAsync(expectedBulkRef, slidingTimeoutCts.Token)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException)

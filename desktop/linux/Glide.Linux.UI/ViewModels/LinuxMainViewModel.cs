@@ -9,6 +9,7 @@ using Glide.Core.Pairing;
 using Glide.Core.Security;
 using Glide.Core.Storage;
 using Glide.Desktop;
+using Glide.Desktop.Diagnostics;
 using Glide.Desktop.Network;
 using Glide.Desktop.Pairing;
 using Glide.Desktop.Services;
@@ -108,7 +109,8 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
     private DesktopSendRequest? _hostedSendRequest;
 
     // Services
-    private readonly DesktopTransferRuntime _runtime = new();
+    private readonly BoundedTransferDiagnosticSink _diagnosticSink;
+    private readonly DesktopTransferRuntime _runtime;
     public DesktopTransferPresentation Transfer { get; } = new();
     private readonly MdnsDiscoveryService _mdnsDiscovery = new();
     private readonly DesktopListenerSupervisor _listenerSupervisor = new();
@@ -121,6 +123,9 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
 
     private DesktopInvitationReadiness _networkReadiness;
     private string _connectionDetailsText = "";
+    private long _appliedDiscoveryRevision = -1;
+    private LanDiscoveryDiagnostics _discoveryDiagnostics = new(LanDiscoveryDiagnosticStatus.Healthy, Array.Empty<string>());
+    private string _lastExportedDiagnosticPath = "";
 
     public ObservableCollection<LinuxTransferItemViewModel> StagedItems { get; } = [];
     public ObservableCollection<LinuxDiscoveredPeerViewModel> DiscoveredPeers { get; } = [];
@@ -157,6 +162,42 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
     public string PairAddress { get => _pairAddress; set => SetProperty(ref _pairAddress, value); }
     public string PairLink { get => _pairLink; set => SetProperty(ref _pairLink, value); }
     public Bitmap? PairQrImage { get => _pairQrImage; private set => SetProperty(ref _pairQrImage, value); }
+
+    public LanDiscoveryDiagnostics DiscoveryDiagnostics
+    {
+        get => _discoveryDiagnostics;
+        private set
+        {
+            if (SetProperty(ref _discoveryDiagnostics, value))
+            {
+                OnPropertyChanged(nameof(HasDiscoveryDiagnostic));
+                OnPropertyChanged(nameof(DiscoveryDiagnosticSummary));
+                OnPropertyChanged(nameof(DiscoveryTechnicalDetails));
+                OnPropertyChanged(nameof(HasDiscoveryTechnicalDetails));
+            }
+        }
+    }
+
+    public bool HasDiscoveryDiagnostic => !_discoveryDiagnostics.IsHealthy;
+    public string DiscoveryDiagnosticSummary => _discoveryDiagnostics.Status switch
+    {
+        LanDiscoveryDiagnosticStatus.NoEligibleInterfaces =>
+            "No eligible local network interface is active. Connect to Wi-Fi or Ethernet, or use Pair by address.",
+        LanDiscoveryDiagnosticStatus.MulticastBlocked =>
+            "Local multicast discovery is unavailable on this network. You can still pair by address or link.",
+        LanDiscoveryDiagnosticStatus.Degraded =>
+            "Local network discovery is running in degraded mode. Some interfaces could not join multicast.",
+        _ => ""
+    };
+    public string DiscoveryTechnicalDetails =>
+        BoundedTransferDiagnosticSink.SanitizeDiagnosticText(_discoveryDiagnostics.ErrorMessage ?? "");
+    public bool HasDiscoveryTechnicalDetails => !string.IsNullOrWhiteSpace(DiscoveryTechnicalDetails);
+    public bool CanStartReceivingRecovery => Transfer.CanStartReceiving && !IsListening;
+    public string LastExportedDiagnosticPath
+    {
+        get => _lastExportedDiagnosticPath;
+        private set => SetProperty(ref _lastExportedDiagnosticPath, value);
+    }
 
     public DesktopTrustedPeer? SelectedTrustedPeer
     {
@@ -271,6 +312,7 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
                 OnPropertyChanged(nameof(ReceivingStatusText));
                 OnPropertyChanged(nameof(ReceivingStatusDetail));
                 OnPropertyChanged(nameof(ReceivingStatusActive));
+                OnPropertyChanged(nameof(CanStartReceivingRecovery));
             }
         }
     }
@@ -573,12 +615,20 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
     public RelayCommand PairRecoveryCommand { get; }
     public RelayCommand ApprovePairCommand { get; }
     public RelayCommand DeclinePairCommand { get; }
+    public AsyncRelayCommand StartReceivingRecoveryCommand { get; }
+    public RelayCommand OpenPairByAddressRecoveryCommand { get; }
+    public RelayCommand OpenSettingsRecoveryCommand { get; }
+    public AsyncRelayCommand ExportDiagnosticsCommand { get; }
 
     public LinuxMainViewModel(
         DesktopStateStore? store = null,
-        IDesktopNetworkSnapshotProvider? networkSnapshotProvider = null)
+        IDesktopNetworkSnapshotProvider? networkSnapshotProvider = null,
+        bool autoStartReceiving = false)
     {
         _stateStore = store ?? new DesktopStateStore(Path.Combine(LinuxEnvironment.DataHome, "desktop-state.json"));
+        _diagnosticSink = new BoundedTransferDiagnosticSink(
+            Path.Combine(LinuxEnvironment.DataHome, "logs", "glide-diagnostics.jsonl"));
+        _runtime = new DesktopTransferRuntime(new DesktopTransferEngine(diagnostics: _diagnosticSink));
         _invitationManager = new DesktopInvitationManager(networkSnapshotProvider);
         _networkReadiness = _invitationManager.AssessReadiness();
         try
@@ -696,6 +746,14 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
         });
         ApprovePairCommand = new RelayCommand(() => _pairing.Approve());
         DeclinePairCommand = new RelayCommand(() => _pairing.DeclineApproval());
+        StartReceivingRecoveryCommand = new AsyncRelayCommand(StartReceivingOnLaunchAsync);
+        OpenPairByAddressRecoveryCommand = new RelayCommand(() =>
+        {
+            ActivePage = LinuxPage.Pair;
+            _pairing.ShowManualEntry();
+        });
+        OpenSettingsRecoveryCommand = new RelayCommand(() => ActivePage = LinuxPage.Settings);
+        ExportDiagnosticsCommand = new AsyncRelayCommand(ExecuteExportDiagnosticsAsync);
 
         RemoveStagedItemCommand = new RelayCommand(p =>
         {
@@ -808,11 +866,16 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
             if (Transfer.ApplySnapshot(snapshot, navigateOnPreparation: trustedSend))
                 ActivePage = LinuxPage.Activity;
             OnPropertyChanged(nameof(IsTransferBannerVisible));
+            OnPropertyChanged(nameof(CanStartReceivingRecovery));
         });
         _runtime.EventOccurred += OnRuntimeEventOccurred;
         _listenerSupervisor.ListenerError += _ => OnUi(() =>
             StatusMessage = "An incoming connection ended unexpectedly. Refresh the link and try again.");
         StartMdnsDiscovery();
+        if (autoStartReceiving)
+        {
+            _ = StartReceivingOnLaunchAsync();
+        }
     }
 
     public void StagePaths(IEnumerable<string> paths) => _ = StagePathsAsync(paths);
@@ -924,28 +987,62 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
     {
         try
         {
-            _mdnsDiscovery.PeerDiscovered += peer =>
+            _mdnsDiscovery.SnapshotChanged += snapshot =>
             {
-                OnUi(() =>
-                {
-                    var existing = DiscoveredPeers.FirstOrDefault(p => p.Host == peer.Host && p.Port == peer.Port);
-                    if (existing != null) DiscoveredPeers.Remove(existing);
-                    DiscoveredPeers.Add(new LinuxDiscoveredPeerViewModel(peer));
-                    _pairing.NotifyPeerCount(DiscoveredPeers.Count(p => p.IsPairReady));
-                });
+                OnUi(() => ApplyDiscoverySnapshot(snapshot));
             };
-            _mdnsDiscovery.PeerLost += peer => OnUi(() =>
-            {
-                var existing = DiscoveredPeers.FirstOrDefault(p => p.Host == peer.Host && p.Port == peer.Port);
-                if (existing != null) DiscoveredPeers.Remove(existing);
-                _pairing.NotifyPeerCount(DiscoveredPeers.Count(p => p.IsPairReady));
-            });
+            ApplyDiscoverySnapshot(_mdnsDiscovery.Snapshot);
             _mdnsDiscovery.Start(enableBrowsing: true);
         }
         catch
         {
             // Ignore mDNS discovery failure on constrained environments
         }
+    }
+
+    private void ApplyDiscoverySnapshot(DiscoverySnapshot snapshot)
+    {
+        if (snapshot.Revision < _appliedDiscoveryRevision)
+        {
+            return;
+        }
+
+        _appliedDiscoveryRevision = snapshot.Revision;
+        DiscoveryDiagnostics = snapshot.Diagnostics;
+        if (!snapshot.Diagnostics.IsHealthy)
+        {
+            _diagnosticSink.RecordEvent(
+                "discovery",
+                $"Discovery status: {snapshot.Diagnostics.Status}",
+                snapshot.Diagnostics.ErrorMessage);
+        }
+
+        string? selectedPresence = _selectedPeer?.PresenceId;
+        string? selectedHost = _selectedPeer?.Host;
+        int? selectedPort = _selectedPeer?.Port;
+
+        DiscoveredPeers.Clear();
+        LinuxDiscoveredPeerViewModel? retainedSelection = null;
+        foreach (DiscoveredPeer peer in snapshot.Peers)
+        {
+            var vm = new LinuxDiscoveredPeerViewModel(peer);
+            DiscoveredPeers.Add(vm);
+            if (selectedPresence != null &&
+                string.Equals(peer.PresenceId, selectedPresence, StringComparison.Ordinal) &&
+                string.Equals(peer.Host, selectedHost, StringComparison.Ordinal) &&
+                peer.Port == selectedPort)
+            {
+                retainedSelection = vm;
+            }
+        }
+
+        if (!ReferenceEquals(_selectedPeer, retainedSelection))
+        {
+            _selectedPeer = retainedSelection;
+            OnPropertyChanged(nameof(SelectedPeer));
+        }
+
+        _pairing.NotifyPeerCount(DiscoveredPeers.Count(p => p.IsPairReady));
     }
 
     private async Task ExecuteSendAsync()
@@ -986,11 +1083,9 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
             try
             {
                 var peer = SelectedTrustedPeer;
-                var matches = DiscoveredPeers.Where(p =>
-                    p.SupportsTrustedReconnect &&
-                    string.Equals(p.DisplayName, peer.DisplayName, StringComparison.Ordinal) &&
-                    !string.IsNullOrWhiteSpace(p.Host))
-                    .Select(p => new LanEndpoint(p.Host, p.Port)).ToList();
+                var candidateEndpoints = TrustedEndpointResolver.ResolveEndpoints(
+                    peer,
+                    _mdnsDiscovery.Snapshot.Peers);
                 var request = new DesktopSendRequest(
                     Host: peer.LastKnownHost ?? "",
                     Port: peer.LastKnownPort ?? 0,
@@ -998,7 +1093,7 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
                     LocalDeviceName: DeviceName,
                     TrustManager: _trustManager,
                     ExpectedPeerFingerprintHex: peer.FingerprintHex,
-                    CandidateEndpoints: matches.Count > 0 ? matches : null);
+                    CandidateEndpoints: candidateEndpoints.Count > 0 ? candidateEndpoints : null);
                 DesktopTransferResult result = await _runtime.SendTrustedAsync(request, this, _activeTransferCts.Token);
                 StatusMessage = result.Message;
                 if (result.Success)
@@ -1274,6 +1369,41 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
         }
     }
 
+    public async Task StartReceivingOnLaunchAsync()
+    {
+        if (!IsListening)
+        {
+            await ExecuteToggleListenerAsync();
+        }
+    }
+
+    public async Task<string?> ExecuteExportDiagnosticsAsync()
+    {
+        try
+        {
+            string exportDir = !string.IsNullOrWhiteSpace(DownloadDirectory) && Directory.Exists(DownloadDirectory)
+                ? DownloadDirectory
+                : LinuxEnvironment.DataHome;
+            Directory.CreateDirectory(exportDir);
+            string fileName = $"glide-diagnostics-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}.jsonl";
+            string targetPath = Path.Combine(exportDir, fileName);
+            string summary = $"device={DeviceName};listening={IsListening};port={ListeningPort};networkReady={IsNetworkReady};discovery={DiscoveryDiagnostics.Status}";
+            string written = await BoundedTransferDiagnosticSink.ExportSanitizedDiagnosticBundleAsync(
+                targetPath,
+                _diagnosticSink.LogFilePath,
+                summary,
+                _lifetimeCts.Token);
+            LastExportedDiagnosticPath = written;
+            StatusMessage = $"Sanitized diagnostic bundle exported to {written}";
+            return written;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            StatusMessage = $"Could not export diagnostics: {BoundedTransferDiagnosticSink.SanitizeDiagnosticText(ex.Message)}";
+            return null;
+        }
+    }
+
     public void RefreshNetworkReadiness()
     {
         NetworkReadiness = _invitationManager.AssessReadiness();
@@ -1281,6 +1411,7 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
 
     private void OnNetworkAddressChanged(object? sender, EventArgs e)
     {
+        _mdnsDiscovery.NotifyNetworkInterfacesChanged();
         OnUi(() =>
         {
             if (_pairing.IsReadyWindowActive) _pairing.Cancel();
@@ -1689,6 +1820,7 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
             // Ignore
         }
         _mdnsDiscovery.Dispose();
+        _diagnosticSink.Dispose();
         _lifetimeCts.Dispose();
     }
 }

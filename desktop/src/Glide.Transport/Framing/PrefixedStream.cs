@@ -127,25 +127,32 @@ public static class LanSessionPreambleInspector
 
     public static async Task<LanSessionDispatchKind> InspectAndPrepareAsync(
         TlsSocketConnection connection,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        TimeSpan? preambleTimeout = null)
     {
         ArgumentNullException.ThrowIfNull(connection);
         return await InspectStreamAsync(
             connection.TransportStream,
             prefix => connection.PrependBytes(prefix),
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken,
+            preambleTimeout).ConfigureAwait(false);
     }
 
     public static async Task<LanSessionDispatchKind> InspectStreamAsync(
         Stream stream,
         Action<ReadOnlySpan<byte>> prependPrefix,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        TimeSpan? preambleTimeout = null)
     {
         ArgumentNullException.ThrowIfNull(stream);
         ArgumentNullException.ThrowIfNull(prependPrefix);
 
+        TimeSpan effectiveTimeout = preambleTimeout ?? TimeSpan.FromSeconds(10);
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutCts.CancelAfter(TimeSpan.FromSeconds(10));
+        if (effectiveTimeout > TimeSpan.Zero && effectiveTimeout != Timeout.InfiniteTimeSpan)
+        {
+            timeoutCts.CancelAfter(effectiveTimeout);
+        }
         CancellationToken token = timeoutCts.Token;
 
         byte[] preamble = new byte[4];

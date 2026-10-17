@@ -28,6 +28,18 @@
 
           <StackPanel Spacing="10" IsVisible="{Binding IsPairDiscovery}">
             <TextBlock Text="{Binding Pairing.Message}" Classes="secondary" TextWrapping="Wrap" />
+            <Border Background="{DynamicResource StatusWarningBackgroundBrush}"
+                    BorderBrush="{DynamicResource StatusWarningBrush}" BorderThickness="1"
+                    CornerRadius="8" Padding="12" IsVisible="{Binding HasDiscoveryDiagnostic}"
+                    AutomationProperties.Name="Discovery diagnostic notice">
+              <StackPanel Spacing="8">
+                <TextBlock Text="{Binding DiscoveryDiagnosticSummary}" Classes="body" TextWrapping="Wrap" />
+                <Expander Header="Technical details" IsVisible="{Binding HasDiscoveryTechnicalDetails}" HorizontalAlignment="Stretch">
+                  <TextBlock Text="{Binding DiscoveryTechnicalDetails}" Classes="muted"
+                             FontFamily="{DynamicResource FontFamilyMonospace}" TextWrapping="Wrap" Margin="0,6,0,0" />
+                </Expander>
+              </StackPanel>
+            </Border>
             <ListBox ItemsSource="{Binding DiscoveredPeers}" SelectedItem="{Binding SelectedPeer}"
                      MaxHeight="200" AutomationProperties.Name="Nearby Glide devices">
               <ListBox.ItemTemplate>
@@ -43,6 +55,8 @@
               <Button Content="Try again" Command="{Binding FindPairDevicesCommand}"
                       Classes="primary" Margin="0,0,8,8" />
               <Button Content="Pair by address" Command="{Binding ShowPairAddressCommand}"
+                      Classes="secondary" Margin="0,0,8,8" />
+              <Button Content="Open Settings" Command="{Binding OpenSettingsRecoveryCommand}"
                       Classes="secondary" Margin="0,0,0,8" />
             </WrapPanel>
           </StackPanel>

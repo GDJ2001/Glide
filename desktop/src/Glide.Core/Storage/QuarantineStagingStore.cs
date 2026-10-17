@@ -24,8 +24,46 @@ public sealed record QuarantineCommitResult(
     long VerificationReadStopwatchTicks,
     long CommitStopwatchTicks);
 
+public readonly record struct QuarantineFileIdentity(
+    ulong DeviceMajor,
+    ulong DeviceMinor,
+    ulong Inode,
+    uint OwnerUid,
+    ushort Mode,
+    bool IsDirectory,
+    bool IsRegularFile,
+    bool IsSymbolicLink);
+
+public interface IQuarantineFileSystem
+{
+    uint GetEffectiveUserId();
+    bool TryGetFileIdentityByPath(string path, out QuarantineFileIdentity identity, out int errno);
+    bool TryGetFileIdentityByHandle(SafeFileHandle handle, out QuarantineFileIdentity identity, out int errno);
+    void AtomicRenameNoReplace(
+        SafeFileHandle? sourceFileHandle,
+        string sourceDirectoryPath,
+        string sourceFileName,
+        string targetDirectoryPath,
+        string targetFileName);
+    void TryFlushDirectory(string directoryPath);
+    Stream OpenVerificationReadWriteStream(string path, int bufferSize);
+    Stream OpenReadStream(string path, int bufferSize);
+    Stream OpenCreateNewWriteStream(string path, int bufferSize);
+}
+
 public sealed class QuarantineStagingStore
 {
+    public const int LinuxEperm = 1;
+    public const int LinuxEio = 5;
+    public const int LinuxEacces = 13;
+    public const int LinuxEexist = 17;
+    public const int LinuxExdev = 18;
+    public const int LinuxEinval = 22;
+    public const int LinuxEnospc = 28;
+    public const int LinuxErofs = 30;
+    public const int LinuxEnosys = 38;
+    public const int LinuxEopnotsupp = 95;
+
     private const int MaxCommitCleanupEntries = 4_096;
     private const int MaxCommitCleanupDepth = 16;
     private const int MaxSessionCleanupEntries = 4_096;
@@ -42,6 +80,7 @@ public sealed class QuarantineStagingStore
     private readonly Func<long>? _freeSpaceProvider;
     private readonly Func<long>? _destinationFreeSpaceProvider;
     private readonly bool _enableSameVolumeStaging;
+    private readonly IQuarantineFileSystem? _fileSystem;
     private bool _sameVolumeSecurityVerified = true;
     private int _commitCleanupAttempted;
 
@@ -55,7 +94,8 @@ public sealed class QuarantineStagingStore
         string? destinationRoot = null,
         Func<long>? freeSpaceProvider = null,
         Func<long>? destinationFreeSpaceProvider = null,
-        bool enableSameVolumeStaging = true)
+        bool enableSameVolumeStaging = true,
+        IQuarantineFileSystem? fileSystem = null)
     {
         _destinationRoot = Path.GetFullPath(
             destinationRoot ?? Path.Combine(
@@ -63,6 +103,7 @@ public sealed class QuarantineStagingStore
                 "Downloads"));
 
         _enableSameVolumeStaging = enableSameVolumeStaging;
+        _fileSystem = fileSystem;
         _stagingRoot = Path.GetFullPath(
             stagingRoot ?? ResolveDefaultStagingRoot(_destinationRoot, enableSameVolumeStaging));
 
@@ -302,6 +343,38 @@ public sealed class QuarantineStagingStore
             return false;
         }
 
+        if (_fileSystem != null)
+        {
+            if (!_fileSystem.TryGetFileIdentityByPath(_stagingRoot, out QuarantineFileIdentity stagingStat, out int sErr))
+            {
+                if (IsFatalStorageErrno(sErr))
+                {
+                    throw CreateStorageExceptionFromErrno(sErr, "statx");
+                }
+                return false;
+            }
+
+            if (!_fileSystem.TryGetFileIdentityByPath(_destinationRoot, out QuarantineFileIdentity destStat, out int dErr))
+            {
+                if (IsFatalStorageErrno(dErr))
+                {
+                    throw CreateStorageExceptionFromErrno(dErr, "statx");
+                }
+                return false;
+            }
+
+            uint euid = _fileSystem.GetEffectiveUserId();
+            if (stagingStat.IsSymbolicLink || destStat.IsSymbolicLink ||
+                !stagingStat.IsDirectory || !destStat.IsDirectory ||
+                stagingStat.OwnerUid != euid || destStat.OwnerUid != euid)
+            {
+                throw new IOException("Staging or destination directory failed ownership or symlink verification.");
+            }
+
+            return stagingStat.DeviceMajor == destStat.DeviceMajor &&
+                   stagingStat.DeviceMinor == destStat.DeviceMinor;
+        }
+
         if (OperatingSystem.IsWindows())
         {
             return IsEligibleWindowsNtfsVolume(_destinationRoot, out _) &&
@@ -311,8 +384,8 @@ public sealed class QuarantineStagingStore
 
         if (OperatingSystem.IsLinux())
         {
-            if (TryGetLinuxFileIdentityByPath(_stagingRoot, out LinuxStatx stagingStat) &&
-                TryGetLinuxFileIdentityByPath(_destinationRoot, out LinuxStatx destStat))
+            if (TryGetLinuxFileIdentityByPath(_stagingRoot, out LinuxStatx stagingStat, out int sErr) &&
+                TryGetLinuxFileIdentityByPath(_destinationRoot, out LinuxStatx destStat, out int dErr))
             {
                 uint euid = LinuxGeteuid();
                 return stagingStat.StxDevMajor == destStat.StxDevMajor &&
@@ -327,6 +400,35 @@ public sealed class QuarantineStagingStore
         }
 
         return AreOnSameVolume(_stagingRoot, _destinationRoot);
+    }
+
+    internal static bool IsUnsupportedAtomicErrno(int errno) =>
+        errno is LinuxEnosys or LinuxEopnotsupp or LinuxEinval or LinuxExdev;
+
+    internal static bool IsFatalStorageErrno(int errno) =>
+        errno is LinuxEacces or LinuxEperm or LinuxEnospc or LinuxErofs or LinuxEio;
+
+    internal static Exception CreateStorageExceptionFromErrno(int errno, string operation, Exception? inner = null)
+    {
+        Win32Exception win32 = inner as Win32Exception ?? new Win32Exception(errno, $"{operation} failed with errno {errno}");
+        return errno switch
+        {
+            LinuxEacces or LinuxEperm => new UnauthorizedAccessException(
+                $"Permission denied during {operation} (errno {errno}).",
+                win32),
+            LinuxEnospc => new IOException(
+                $"Insufficient disk space during {operation} (ENOSPC).",
+                win32),
+            LinuxErofs => new IOException(
+                $"Destination filesystem is read-only during {operation} (EROFS).",
+                win32),
+            LinuxEio => new IOException(
+                $"Storage I/O failure during {operation} (EIO).",
+                win32),
+            _ => new IOException(
+                $"Storage operation {operation} failed with errno {errno}.",
+                win32)
+        };
     }
 
     public bool HasSufficientFreeSpaceForBatch(long totalBytes, long maxItemBytes = 0)
@@ -517,12 +619,14 @@ public sealed class QuarantineStagingStore
         TryWriteSessionLeaseFile(sessionId);
 
         string path = GetQuarantinePath(sessionId, itemId);
-        FileStream? innerStream = null;
+        Stream? innerStream = null;
         try
         {
-            innerStream = new FileStream(path, FileMode.CreateNew, FileAccess.Write,
-                FileShare.None, 65_536, useAsync: true);
-            if (!OperatingSystem.IsWindows())
+            innerStream = _fileSystem != null
+                ? _fileSystem.OpenCreateNewWriteStream(path, 65_536)
+                : new FileStream(path, FileMode.CreateNew, FileAccess.Write,
+                    FileShare.None, 65_536, useAsync: true);
+            if (!OperatingSystem.IsWindows() && File.Exists(path))
             {
                 File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
             }
@@ -547,12 +651,12 @@ public sealed class QuarantineStagingStore
 
     private sealed class LeasedQuarantineStream : Stream
     {
-        private readonly FileStream _inner;
+        private readonly Stream _inner;
         private readonly string _stagingRoot;
         private readonly SessionId _sessionId;
         private int _leaseReleased;
 
-        public LeasedQuarantineStream(FileStream inner, string stagingRoot, SessionId sessionId)
+        public LeasedQuarantineStream(Stream inner, string stagingRoot, SessionId sessionId)
         {
             _inner = inner;
             _stagingRoot = stagingRoot;
@@ -755,7 +859,9 @@ public sealed class QuarantineStagingStore
         Sha256Digest expectedDigest,
         long expectedSizeBytes,
         CancellationToken cancellationToken = default,
-        Action? onBeforePublish = null)
+        Action? onBeforePublish = null,
+        Action<long>? onStorageProgress = null,
+        TimeSpan? storageProgressTimeout = null)
     {
         string quarantinePath = GetQuarantinePath(sessionId, itemId);
         if (!File.Exists(quarantinePath))
@@ -765,31 +871,68 @@ public sealed class QuarantineStagingStore
         if (expectedSizeBytes < 0 || expectedSizeBytes > Glide.Core.Codec.ProtocolCatalog.MaxItemBytes)
             throw new ArgumentOutOfRangeException(nameof(expectedSizeBytes));
 
-        if (CanUseSameVolumeAtomicCommit())
+        using var watchdogCts = storageProgressTimeout.HasValue
+            ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken)
+            : null;
+        if (watchdogCts != null && storageProgressTimeout.HasValue)
         {
-            QuarantineCommitResult? atomicResult = await TryCommitSameVolumeAtomicAsync(
+            watchdogCts.CancelAfter(storageProgressTimeout.Value);
+        }
+
+        void ReportProgress(long bytes)
+        {
+            if (watchdogCts != null && storageProgressTimeout.HasValue && !cancellationToken.IsCancellationRequested)
+            {
+                try
+                {
+                    watchdogCts.CancelAfter(storageProgressTimeout.Value);
+                }
+                catch (ObjectDisposedException)
+                {
+                }
+            }
+            onStorageProgress?.Invoke(bytes);
+        }
+
+        CancellationToken effectiveToken = watchdogCts?.Token ?? cancellationToken;
+
+        try
+        {
+            if (CanUseSameVolumeAtomicCommit())
+            {
+                QuarantineCommitResult? atomicResult = await TryCommitSameVolumeAtomicAsync(
+                    quarantinePath,
+                    rawRelativePath,
+                    expectedDigest,
+                    expectedSizeBytes,
+                    onBeforePublish,
+                    ReportProgress,
+                    effectiveToken).ConfigureAwait(false);
+
+                if (atomicResult != null)
+                {
+                    LastCommitStrategy = QuarantineCommitStrategy.SameVolumeAtomicRename;
+                    return atomicResult;
+                }
+            }
+
+            LastCommitStrategy = QuarantineCommitStrategy.VerifiedCopyFallback;
+            ReportProgress(0);
+            onBeforePublish?.Invoke();
+            return await CommitViaVerifiedCopyFallbackAsync(
                 quarantinePath,
                 rawRelativePath,
                 expectedDigest,
                 expectedSizeBytes,
-                onBeforePublish,
-                cancellationToken).ConfigureAwait(false);
-
-            if (atomicResult != null)
-            {
-                LastCommitStrategy = QuarantineCommitStrategy.SameVolumeAtomicRename;
-                return atomicResult;
-            }
+                ReportProgress,
+                effectiveToken).ConfigureAwait(false);
         }
-
-        LastCommitStrategy = QuarantineCommitStrategy.VerifiedCopyFallback;
-        onBeforePublish?.Invoke();
-        return await CommitViaVerifiedCopyFallbackAsync(
-            quarantinePath,
-            rawRelativePath,
-            expectedDigest,
-            expectedSizeBytes,
-            cancellationToken).ConfigureAwait(false);
+        catch (OperationCanceledException) when (watchdogCts != null && watchdogCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            throw new IOException(
+                "Local storage verification or publication made no progress within the 60-second timeout.",
+                new TimeoutException("Local storage I/O progress timed out."));
+        }
     }
 
     private async Task<QuarantineCommitResult?> TryCommitSameVolumeAtomicAsync(
@@ -798,11 +941,27 @@ public sealed class QuarantineStagingStore
         Sha256Digest expectedDigest,
         long expectedSizeBytes,
         Action? onBeforePublish,
+        Action<long>? onStorageProgress,
         CancellationToken cancellationToken)
     {
         string initialFinalPath = ResolveSafeDestinationPath(rawRelativePath);
         string targetDirectory = Path.GetDirectoryName(initialFinalPath)!;
-        string baseFileName = Path.GetFileName( WindowsPathSanitizer.SanitizeRelativePath(rawRelativePath).Split('/')[^1]);
+        string baseFileName = Path.GetFileName(WindowsPathSanitizer.SanitizeRelativePath(rawRelativePath).Split('/')[^1]);
+
+        if (_fileSystem != null)
+        {
+            return await TryCommitInjectedFileSystemAtomicAsync(
+                quarantinePath,
+                rawRelativePath,
+                initialFinalPath,
+                targetDirectory,
+                baseFileName,
+                expectedDigest,
+                expectedSizeBytes,
+                onBeforePublish,
+                onStorageProgress,
+                cancellationToken).ConfigureAwait(false);
+        }
 
         if (OperatingSystem.IsWindows())
         {
@@ -813,9 +972,38 @@ public sealed class QuarantineStagingStore
         }
         else if (OperatingSystem.IsLinux())
         {
-            if (!TryGetLinuxFileIdentityByPath(quarantinePath, out LinuxStatx qStat) ||
-                !TryGetLinuxFileIdentityByPath(targetDirectory, out LinuxStatx tStat) ||
-                qStat.StxDevMajor != tStat.StxDevMajor ||
+            if (!TryGetLinuxFileIdentityByPath(quarantinePath, out LinuxStatx qStat, out int qErr))
+            {
+                if (IsFatalStorageErrno(qErr))
+                {
+                    throw CreateStorageExceptionFromErrno(qErr, "statx");
+                }
+                return null;
+            }
+
+            if ((qStat.StxMode & LinuxSIfmt) == LinuxS_Iflnk ||
+                (qStat.StxMode & LinuxSIfmt) != LinuxSIfreg ||
+                qStat.StxUid != LinuxGeteuid())
+            {
+                throw new IOException("The quarantine file is not a valid user-owned regular file.");
+            }
+
+            if (!TryGetLinuxFileIdentityByPath(targetDirectory, out LinuxStatx tStat, out int tErr))
+            {
+                if (IsFatalStorageErrno(tErr))
+                {
+                    throw CreateStorageExceptionFromErrno(tErr, "statx");
+                }
+                return null;
+            }
+
+            if ((tStat.StxMode & LinuxSIfmt) == LinuxS_Iflnk ||
+                (tStat.StxMode & LinuxSIfmt) != LinuxSIfdir)
+            {
+                throw new IOException("The destination directory is a symbolic link or invalid directory.");
+            }
+
+            if (qStat.StxDevMajor != tStat.StxDevMajor ||
                 qStat.StxDevMinor != tStat.StxDevMinor)
             {
                 return null;
@@ -854,8 +1042,12 @@ public sealed class QuarantineStagingStore
             }
             else if (OperatingSystem.IsLinux())
             {
-                if (!TryGetLinuxFileIdentityByFd(source.SafeFileHandle.DangerousGetHandle().ToInt32(), out sourceLinuxStatx))
+                if (!TryGetLinuxFileIdentityByFd(source.SafeFileHandle.DangerousGetHandle().ToInt32(), out sourceLinuxStatx, out int fdErr))
                 {
+                    if (IsFatalStorageErrno(fdErr))
+                    {
+                        throw CreateStorageExceptionFromErrno(fdErr, "statx");
+                    }
                     return null;
                 }
 
@@ -869,6 +1061,7 @@ public sealed class QuarantineStagingStore
             }
 
             source.Flush(flushToDisk: true);
+            onStorageProgress?.Invoke(0);
 
             if (source.Length != expectedSizeBytes)
             {
@@ -889,6 +1082,7 @@ public sealed class QuarantineStagingStore
                         throw new IOException("The staged file exceeded its verified length.");
                     }
                     hasher.AppendData(buffer.AsSpan(0, count));
+                    onStorageProgress?.Invoke(count);
                 }
 
                 string verifiedDigest = Convert.ToHexStringLower(hasher.GetHashAndReset());
@@ -1004,9 +1198,21 @@ public sealed class QuarantineStagingStore
                 catch (Win32Exception error) when (
                     OperatingSystem.IsLinux() &&
                     attempt < 32 &&
-                    error.NativeErrorCode == 17) // EEXIST
+                    error.NativeErrorCode == LinuxEexist)
                 {
                     committedPath = ResolveCollision(Path.Combine(targetDirectory, baseFileName));
+                }
+                catch (Win32Exception error) when (
+                    OperatingSystem.IsLinux() &&
+                    IsUnsupportedAtomicErrno(error.NativeErrorCode))
+                {
+                    return null;
+                }
+                catch (Win32Exception error) when (
+                    OperatingSystem.IsLinux() &&
+                    IsFatalStorageErrno(error.NativeErrorCode))
+                {
+                    throw CreateStorageExceptionFromErrno(error.NativeErrorCode, "renameat2", error);
                 }
                 catch (IOException) when (
                     !OperatingSystem.IsWindows() && !OperatingSystem.IsLinux() &&
@@ -1031,7 +1237,7 @@ public sealed class QuarantineStagingStore
             }
             else if (OperatingSystem.IsLinux() && hasLinuxHandleInfo)
             {
-                if (!TryGetLinuxFileIdentityByFd(source.SafeFileHandle.DangerousGetHandle().ToInt32(), out LinuxStatx publishedInfo) ||
+                if (!TryGetLinuxFileIdentityByFd(source.SafeFileHandle.DangerousGetHandle().ToInt32(), out LinuxStatx publishedInfo, out _) ||
                     publishedInfo.StxDevMajor != sourceLinuxStatx.StxDevMajor ||
                     publishedInfo.StxDevMinor != sourceLinuxStatx.StxDevMinor ||
                     publishedInfo.StxIno != sourceLinuxStatx.StxIno)
@@ -1039,13 +1245,15 @@ public sealed class QuarantineStagingStore
                     throw new IOException("Destination file descriptor identity changed during atomic commit.");
                 }
 
-                if (!TryGetLinuxFileIdentityByPath(committedPath, out LinuxStatx committedInfo) ||
+                if (!TryGetLinuxFileIdentityByPath(committedPath, out LinuxStatx committedInfo, out _) ||
                     committedInfo.StxDevMajor != sourceLinuxStatx.StxDevMajor ||
                     committedInfo.StxDevMinor != sourceLinuxStatx.StxDevMinor ||
                     committedInfo.StxIno != sourceLinuxStatx.StxIno)
                 {
                     throw new IOException("Published destination file identity does not match verified source file.");
                 }
+
+                TryFlushLinuxDirectory(linuxTargetDirHandle);
             }
 
             commitTicks = Stopwatch.GetTimestamp() - commitStart;
@@ -1061,15 +1269,207 @@ public sealed class QuarantineStagingStore
             commitTicks);
     }
 
+    private async Task<QuarantineCommitResult?> TryCommitInjectedFileSystemAtomicAsync(
+        string quarantinePath,
+        string rawRelativePath,
+        string initialFinalPath,
+        string targetDirectory,
+        string baseFileName,
+        Sha256Digest expectedDigest,
+        long expectedSizeBytes,
+        Action? onBeforePublish,
+        Action<long>? onStorageProgress,
+        CancellationToken cancellationToken)
+    {
+        IQuarantineFileSystem fs = _fileSystem!;
+        uint euid = fs.GetEffectiveUserId();
+
+        if (!fs.TryGetFileIdentityByPath(quarantinePath, out QuarantineFileIdentity qStat, out int qErr))
+        {
+            if (IsFatalStorageErrno(qErr))
+            {
+                throw CreateStorageExceptionFromErrno(qErr, "statx");
+            }
+            return null;
+        }
+
+        if (qStat.IsSymbolicLink || !qStat.IsRegularFile || qStat.OwnerUid != euid)
+        {
+            throw new IOException("The quarantine file is not a valid user-owned regular file.");
+        }
+
+        if (!fs.TryGetFileIdentityByPath(targetDirectory, out QuarantineFileIdentity tStat, out int tErr))
+        {
+            if (IsFatalStorageErrno(tErr))
+            {
+                throw CreateStorageExceptionFromErrno(tErr, "statx");
+            }
+            return null;
+        }
+
+        if (tStat.IsSymbolicLink || !tStat.IsDirectory)
+        {
+            throw new IOException("The destination directory is a symbolic link or invalid directory.");
+        }
+
+        if (qStat.DeviceMajor != tStat.DeviceMajor || qStat.DeviceMinor != tStat.DeviceMinor)
+        {
+            return null;
+        }
+
+        long verifyStart = Stopwatch.GetTimestamp();
+        long verifyTicks;
+        long commitTicks;
+        string committedPath = initialFinalPath;
+
+        await using (Stream source = fs.OpenVerificationReadWriteStream(quarantinePath, VerificationReadBufferBytes))
+        {
+            SafeFileHandle? safeHandle = (source as FileStream)?.SafeFileHandle;
+            if (safeHandle != null)
+            {
+                if (!fs.TryGetFileIdentityByHandle(safeHandle, out QuarantineFileIdentity fdStat, out int fdErr))
+                {
+                    if (IsFatalStorageErrno(fdErr))
+                    {
+                        throw CreateStorageExceptionFromErrno(fdErr, "statx");
+                    }
+                    return null;
+                }
+
+                if (fdStat.IsSymbolicLink || !fdStat.IsRegularFile || fdStat.OwnerUid != euid ||
+                    fdStat.DeviceMajor != qStat.DeviceMajor || fdStat.DeviceMinor != qStat.DeviceMinor ||
+                    fdStat.Inode != qStat.Inode)
+                {
+                    throw new IOException("The quarantine file descriptor identity or ownership is invalid.");
+                }
+            }
+
+            if (source is FileStream fsSource)
+            {
+                fsSource.Flush(flushToDisk: true);
+            }
+            else
+            {
+                await source.FlushAsync(cancellationToken).ConfigureAwait(false);
+            }
+            onStorageProgress?.Invoke(0);
+
+            if (source.Length != expectedSizeBytes)
+            {
+                throw new IOException("The staged file changed before final commit.");
+            }
+
+            using var hasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+            byte[] buffer = ArrayPool<byte>.Shared.Rent(VerificationReadBufferBytes);
+            try
+            {
+                long totalRead = 0;
+                int count;
+                while ((count = await source.ReadAsync(buffer.AsMemory(0, VerificationReadBufferBytes), cancellationToken).ConfigureAwait(false)) > 0)
+                {
+                    totalRead = checked(totalRead + count);
+                    if (totalRead > expectedSizeBytes)
+                    {
+                        throw new IOException("The staged file exceeded its verified length.");
+                    }
+                    hasher.AppendData(buffer.AsSpan(0, count));
+                    onStorageProgress?.Invoke(count);
+                }
+
+                string verifiedDigest = Convert.ToHexStringLower(hasher.GetHashAndReset());
+                if (totalRead != expectedSizeBytes ||
+                    !string.Equals(verifiedDigest, expectedDigest.Value, StringComparison.Ordinal))
+                {
+                    throw new IOException("The staged file changed before final commit.");
+                }
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(buffer.AsSpan(0, VerificationReadBufferBytes));
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
+
+            verifyTicks = Stopwatch.GetTimestamp() - verifyStart;
+            onBeforePublish?.Invoke();
+            long commitStart = Stopwatch.GetTimestamp();
+
+            committedPath = ResolveSafeDestinationPath(rawRelativePath);
+            string stagingDir = Path.GetDirectoryName(quarantinePath)!;
+            string sourceFileName = Path.GetFileName(quarantinePath);
+
+            for (int attempt = 0; ; attempt++)
+            {
+                try
+                {
+                    fs.AtomicRenameNoReplace(
+                        safeHandle,
+                        stagingDir,
+                        sourceFileName,
+                        targetDirectory,
+                        Path.GetFileName(committedPath));
+                    break;
+                }
+                catch (Win32Exception error) when (
+                    attempt < 32 &&
+                    error.NativeErrorCode is LinuxEexist or 80 or 183)
+                {
+                    committedPath = ResolveCollision(Path.Combine(targetDirectory, baseFileName));
+                }
+                catch (Win32Exception error) when (IsUnsupportedAtomicErrno(error.NativeErrorCode))
+                {
+                    return null;
+                }
+                catch (Win32Exception error) when (IsFatalStorageErrno(error.NativeErrorCode))
+                {
+                    throw CreateStorageExceptionFromErrno(error.NativeErrorCode, "renameat2", error);
+                }
+            }
+
+            if (fs.TryGetFileIdentityByPath(committedPath, out QuarantineFileIdentity committedInfo, out int cErr))
+            {
+                if (committedInfo.IsSymbolicLink ||
+                    committedInfo.DeviceMajor != qStat.DeviceMajor ||
+                    committedInfo.DeviceMinor != qStat.DeviceMinor ||
+                    committedInfo.Inode != qStat.Inode)
+                {
+                    throw new IOException("Published destination file identity does not match verified source file.");
+                }
+            }
+            else if (IsFatalStorageErrno(cErr))
+            {
+                throw CreateStorageExceptionFromErrno(cErr, "statx");
+            }
+
+            fs.TryFlushDirectory(targetDirectory);
+            commitTicks = Stopwatch.GetTimestamp() - commitStart;
+        }
+
+        TryNormalizeCommittedFileMetadata(committedPath);
+        return new QuarantineCommitResult(
+            committedPath,
+            QuarantineCommitStrategy.SameVolumeAtomicRename,
+            verifyTicks,
+            commitTicks);
+    }
+
     private async Task<QuarantineCommitResult> CommitViaVerifiedCopyFallbackAsync(
         string quarantinePath,
         string rawRelativePath,
         Sha256Digest expectedDigest,
         long expectedSizeBytes,
+        Action<long>? onStorageProgress,
         CancellationToken cancellationToken)
     {
+        if (GetDestinationAvailableFreeSpaceBytes() < expectedSizeBytes)
+        {
+            throw new IOException(
+                "Insufficient disk space on destination volume for verified copy fallback (ENOSPC).",
+                new Win32Exception(LinuxEnospc));
+        }
+
         string finalPath = ResolveSafeDestinationPath(rawRelativePath);
         string targetDirectory = Path.GetDirectoryName(finalPath)!;
+        string baseFileName = Path.GetFileName(WindowsPathSanitizer.SanitizeRelativePath(rawRelativePath).Split('/')[^1]);
         string temporaryPath = Path.Combine(
             targetDirectory,
             $".glide-commit-{Guid.NewGuid():N}.part");
@@ -1082,23 +1482,31 @@ public sealed class QuarantineStagingStore
             byte[] buffer = ArrayPool<byte>.Shared.Rent(VerificationReadBufferBytes);
             try
             {
-                await using (var source = new FileStream(
-                    quarantinePath,
-                    FileMode.Open,
-                    FileAccess.Read,
-                    FileShare.None,
-                    VerificationReadBufferBytes,
-                    FileOptions.Asynchronous | FileOptions.SequentialScan))
-                {
-                    await using (var target = new FileStream(
-                        temporaryPath,
+                Stream OpenRead(string path) => _fileSystem != null
+                    ? _fileSystem.OpenReadStream(path, VerificationReadBufferBytes)
+                    : new FileStream(
+                        path,
+                        FileMode.Open,
+                        FileAccess.Read,
+                        FileShare.None,
+                        VerificationReadBufferBytes,
+                        FileOptions.Asynchronous | FileOptions.SequentialScan);
+
+                Stream OpenWrite(string path) => _fileSystem != null
+                    ? _fileSystem.OpenCreateNewWriteStream(path, VerificationReadBufferBytes)
+                    : new FileStream(
+                        path,
                         FileMode.CreateNew,
                         FileAccess.Write,
                         FileShare.None,
                         VerificationReadBufferBytes,
-                        FileOptions.Asynchronous))
+                        FileOptions.Asynchronous);
+
+                await using (Stream source = OpenRead(quarantinePath))
+                {
+                    await using (Stream target = OpenWrite(temporaryPath))
                     {
-                        if (!OperatingSystem.IsWindows())
+                        if (!OperatingSystem.IsWindows() && File.Exists(temporaryPath))
                         {
                             File.SetUnixFileMode(
                                 temporaryPath,
@@ -1107,11 +1515,10 @@ public sealed class QuarantineStagingStore
 
                         using var hasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
                         long copied = 0;
-                        int count;
                         while (true)
                         {
                             long readStart = Stopwatch.GetTimestamp();
-                            count = await source.ReadAsync(
+                            int count = await source.ReadAsync(
                                 buffer.AsMemory(0, VerificationReadBufferBytes),
                                 cancellationToken).ConfigureAwait(false);
                             if (count <= 0)
@@ -1127,10 +1534,12 @@ public sealed class QuarantineStagingStore
 
                             hasher.AppendData(buffer.AsSpan(0, count));
                             verifyTicks += Stopwatch.GetTimestamp() - readStart;
+                            onStorageProgress?.Invoke(count);
 
                             await target.WriteAsync(
                                 buffer.AsMemory(0, count),
                                 cancellationToken).ConfigureAwait(false);
+                            onStorageProgress?.Invoke(count);
                         }
 
                         long hashFinalStart = Stopwatch.GetTimestamp();
@@ -1144,9 +1553,61 @@ public sealed class QuarantineStagingStore
                         }
 
                         await target.FlushAsync(cancellationToken).ConfigureAwait(false);
-                        target.Flush(flushToDisk: true);
+                        if (target is FileStream fsTarget)
+                        {
+                            fsTarget.Flush(flushToDisk: true);
+                        }
+                        onStorageProgress?.Invoke(0);
                     }
                 }
+
+                // Independently re-read and verify destination .part file length and SHA-256 before publication
+                RejectLink(temporaryPath);
+                await using (Stream verifyDest = OpenRead(temporaryPath))
+                {
+                    if (verifyDest.CanSeek && verifyDest.Length != expectedSizeBytes)
+                    {
+                        throw new IOException("Destination copy verification failed: written temporary file length mismatch.");
+                    }
+
+                    using var destHasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+                    long destRead = 0;
+                    while (true)
+                    {
+                        long readStart = Stopwatch.GetTimestamp();
+                        int count = await verifyDest.ReadAsync(
+                            buffer.AsMemory(0, VerificationReadBufferBytes),
+                            cancellationToken).ConfigureAwait(false);
+                        if (count <= 0)
+                        {
+                            break;
+                        }
+
+                        destRead = checked(destRead + count);
+                        if (destRead > expectedSizeBytes)
+                        {
+                            throw new IOException("Destination copy verification failed: written temporary file exceeded expected length.");
+                        }
+
+                        destHasher.AppendData(buffer.AsSpan(0, count));
+                        verifyTicks += Stopwatch.GetTimestamp() - readStart;
+                        onStorageProgress?.Invoke(count);
+                    }
+
+                    long hashFinalStart = Stopwatch.GetTimestamp();
+                    string destDigest = Convert.ToHexStringLower(destHasher.GetHashAndReset());
+                    verifyTicks += Stopwatch.GetTimestamp() - hashFinalStart;
+
+                    if (destRead != expectedSizeBytes ||
+                        !string.Equals(destDigest, expectedDigest.Value, StringComparison.Ordinal))
+                    {
+                        throw new IOException("Destination copy verification failed: written temporary file SHA-256 mismatch.");
+                    }
+                }
+            }
+            catch (Win32Exception error) when (IsFatalStorageErrno(error.NativeErrorCode))
+            {
+                throw CreateStorageExceptionFromErrno(error.NativeErrorCode, "verified-copy", error);
             }
             finally
             {
@@ -1163,7 +1624,30 @@ public sealed class QuarantineStagingStore
                 throw new IOException("The destination directory changed before commit.");
             }
 
-            File.Move(temporaryPath, finalPath, overwrite: false);
+            for (int attempt = 0; ; attempt++)
+            {
+                try
+                {
+                    File.Move(temporaryPath, finalPath, overwrite: false);
+                    break;
+                }
+                catch (IOException) when (attempt < 32 && File.Exists(finalPath) && File.Exists(temporaryPath))
+                {
+                    finalPath = ResolveCollision(Path.Combine(targetDirectory, baseFileName));
+                }
+            }
+
+            if (_fileSystem != null)
+            {
+                _fileSystem.TryFlushDirectory(targetDirectory);
+            }
+            else if (OperatingSystem.IsLinux())
+            {
+                TryFlushLinuxDirectoryPath(targetDirectory);
+            }
+
+            TryNormalizeCommittedFileMetadata(finalPath);
+
             try { File.Delete(quarantinePath); }
             catch (IOException) { /* Verified public file is already committed. */ }
             catch (UnauthorizedAccessException) { /* Retry cleanup during maintenance. */ }
@@ -1178,7 +1662,14 @@ public sealed class QuarantineStagingStore
         }
         finally
         {
-            if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
+            try
+            {
+                if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
+            }
+            catch
+            {
+                // Best-effort .part cleanup
+            }
         }
     }
 
@@ -1848,26 +2339,84 @@ public sealed class QuarantineStagingStore
         [MarshalAs(UnmanagedType.LPUTF8Str)] string newpath,
         uint flags);
 
-    private static bool TryGetLinuxFileIdentityByFd(int fd, out LinuxStatx statx)
+    [DllImport("libc", EntryPoint = "fsync", SetLastError = true)]
+    private static extern int LinuxFsync(int fd);
+
+    private static bool TryGetLinuxFileIdentityByFd(int fd, out LinuxStatx statx) =>
+        TryGetLinuxFileIdentityByFd(fd, out statx, out _);
+
+    private static bool TryGetLinuxFileIdentityByFd(int fd, out LinuxStatx statx, out int errno)
     {
         statx = default;
+        errno = 0;
         if (!OperatingSystem.IsLinux() || fd < 0)
         {
             return false;
         }
 
-        return LinuxStatxCall(fd, string.Empty, LinuxAtEmptyPath, LinuxStatxBasicStats, out statx) == 0;
+        if (LinuxStatxCall(fd, string.Empty, LinuxAtEmptyPath, LinuxStatxBasicStats, out statx) == 0)
+        {
+            return true;
+        }
+
+        errno = Marshal.GetLastWin32Error();
+        return false;
     }
 
-    private static bool TryGetLinuxFileIdentityByPath(string path, out LinuxStatx statx)
+    private static bool TryGetLinuxFileIdentityByPath(string path, out LinuxStatx statx) =>
+        TryGetLinuxFileIdentityByPath(path, out statx, out _);
+
+    private static bool TryGetLinuxFileIdentityByPath(string path, out LinuxStatx statx, out int errno)
     {
         statx = default;
+        errno = 0;
         if (!OperatingSystem.IsLinux() || string.IsNullOrWhiteSpace(path))
         {
             return false;
         }
 
-        return LinuxStatxCall(LinuxAtFdcwd, path, LinuxAtSymlinkNofollow, LinuxStatxBasicStats, out statx) == 0;
+        if (LinuxStatxCall(LinuxAtFdcwd, path, LinuxAtSymlinkNofollow, LinuxStatxBasicStats, out statx) == 0)
+        {
+            return true;
+        }
+
+        errno = Marshal.GetLastWin32Error();
+        return false;
+    }
+
+    private static void TryFlushLinuxDirectory(SafeFileHandle? dirHandle)
+    {
+        if (!OperatingSystem.IsLinux() || dirHandle == null || dirHandle.IsInvalid || dirHandle.IsClosed)
+        {
+            return;
+        }
+
+        try
+        {
+            _ = LinuxFsync(dirHandle.DangerousGetHandle().ToInt32());
+        }
+        catch
+        {
+            // Ignore directory fsync errors on filesystems that do not support it
+        }
+    }
+
+    private static void TryFlushLinuxDirectoryPath(string directoryPath)
+    {
+        if (!OperatingSystem.IsLinux() || string.IsNullOrWhiteSpace(directoryPath))
+        {
+            return;
+        }
+
+        try
+        {
+            using SafeFileHandle? handle = OpenValidatedLinuxDirectoryHandle(directoryPath, out _);
+            TryFlushLinuxDirectory(handle);
+        }
+        catch
+        {
+            // Best-effort directory flush
+        }
     }
 
     private static SafeFileHandle? OpenValidatedLinuxDirectoryHandle(string directoryPath, out LinuxStatx dirStat)

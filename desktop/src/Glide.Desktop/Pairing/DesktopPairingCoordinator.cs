@@ -65,6 +65,7 @@ public sealed class DesktopPairingCoordinator : IDisposable
     private readonly Action _releaseListener;
     private readonly Func<bool> _isTransferBusy;
     private readonly Func<System.Net.IPAddress, bool> _addressPolicy;
+    private readonly TimeSpan _scanTimeoutDuration;
 
     private DesktopPairingSnapshot _snapshot = DesktopPairingSnapshot.Initial;
     private PairReadyWindowAuthority? _window;
@@ -74,6 +75,7 @@ public sealed class DesktopPairingCoordinator : IDisposable
     private TaskCompletionSource<bool>? _approvalTcs;
     private DiscoveredPeer? _selectedPeer;
     private int _peerCount;
+    private long _lastObservedRevision;
     private int _sessionActive;
     private int _disposed;
 
@@ -85,9 +87,13 @@ public sealed class DesktopPairingCoordinator : IDisposable
         Func<CancellationToken, Task<TlsSocketListener>> ensureListener,
         Action releaseListener,
         Func<bool> isTransferBusy,
-        Func<System.Net.IPAddress, bool>? addressPolicy = null)
+        Func<System.Net.IPAddress, bool>? addressPolicy = null,
+        TimeSpan? scanTimeoutDuration = null,
+        DesktopTimeoutPolicy? timeoutPolicy = null)
     {
+        TimeoutPolicy = timeoutPolicy ?? DesktopTimeoutPolicy.Default;
         _addressPolicy = addressPolicy ?? IsAllowedLocalLanAddress;
+        _scanTimeoutDuration = scanTimeoutDuration ?? TimeSpan.FromSeconds(ScanTimeoutSeconds);
         _trustManager = trustManager;
         _invitations = invitations ?? throw new ArgumentNullException(nameof(invitations));
         _mdns = mdns ?? throw new ArgumentNullException(nameof(mdns));
@@ -95,7 +101,12 @@ public sealed class DesktopPairingCoordinator : IDisposable
         _ensureListener = ensureListener ?? throw new ArgumentNullException(nameof(ensureListener));
         _releaseListener = releaseListener ?? throw new ArgumentNullException(nameof(releaseListener));
         _isTransferBusy = isTransferBusy ?? throw new ArgumentNullException(nameof(isTransferBusy));
+        _mdns.SnapshotChanged += ApplyDiscoverySnapshot;
     }
+
+    public DesktopTimeoutPolicy TimeoutPolicy { get; set; }
+
+    public bool IsBusy => Volatile.Read(ref _sessionActive) != 0 || _isTransferBusy();
 
     public event Action<DesktopPairingSnapshot>? Changed;
 
@@ -131,28 +142,102 @@ public sealed class DesktopPairingCoordinator : IDisposable
         CancelReadyWindow(publish: false);
         CancelOperation();
         _selectedPeer = null;
-        lock (_gate) _peerCount = 0;
-        Publish(Snapshot with { Phase = DesktopPairingPhase.Scanning, Message = "Looking for Glide devices…", Diagnostic = "", RecoveryAction = "" });
+
+        _mdns.PruneExpiredPeers();
+        DiscoverySnapshot current = _mdns.Snapshot;
+        int cachedPairReady = current.Peers.Count(static p => p.IsPairReady);
+        string diagnostic = FormatDiscoveryDiagnostic(current.Diagnostics);
+
+        lock (_gate)
+        {
+            _peerCount = cachedPairReady;
+            if (current.Revision > _lastObservedRevision)
+            {
+                _lastObservedRevision = current.Revision;
+            }
+        }
+
+        if (cachedPairReady > 0)
+        {
+            Publish(Snapshot with
+            {
+                Phase = DesktopPairingPhase.PeersFound,
+                Message = "",
+                Diagnostic = diagnostic,
+                RecoveryAction = ""
+            });
+        }
+        else
+        {
+            Publish(Snapshot with
+            {
+                Phase = DesktopPairingPhase.Scanning,
+                Message = "Looking for Glide devices…",
+                Diagnostic = diagnostic,
+                RecoveryAction = ""
+            });
+        }
+
         try { _mdns.QueryPeers(); }
         catch (Exception ex) { SetDiscoveryDiagnostic(ex.Message); }
 
         _scanTimeout?.Dispose();
         _scanTimeout = new Timer(_ =>
         {
+            _mdns.PruneExpiredPeers();
+            DiscoverySnapshot latest = _mdns.Snapshot;
+            int latestReady = latest.Peers.Count(static p => p.IsPairReady);
+            int effectiveReady;
             lock (_gate)
             {
                 if (_snapshot.Phase != DesktopPairingPhase.Scanning) return;
+                effectiveReady = Math.Max(_peerCount, latestReady);
+                _peerCount = effectiveReady;
             }
             Publish(Snapshot with
             {
-                Phase = _peerCount > 0 ? DesktopPairingPhase.PeersFound : DesktopPairingPhase.Empty,
-                Message = _peerCount > 0 ? "" : "Open Glide on the other computer and choose Show my QR and code."
+                Phase = effectiveReady > 0 ? DesktopPairingPhase.PeersFound : DesktopPairingPhase.Empty,
+                Message = effectiveReady > 0 ? "" : FormatEmptyDiscoveryMessage(latest.Diagnostics),
+                Diagnostic = FormatDiscoveryDiagnostic(latest.Diagnostics)
             });
-        }, null, TimeSpan.FromSeconds(ScanTimeoutSeconds), Timeout.InfiniteTimeSpan);
+        }, null, _scanTimeoutDuration, Timeout.InfiniteTimeSpan);
+    }
+
+    /// <summary>Consumes an immutable discovery snapshot from <see cref="MdnsDiscoveryService"/>.</summary>
+    public void ApplyDiscoverySnapshot(DiscoverySnapshot snapshot)
+    {
+        if (snapshot == null) return;
+
+        DesktopPairingPhase phase;
+        lock (_gate)
+        {
+            if (snapshot.Revision < _lastObservedRevision)
+            {
+                return;
+            }
+            _lastObservedRevision = snapshot.Revision;
+            phase = _snapshot.Phase;
+        }
+
+        if (_selectedPeer != null &&
+            phase is DesktopPairingPhase.Scanning or DesktopPairingPhase.PeersFound or DesktopPairingPhase.Empty)
+        {
+            DiscoveredPeer? matching = snapshot.Peers.FirstOrDefault(p =>
+                p.IsPairReady &&
+                string.Equals(p.Host, _selectedPeer.Host, StringComparison.OrdinalIgnoreCase) &&
+                p.Port == _selectedPeer.Port);
+            _selectedPeer = matching;
+        }
+
+        int pairReadyPeers = snapshot.Peers.Count(static p => p.IsPairReady);
+        NotifyPeerCountCore(pairReadyPeers, snapshot.Diagnostics);
     }
 
     /// <summary>Called by the shell whenever the count of pair-ready peers changes.</summary>
-    public void NotifyPeerCount(int pairReadyPeers)
+    public void NotifyPeerCount(int pairReadyPeers) =>
+        NotifyPeerCountCore(pairReadyPeers, _mdns.Diagnostics);
+
+    private void NotifyPeerCountCore(int pairReadyPeers, LanDiscoveryDiagnostics diagnostics)
     {
         DesktopPairingPhase phase;
         lock (_gate)
@@ -160,15 +245,59 @@ public sealed class DesktopPairingCoordinator : IDisposable
             _peerCount = pairReadyPeers;
             phase = _snapshot.Phase;
         }
-        if (phase == DesktopPairingPhase.Scanning && pairReadyPeers > 0)
+
+        string diagText = FormatDiscoveryDiagnostic(diagnostics);
+        if (phase is DesktopPairingPhase.Scanning or DesktopPairingPhase.Empty && pairReadyPeers > 0)
         {
-            Publish(Snapshot with { Phase = DesktopPairingPhase.PeersFound, Message = "" });
+            _scanTimeout?.Dispose();
+            _scanTimeout = null;
+            Publish(Snapshot with
+            {
+                Phase = DesktopPairingPhase.PeersFound,
+                Message = "",
+                Diagnostic = diagText
+            });
         }
         else if (phase == DesktopPairingPhase.PeersFound && pairReadyPeers == 0)
         {
-            Publish(Snapshot with { Phase = DesktopPairingPhase.Empty, Message = "Open Glide on the other computer and choose Show my QR and code." });
+            Publish(Snapshot with
+            {
+                Phase = DesktopPairingPhase.Empty,
+                Message = FormatEmptyDiscoveryMessage(diagnostics),
+                Diagnostic = diagText
+            });
+        }
+        else if (phase is DesktopPairingPhase.Scanning or DesktopPairingPhase.Empty or DesktopPairingPhase.PeersFound)
+        {
+            string message = phase == DesktopPairingPhase.Empty
+                ? FormatEmptyDiscoveryMessage(diagnostics)
+                : Snapshot.Message;
+            Publish(Snapshot with
+            {
+                Message = message,
+                Diagnostic = diagText
+            });
         }
     }
+
+    private static string FormatEmptyDiscoveryMessage(LanDiscoveryDiagnostics diagnostics) =>
+        diagnostics.Status switch
+        {
+            LanDiscoveryDiagnosticStatus.NoEligibleInterfaces =>
+                "No local network interface is active. Connect to Wi-Fi or Ethernet, or use Pair by address.",
+            LanDiscoveryDiagnosticStatus.MulticastBlocked =>
+                "Automatic discovery is blocked on this network. Use Pair by address or Enter pairing link.",
+            LanDiscoveryDiagnosticStatus.Degraded =>
+                "Open Glide on the other computer and choose Show my QR and code, or use Pair by address.",
+            _ => "Open Glide on the other computer and choose Show my QR and code."
+        };
+
+    private static string FormatDiscoveryDiagnostic(LanDiscoveryDiagnostics diagnostics) =>
+        diagnostics.Status switch
+        {
+            LanDiscoveryDiagnosticStatus.Healthy => "",
+            _ => LanDiscoverySafeText($"{diagnostics.Status}: {diagnostics.ErrorMessage ?? "Discovery issue detected."}")
+        };
 
     private void SetDiscoveryDiagnostic(string detail) =>
         Publish(Snapshot with { Diagnostic = LanDiscoverySafeText(detail) });
@@ -333,7 +462,11 @@ public sealed class DesktopPairingCoordinator : IDisposable
                 _selectedPeer.DeviceName,
                 (trust, approve, verifying, ct) => Profile2PairingEngine.RunInitiatorPinPairAsync(
                     _selectedPeer.Host, _selectedPeer.Port, _selectedPeer.PresenceId,
-                    pin, _deviceName(), PlatformName(), trust, approve, verifying, ct));
+                    pin, _deviceName(), PlatformName(), trust, approve, verifying, ct,
+                    TimeoutPolicy.TcpConnectTimeout,
+                    TimeoutPolicy.TlsHandshakeTimeout,
+                    TimeoutPolicy.MachineAuthenticationTimeout,
+                    TimeoutPolicy.HumanApprovalTimeout));
 
     public Task PairWithAddressAsync(string hostPort, string pin)
     {
@@ -346,7 +479,11 @@ public sealed class DesktopPairingCoordinator : IDisposable
         return RunInitiatorAsync(
             host,
             (trust, approve, verifying, ct) => Profile2PairingEngine.RunInitiatorPinPairAsync(
-                host, port, null, pin, _deviceName(), PlatformName(), trust, approve, verifying, ct));
+                host, port, null, pin, _deviceName(), PlatformName(), trust, approve, verifying, ct,
+                TimeoutPolicy.TcpConnectTimeout,
+                TimeoutPolicy.TlsHandshakeTimeout,
+                TimeoutPolicy.MachineAuthenticationTimeout,
+                TimeoutPolicy.HumanApprovalTimeout));
     }
 
     public Task PairWithLinkAsync(string uri)
@@ -371,7 +508,11 @@ public sealed class DesktopPairingCoordinator : IDisposable
         return RunInitiatorAsync(
             invitation.Name,
             (trust, approve, verifying, ct) => Profile2PairingEngine.RunInitiatorQrPairAsync(
-                invitation, _deviceName(), PlatformName(), trust, approve, verifying, ct));
+                invitation, _deviceName(), PlatformName(), trust, approve, verifying, ct,
+                TimeoutPolicy.TcpConnectTimeout,
+                TimeoutPolicy.TlsHandshakeTimeout,
+                TimeoutPolicy.MachineAuthenticationTimeout,
+                TimeoutPolicy.HumanApprovalTimeout));
     }
 
     private async Task RunInitiatorAsync(
@@ -441,10 +582,16 @@ public sealed class DesktopPairingCoordinator : IDisposable
         }
 
         PairReadyWindowAuthority? window;
-        lock (_gate) window = _window;
+        DesktopPairingSnapshot preInboundSnapshot;
+        lock (_gate)
+        {
+            window = _window;
+            preInboundSnapshot = _snapshot;
+        }
 
         bool acquired = Interlocked.CompareExchange(ref _sessionActive, 1, 0) == 0;
         bool busy = !acquired || _isTransferBusy();
+        bool reachedVerifying = false;
         try
         {
             string peerName = Sanitize(open.InitiatorDeviceName);
@@ -457,8 +604,14 @@ public sealed class DesktopPairingCoordinator : IDisposable
                 PlatformName(),
                 _trustManager,
                 ApproveInboundAsync,
-                () => Publish(Snapshot with { Phase = DesktopPairingPhase.Verifying, PeerName = peerName, Message = "Verifying…" }),
-                cancellationToken).ConfigureAwait(false);
+                () =>
+                {
+                    reachedVerifying = true;
+                    Publish(Snapshot with { Phase = DesktopPairingPhase.Verifying, PeerName = peerName, Message = "Verifying…" });
+                },
+                cancellationToken,
+                TimeoutPolicy.MachineAuthenticationTimeout,
+                TimeoutPolicy.HumanApprovalTimeout).ConfigureAwait(false);
 
             if (busy)
             {
@@ -473,9 +626,18 @@ public sealed class DesktopPairingCoordinator : IDisposable
             {
                 CancelReadyWindow(publish: false);
             }
+            else if (!reachedVerifying &&
+                     outcome.ErrorCode == Profile2Constants.ErrorProtocolOrder &&
+                     window?.IsActive() == true &&
+                     preInboundSnapshot.Phase == DesktopPairingPhase.TargetReady)
+            {
+                // An unauthenticated peer that stalled before PairMsg must not destroy the active TargetReady window.
+                Publish(preInboundSnapshot with { SecondsRemaining = window.RemainingSeconds() });
+                return;
+            }
             Complete(outcome, peerName);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
         }
         catch (Exception)
@@ -484,7 +646,11 @@ public sealed class DesktopPairingCoordinator : IDisposable
         }
         finally
         {
-            if (acquired) Interlocked.Exchange(ref _sessionActive, 0);
+            if (acquired)
+            {
+                DeclineApproval();
+                Interlocked.Exchange(ref _sessionActive, 0);
+            }
             await connection.DisposeAsync().ConfigureAwait(false);
         }
     }
@@ -502,11 +668,18 @@ public sealed class DesktopPairingCoordinator : IDisposable
         });
         try
         {
-            bool approved = await tcs.Task.WaitAsync(TimeSpan.FromSeconds(Profile2Constants.DefaultPairWindowSeconds), cancellationToken).ConfigureAwait(false);
+            TimeSpan approvalLimit = TimeoutPolicy.HumanApprovalTimeout > TimeSpan.Zero
+                ? TimeoutPolicy.HumanApprovalTimeout
+                : TimeSpan.FromSeconds(Profile2Constants.DefaultPairWindowSeconds);
+            bool approved = await tcs.Task.WaitAsync(approvalLimit, cancellationToken).ConfigureAwait(false);
             if (approved) Publish(Snapshot with { Phase = DesktopPairingPhase.Verifying, Message = "Verifying…" });
             return approved;
         }
         catch (TimeoutException)
+        {
+            return false;
+        }
+        catch (OperationCanceledException)
         {
             return false;
         }
@@ -688,6 +861,7 @@ public sealed class DesktopPairingCoordinator : IDisposable
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        _mdns.SnapshotChanged -= ApplyDiscoverySnapshot;
         CancelOperation();
         _scanTimeout?.Dispose();
         DeclineApproval();

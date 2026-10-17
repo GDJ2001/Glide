@@ -17,7 +17,7 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            var viewModel = new LinuxMainViewModel();
+            var viewModel = new LinuxMainViewModel(autoStartReceiving: true);
             var mainWindow = new MainWindow
             {
                 DataContext = viewModel
@@ -53,10 +53,7 @@ public partial class App : Application
                     }
                     else if (arg == "--listen")
                     {
-                        if (!viewModel.IsListening)
-                        {
-                            _ = viewModel.ToggleListenerCommand.ExecuteAsync(null);
-                        }
+                        _ = viewModel.StartReceivingOnLaunchAsync();
                     }
                     else if (!arg.StartsWith("--"))
                     {
