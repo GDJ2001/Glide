@@ -18,6 +18,7 @@ Glide is built with the assistance of open-source software. Below is a consolida
 | **AndroidX Navigation 3** (`navigation3-runtime`, `navigation3-ui`) | The Android Open Source Project | Apache 2.0 |
 | **AndroidX Room** (`room-runtime`, `room-ktx`, `room-compiler`) | The Android Open Source Project | Apache 2.0 |
 | **AndroidX DataStore** (`datastore-preferences`) | The Android Open Source Project | Apache 2.0 |
+| **AndroidX WorkManager** (`work-runtime-ktx`) | The Android Open Source Project | Apache 2.0 |
 | **AndroidX ProfileInstaller** (`profileinstaller`) | The Android Open Source Project | Apache 2.0 |
 | **Google Dagger Hilt** (`hilt-android`, `hilt-compiler`) | Google LLC | Apache 2.0 |
 | **Google Play Services Nearby** (`play-services-nearby`) | Google LLC | [Google APIs Terms](https://developers.google.com/terms) |
@@ -28,8 +29,8 @@ Glide is built with the assistance of open-source software. Below is a consolida
 ### Desktop Runtime Notice
 The shipping desktop binaries (`Glide.Windows.UI` on Windows and `Glide.App` on Linux) are implemented strictly using the .NET standard Base Class Library (`System.Net.Sockets`, `System.Security.Cryptography`, `System.Text.Json`, `System.IO`, and WPF). There are **zero external third-party NuGet dependencies** linked into production desktop artifacts.
 
-### Web Client Notice
-The browser transfer client (`glide-web-client.zip` / embedded gateway client) is authored in 100% vanilla ES2022 JavaScript, semantic HTML5, and CSS3. There are **zero npm packages, external build tools, or CDN dependencies** bundled or requested at runtime.
+
+
 
 ---
 

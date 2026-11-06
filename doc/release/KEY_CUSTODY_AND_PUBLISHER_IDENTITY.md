@@ -118,7 +118,7 @@ $$\text{versionCode} = (\text{Major} \times 10{,}000) + (\text{Minor} \times 100
 
 ### 5.2 Build Configuration Binding
 In `app/build.gradle.kts`:
-- `defaultConfig.versionCode` defaults to `2` for local debug builds, but dynamically binds to `GLIDE_VERSION_CODE` / `glide.versionCode`.
+- `defaultConfig.versionCode` defaults to `1` for the baseline release, but dynamically binds to `GLIDE_VERSION_CODE` / `glide.versionCode`.
 - `defaultConfig.versionName` defaults to `"1.0.0"`, but dynamically binds to `GLIDE_VERSION_NAME` / `glide.versionName`.
 
 ---

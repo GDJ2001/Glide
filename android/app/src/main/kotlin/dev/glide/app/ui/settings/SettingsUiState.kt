@@ -30,9 +30,10 @@ data class SettingsUiState(
     val feedbackMessage: String? = null,
     val isNearbyDiagnosticsOpen: Boolean = false,
     val isLicensesDialogOpen: Boolean = false,
+    val isPrivacyPolicyDialogOpen: Boolean = false,
     val isTrustedDevicesDialogOpen: Boolean = false,
     val trustedPeers: List<TrustedPeerRecord> = emptyList(),
     val nearbyDiagnostics: NearbyDiagnosticsState = NearbyDiagnosticsState(),
-    val appVersionName: String = "1.0.0-dev",
+    val appVersionName: String = "1.0.0",
     val appBuildNumber: String = "1"
 )

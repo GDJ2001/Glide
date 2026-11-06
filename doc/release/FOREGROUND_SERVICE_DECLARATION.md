@@ -47,7 +47,7 @@ Google Play app reviewers can verify compliance with the following steps:
    - On Device A: Select 1 or more files and tap **"Find Nearby"**.
    - On Device B: Tap **"Receive"**.
    - Select Device B from the discovery radar on Device A.
-   - Confirm the 4-digit SAS pairing code and accept the transfer prompt on Device B.
+   - Confirm the 6-digit SAS pairing code and accept the transfer prompt on Device B.
 3. **Observe Active Foreground Service:**
    - Once transfer begins, swipe down the Android notification shade.
    - Verify the ongoing notification: **"Glide — Transferring..."** displaying progress percentage and current byte count.
@@ -57,3 +57,16 @@ Google Play app reviewers can verify compliance with the following steps:
 5. **Verify Clean Termination:**
    - Allow the transfer to finish, or tap **"Cancel"** directly on the notification.
    - Verify that the notification disappears immediately and the background process ceases network operations.
+
+---
+
+## 4. Google Play Console Video Proof Recording Guide
+
+Google Play requires a video demonstration link demonstrating the user-facing foreground service in action:
+- **Duration:** 30–60 seconds.
+- **Hosting:** Upload as an **Unlisted YouTube video** or public Google Drive link (*Anyone with the link can view*).
+- **Video Flow:**
+  1. **(0:00–0:15) Transfer Initiation:** Show Device A selecting files and discovering Device B over local Nearby / Wi-Fi Direct.
+  2. **(0:15–0:25) Mutual Consent:** Show mutual 6-digit SAS verification and acceptance of incoming files.
+  3. **(0:25–0:40) Background & Notification Noticeability:** Press the device Home button or turn screen off. Pull down the notification shade to clearly display the active "Transferring files..." progress notification with live progress bar and "Cancel" button.
+  4. **(0:40–0:55) Clean Dismissal:** Show transfer completing successfully with SHA-256 integrity verification, showing the notification cleanly dismissing immediately.

@@ -55,21 +55,33 @@
 # --------------------------------------------------------------------------------------------------
 # Kotlinx Serialization & Core Domain Protocols
 # --------------------------------------------------------------------------------------------------
+-keepattributes RuntimeVisibleAnnotations,AnnotationDefault
 -keepclassmembers class * {
     @kotlinx.serialization.SerialName <fields>;
 }
+-if @kotlinx.serialization.Serializable class **
+-keepclassmembers class <1> {
+    static <1>$Companion Companion;
+}
+-if @kotlinx.serialization.Serializable class ** {
+    static **$* *;
+}
+-keepnames class <2>$$serializer
 -keepclassmembers class **$$serializer {
     public static final ** INSTANCE;
+    kotlinx.serialization.KSerializer[] childSerializers();
 }
 -keepclasseswithmembers class * {
     *** Companion;
+    kotlinx.serialization.KSerializer serializer(...);
 }
+-keep class dev.glide.core.protocol.** { *; }
 -keep class dev.glide.core.domain.** { *; }
 -keep class dev.glide.core.coordinator.** { *; }
 -keep class dev.glide.core.pairing.** { *; }
 -keep class dev.glide.core.routing.** { *; }
 -keep class dev.glide.core.discovery.** { *; }
--keep class dev.glide.transfer.core.model.** { *; }
+-keep class dev.glide.app.navigation.** { *; }
 
 # --------------------------------------------------------------------------------------------------
 # AndroidX CameraX (LAN-017)

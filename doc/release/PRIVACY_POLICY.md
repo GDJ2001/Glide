@@ -39,6 +39,8 @@ Glide requests only the minimum permissions necessary to establish local peer-to
 | **ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION** | Android 12 and below | Required by the Android operating system to scan for Wi-Fi and Bluetooth devices. **Glide never queries, records, or shares your physical GPS location.** |
 | **POST_NOTIFICATIONS** | Android 13+ (API 33+) | Displays an ongoing progress notification while a file transfer is actively in flight, allowing you to monitor progress and cancel the transfer if needed. |
 | **FOREGROUND_SERVICE (connectedDevice)** | All Supported | Keeps active peer-to-peer Wi-Fi Direct transfer sockets alive when you switch apps or lock the screen. Terminates immediately once transfers finish or are cancelled. |
+| **CAMERA** | Android 8.0+ (API 26+) | Strictly optional runtime permission used exclusively to scan invitation QR codes for local peer pairing. Video frames are analyzed in-memory and are never recorded, saved, or transmitted off-device. Manual numeric invitation entry is always available without camera access. |
+| **ACCESS_LOCAL_NETWORK** | Android 17+ (API 37+) | Enables local area network (LAN) mDNS discovery and TLS 1.3 encrypted peer transfers over private local Wi-Fi networks. |
 
 Glide **does not** request `MANAGE_EXTERNAL_STORAGE`, `READ_MEDIA_IMAGES`, `READ_CONTACTS`, or `RECEIVE_BOOT_COMPLETED`.
 

@@ -1,6 +1,7 @@
 package dev.glide.app.release
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -13,8 +14,10 @@ import javax.imageio.ImageIO
  * Verifies:
  * 1. Google Play Store icon dimensions (512x512 px) and file size (<= 1024 KiB).
  * 2. Feature graphic dimensions (1024x500 px) and file size (<= 15 MiB).
- * 3. Curated phone screenshots (>= 4 items, valid aspect ratios between 320px and 3840px).
- * 4. Curated tablet screenshots (>= 2 items, valid dimensions).
+ * 3. Curated phone screenshots (>= 4 items, valid aspect ratios between 320px and 3840px, no alpha).
+ * 4. Curated tablet screenshots (>= 2 items, valid dimensions, no alpha).
+ * 4b. Dedicated 7-inch tablet screenshots (>= 4 items, valid dimensions, no alpha).
+ * 4c. Dedicated 10-inch tablet screenshots (>= 4 items, valid dimensions, no alpha).
  * 5. Store listing text constraints (Title <= 30 chars, Short Description <= 80 chars, Full Description <= 4000 chars).
  * 6. Policy documentation completeness: Privacy Policy, Data Safety, Foreground Service Declaration, and OSS Licenses.
  */
@@ -63,10 +66,11 @@ class StoreAssetsAndListingComplianceTest {
         assertNotNull("feature_graphic_1024x500.png must be a readable image format", image)
         assertEquals("Feature graphic width must be exactly 1024 px", 1024, image.width)
         assertEquals("Feature graphic height must be exactly 500 px", 500, image.height)
+        assertFalse("Feature graphic must not have alpha channel: ${fgFile.name}", image.colorModel.hasAlpha())
     }
 
     // -------------------------------------------------------------------------
-    // 3. Phone Screenshots (Min 2, Max 8, 320px to 3840px)
+    // 3. Phone Screenshots (Min 2, Max 8, 320px to 3840px, No Alpha)
     // -------------------------------------------------------------------------
 
     @Test
@@ -88,6 +92,9 @@ class StoreAssetsAndListingComplianceTest {
 
             assertTrue("Min dimension must be >= 320 px for ${screen.name}", minDim >= 320)
             assertTrue("Max dimension must be <= 3840 px for ${screen.name}", maxDim <= 3840)
+            assertTrue("Max dimension must be <= 2 * min dimension for ${screen.name}", maxDim <= 2 * minDim)
+            assertFalse("Phone screenshot must not have alpha channel: ${screen.name}", image.colorModel.hasAlpha())
+            assertTrue("Screenshot file size must be <= 8 MB for ${screen.name}", screen.length() <= 8 * 1024 * 1024)
 
             // Phone screenshots should be portrait orientation
             assertTrue("Phone screenshot should be in portrait orientation: ${screen.name}", image.height >= image.width)
@@ -95,7 +102,7 @@ class StoreAssetsAndListingComplianceTest {
     }
 
     // -------------------------------------------------------------------------
-    // 4. Tablet Screenshots (Min 1, Max 8)
+    // 4. Tablet Screenshots (General, Min 2, Max 8)
     // -------------------------------------------------------------------------
 
     @Test
@@ -106,6 +113,7 @@ class StoreAssetsAndListingComplianceTest {
 
         val screenshots = tabletDir.listFiles { file -> file.extension.lowercase() == "png" } ?: emptyArray()
         assertTrue("Must have at least 2 curated tablet screenshots, got: ${screenshots.size}", screenshots.size >= 2)
+        assertTrue("Google Play allows maximum 8 screenshots per device type", screenshots.size <= 8)
 
         for (screen in screenshots) {
             val image = ImageIO.read(screen)
@@ -116,6 +124,67 @@ class StoreAssetsAndListingComplianceTest {
 
             assertTrue("Min dimension must be >= 320 px for ${screen.name}", minDim >= 320)
             assertTrue("Max dimension must be <= 3840 px for ${screen.name}", maxDim <= 3840)
+            assertTrue("Max dimension must be <= 2 * min dimension for ${screen.name}", maxDim <= 2 * minDim)
+            assertFalse("Tablet screenshot must not have alpha channel: ${screen.name}", image.colorModel.hasAlpha())
+            assertTrue("Tablet screenshot file size must be <= 8 MB for ${screen.name}", screen.length() <= 8 * 1024 * 1024)
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // 4b. 7-Inch Tablet Screenshots (Dedicated, Min 4, Max 8)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun test4b_7inchTabletScreenshots_presenceAndFormat() {
+        val root = resolveProjectRoot()
+        val tablet7Dir = File(root, "doc/release/store_assets/screenshots/tablet_7inch")
+        assertTrue("7-inch tablet screenshots directory must exist", tablet7Dir.isDirectory)
+
+        val screenshots = tablet7Dir.listFiles { file -> file.extension.lowercase() == "png" } ?: emptyArray()
+        assertTrue("Must have at least 4 curated 7-inch tablet screenshots, got: ${screenshots.size}", screenshots.size >= 4)
+        assertTrue("Google Play allows maximum 8 screenshots per device type", screenshots.size <= 8)
+
+        for (screen in screenshots) {
+            val image = ImageIO.read(screen)
+            assertNotNull("7-inch tablet screenshot must be readable: ${screen.name}", image)
+
+            val minDim = minOf(image.width, image.height)
+            val maxDim = maxOf(image.width, image.height)
+
+            assertTrue("Min dimension must be >= 320 px for ${screen.name}", minDim >= 320)
+            assertTrue("Max dimension must be <= 3840 px for ${screen.name}", maxDim <= 3840)
+            assertTrue("Max dimension must be <= 2 * min dimension for ${screen.name}", maxDim <= 2 * minDim)
+            assertFalse("7-inch tablet screenshot must not have alpha channel: ${screen.name}", image.colorModel.hasAlpha())
+            assertTrue("7-inch tablet screenshot file size must be <= 8 MB for ${screen.name}", screen.length() <= 8 * 1024 * 1024)
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // 4c. 10-Inch Tablet Screenshots (Dedicated, Min 4, Max 8)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun test4c_10inchTabletScreenshots_presenceAndFormat() {
+        val root = resolveProjectRoot()
+        val tablet10Dir = File(root, "doc/release/store_assets/screenshots/tablet_10inch")
+        assertTrue("10-inch tablet screenshots directory must exist", tablet10Dir.isDirectory)
+
+        val screenshots = tablet10Dir.listFiles { file -> file.extension.lowercase() == "png" } ?: emptyArray()
+        assertTrue("Must have at least 4 curated 10-inch tablet screenshots, got: ${screenshots.size}", screenshots.size >= 4)
+        assertTrue("Google Play allows maximum 8 screenshots per device type", screenshots.size <= 8)
+
+        for (screen in screenshots) {
+            val image = ImageIO.read(screen)
+            assertNotNull("10-inch tablet screenshot must be readable: ${screen.name}", image)
+
+            val minDim = minOf(image.width, image.height)
+            val maxDim = maxOf(image.width, image.height)
+
+            assertTrue("Min dimension must be >= 320 px for ${screen.name}", minDim >= 320)
+            assertTrue("Max dimension must be <= 3840 px for ${screen.name}", maxDim <= 3840)
+            assertTrue("Max dimension must be <= 2 * min dimension for ${screen.name}", maxDim <= 2 * minDim)
+            assertFalse("10-inch tablet screenshot must not have alpha channel: ${screen.name}", image.colorModel.hasAlpha())
+            assertTrue("10-inch tablet screenshot file size must be <= 8 MB for ${screen.name}", screen.length() <= 8 * 1024 * 1024)
         }
     }
 

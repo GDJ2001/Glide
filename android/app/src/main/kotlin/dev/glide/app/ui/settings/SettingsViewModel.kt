@@ -21,10 +21,18 @@ class SettingsViewModel(
     private val settingsStore: SettingsStore,
     private val fileManager: PrivateFileManager,
     private val trustedPeerDao: TrustedPeerDao? = null,
-    private val transferRuntime: TransferRuntime? = null
+    private val transferRuntime: TransferRuntime? = null,
+    private val appVersionName: String = "1.0.0",
+    private val appBuildNumber: String = "1"
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(SettingsUiState(isLoading = true))
+    private val _uiState = MutableStateFlow(
+        SettingsUiState(
+            isLoading = true,
+            appVersionName = appVersionName,
+            appBuildNumber = appBuildNumber
+        )
+    )
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
     private var isTestingOverride = false
 
@@ -272,6 +280,14 @@ class SettingsViewModel(
         _uiState.update { it.copy(isLicensesDialogOpen = false) }
     }
 
+    fun showPrivacyPolicyDialog() {
+        _uiState.update { it.copy(isPrivacyPolicyDialogOpen = true) }
+    }
+
+    fun dismissPrivacyPolicyDialog() {
+        _uiState.update { it.copy(isPrivacyPolicyDialogOpen = false) }
+    }
+
     fun showTrustedDevicesDialog() {
         _uiState.update { it.copy(isTrustedDevicesDialogOpen = true) }
     }
@@ -323,7 +339,9 @@ class SettingsViewModel(
             settingsStore: SettingsStore,
             fileManager: PrivateFileManager,
             trustedPeerDao: TrustedPeerDao? = null,
-            transferRuntime: TransferRuntime? = null
+            transferRuntime: TransferRuntime? = null,
+            appVersionName: String = "1.0.0",
+            appBuildNumber: String = "1"
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -331,7 +349,9 @@ class SettingsViewModel(
                     settingsStore,
                     fileManager,
                     trustedPeerDao,
-                    transferRuntime
+                    transferRuntime,
+                    appVersionName,
+                    appBuildNumber
                 ) as T
             }
         }

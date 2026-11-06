@@ -238,6 +238,10 @@ fun SettingsScreen(
                 onLicensesClick = {
                     haptics.performSelection()
                     viewModel.showLicensesDialog()
+                },
+                onPrivacyPolicyClick = {
+                    haptics.performSelection()
+                    viewModel.showPrivacyPolicyDialog()
                 }
             )
 
@@ -360,6 +364,13 @@ fun SettingsScreen(
     if (uiState.isLicensesDialogOpen) {
         LicensesDialog(
             onDismiss = { viewModel.dismissLicensesDialog() }
+        )
+    }
+
+    // Privacy Policy Dialog
+    if (uiState.isPrivacyPolicyDialogOpen) {
+        PrivacyPolicyDialog(
+            onDismiss = { viewModel.dismissPrivacyPolicyDialog() }
         )
     }
 
@@ -814,7 +825,8 @@ private fun NearbyPrivacySection(
 private fun AboutSection(
     versionName: String,
     buildNumber: String,
-    onLicensesClick: () -> Unit
+    onLicensesClick: () -> Unit,
+    onPrivacyPolicyClick: () -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
@@ -860,6 +872,24 @@ private fun AboutSection(
                 }
 
                 OutlinedButton(
+                    onClick = onPrivacyPolicyClick,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .semantics {
+                            contentDescription = "Privacy policy"
+                        }
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Security,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Privacy policy")
+                }
+
+                OutlinedButton(
                     onClick = onLicensesClick,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -868,6 +898,12 @@ private fun AboutSection(
                             contentDescription = "Open source licenses"
                         }
                 ) {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text("Open source licenses")
                 }
             }
@@ -1035,6 +1071,30 @@ private fun LicensesDialog(
                     license = "Apache License 2.0",
                     description = "Copyright (c) 2008 ZXing authors\nLicensed under the Apache License, Version 2.0."
                 )
+                HorizontalDivider()
+                LicenseItem(
+                    name = "AndroidX Navigation 3",
+                    license = "Apache License 2.0",
+                    description = "Copyright (c) The Android Open Source Project\nLicensed under the Apache License, Version 2.0."
+                )
+                HorizontalDivider()
+                LicenseItem(
+                    name = "AndroidX WorkManager",
+                    license = "Apache License 2.0",
+                    description = "Copyright (c) The Android Open Source Project\nLicensed under the Apache License, Version 2.0."
+                )
+                HorizontalDivider()
+                LicenseItem(
+                    name = "AndroidX Room & SQLite",
+                    license = "Apache License 2.0",
+                    description = "Copyright (c) The Android Open Source Project\nLicensed under the Apache License, Version 2.0."
+                )
+                HorizontalDivider()
+                LicenseItem(
+                    name = "AndroidX DataStore",
+                    license = "Apache License 2.0",
+                    description = "Copyright (c) The Android Open Source Project\nLicensed under the Apache License, Version 2.0."
+                )
             }
         },
         confirmButton = {
@@ -1043,6 +1103,104 @@ private fun LicensesDialog(
                 modifier = Modifier.heightIn(min = 48.dp)
             ) {
                 Text("Close")
+            }
+        }
+    )
+}
+
+@Composable
+private fun PrivacyPolicyDialog(
+    onDismiss: () -> Unit
+) {
+    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Security,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Privacy Policy")
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = "Zero Cloud & Local-Only Sharing",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = "Glide is an offline, peer-to-peer file transfer system. Your files never transit external servers or cloud storage. All transfers occur over direct Wi-Fi Direct or encrypted TLS 1.3 local network connections.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Text(
+                    text = "No User Accounts or Tracking",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = "Glide requires no sign-up, email, phone number, or identity. We collect zero analytics, zero crash telemetry, and zero advertising identifiers.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Text(
+                    text = "Camera & QR Code Usage",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = "Camera access is used strictly and ephemerally to scan invitation QR codes for local device pairing. Video frames are analyzed in volatile memory and never saved or transmitted off-device.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Text(
+                    text = "Quarantine Staging & Data Deletion",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = "In-flight files are stored in an app-private sandbox and verified with SHA-256 before commit. You can purge all received files and revoke paired device identities at any time in Settings.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onDismiss,
+                modifier = Modifier.heightIn(min = 48.dp)
+            ) {
+                Text("Close")
+            }
+        },
+        dismissButton = {
+            OutlinedButton(
+                onClick = {
+                    uriHandler.openUri("https://gdj2001.github.io/Glide/privacy-policy/")
+                },
+                modifier = Modifier.heightIn(min = 48.dp)
+            ) {
+                Text("Open online policy")
             }
         }
     )

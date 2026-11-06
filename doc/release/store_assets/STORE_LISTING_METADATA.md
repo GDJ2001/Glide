@@ -39,7 +39,7 @@ Whether you are traveling off the grid, sharing files in a crowded room, or tran
 
 🔒 UNCOMPROMISING PRIVACY & ZERO CLOUD
 • Pure Peer-to-Peer: Your files never transit external servers or cloud storage. Files travel straight from device A to device B over local radio.
-• Secure Numeric SAS Pairing: Verify connections using a 4-digit mutual authentication code to prevent unwanted connections.
+• Secure Numeric SAS Pairing: Verify connections using a 6-digit mutual authentication code to prevent unwanted connections.
 • Unconditional Receiver Consent: You maintain full control. Review the incoming file list, sizes, and sender details before accepting any payload.
 • Cryptographic Verification: Every received file is checked with on-the-fly SHA-256 cryptographic hashing to ensure zero corruption or byte alteration.
 
@@ -62,11 +62,24 @@ Whether you are traveling off the grid, sharing files in a crowded room, or tran
 Why Glide requests specific permissions:
 • Nearby Wi-Fi Devices / Location: Required by Android to discover and establish direct Wi-Fi Direct connections with nearby peers (Glide never tracks or collects your physical location).
 • Bluetooth: Used to discover and negotiate handshakes with nearby devices.
+• Camera: Used strictly and optionally to scan QR codes for rapid device pairing (never records or saves images).
 • Notifications: Keeps you informed of background transfer progress and completion.
 
 Glide is open, transparent, and built with integrity. No accounts, no ads, no trackers—just seamless, private local sharing.
 ```
 *(Length: ~3,180 characters)*
+
+---
+
+### Release Notes (en-US, Max 500 characters)
+```text
+Glide 1.0.0 initial release!
+• High-speed peer-to-peer file transfer over Wi-Fi Direct and encrypted local Wi-Fi.
+• 100% offline, zero-cloud architecture with on-the-fly SHA-256 verification.
+• Mutual 6-digit numeric verification and optional QR code pairing.
+• Full Material 3 adaptive design with dynamic theming and tablet support.
+• App-private quarantine staging ensuring only complete, verified files are saved.
+```
 
 ---
 
@@ -87,7 +100,19 @@ Glide is open, transparent, and built with integrity. No accounts, no ads, no tr
 
 ## 3. Graphical Asset Checklist
 
-- [x] **Store Icon:** `docs/release/store_assets/icon_512.png` (512×512 px, 32-bit PNG, opaque).
-- [x] **Feature Graphic:** `docs/release/store_assets/feature_graphic_1024x500.png` (1024×500 px, PNG, safe zones respected).
-- [x] **Phone Screenshots:** `docs/release/store_assets/screenshots/phone/` (6 real screenshots, 1080×2424 px).
-- [x] **Tablet Screenshots:** `docs/release/store_assets/screenshots/tablet/` (2 real screenshots, landscape & responsive).
+- [x] **Store Icon:** `doc/release/store_assets/icon_512.png` (512×512 px, 24-bit RGB PNG, opaque, no alpha).
+- [x] **Feature Graphic:** `doc/release/store_assets/feature_graphic_1024x500.png` (1024×500 px, 24-bit RGB PNG, safe zones respected, no alpha).
+- [x] **Phone Screenshots (6 items):** `doc/release/store_assets/screenshots/phone/` (1080×1920 px, 24-bit RGB, opaque, portrait, no alpha).
+- [x] **7-Inch Tablet Screenshots (6 items):** `doc/release/store_assets/screenshots/tablet_7inch/` (1920×1200 px, 16:10 landscape, 24-bit RGB, opaque, no alpha).
+- [x] **10-Inch Tablet Screenshots (6 items):** `doc/release/store_assets/screenshots/tablet_10inch/` (2560×1600 px, 16:10 landscape, 24-bit RGB, opaque, no alpha).
+- [x] **General Tablet Screenshots (6 items):** `doc/release/store_assets/screenshots/tablet/` (1920×1200 px, 16:10 landscape, 24-bit RGB, opaque, no alpha).
+
+### Curated Tablet Screenshot Mapping
+| # | Filename | Key Flow & Description |
+|---|---|---|
+| 1 | `01_home_discovery.png` | Home dashboard with active peer discovery radar, connection status, quick send/receive actions, and security overview. |
+| 2 | `02_file_selection.png` | Staged multi-file batch review, media/document pickers, 4K video/deck/PDF/archive payload summary, and transfer ceilings. |
+| 3 | `03_active_transfer.png` | High-throughput Wi-Fi Direct active streaming, 34.2 MB/s live speed, gradient progress bar, and queued batch items. |
+| 4 | `04_receive_consent.png` | Inbound transfer offer card, sender identity, and prominent 6-digit mutual SAS verification code (`4 8 2 9 1 6`). |
+| 5 | `05_transfer_history.png` | Two-pane adaptive transfer activity, category filters (All/Sent/Received), SHA-256 verification status, and one-tap public export. |
+| 6 | `06_settings_privacy.png` | Two-column tablet settings: device identity, Material You theme mode, app-private quarantine sandbox storage, and zero-cloud guarantee. |

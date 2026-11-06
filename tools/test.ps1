@@ -86,9 +86,9 @@ if ($Target -eq "All" -or $Target -eq "Windows" -or $Target -eq "Desktop") {
     } else {
         "$projectRoot\desktop\tests\Glide.Tests\Glide.Tests.csproj"
     }
-    $dotnetArgs = @("test", $testTarget, "-c", $Configuration, "--nologo", "--logger", "console;verbosity=detailed")
+    $dotnetArgs = @("test", "`"$testTarget`"", "-c", $Configuration, "--nologo", "--logger", "console;verbosity=detailed")
     if ($Filter) {
-        $dotnetArgs += "--filter", $Filter
+        $dotnetArgs += "--filter", "`"$Filter`""
     }
 
     Write-Host "  Running: dotnet $($dotnetArgs -join ' ')" -ForegroundColor Gray

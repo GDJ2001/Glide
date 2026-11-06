@@ -679,17 +679,39 @@ fun GlideAppNavDisplay(
                         null
                     }
                 }
+                val (appVersionName, appBuildNumber) = androidx.compose.runtime.remember(context) {
+                    try {
+                        val pInfo = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                            context.packageManager.getPackageInfo(
+                                context.packageName,
+                                android.content.pm.PackageManager.PackageInfoFlags.of(0)
+                            )
+                        } else {
+                            @Suppress("DEPRECATION")
+                            context.packageManager.getPackageInfo(context.packageName, 0)
+                        }
+                        val vName = pInfo.versionName ?: "1.0.0"
+                        val vCode = androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(pInfo).toString()
+                        vName to vCode
+                    } catch (e: Exception) {
+                        "1.0.0" to "1"
+                    }
+                }
                 val factory = androidx.compose.runtime.remember(
                     settingsStore,
                     fileManager,
                     trustedPeerDao,
-                    transferRuntime
+                    transferRuntime,
+                    appVersionName,
+                    appBuildNumber
                 ) {
                     dev.glide.app.ui.settings.SettingsViewModel.provideFactory(
                         settingsStore = settingsStore,
                         fileManager = fileManager,
                         trustedPeerDao = trustedPeerDao,
-                        transferRuntime = transferRuntime
+                        transferRuntime = transferRuntime,
+                        appVersionName = appVersionName,
+                        appBuildNumber = appBuildNumber
                     )
                 }
                 val viewModel: dev.glide.app.ui.settings.SettingsViewModel = androidx.lifecycle.viewmodel.compose.viewModel(factory = factory)

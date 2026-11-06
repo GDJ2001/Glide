@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy — Glide</title>
+  <meta name="description" content="Privacy Policy for Glide: offline, zero-cloud peer-to-peer file transfer system for Android and desktop.">
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --surface: #131b2e;
+      --surface-border: #23314f;
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+      --primary: #38bdf8;
+      --accent: #818cf8;
+      --font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      background-color: var(--bg);
+      color: var(--text-main);
+      font-family: var(--font-family);
+      line-height: 1.65;
+      padding: 2rem 1rem;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    header {
+      margin-bottom: 2.5rem;
+      border-bottom: 1px solid var(--surface-border);
+      padding-bottom: 1.5rem;
+    }
+    h1 {
+      font-size: 2.25rem;
+      font-weight: 800;
+      color: var(--primary);
+      margin-bottom: 0.5rem;
+    }
+    .effective-date {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+    }
+    h2 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--text-main);
+      margin-top: 2rem;
+      margin-bottom: 0.75rem;
+      border-left: 4px solid var(--primary);
+      padding-left: 0.75rem;
+    }
+    h3 {
+      font-size: 1.15rem;
+      font-weight: 600;
+      color: var(--accent);
+      margin-top: 1.25rem;
+      margin-bottom: 0.5rem;
+    }
+    p, ul {
+      margin-bottom: 1rem;
+      color: #cbd5e1;
+    }
+    ul {
+      padding-left: 1.5rem;
+    }
+    li {
+      margin-bottom: 0.5rem;
+    }
+    .badge-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1rem;
+      margin: 1.5rem 0;
+    }
+    .badge-card {
+      background: var(--surface);
+      border: 1px solid var(--surface-border);
+      border-radius: 8px;
+      padding: 1rem;
+    }
+    .badge-card h4 {
+      color: var(--primary);
+      margin-bottom: 0.25rem;
+      font-size: 1rem;
+    }
+    .badge-card p {
+      font-size: 0.875rem;
+      color: var(--text-muted);
+      margin: 0;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1.5rem 0;
+      font-size: 0.95rem;
+    }
+    th, td {
+      border: 1px solid var(--surface-border);
+      padding: 0.75rem 1rem;
+      text-align: left;
+    }
+    th {
+      background: var(--surface);
+      color: var(--primary);
+      font-weight: 600;
+    }
+    tr:nth-child(even) {
+      background: rgba(19, 27, 46, 0.5);
+    }
+    a {
+      color: var(--primary);
+      text-decoration: underline;
+    }
+    a:hover {
+      color: #7dd3fc;
+    }
+    footer {
+      margin-top: 3rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--surface-border);
+      color: var(--text-muted);
+      font-size: 0.875rem;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Glide Privacy Policy</h1>
+      <p class="effective-date"><strong>Effective Date:</strong> September 14, 2026 &bull; <strong>Version:</strong> 1.0.0</p>
+    </header>
+
+    <main>
+      <section>
+        <p>
+          Glide ("the Application") is an open-source, local-only, zero-cloud peer-to-peer file transfer application developed for Android, Windows, and Linux. This Privacy Policy details our technical architecture and operational principles concerning your privacy when using Glide.
+        </p>
+
+        <div class="badge-grid">
+          <div class="badge-card">
+            <h4>No User Accounts</h4>
+            <p>Zero sign-up, registration, email, or identity requirements.</p>
+          </div>
+          <div class="badge-card">
+            <h4>Zero Cloud Storage</h4>
+            <p>Files travel directly from device to device over local radio.</p>
+          </div>
+          <div class="badge-card">
+            <h4>Zero Trackers or Ads</h4>
+            <p>No analytics SDKs, crash beacons, or ad networks included.</p>
+          </div>
+          <div class="badge-card">
+            <h4>Strict Cryptographic Checks</h4>
+            <p>Streaming SHA-256 verification and quarantine staging on all transfers.</p>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>1. Information Handled by Glide</h2>
+        <h3>1.1 File Content and Metadata</h3>
+        <p>
+          When you select files to send, Glide reads the filename, MIME type, file size, and computes a cryptographic SHA-256 hash strictly for payload integrity. This data is transmitted directly to the proximate peer device over an encrypted peer-to-peer channel.
+        </p>
+        <ul>
+          <li><strong>In Transit:</strong> Direct device-to-device streaming is encrypted end-to-end using TLS 1.3 or Google Play Services Nearby Connections (TLS/DTLS). Files never transit third-party servers, cloud relays, or internet gateways.</li>
+          <li><strong>On Device:</strong> Received payloads are initially quarantined in an app-private sandbox (<code>Android/data/dev.glide.app/files/staging/</code>) as <code>.part</code> files. Only after a byte-for-byte SHA-256 match is verified against the sender's manifest is the file committed. You can export verified files to your device's Downloads directory at any time.</li>
+        </ul>
+
+        <h3>1.2 Device Name and Cryptographic Identity</h3>
+        <p>
+          During local discovery, Glide broadcasts a customizable device display name (defaults to your device model, e.g., "Pixel 10") and an ephemeral local session token. This token is visible only to proximate devices searching for a transfer partner on the same local Wi-Fi or within Bluetooth range. Glide does not collect or transmit this identifier off-device.
+        </p>
+      </section>
+
+      <section>
+        <h2>2. Android Device Permissions and Purpose</h2>
+        <p>Glide requests only the minimum runtime permissions necessary to negotiate local transfers:</p>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Permission</th>
+              <th>Platform</th>
+              <th>Purpose</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>NEARBY_WIFI_DEVICES</code></td>
+              <td>Android 13+ (API 33+)</td>
+              <td>Discovers and connects to nearby peer devices over Wi-Fi Direct without requesting device location. Declared with <code>neverForLocation</code>.</td>
+            </tr>
+            <tr>
+              <td><code>BLUETOOTH_SCAN, ADVERTISE, CONNECT</code></td>
+              <td>Android 12+ (API 31+)</td>
+              <td>Discovers proximate peer devices and performs initial connection negotiation. Declared with <code>neverForLocation</code>.</td>
+            </tr>
+            <tr>
+              <td><code>ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION</code></td>
+              <td>Android 12 &amp; below</td>
+              <td>Mandated by Android OS to scan for local Wi-Fi Direct and Bluetooth beacons. <strong>Glide never queries, records, or shares your physical GPS location.</strong></td>
+            </tr>
+            <tr>
+              <td><code>CAMERA</code></td>
+              <td>Android 8.0+ (API 26+)</td>
+              <td><strong>Strictly optional</strong> runtime permission used exclusively to scan invitation QR codes for local peer pairing. Video frames are analyzed in-memory and are never recorded, saved, or transmitted off-device. A manual numeric code or URI paste alternative is always available without camera access.</td>
+            </tr>
+            <tr>
+              <td><code>ACCESS_LOCAL_NETWORK</code></td>
+              <td>Android 17+ (API 37+)</td>
+              <td>Allows discovering and establishing direct encrypted TLS 1.3 sockets over the local Wi-Fi network.</td>
+            </tr>
+            <tr>
+              <td><code>POST_NOTIFICATIONS</code></td>
+              <td>Android 13+ (API 33+)</td>
+              <td>Displays an ongoing transfer progress notification, allowing background transfer monitoring and cancellation.</td>
+            </tr>
+            <tr>
+              <td><code>FOREGROUND_SERVICE (connectedDevice)</code></td>
+              <td>All Supported</td>
+              <td>Maintains active device-to-device sockets alive when switching apps or locking the screen during high-throughput transfers. Terminates immediately upon completion or cancellation.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p>
+          Glide <strong>never</strong> requests <code>MANAGE_EXTERNAL_STORAGE</code>, <code>READ_MEDIA_IMAGES</code>, <code>READ_CONTACTS</code>, <code>READ_PHONE_STATE</code>, <code>RECORD_AUDIO</code>, or <code>RECEIVE_BOOT_COMPLETED</code>.
+        </p>
+      </section>
+
+      <section>
+        <h2>3. Third-Party Services and Telemetry</h2>
+        <ul>
+          <li><strong>Google Play Services (Nearby Connections):</strong> Used on Android for local Bluetooth discovery and Wi-Fi Direct handshakes. Google Play Services may collect standard diagnostic metrics per the <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google Privacy Policy</a>. Glide does not collect, receive, or store these diagnostics.</li>
+          <li><strong>Zero Developer Telemetry:</strong> Glide contains no Google Analytics, Firebase Analytics, Crashlytics, Mixpanel, Sentry, or third-party monitoring beacons.</li>
+          <li><strong>Zero Advertising:</strong> Glide contains no advertising SDKs or tracking pixels.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>4. User Data Control and Deletion</h2>
+        <ul>
+          <li><strong>Transfer History:</strong> You can purge individual session items or all transfer records at any time in <strong>Settings &gt; Transfer History</strong>.</li>
+          <li><strong>Received Files:</strong> You can delete all locally received files or individual items directly from <strong>Settings &gt; Storage</strong>.</li>
+          <li><strong>Trusted Devices:</strong> You can inspect and revoke paired device cryptographic identities at any time in <strong>Settings &gt; Trusted Devices</strong>.</li>
+          <li><strong>App Uninstallation:</strong> Uninstalling Glide immediately removes all app-private databases, quarantine caches, and unexported received files from your device.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>5. Children's Privacy</h2>
+        <p>
+          Glide is a general-purpose local file utility that does not collect personal information from any user, including children under 13.
+        </p>
+      </section>
+
+      <section>
+        <h2>6. Source Code &amp; Contact</h2>
+        <p>
+          Glide is open-source software licensed under the Apache License 2.0. If you have questions regarding this Privacy Policy or security practices, visit the repository:
+        </p>
+        <p>
+          <a href="https://github.com/GDJ2001/Glide" target="_blank" rel="noopener">https://github.com/GDJ2001/Glide</a>
+        </p>
+      </section>
+    </main>
+
+    <footer>
+      <p>&copy; 2026 Glide Contributors. Licensed under the Apache License, Version 2.0.</p>
+    </footer>
+  </div>
+</body>
+</html>

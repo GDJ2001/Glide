@@ -124,10 +124,11 @@ class SettingsAcceptanceTest {
         advanceUntilIdle()
 
         val state = viewModel.uiState.value
-        assertEquals("1.0.0-dev", state.appVersionName)
+        assertEquals("1.0.0", state.appVersionName)
         assertEquals("1", state.appBuildNumber)
         assertFalse(state.isNearbyDiagnosticsOpen)
         assertFalse(state.isLicensesDialogOpen)
+        assertFalse(state.isPrivacyPolicyDialogOpen)
         assertNotNull(state.nearbyDiagnostics)
         assertTrue(state.nearbyDiagnostics.bluetoothEnabled)
         assertTrue(state.nearbyDiagnostics.wifiEnabled)
@@ -251,5 +252,18 @@ class SettingsAcceptanceTest {
 
         viewModel.dismissLicensesDialog()
         assertFalse(viewModel.uiState.value.isLicensesDialogOpen)
+    }
+
+    @Test
+    fun privacyPolicyDialog_opensAndDismisses() = runTest(testDispatcher) {
+        advanceUntilIdle()
+
+        assertFalse(viewModel.uiState.value.isPrivacyPolicyDialogOpen)
+
+        viewModel.showPrivacyPolicyDialog()
+        assertTrue(viewModel.uiState.value.isPrivacyPolicyDialogOpen)
+
+        viewModel.dismissPrivacyPolicyDialog()
+        assertFalse(viewModel.uiState.value.isPrivacyPolicyDialogOpen)
     }
 }

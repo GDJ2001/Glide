@@ -19,7 +19,7 @@ android {
     val customVersionCode = providers.environmentVariable("GLIDE_VERSION_CODE")
         .orElse(providers.gradleProperty("glide.versionCode"))
         .map { it.toInt() }
-        .getOrElse(2)
+        .getOrElse(1)
 
     val customVersionName = providers.environmentVariable("GLIDE_VERSION_NAME")
         .orElse(providers.gradleProperty("glide.versionName"))
@@ -80,6 +80,9 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            ndk {
+                debugSymbolLevel = "FULL"
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -116,6 +119,12 @@ android {
             "GradleDependency",
             "AndroidGradlePluginVersion"
         )
+    }
+
+    bundle {
+        language { enableSplit = true }
+        density { enableSplit = true }
+        abi { enableSplit = true }
     }
 }
 
