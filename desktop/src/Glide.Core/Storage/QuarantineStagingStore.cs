@@ -2306,8 +2306,16 @@ public sealed class QuarantineStagingStore
     private const uint LinuxStatxBasicStats = 0x000007ffU;
     private const int LinuxRenameNoreplace = 1;
     private const int LinuxORdOnly = 0;
-    private const int LinuxODirectory = 0x10000;
-    private const int LinuxONofollow = 0x20000;
+    private static int LinuxODirectory => RuntimeInformation.ProcessArchitecture switch
+    {
+        Architecture.X86 or Architecture.X64 => 0x10000,
+        _ => 0x4000
+    };
+    private static int LinuxONofollow => RuntimeInformation.ProcessArchitecture switch
+    {
+        Architecture.X86 or Architecture.X64 => 0x20000,
+        _ => 0x8000
+    };
     private const int LinuxOCloexec = 0x80000;
     private const int LinuxSIfmt = 0xF000;
     private const int LinuxSIfdir = 0x4000;

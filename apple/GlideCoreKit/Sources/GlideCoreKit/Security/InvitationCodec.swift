@@ -147,6 +147,7 @@ enum StrictJsonObjectKeys {
 public enum InvitationCodec {
     public static let uriPrefix = "glide://pair/v1#"
     public static let uriPrefixV2 = "glide://pair/v2#"
+    public static let pairV2UriPrefix = uriPrefixV2
     public static let maxUriChars = 2768
     public static let maxJsonBytes = 2048
     private static let rootKeys: Set<String> = [

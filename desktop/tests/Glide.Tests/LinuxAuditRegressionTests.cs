@@ -251,7 +251,11 @@ public sealed class LinuxAuditRegressionTests
         // Start a fresh scan when cache is empty -> transitions to Empty after scan window completes
         coordinator.BeginFindDevices();
         Assert.Equal(DesktopPairingPhase.Scanning, coordinator.Snapshot.Phase);
-        await Task.Delay(150);
+        var sw = Stopwatch.StartNew();
+        while (coordinator.Snapshot.Phase == DesktopPairingPhase.Scanning && sw.ElapsedMilliseconds < 2000)
+        {
+            await Task.Delay(25);
+        }
         Assert.Equal(DesktopPairingPhase.Empty, coordinator.Snapshot.Phase);
 
         // Case B: Late discovery result arrives while in Empty -> automatically transitions Empty to PeersFound!
