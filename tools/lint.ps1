@@ -62,10 +62,6 @@ if ($Target -eq "All" -or $Target -eq "Android") {
     } else {
         Write-Host "  [OK]   Android lint passed." -ForegroundColor Green
         $lintReport = "$projectRoot\android\app\build\reports\lint-results-debug.html"
-        if (-not (Test-Path $lintReport)) {
-            $fallback = "$projectRoot\app\build\reports\lint-results-debug.html"
-            if (Test-Path $fallback) { $lintReport = $fallback }
-        }
         if (Test-Path $lintReport) {
             Write-Host "  Report: $lintReport" -ForegroundColor Gray
         }

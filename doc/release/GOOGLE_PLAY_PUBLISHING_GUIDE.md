@@ -193,20 +193,20 @@ Navigate to **Store presence** -> **Store settings**:
 5. Open the invite link on your Android phone, accept the invitation, and install Glide from the Google Play Store!
 6. Open Glide, go to **Settings > About Glide**, and verify it displays **`Version 1.0.0 (Build 1)`**.
 
-### 5.2 Closed Testing Track (Required for Personal Accounts)
-If your developer account is a personal account created after November 13, 2023, Google requires:
-- **At least 12 testers opted in continuously for 14 days** on Closed Testing before applying for production access.
-- **Procedure:**
-  1. Navigate to **Testing** -> **Closed testing** -> Click **Manage track** on **Alpha**.
-  2. Click **Create new release** -> **Add from library** -> Select bundle `1.0.0 (1)` (no rebuild necessary!).
-  3. Under **Testers**, invite at least 12 people (friends, colleagues, or community testers).
-  4. Ensure all 12 testers click your opt-in link and install the app.
-  5. Keep testing active for 14 consecutive days. Monitor crashes and feedback in the Play Console dashboard.
-  6. Once the 14-day requirement is met, a button **"Apply for production"** will unlock on your Dashboard.
+### 5.2 Closed Testing Track & "Apply for Access to Production" (12 Testers / 14 Days)
+For the complete step-by-step playbook, tester invite templates, 14-day retention rules, and exact copy-paste answers (< 300 chars each) for Google Play's **"Apply for production"** questionnaire, consult **[CLOSED_TESTING_AND_PRODUCTION_ACCESS_GUIDE.md](CLOSED_TESTING_AND_PRODUCTION_ACCESS_GUIDE.md)**.
 
-### 5.3 Production Rollout
-1. Navigate to **Release** -> **Production**.
-2. Click **Create new release** -> **Add from library** -> Select bundle `1.0.0 (1)`.
-3. If this is your first release, rollout will be 100%. For subsequent updates, choose a staged rollout ($10\% \rightarrow 50\% \rightarrow 100\%$).
-4. Click **Review release** -> **Start rollout to Production**.
-5. Google will review the submission (typically 1–3 business days). Once approved, Glide `1.0.0` will be live worldwide on Google Play!
+Summary checklist:
+1. Navigate to **Test and release** -> **Testing** -> **Closed testing** -> **Manage track (Alpha)** -> **Testers** tab.
+2. Add **15–20 Gmail addresses** to your tester email list (provides a safe buffer above the 12-tester minimum), check the list checkbox, add your feedback email, and click **Save**.
+3. Copy the opt-in link under **"How testers join your test"**:
+   - **Join on the web:** https://play.google.com/apps/testing/dev.glide.app
+   - **Join on Android:** https://play.google.com/store/apps/details?id=dev.glide.app
+4. Have at least 12 testers open the link, tap **"Become a tester"**, install Glide from Google Play, and **keep it installed for 14 consecutive days** while opening it a few times during the test window.
+5. On Day 14, click **Apply for production** on your Dashboard and paste the pre-written questionnaire answers from [CLOSED_TESTING_AND_PRODUCTION_ACCESS_GUIDE.md](CLOSED_TESTING_AND_PRODUCTION_ACCESS_GUIDE.md) (Stage 4).
+
+### 5.3 Production Rollout (After Production Access Is Approved)
+1. Once Google approves your Production access application (typically 1–3 business days), navigate to **Test and release** -> **Testing** -> **Closed testing** -> **Manage track (Alpha)**.
+2. Click **Promote release ▾** -> **Production** (or go to **Production** -> **Create new release** -> **Add from library** -> select 1 (1.0.0)).
+3. Ensure **178 countries / regions** and **100% rollout** are selected.
+4. Click **Save and publish** -> **Send changes for review**. Once approved, Glide 1.0.0 is live worldwide on Google Play!

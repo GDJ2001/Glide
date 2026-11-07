@@ -68,10 +68,6 @@ if ($Target -eq "All" -or $Target -eq "Android") {
     } else {
         Write-Host "  [OK]   Android unit tests passed." -ForegroundColor Green
         $reportDir = "$projectRoot\android\app\build\reports\tests\test${Configuration}UnitTest"
-        if (-not (Test-Path $reportDir)) {
-            $fallback = "$projectRoot\app\build\reports\tests\test${Configuration}UnitTest"
-            if (Test-Path $fallback) { $reportDir = $fallback }
-        }
         if (Test-Path $reportDir) {
             Write-Host "  Report: $reportDir" -ForegroundColor Gray
         }

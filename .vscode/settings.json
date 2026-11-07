@@ -27,5 +27,5 @@
   "[csharp]": {
     "editor.defaultFormatter": "ms-dotnettools.csharp"
   },
-  "cmake.sourceDirectory": "D:/GITHub/Glide/native/glide_spake2"
+  "cmake.sourceDirectory": "${workspaceFolder}/native/glide_spake2"
 }

@@ -68,14 +68,6 @@ if ($Target -eq "All" -or $Target -eq "Android") {
         } else {
             "$projectRoot\android\app\build\outputs\apk\debug\app-debug.apk"
         }
-        if (-not (Test-Path $apkPath)) {
-            $fallback = if ($Configuration -eq "Release") {
-                "$projectRoot\android\app\build\outputs\apk\release\android-release.apk"
-            } else {
-                "$projectRoot\android\app\build\outputs\apk\debug\android-debug.apk"
-            }
-            if (Test-Path $fallback) { $apkPath = $fallback }
-        }
         if (Test-Path $apkPath) {
             $sizeMB = [math]::Round((Get-Item $apkPath).Length / 1MB, 2)
             Write-Host "  APK: $apkPath ($sizeMB MB)" -ForegroundColor Green

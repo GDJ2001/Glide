@@ -25,6 +25,11 @@ glide-*-installer.run
 # Java class files
 *.class
 
+# Python bytecode and cache
+__pycache__/
+*.py[cod]
+*$py.class
+
 # Generated files
 bin/
 gen/
@@ -62,7 +67,7 @@ TestResults/
 # Gradle files
 .gradle/
 gradle/wrapper/gradle-wrapper.jar
-gradlew.bat
+/gradlew.bat
 
 # Local configuration file (sdk path, etc)
 local.properties
@@ -127,6 +132,7 @@ Desktop.ini
 *.vbox-prev
 .glide/
 .glide-test/
+.agents/
 
 # NuGet packages directory
 packages/

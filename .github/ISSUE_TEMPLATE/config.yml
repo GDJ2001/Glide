@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Glide Documentation
+    url: https://github.com/GDJ2001/Glide/tree/main/doc
+    about: Explore Glide architecture, threat models, and protocol specifications.
+  - name: Security Vulnerability Reporting
+    url: https://github.com/GDJ2001/Glide/blob/main/SECURITY.md
+    about: Please report security vulnerabilities responsibly.

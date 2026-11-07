@@ -1,0 +1,61 @@
+name: Bug Report
+description: Create a report to help us improve Glide
+title: "[BUG]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report an issue!
+        **Security Warning:** Never paste pairing tokens, private keys, or passwords.
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Affected Platform
+      options:
+        - Android
+        - Windows
+        - Linux
+        - Apple (macOS / iOS)
+        - Cross-Platform / Protocol
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: App Version & OS
+      description: e.g., Glide 1.0.0, Android 15 (Pixel 8), Windows 11 24H2, Ubuntu 24.04
+      placeholder: Glide v1.0.0 / OS version
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Description of the Bug
+      description: A clear and concise description of what the bug is.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Step-by-step instructions to reproduce the issue.
+      placeholder: |
+        1. Open Glide on Device A and Device B
+        2. Tap Send on Device A and select file
+        3. Scan QR code on Device B
+        4. See error
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What you expected to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Diagnostic Logs / Screenshots
+      description: Paste relevant logs or drag and drop screenshots here.
