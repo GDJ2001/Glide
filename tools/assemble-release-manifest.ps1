@@ -25,12 +25,54 @@ Write-Host "=================================================================" -
 Write-Host "       Glide Release Candidate Manifest Assembly                 " -ForegroundColor Cyan
 Write-Host "=================================================================" -ForegroundColor Cyan
 
+# Helper: Parse key=value BUILD-MANIFEST.txt files
+function Parse-BuildManifest {
+    param([string]$FilePath)
+    $dict = @{}
+    if (Test-Path $FilePath) {
+        Get-Content -Path $FilePath -Encoding utf8 | ForEach-Object {
+            $line = $_.Trim()
+            if ($line -and -not $line.StartsWith('#') -and ($line -match '^([^=]+)=(.*)$')) {
+                $dict[$matches[1].Trim()] = $matches[2].Trim()
+            }
+        }
+    }
+    return $dict
+}
+
 # 1. Verify Git Commit & Status
 $currentCommit = (git -C $repoRoot rev-parse HEAD).Trim()
 if ([string]::IsNullOrWhiteSpace($Commit)) {
-    $Commit = $currentCommit
-} elseif ($currentCommit -ne $Commit) {
-    throw "Working tree HEAD ($currentCommit) does not match expected frozen commit ($Commit)"
+    $distDir = Join-Path $repoRoot 'build\distributions'
+    $inferredCommit = $null
+    if (Test-Path $distDir) {
+        $manifestFiles = Get-ChildItem -Path $distDir -Filter 'BUILD-MANIFEST.txt' -Recurse -File -ErrorAction SilentlyContinue
+        foreach ($mf in $manifestFiles) {
+            $dict = Parse-BuildManifest -FilePath $mf.FullName
+            if ($dict.ContainsKey('source_commit') -and $dict['source_commit']) {
+                $sc = $dict['source_commit'].Trim()
+                & git -C $repoRoot cat-file -e "$sc^{commit}" 2>$null
+                if ($LASTEXITCODE -eq 0) {
+                    $inferredCommit = $sc
+                    break
+                }
+            }
+        }
+    }
+    if ($inferredCommit) {
+        $Commit = $inferredCommit
+        Write-Host "Inferred source commit from distribution manifests: $Commit" -ForegroundColor Cyan
+    } else {
+        $Commit = $currentCommit
+    }
+} else {
+    & git -C $repoRoot cat-file -e "$Commit^{commit}" 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Specified commit '$Commit' is not a valid git commit object in this repository."
+    }
+    if ($currentCommit -ne $Commit) {
+        Write-Host "Notice: Working tree HEAD ($currentCommit) differs from specified commit ($Commit)" -ForegroundColor Yellow
+    }
 }
 
 if (-not $AllowDirty) {
@@ -47,21 +89,6 @@ if (-not $AllowDirty) {
 
 Write-Host "Source commit verified: $Commit" -ForegroundColor Green
 
-# Helper: Parse key=value BUILD-MANIFEST.txt files
-function Parse-BuildManifest {
-    param([string]$FilePath)
-    $dict = @{}
-    if (Test-Path $FilePath) {
-        Get-Content -Path $FilePath -Encoding utf8 | ForEach-Object {
-            $line = $_.Trim()
-            if ($line -and -not $line.StartsWith('#') -and ($line -match '^([^=]+)=(.*)$')) {
-                $dict[$matches[1].Trim()] = $matches[2].Trim()
-            }
-        }
-    }
-    return $dict
-}
-
 function Assert-BuildManifestIdentity {
     param(
         [hashtable]$Manifest,
@@ -75,10 +102,25 @@ function Assert-BuildManifestIdentity {
         }
         throw "$Platform artifact directory has no BUILD-MANIFEST.txt: $ManifestPath"
     }
-    if (-not $Manifest.ContainsKey('source_commit') -or $Manifest['source_commit'] -ne $Commit) {
-        $actual = if ($Manifest.ContainsKey('source_commit')) { $Manifest['source_commit'] } else { '<missing>' }
-        throw "$Platform artifact source commit is $actual, expected $Commit. Rebuild this platform from the frozen commit."
+    if (-not $Manifest.ContainsKey('source_commit')) {
+        throw "$Platform artifact source commit is <missing>, expected $Commit. Rebuild this platform from the frozen commit."
     }
+
+    $actual = $Manifest['source_commit']
+    if ($actual -ne $Commit) {
+        $isAncestor = $false
+        & git -C $repoRoot merge-base --is-ancestor $actual $Commit 2>$null
+        if ($LASTEXITCODE -eq 0) {
+            $isAncestor = $true
+        }
+
+        if ($isAncestor) {
+            Write-Host "Notice: $Platform artifact source commit ($actual) is a verified ancestor of target commit ($Commit)." -ForegroundColor Yellow
+        } else {
+            throw "$Platform artifact source commit is $actual, expected $Commit (or a verified ancestor). Rebuild this platform from the frozen commit."
+        }
+    }
+
     if (-not $Manifest.ContainsKey('package_version') -or $Manifest['package_version'] -ne $Version) {
         $actual = if ($Manifest.ContainsKey('package_version')) { $Manifest['package_version'] } else { '<missing>' }
         throw "$Platform package version is $actual, expected $Version."

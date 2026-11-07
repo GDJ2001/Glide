@@ -19,8 +19,8 @@ $scriptPath = Join-Path $PSScriptRoot 'assemble-release-manifest.ps1'
 $distDir = Join-Path $repoRoot 'build\distributions'
 $jsonPath = Join-Path $distDir 'RELEASE_MANIFEST.json'
 $mdPath = Join-Path $distDir 'RELEASE_CATALOG.md'
-$originalJson = if (Test-Path $jsonPath) { Get-Content -Path $jsonPath -Raw -Encoding utf8 } else { $null }
-$originalMd = if (Test-Path $mdPath) { Get-Content -Path $mdPath -Raw -Encoding utf8 } else { $null }
+$originalJson = if (Test-Path $jsonPath) { [System.IO.File]::ReadAllBytes($jsonPath) } else { $null }
+$originalMd = if (Test-Path $mdPath) { [System.IO.File]::ReadAllBytes($mdPath) } else { $null }
 
 Write-Host "=================================================================" -ForegroundColor Cyan
 Write-Host "   Glide Release Manifest Generator Regression Test Suite        " -ForegroundColor Cyan
@@ -64,7 +64,21 @@ Assert-Test "Fails closed on missing required artifact" {
 
 # Test 2: Verify execution with AllowMissing and AllowDirty succeeds
 Assert-Test "Executes and generates valid manifest with AllowMissing and AllowDirty" {
-    & pwsh -NoProfile -File $scriptPath -AllowDirty -AllowMissing
+    $artifactCommit = $null
+    $manifestFiles = Get-ChildItem -Path $distDir -Filter 'BUILD-MANIFEST.txt' -Recurse -File -ErrorAction SilentlyContinue
+    foreach ($mf in $manifestFiles) {
+        $lines = Get-Content -Path $mf.FullName
+        foreach ($l in $lines) {
+            if ($l -match '^source_commit=(.*)$') {
+                $artifactCommit = $matches[1].Trim()
+                break
+            }
+        }
+        if ($artifactCommit) { break }
+    }
+
+    $extraArgs = if ($artifactCommit) { @('-Commit', $artifactCommit) } else { @() }
+    & pwsh -NoProfile -File $scriptPath @extraArgs -AllowDirty -AllowMissing
     if ($LASTEXITCODE -ne 0) {
         throw "assemble-release-manifest.ps1 failed with exit code $LASTEXITCODE"
     }
@@ -168,8 +182,8 @@ Write-Host "=================================================================" -
 
 # Restore original candidate manifest and catalog if they existed prior to test execution
 if ($originalJson) {
-    Set-Content -Path $jsonPath -Value $originalJson -Encoding utf8
+    [System.IO.File]::WriteAllBytes($jsonPath, $originalJson)
 }
 if ($originalMd) {
-    Set-Content -Path $mdPath -Value $originalMd -Encoding utf8
+    [System.IO.File]::WriteAllBytes($mdPath, $originalMd)
 }

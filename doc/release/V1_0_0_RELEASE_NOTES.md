@@ -107,8 +107,8 @@ Get-FileHash -Algorithm SHA256 <filename>
 | **Linux** | `glide_1.0.0_amd64.deb` | 62,863,304 | `5c425b0ec2d3a2ef1f4dad8c56358687ea67f97722d983cc704b111a1fc1409d` |
 | **Linux** | `glide-1.0.0-1.x86_64.rpm` | 76,961,666 | `693ce6497ac2c6c157f8a705efc303e59591ae661111311047b6175b87cf8368` |
 | **Linux** | `glide-1.0.0-linux-x64.tar.gz` | 77,382,717 | `d43ce0492a8fdf443f1b4d010c919e8b2275c0e9be91633c57b45095be200b5f` |
-| **Manifest**| `RELEASE_MANIFEST.json` | 9,592 | `cab690f193a6776e35d50b5e62390342a5bd47c24166c1b99237f1bc0f00ec41` |
-| **Catalog** | `RELEASE_CATALOG.md` | 3,984 | `7f98e01d43d5ad477a2679d456fe0ca5d7dfeb0042fdcb21e64eac126754a3a3` |
+| **Manifest**| `RELEASE_MANIFEST.json` | 9,594 | `848dabef80d943c553a6a11a78c9c1b3431a6286ee36952936967f2ea6f22d5b` |
+| **Catalog** | `RELEASE_CATALOG.md` | 3,986 | `9796300e5c9df9fd78ed7b36353227883ab132e74acf434460aba92a6cc9c1bf` |
 
 Detailed build provenance, toolchain specifications, and platform installation gate records are published in:
 - [`build/distributions/RELEASE_MANIFEST.json`](RELEASE_MANIFEST.json)
