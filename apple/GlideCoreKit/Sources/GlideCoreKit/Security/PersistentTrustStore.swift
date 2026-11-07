@@ -1,6 +1,6 @@
 import Foundation
 
-public struct PersistentTrustedPeer: Codable, Equatable, Sendable {
+public struct PersistentTrustedPeer: Codable, Equatable, Hashable, Sendable {
     public let fingerprintHex: String
     public let publicKeyDerHex: String
     public let displayName: String

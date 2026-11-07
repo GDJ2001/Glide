@@ -1,5 +1,6 @@
 import Foundation
 import Security
+import CryptoKit
 
 /// Reconstructs DER SubjectPublicKeyInfo for a P-256 certificate key. Apple's
 /// SecKeyCopyExternalRepresentation returns only the ANSI X9.63 point, not SPKI;
@@ -30,5 +31,20 @@ public enum AppleCertificateSpki {
             throw SpkiError.unsupportedKey
         }
         return Data(p256Header) + point
+    }
+
+    public static func extractSpkiSha256Hex(from identity: SecIdentity) throws -> String {
+        var certificate: SecCertificate?
+        guard SecIdentityCopyCertificate(identity, &certificate) == errSecSuccess,
+              let certificate else {
+            throw SpkiError.unsupportedKey
+        }
+        return try extractSpkiSha256Hex(from: certificate)
+    }
+
+    public static func extractSpkiSha256Hex(from certificate: SecCertificate) throws -> String {
+        let spki = try der(from: certificate)
+        return SHA256.hash(data: spki)
+            .map { String(format: "%02x", $0) }.joined()
     }
 }

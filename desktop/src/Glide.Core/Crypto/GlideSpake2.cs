@@ -50,9 +50,17 @@ public sealed class GlideSpake2Session : IDisposable
         }
         else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
         {
+            string rid = RuntimeInformation.ProcessArchitecture switch
+            {
+                Architecture.Arm64 => "linux-arm64",
+                Architecture.X64 => "linux-x64",
+                _ => "linux-x64"
+            };
             candidates =
             [
                 Path.Combine(baseDir, "libglide_spake2.so"),
+                Path.Combine(baseDir, "runtimes", rid, "native", "libglide_spake2.so"),
+                Path.Combine(baseDir, "runtimes", "linux-arm64", "native", "libglide_spake2.so"),
                 Path.Combine(baseDir, "runtimes", "linux-x64", "native", "libglide_spake2.so")
             ];
         }

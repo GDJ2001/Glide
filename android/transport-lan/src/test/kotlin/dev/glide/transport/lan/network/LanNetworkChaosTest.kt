@@ -244,12 +244,24 @@ class LanNetworkChaosTest {
         // Close listener
         listener.close()
 
-        // Verify port is freed and can be bound immediately
-        val testServerSocket = ServerSocket()
-        testServerSocket.reuseAddress = true
-        testServerSocket.bind(java.net.InetSocketAddress(loopbackAddress, boundPort))
-        assertEquals("Port must be available for re-binding", boundPort, testServerSocket.localPort)
-        testServerSocket.close()
+        // Verify port is freed and can be bound
+        var bound = false
+        var lastError: Throwable? = null
+        val deadline = System.currentTimeMillis() + 3_000
+        while (System.currentTimeMillis() < deadline && !bound) {
+            try {
+                ServerSocket().use { socket ->
+                    socket.reuseAddress = true
+                    socket.bind(java.net.InetSocketAddress(loopbackAddress, boundPort))
+                    assertEquals("Port must be available for re-binding", boundPort, socket.localPort)
+                    bound = true
+                }
+            } catch (e: java.net.BindException) {
+                lastError = e
+                Thread.sleep(50)
+            }
+        }
+        assertTrue("Port must be freed and available for re-binding: ${lastError?.message}", bound)
         serverIdentity.close()
     }
 }

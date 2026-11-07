@@ -45,19 +45,28 @@ if ($Target -in @("All", "Windows") -and $IsWindows) {
 }
 
 if ($Target -in @("All", "Linux")) {
-    $OutDir = Join-Path $ScriptDir "runtimes/linux-x64/native"
-    New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
-    $OutSo = Join-Path $OutDir "libglide_spake2.so"
+    $LinuxTargets = @(
+        @{ Rid = "linux-x64"; TargetTriple = "x86_64-unknown-linux-gnu"; ArchInclude = "x86_64-linux-android" },
+        @{ Rid = "linux-arm64"; TargetTriple = "aarch64-unknown-linux-gnu"; ArchInclude = "aarch64-linux-android" }
+    )
 
     if (-not $IsWindows) {
+        $HostRid = if ([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture -eq [System.Runtime.InteropServices.Architecture]::Arm64) { "linux-arm64" } else { "linux-x64" }
+        $OutDir = Join-Path $ScriptDir "runtimes/$HostRid/native"
+        New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
+        $OutSo = Join-Path $OutDir "libglide_spake2.so"
+
         & g++ -O2 -std=c++17 -fPIC -shared -fvisibility=hidden -DNDEBUG -DGLIDE_SPAKE2_BUILD_SHARED -DOPENSSL_NO_ASM `
             -I"$IncludePublic" -I"$IncludeBssl" -I"$IncludeCrypto" `
             $Sources[0] $Sources[1] $Sources[2] -o "$OutSo"
         if ($LASTEXITCODE -ne 0 -or -not (Test-Path $OutSo)) {
             throw "Linux libglide_spake2.so build failed."
         }
+        Copy-Item (Join-Path $ScriptDir "LICENSE") (Join-Path $OutDir "LICENSE.BoringSSL.txt") -Force
+        Write-Host "Built Linux native library: $OutSo ($((Get-Item $OutSo).Length) bytes)" -ForegroundColor Green
     } else {
         $LlvmBinCandidates = @(
+            "C:\Program Files (x86)\Android\AndroidNDK\android-ndk-r23c\toolchains\llvm\prebuilt\windows-x86_64\bin",
             "C:\Program Files (x86)\Android\AndroidNDK\android-ndk-r27c\toolchains\llvm\prebuilt\windows-x86_64\bin",
             "C:\Users\GDJ\AppData\Local\Android\Sdk\ndk\26.1.10909125\toolchains\llvm\prebuilt\windows-x86_64\bin"
         )
@@ -68,36 +77,41 @@ if ($Target -in @("All", "Linux")) {
         $Clang = Join-Path $LlvmBin "clang++.exe"
         $Lld = Join-Path $LlvmBin "ld.lld.exe"
         $Sysroot = Join-Path (Split-Path -Parent $LlvmBin) "sysroot"
-        $ObjDir = Join-Path ([System.IO.Path]::GetTempPath()) "glide_spake2_linux_obj"
-        New-Item -ItemType Directory -Path $ObjDir -Force | Out-Null
 
-        $CommonFlags = @(
-            "--target=x86_64-unknown-linux-gnu",
-            "--sysroot=$Sysroot",
-            "-isystem", "$Sysroot/usr/include/c++/v1",
-            "-isystem", "$Sysroot/usr/include/x86_64-linux-android",
-            "-isystem", "$Sysroot/usr/include",
-            "-O2", "-std=c++17", "-fPIC", "-fno-exceptions", "-fno-rtti", "-fvisibility=hidden",
-            "-DNDEBUG", "-DGLIDE_SPAKE2_BUILD_SHARED", "-DOPENSSL_NO_ASM",
-            "-I$IncludePublic",
-            "-I$IncludeBssl",
-            "-I$IncludeCrypto"
-        )
+        foreach ($t in $LinuxTargets) {
+            $OutDir = Join-Path $ScriptDir "runtimes/$($t.Rid)/native"
+            New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
+            $OutSo = Join-Path $OutDir "libglide_spake2.so"
+            $ObjDir = Join-Path ([System.IO.Path]::GetTempPath()) "glide_spake2_linux_$($t.Rid)_obj"
+            New-Item -ItemType Directory -Path $ObjDir -Force | Out-Null
 
-        & $Clang @CommonFlags -c $Sources[0] -o "$ObjDir/glide_spake2.o"
-        if ($LASTEXITCODE -ne 0) { throw "Failed compiling glide_spake2.cc for Linux." }
-        & $Clang @CommonFlags -c $Sources[1] -o "$ObjDir/spake25519.o"
-        if ($LASTEXITCODE -ne 0) { throw "Failed compiling spake25519.cc for Linux." }
-        & $Clang @CommonFlags -c $Sources[2] -o "$ObjDir/curve25519.o"
-        if ($LASTEXITCODE -ne 0) { throw "Failed compiling curve25519.cc for Linux." }
-        & $Lld -shared --allow-shlib-undefined "$ObjDir/glide_spake2.o" "$ObjDir/spake25519.o" "$ObjDir/curve25519.o" -soname libglide_spake2.so -o "$OutSo"
-        if ($LASTEXITCODE -ne 0 -or -not (Test-Path $OutSo)) {
-            throw "Failed linking libglide_spake2.so."
+            $CommonFlags = @(
+                "--target=$($t.TargetTriple)",
+                "--sysroot=$Sysroot",
+                "-isystem", "$Sysroot/usr/include/c++/v1",
+                "-isystem", "$Sysroot/usr/include/$($t.ArchInclude)",
+                "-isystem", "$Sysroot/usr/include",
+                "-O2", "-std=c++17", "-fPIC", "-fno-exceptions", "-fno-rtti", "-fvisibility=hidden",
+                "-DNDEBUG", "-DGLIDE_SPAKE2_BUILD_SHARED", "-DOPENSSL_NO_ASM",
+                "-I$IncludePublic",
+                "-I$IncludeBssl",
+                "-I$IncludeCrypto"
+            )
+
+            & $Clang @CommonFlags -c $Sources[0] -o "$ObjDir/glide_spake2.o"
+            if ($LASTEXITCODE -ne 0) { throw "Failed compiling glide_spake2.cc for $($t.Rid)." }
+            & $Clang @CommonFlags -c $Sources[1] -o "$ObjDir/spake25519.o"
+            if ($LASTEXITCODE -ne 0) { throw "Failed compiling spake25519.cc for $($t.Rid)." }
+            & $Clang @CommonFlags -c $Sources[2] -o "$ObjDir/curve25519.o"
+            if ($LASTEXITCODE -ne 0) { throw "Failed compiling curve25519.cc for $($t.Rid)." }
+            & $Lld -shared --allow-shlib-undefined "$ObjDir/glide_spake2.o" "$ObjDir/spake25519.o" "$ObjDir/curve25519.o" -soname libglide_spake2.so -o "$OutSo"
+            if ($LASTEXITCODE -ne 0 -or -not (Test-Path $OutSo)) {
+                throw "Failed linking libglide_spake2.so for $($t.Rid)."
+            }
+            Copy-Item (Join-Path $ScriptDir "LICENSE") (Join-Path $OutDir "LICENSE.BoringSSL.txt") -Force
+            Write-Host "Built Linux native library ($($t.Rid)): $OutSo ($((Get-Item $OutSo).Length) bytes)" -ForegroundColor Green
         }
     }
-
-    Copy-Item (Join-Path $ScriptDir "LICENSE") (Join-Path $OutDir "LICENSE.BoringSSL.txt") -Force
-    Write-Host "Built Linux native library: $OutSo ($((Get-Item $OutSo).Length) bytes)" -ForegroundColor Green
 }
 
 if ($Target -in @("All", "MacOS") -and $IsMacOS) {

@@ -15,6 +15,8 @@
     <None Include="..\..\..\native\glide_spake2\runtimes\win-x64\native\glide_spake2.dll" Condition="Exists('..\..\..\native\glide_spake2\runtimes\win-x64\native\glide_spake2.dll')" Link="runtimes\win-x64\native\glide_spake2.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     <None Include="..\..\..\native\glide_spake2\runtimes\linux-x64\native\libglide_spake2.so" Condition="Exists('..\..\..\native\glide_spake2\runtimes\linux-x64\native\libglide_spake2.so')" Link="libglide_spake2.so" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     <None Include="..\..\..\native\glide_spake2\runtimes\linux-x64\native\libglide_spake2.so" Condition="Exists('..\..\..\native\glide_spake2\runtimes\linux-x64\native\libglide_spake2.so')" Link="runtimes\linux-x64\native\libglide_spake2.so" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <None Include="..\..\..\native\glide_spake2\runtimes\linux-arm64\native\libglide_spake2.so" Condition="Exists('..\..\..\native\glide_spake2\runtimes\linux-arm64\native\libglide_spake2.so')" Link="libglide_spake2.so" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <None Include="..\..\..\native\glide_spake2\runtimes\linux-arm64\native\libglide_spake2.so" Condition="Exists('..\..\..\native\glide_spake2\runtimes\linux-arm64\native\libglide_spake2.so')" Link="runtimes\linux-arm64\native\libglide_spake2.so" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
   </ItemGroup>
 
 </Project>

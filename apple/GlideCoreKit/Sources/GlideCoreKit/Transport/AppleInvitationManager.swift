@@ -56,6 +56,18 @@ public enum AppleInvitationManager {
         return (published, try InvitationCodec.encode(published))
     }
 
+    public static func localEndpoints(port: UInt16) -> [LanEndpoint] {
+        return localIPv4Addresses().prefix(4).map {
+            LanEndpoint(address: $0, port: Int(port))
+        }
+    }
+
+    public static func localEndpoints(port: Int) -> [LanEndpoint] {
+        return localIPv4Addresses().prefix(4).map {
+            LanEndpoint(address: $0, port: port)
+        }
+    }
+
     private static func randomBytes(_ count: Int) throws -> Data {
         var data = Data(count: count)
         let result = data.withUnsafeMutableBytes { bytes in
