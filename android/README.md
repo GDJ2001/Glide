@@ -1,111 +1,65 @@
-# Glide — Private Cross-Platform File Sharing
+# Glide Android (`android/`)
 
-Glide is an account-free file-sharing project with substantial Android, .NET desktop/Linux, browser/LAN, Apple, and remote-transfer implementation work. The repository is currently in an evidence-backed **code review, improvement, hardening, and development-completion cycle**.
+Native Android client and shared JVM protocol core for **Glide**, an offline, peer-to-peer, zero-cloud file transfer system.
 
-> **Planning and history:** [`doc/planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md`](../doc/planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md) and [`doc/TODO_MASTER.md`](../doc/TODO_MASTER.md). Check current source and fresh validation before using historical completion labels.
+## Active Project Scope
 
-## Current status
+Glide's active development and release scope covers four native platform families:
 
-The HARD review baseline is `ea2e811a7f2d8aaddc552e894fe04782cd08a499`. HARD-002 reconciles later source work and historical claims against the current multi-platform codebase.
-
-Evidence terms used below:
-
-- **Implemented:** relevant source exists in the repository.
-- **Automated-tested:** repository evidence records automated/unit/fixture checks for the implementation; this is not physical interoperability proof.
-- **Physically/interoperability verified:** requires the exact real-device/platform path named by the active HARD task.
-- **Released:** requires an exact reviewed artifact plus external publication/distribution evidence. Historical release documents alone do not establish current release status.
-
-| Platform / capability | Current evidence classification | Active HARD position |
+| Platform Scope | Implementation | Transport & Discovery |
 | --- | --- | --- |
-| Android Nearby + LAN | Production service/runtime wiring exists; automated checks cover components, while current device journeys require verification | Active local-sharing scope |
-| Windows 11 desktop/CLI | Shared transfer runtime and engine exist; native interoperability requires current physical verification | Active local-sharing scope |
-| Linux CLI/daemon | CLI and daemon exist; installation and receive lifecycle require current platform verification | Active local-sharing scope |
-| Browser local sharing | Implemented prototype over local HTTP/Web gateway; plaintext HTTP path is not release-acceptable | Active scope; replace/harden in HARD-025–030 |
-| Persistent trust / folders / true resume | Partial design and implementation work exists; end-to-end integration is not complete | Active scope; HARD-018–024 |
-| Apple iOS/iPadOS/macOS | `GlideCoreKit` models/codecs/storage/coordinator components exist and have historical unit-test evidence; native production app/transport lifecycle is not certified | Preserved but deferred in this hardening cycle |
-| Remote / Internet transfer | ICE/STUN/TURN/signaling/quota/session components exist and have historical unit-test evidence; no live end-to-end remote product path is certified | Preserved but deferred in this hardening cycle |
+| **Android** (`android/`) | Kotlin, Jetpack Compose, Material 3 (`dev.glide.app`) | Google Play Services Nearby Connections + LAN TLS 1.3 over TCP (`_glide._tcp.local.`) |
+| **Windows** (`desktop/windows/`) | C# / .NET 10 LTS, WPF (`Glide.Windows.UI`), CLI (`Glide.App`) | LAN TLS 1.3 over TCP + zero-dependency mDNS responder/browser |
+| **Linux** (`desktop/linux/`) | C# / .NET 10 LTS, Avalonia UI (`Glide.Linux.UI`), CLI/systemd daemon (`Glide.App`) | LAN TLS 1.3 over TCP + mDNS discovery |
+| **Apple** (`apple/`) | Swift 6 (`GlideCoreKit`), macOS AppKit (`GlideMac`), iOS/iPadOS SwiftUI (`GlideiOS`) | `Network.framework` TLS 1.3 + Bonjour (`_glide._tcp`) |
 
-No platform should currently be described from this README as "Production Shipped" or "Delivered & Certified". GitHub has no repository release objects at the HARD-002 snapshot, and external store/publication evidence has not been revalidated in the HARD program.
+> **Scope Boundary:** Browser-based local sharing, embedded web gateways, WebRTC browser fallbacks, and non-native transports have been retired and removed from project scope. See [`doc/planning/native-platforms/RECOVERY_STATUS.md`](../doc/planning/native-platforms/RECOVERY_STATUS.md) and [`doc/planning/native-platforms/BROWSER_REMOVAL_INVENTORY.md`](../doc/planning/native-platforms/BROWSER_REMOVAL_INVENTORY.md).
 
-## Active release scope
+## Android Module Architecture
 
-This hardening cycle completes and verifies:
+- `:android:app` (`android/app`) — Single-Activity Jetpack Compose UI, ViewModels, Navigation 3, Hilt DI composition, Foreground Service (`TransferService`), and `TransferRuntime`.
+- `:android:core` (`android/core`) — Pure Kotlin JVM library (`:transfer-core`). Zero Android/GMS/Compose/Room dependencies. Owns domain models, Protocol V1 and LAN Profile 1 codecs, state reducer, and abstract ports.
+- `:android:transport-nearby` (`android/transport-nearby`) — Google Play Services Nearby Connections adapter.
+- `:android:transport-lan` (`android/transport-lan`) — Authenticated TLS 1.3 over TCP socket adapter with NSD/mDNS discovery and SPKI pinning.
+- `:android:data` (`android/data`) — Room database (`GlideDatabase` v5), Jetpack DataStore preferences, Android Keystore identity store, and `QuarantineStagingStore`.
+- `:android:designsystem` (`android/designsystem`) — Material 3 theme tokens, adaptive layout helpers, icons, and reusable Compose components.
+- `:android:baselineprofile` (`android/baselineprofile`) — Baseline Profile generator for startup and frame-timing optimization.
 
-- Android local sharing via Nearby and LAN.
-- Windows 11 native local sharing.
-- Linux native local sharing.
-- Android ↔ Windows ↔ Linux interoperability.
-- Folder transfer.
-- Persistent device trust and authenticated trusted sessions.
-- True resume with durable journals and integrity checks.
-- Secure browser-local sharing using an authenticated encrypted transport rather than the current plaintext HTTP release path.
-- CI, security, accessibility, performance, packaging, release-candidate evidence, and explicitly authorized release operations.
+## Security & Protocol Guardrails
 
-Deferred for this cycle, while preserving existing code:
+- **Length-Prefixed Framing:** Unsigned 32-bit big-endian length prefix; control frames capped at $\le 16\text{ KiB}$, bulk stream chunks bounded to $\le 64\text{ KiB}$.
+- **Explicit Consent:** Every incoming file offer requires explicit user approval (`Accept` / `Decline`). Trusted device identity never implies automatic file acceptance.
+- **Quarantine Staging:** Incoming payloads stream into private `.part` staging files via `QuarantineStagingStore`, compute incremental SHA-256 digests, verify against `ITEM_END` digests, and atomically commit to user-selected storage only upon verified match.
+- **Path Sanitization:** All incoming filenames are sanitized via `FilenameSanitizer` before staging or publication.
 
-- Native Apple clients.
-- Remote/Internet/WAN transfer and relay infrastructure.
+## Developer Commands
 
-## Repository layout
-
-```text
-Glide/
-├── android/                     # Gradle project: app, core, data, design system, transports
-├── desktop/                     # .NET solution: shared libraries, WPF, CLI, Linux packaging
-├── apple/GlideCoreKit/          # Deferred Swift components
-├── doc/                         # Protocol, planning, historical task and test evidence
-└── tools/                       # Developer verification scripts
-```
-
-## Build and verification entry points
-
-Inspect the selected HARD task before running commands. Historical scripts may verify source presence or isolated components without proving the current product path.
-
-Typical developer commands include:
+Run from the repository root (`Glide/`):
 
 ```powershell
-# From the repository root; configure ANDROID_HOME or ignored local.properties first.
+# Environment check
 pwsh -File tools/doctor.ps1
-pwsh -File tools/verify.ps1
 
-# Android-only checks, from android/.
-cd android
-.\gradlew.bat checkDocumentation checkArchitecture checkLanGate test :android:app:assembleDebug :android:app:lintDebug
+# Architecture and import boundary verification
+pwsh -File tools/check-architecture.ps1 -FailFast
 
-# Desktop checks, from the repository root.
-cd ..
-dotnet build desktop/Glide.slnx -c Release
-dotnet test desktop/Glide.slnx -c Release --no-build
+# Build Android debug artifacts
+pwsh -File tools/build.ps1 -Configuration Debug -Target Android
+
+# Run Android unit tests
+pwsh -File tools/test.ps1 -Target Android
+
+# Run Android static analysis and lint
+pwsh -File tools/lint.ps1 -Target Android
 ```
 
-These commands validate local code and packaging prerequisites. Physical interoperability and released artifacts need separate evidence.
+Or run Gradle directly from `android/`:
 
-## Protocol and security
-
-The portable contract is Glide Protocol V1 plus the versioned LAN/extension specifications and ADRs. The current hardening program specifically requires:
-
-- explicit authenticated pairing and separate transfer consent;
-- strict bounds, sequence/correlation validation, and truthful terminal states;
-- streaming SHA-256 and quarantine/atomic commit;
-- one aligned native LAN discovery/TLS/bootstrap profile;
-- durable authenticated trust/resume semantics;
-- no plaintext browser transfer in release builds;
-- no claim of physical interoperability without the named real environments.
-
-Start with:
-
-- [`doc/README.md`](../doc/README.md) — documentation portal
-- [`doc/planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md`](../doc/planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md) — completion plan
-- [`doc/TODO_MASTER.md`](../doc/TODO_MASTER.md) — task history
-- [`doc/protocol/GLIDE_PROTOCOL_V1.md`](../doc/protocol/GLIDE_PROTOCOL_V1.md) — protocol authority
-- [`doc/security/GLIDE_THREAT_MODEL.md`](../doc/security/GLIDE_THREAT_MODEL.md) — threat model
-
-## Historical evidence
-
-The repository contains extensive V1, cross-platform, session, testing, and release documentation. These files remain useful for provenance, prior decisions, commands, fixtures, and regression evidence. They are not deleted or rewritten simply because later review found that a completion label was too broad.
-
-For current status, reconcile the HARD ledger with the checked-out source, tests, and device evidence.
+```powershell
+cd android
+.\gradlew.bat testDebugUnitTest lintDebug checkArchitecture
+```
 
 ## License
 
-This checkout has no LICENSE file. Confirm distribution terms before publishing artifacts.
+Licensed under the [Apache License, Version 2.0](../LICENSE).

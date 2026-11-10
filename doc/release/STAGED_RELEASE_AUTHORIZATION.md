@@ -34,7 +34,9 @@ The production multi-platform Release Candidate has completed all verification g
 | **Android** | `app-release.apk.idsig` | `build/distributions/android/app-release.apk.idsig` | 46.6 KB | Verified Android Signature Scheme v4 |
 | **Windows** | `glide-windows-win-x64.zip` | `build/distributions/windows/glide-windows-win-x64.zip` | 552 KB | `aa395c77c4e8d732d96579a802a76dfe062565d6e0f9ea1cee5bdd041d212282` |
 | **Linux** | `glide-linux-linux-x64.tar.gz` | `build/distributions/linux/glide-linux-linux-x64.tar.gz` | 30.62 MB | `8596e909c7305fcd31ad8ae46aaf21cedb0cb1fd3cdb0f3c1b027244a65f1b9c` |
-| **Web** | `glide-web-client.zip` | `build/distributions/web/glide-web-client.zip` | 10.9 KB | `b899693a97234cfdff611a16358449c50debb2b79bfae899fa3fad24558476d0` |
+| **Web *(Retired / Removed from Scope)*** | `glide-web-client.zip` *(retired)* | `build/distributions/web/glide-web-client.zip` | 10.9 KB | `b899693a97234cfdff611a16358449c50debb2b79bfae899fa3fad24558476d0` |
+
+> **Scope Update:** Browser local sharing (`glide-web-client.zip`) was subsequently retired and removed from project scope; active project scope covers only the four native platform families (**Android, Windows, Linux, and Apple**). See [`doc/planning/native-platforms/BROWSER_REMOVAL_INVENTORY.md`](../planning/native-platforms/BROWSER_REMOVAL_INVENTORY.md).
 
 ---
 

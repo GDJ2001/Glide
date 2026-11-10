@@ -1,15 +1,17 @@
 # ADR-0022 — Remote and Internet Transfer Architecture, NAT Traversal & Relay Threat Model
 
-- **Status:** Accepted
+> **Scope Note:** Active project scope is restricted to local peer-to-peer native sharing across **Android, Windows, Linux, and Apple**. Remote/Internet WAN relay transfers and browser sharing are outside the active project scope.
+
+- **Status:** Accepted (Specification only; deferred / removed from active native local sharing scope across Android, Windows, Linux, and Apple)
 - **Date:** 2026-09-17
-- **Authority:** [Cross-Platform Path](../future/CROSS_PLATFORM_PATH.md) Step 6 | [Remote Internet Transfer Specification](../future/REMOTE_INTERNET_TRANSFER_SPECIFICATION.md) | [GLIDE_THREAT_MODEL.md](../security/GLIDE_THREAT_MODEL.md)
-- **Supersedes / Extends:** Fulfills Step 6 of [CROSS_PLATFORM_PATH.md](../future/CROSS_PLATFORM_PATH.md); extends [ADR-0008 (Protocol)](ADR-0008-protocol.md) and [ADR-0018 (LAN/QR Profile 1)](ADR-0018-lan-qr-authentication-and-routing.md) to wide-area network (WAN) and internet environments while strictly preserving zero-cloud data sovereignty.
+- **Authority:** [Cross-Platform Path](../future/CROSS_PLATFORM_PATH.md) | [Remote Internet Transfer Specification](../future/REMOTE_INTERNET_TRANSFER_SPECIFICATION.md) | [GLIDE_THREAT_MODEL.md](../security/GLIDE_THREAT_MODEL.md)
+- **Supersedes / Extends:** Historical Step 6 of [CROSS_PLATFORM_PATH.md](../future/CROSS_PLATFORM_PATH.md); extends [ADR-0008 (Protocol)](ADR-0008-protocol.md) and [ADR-0018 (LAN/QR Profile 1)](ADR-0018-lan-qr-authentication-and-routing.md) to wide-area network (WAN) and internet environments while strictly preserving zero-cloud data sovereignty.
 
 ---
 
 ## Context
 
-Glide V1 and subsequent cross-platform milestones established high-throughput, private local file sharing across Android, Windows, Web Browsers, Apple iOS/macOS, and Linux on local networks (Nearby Connections P2P and Local LAN Profile 1).
+Glide V1 and subsequent cross-platform milestones established high-throughput, private local file sharing across Android, Windows, Apple iOS/macOS, and Linux on local networks (Nearby Connections P2P and Local LAN Profile 1).
 
 However, users frequently need to transfer files across the public internet when devices are on separate networks:
 1. **Heterogeneous Networks:** Sender is on residential fiber Wi-Fi; receiver is on a mobile cellular connection (4G/5G).

@@ -1,10 +1,10 @@
 # Apple Platforms (iOS, iPadOS & macOS) Interoperability & Transport Specification
 
-- **Document Version:** 1.1.0 (HARD-002 reconciliation)
+- **Document Version:** 1.2.0 (Native platform scope alignment)
 - **Design Status:** Approved technical target
-- **Implementation Status:** **PARTIAL / DEFERRED from the current HARD release scope**
+- **Implementation Status:** **ACTIVE NATIVE PLATFORM SCOPE (`apple/` — tracked in [`doc/planning/native-platforms/RECOVERY_STATUS.md`](../planning/native-platforms/RECOVERY_STATUS.md))**
 - **Original Milestone:** M19 — Apple Platforms Native Architecture & Conformance Specification
-- **Current Task Authority:** [HARD program](../TODO_MASTER.md)
+- **Current Task Authority:** [Native platform recovery ledger](../planning/native-platforms/RECOVERY_STATUS.md) · [HARD program](../TODO_MASTER.md)
 - **Architectural Decision:** [ADR-0020](../adr/ADR-0020-apple-platforms-architecture.md)
 - **Related Documents:** [GLIDE_PROTOCOL_V1.md](../protocol/GLIDE_PROTOCOL_V1.md), [ANDROID_WINDOWS_LAN_SPECIFICATION.md](ANDROID_WINDOWS_LAN_SPECIFICATION.md), [GLIDE_THREAT_MODEL.md](../security/GLIDE_THREAT_MODEL.md), [current hardening plan](../planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md).
 
@@ -203,4 +203,4 @@ Committed plist/entitlement files are configuration inputs. They are not App Sto
 | A5 macOS companion | executable AppKit/menu app, real listener, drag/drop | **Not complete; coordinator/config components only** |
 | A6 interoperability certification | Apple↔Android/Windows/Linux real transfer matrix | **Not performed / not evidenced** |
 
-Apple implementation is deliberately **deferred** from HARD-001–043 active release scope. Existing code is retained for future work; no current task may mark Apple release readiness without an explicit scope amendment and the physical/interoperability evidence above.
+Apple (`apple/` — `GlideCoreKit`, `GlideMac`, `GlideiOS`) is one of the four active native platform scopes alongside Android, Windows, and Linux. Consult [`doc/planning/native-platforms/RECOVERY_STATUS.md`](../planning/native-platforms/RECOVERY_STATUS.md) for current target-host build and physical interoperability verification gates.

@@ -7,7 +7,7 @@ Glide is in an evidence-backed **code review, improvement, hardening and develop
 **Latest reconciliation:** [HARD-002 source/doc/claim reconciliation](planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md)  
 **Current development status:** The HARD ledger records historical task claims. Reconcile those claims with checked-out source and fresh tests before selecting or closing a task. Browser file sharing is retired; native Apple and Linux completion follows the [recovery ledger](planning/native-platforms/RECOVERY_STATUS.md). Durable resume has separate release gates.
 
-The hardening review baseline is `ea2e811a7f2d8aaddc552e894fe04782cd08a499`. HARD-002 froze its reconciliation boundary at `12681eabba26387fe7d1bbaf309971f345642e41`, reviewed every source/configuration commit between those points, and separated component implementation/test evidence from physical interoperability and release claims. Apple and remote/Internet implementation is preserved but remains deferred from the active release gate.
+The hardening review baseline is `ea2e811a7f2d8aaddc552e894fe04782cd08a499`. HARD-002 froze its reconciliation boundary at `12681eabba26387fe7d1bbaf309971f345642e41`, reviewed every source/configuration commit between those points, and separated component implementation/test evidence from physical interoperability and release claims. Active project scope covers the four native platform families (**Android, Windows, Linux, and Apple**); browser local sharing and non-native remote/Internet transports are retired and removed from active scope.
 
 ## Start here
 

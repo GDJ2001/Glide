@@ -1,6 +1,6 @@
 # Glide master task system
 
-> **Current-checkout note (2026-09-28):** The completion counts below record historical HARD task decisions. They do not certify this checkout for release. Production browser sharing still enters the HTTP gateway, and durable byte-level resume is not wired into ordinary transfer sessions. Re-run current source, CI, and physical acceptance checks before claiming either feature complete.
+> **Current-checkout note (2026-10-18):** The completion counts below record historical HARD task decisions. Browser local sharing and non-native transports have been retired and removed from project scope; active project scope covers only the four native platform families (**Android, Windows, Linux, and Apple**). See [`planning/native-platforms/RECOVERY_STATUS.md`](planning/native-platforms/RECOVERY_STATUS.md) and [`planning/native-platforms/BROWSER_REMOVAL_INVENTORY.md`](planning/native-platforms/BROWSER_REMOVAL_INVENTORY.md).
 
 **HARD task history; verify current status against source and fresh checks.** The historical GLIDE-001–072 ledger is preserved in Git history at pre-HARD commit `b07f15bdde60bb5bfa9b20fdaba093b7a6a93785` and its earlier commits. Historical `COMPLETE`, release, shipped, or certified labels do not certify the current multi-platform candidate.
 
@@ -33,7 +33,7 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 | M1 Android production flow | HARD-005–010 | 6 / 6 | COMPLETE ✅ |
 | M2 Desktop/native interoperability | HARD-011–017 | 7 / 7 | COMPLETE ✅ (HARD-017 physical 18/18 matrix certified) |
 | M3 Trust, folders and true resume | HARD-018–024 | 7 / 7 | COMPLETE ✅ (HARD-022 Android journals, HARD-023 desktop store, HARD-024 parity tests) |
-| M4 Secure browser sharing | HARD-025–030 | 6 / 6 | COMPLETE ✅ (WebRTC adapters, SPA, secure gateway, HARD-030 tests PASS) |
+| M4 Browser sharing (retired) | HARD-025–030 | 6 / 6 | RETIRED / SUPERSEDED (removed from active scope; superseded by native Android, Windows, Linux, and Apple clients) |
 | M5 Structure/developer experience | HARD-031–035 | 5 / 5 | COMPLETE ✅ (HARD-031/032 refactor, HARD-035 dev tooling) |
 | M6 Product quality/hardening | HARD-036–040 | 5 / 5 | COMPLETE ✅ (HARD-036 physical failure matrix, HARD-037 security, HARD-038 a11y, HARD-039 physical perf, HARD-040 gates) |
 | M7 Release/operations | HARD-041–043 | 3 / 3 | COMPLETE ✅ |
@@ -50,12 +50,12 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 | Desktop sequencing/pagination/session-engine gaps | HARD-011, HARD-013, HARD-017 |
 | Whole-file desktop hashing | HARD-003, HARD-014 |
 | Unsynchronized SAS runtime path | HARD-003, HARD-012, HARD-013 |
-| Plain HTTP browser transfer / incomplete consent | HARD-003, HARD-025–030 |
+| Plain HTTP browser transfer / incomplete consent | HARD-003, HARD-025–030 (subsequently retired; browser sharing removed from scope) |
 | Partial trust/resume integration | HARD-018–024 |
 | Overstated completion/release/CI evidence | HARD-002, HARD-004, HARD-040–043 |
 | Maintainability / duplicated orchestration/assets | HARD-031–035, HARD-040 |
-| Deferred Apple partial runtime | Preserved/deferred; see HARD-002 reconciliation |
-| Deferred remote partial ICE/TURN/E2EE runtime | Preserved/deferred; see HARD-002 reconciliation |
+| Apple native platform runtime | Active native platform scope (`apple/`); see `planning/native-platforms/RECOVERY_STATUS.md` |
+| Remote / Internet WAN transfer | Removed from active scope (native local sharing across Android, Windows, Linux, and Apple only) |
 
 ## Task index
 
@@ -85,16 +85,16 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 | HARD-022 | M3 | COMPLETE | Implement Android durable true-resume journals |
 | HARD-023 | M3 | COMPLETE | Implement desktop durable true-resume storage |
 | HARD-024 | M3 | COMPLETE | Validate folders and resume across native platforms |
-| HARD-025 | M4 | COMPLETE | Specify secure browser transport and static client |
-| HARD-026 | M4 | COMPLETE | Add Android WebRTC adapter |
-| HARD-027 | M4 | COMPLETE | Add Windows/Linux WebRTC adapter |
-| HARD-028 | M4 | COMPLETE | Implement secure browser transfer behavior |
-| HARD-029 | M4 | COMPLETE | Implement browser identity and resume |
-| HARD-030 | M4 | COMPLETE | Prove browser security/compatibility and remove HTTP release path |
+| HARD-025 | M4 | RETIRED | Specify secure browser transport and static client (removed from scope) |
+| HARD-026 | M4 | RETIRED | Add Android WebRTC adapter (removed from scope) |
+| HARD-027 | M4 | RETIRED | Add Windows/Linux WebRTC adapter (removed from scope) |
+| HARD-028 | M4 | RETIRED | Implement secure browser transfer behavior (removed from scope) |
+| HARD-029 | M4 | RETIRED | Implement browser identity and resume (removed from scope) |
+| HARD-030 | M4 | RETIRED | Prove browser security/compatibility and remove HTTP release path (removed from scope) |
 | HARD-031 | M5 | COMPLETE | Refactor Android entry/presentation boundaries |
 | HARD-032 | M5 | COMPLETE | Refactor desktop presentation boundaries |
 | HARD-033 | M5 | COMPLETE | Mechanically reorganize platform trees |
-| HARD-034 | M5 | COMPLETE | Consolidate fixtures and browser sources |
+| HARD-034 | M5 | COMPLETE | Consolidate protocol fixtures and remove duplicated sources |
 | HARD-035 | M5 | COMPLETE | Standardize developer commands/tooling |
 | HARD-036 | M6 | COMPLETE | Exercise physical failure/recovery matrix |
 | HARD-037 | M6 | COMPLETE | Perform production security review and remediation |
@@ -347,52 +347,52 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 - **Tests/evidence:** Nested folders, duplicate paths, cycles, links/reparse, changed sources and revoked trust across the native matrix.
 
 <a id="hard-025"></a>
-## HARD-025 — Specify secure browser transport and static client
+## HARD-025 — Specify secure browser transport and static client [RETIRED / REMOVED FROM SCOPE]
 
-- **Milestone / status:** M4 / NOT_STARTED.
+- **Milestone / status:** M4 / RETIRED (Browser local sharing removed from project scope; superseded by native Android, Windows, Linux, and Apple applications — see [`planning/native-platforms/BROWSER_REMOVAL_INVENTORY.md`](planning/native-platforms/BROWSER_REMOVAL_INVENTORY.md)).
 - **Dependencies:** HARD-017.
-- **Acceptance:** HTTPS static client + local WebRTC DataChannel profile; QR/copy-paste authenticates DTLS fingerprint; no file/pairing secret crosses web host; no HTTP fallback.
-- **Tests/evidence:** Wrong fingerprint, replay, no local candidate and host-offline-after-load; threat review and conformance fixtures.
+- **Acceptance:** Retired from project scope; only native platform transports (**Android, Windows, Linux, Apple**) remain in active scope.
+- **Tests/evidence:** Superseded by [`planning/native-platforms/BROWSER_REMOVAL_INVENTORY.md`](planning/native-platforms/BROWSER_REMOVAL_INVENTORY.md).
 
 <a id="hard-026"></a>
-## HARD-026 — Add Android WebRTC adapter
+## HARD-026 — Add Android WebRTC adapter [RETIRED / REMOVED FROM SCOPE]
 
-- **Milestone / status:** M4 / NOT_STARTED.
+- **Milestone / status:** M4 / RETIRED (Browser local sharing and `:android:transport-webrtc` removed from project scope — see [`planning/native-platforms/BROWSER_REMOVAL_INVENTORY.md`](planning/native-platforms/BROWSER_REMOVAL_INVENTORY.md)).
 - **Dependencies:** HARD-025.
-- **Acceptance:** Data-only adapter has pinned native inputs, bounded buffers, lifecycle cleanup and no UI/native-library leakage into core.
-- **Tests/evidence:** Channel open/close, cancel, JNI/native cleanup and process/background lifecycle plus build provenance.
+- **Acceptance:** Retired from project scope; Android uses native Nearby Connections and LAN TLS 1.3 (`:android:transport-nearby`, `:android:transport-lan`).
+- **Tests/evidence:** Superseded by [`planning/native-platforms/BROWSER_REMOVAL_INVENTORY.md`](planning/native-platforms/BROWSER_REMOVAL_INVENTORY.md).
 
 <a id="hard-027"></a>
-## HARD-027 — Add Windows/Linux WebRTC adapter
+## HARD-027 — Add Windows/Linux WebRTC adapter [RETIRED / REMOVED FROM SCOPE]
 
-- **Milestone / status:** M4 / NOT_STARTED.
+- **Milestone / status:** M4 / RETIRED (Desktop WebRTC/browser gateway removed from project scope — see [`planning/native-platforms/BROWSER_REMOVAL_INVENTORY.md`](planning/native-platforms/BROWSER_REMOVAL_INVENTORY.md)).
 - **Dependencies:** HARD-025.
-- **Acceptance:** Shared .NET adapter manages native resources deterministically and packages supported Windows/Linux binaries without changing core protocol semantics.
-- **Tests/evidence:** Native load failure, channel lifecycle, cancellation and package smoke.
+- **Acceptance:** Retired from project scope; Windows and Linux use shared native LAN TLS 1.3 transport (`Glide.Transport`).
+- **Tests/evidence:** Superseded by [`planning/native-platforms/BROWSER_REMOVAL_INVENTORY.md`](planning/native-platforms/BROWSER_REMOVAL_INVENTORY.md).
 
 <a id="hard-028"></a>
-## HARD-028 — Implement secure browser transfer behavior
+## HARD-028 — Implement secure browser transfer behavior [RETIRED / REMOVED FROM SCOPE]
 
-- **Milestone / status:** M4 / NOT_STARTED.
+- **Milestone / status:** M4 / RETIRED (Browser local sharing removed from project scope — see [`planning/native-platforms/BROWSER_REMOVAL_INVENTORY.md`](planning/native-platforms/BROWSER_REMOVAL_INVENTORY.md)).
 - **Dependencies:** HARD-026, HARD-027.
-- **Acceptance:** Explicit offers/consent, bounded streaming, SHA-256 verification, truthful progress and safe output work browser↔native; unsupported durable APIs expose limitations instead of whole-file buffering.
-- **Tests/evidence:** Modified content, large files, cancel, storage denial and unavailable output API through browser/native integration tests.
+- **Acceptance:** Retired from project scope; only native platform endpoints (**Android, Windows, Linux, Apple**) remain in active scope.
+- **Tests/evidence:** Superseded by [`planning/native-platforms/BROWSER_REMOVAL_INVENTORY.md`](planning/native-platforms/BROWSER_REMOVAL_INVENTORY.md).
 
 <a id="hard-029"></a>
-## HARD-029 — Implement browser identity and resume
+## HARD-029 — Implement browser identity and resume [RETIRED / REMOVED FROM SCOPE]
 
-- **Milestone / status:** M4 / NOT_STARTED.
+- **Milestone / status:** M4 / RETIRED (Browser local sharing removed from project scope — see [`planning/native-platforms/BROWSER_REMOVAL_INVENTORY.md`](planning/native-platforms/BROWSER_REMOVAL_INVENTORY.md)).
 - **Dependencies:** HARD-028.
-- **Acceptance:** Non-extractable browser identity, profile-scoped trust and resumable state with file reselection/source validation; clearing site data removes trust/resume.
-- **Tests/evidence:** Profile clear, source change, storage eviction, tab close/reopen and wrong identity across supported browsers.
+- **Acceptance:** Retired from project scope; persistent identity and true resume are scoped strictly to native platforms (**Android, Windows, Linux, Apple**).
+- **Tests/evidence:** Superseded by [`planning/native-platforms/BROWSER_REMOVAL_INVENTORY.md`](planning/native-platforms/BROWSER_REMOVAL_INVENTORY.md).
 
 <a id="hard-030"></a>
-## HARD-030 — Prove browser security/compatibility and remove HTTP release path
+## HARD-030 — Prove browser security/compatibility and remove HTTP release path [RETIRED / REMOVED FROM SCOPE]
 
-- **Milestone / status:** M4 / COMPLETE.
+- **Milestone / status:** M4 / RETIRED (Plaintext HTTP and browser sharing gateways completely removed from the codebase and project scope — see [`planning/native-platforms/BROWSER_REMOVAL_INVENTORY.md`](planning/native-platforms/BROWSER_REMOVAL_INVENTORY.md)).
 - **Dependencies:** HARD-028, HARD-029.
-- **Acceptance:** Browser↔Android and browser↔desktop pass authenticated encrypted local channels; wrong fingerprints/replay/modification fail closed; plaintext HTTP transfer is excluded from release builds.
-- **Tests/evidence:** Supported browser matrix, blocked LAN, profile clear and large-file scenarios plus release-binary inspection.
+- **Acceptance:** All browser sharing code (`GlideWebGateway`, `SecureBrowserGateway`, `:android:transport-webrtc`, `web/`) is removed from the repository; only native platform scopes (**Android, Windows, Linux, Apple**) remain active.
+- **Tests/evidence:** [`planning/native-platforms/BROWSER_REMOVAL_INVENTORY.md`](planning/native-platforms/BROWSER_REMOVAL_INVENTORY.md) and `tools/check-architecture.ps1`.
 
 <a id="hard-031"></a>
 ## HARD-031 — Refactor Android entry/presentation boundaries
@@ -415,16 +415,16 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 
 - **Milestone / status:** M5 / COMPLETE.
 - **Dependencies:** HARD-031, HARD-032, HARD-030.
-- **Acceptance:** Mechanical target layout (`android/`, `desktop/`, `web/`, `protocol/fixtures/`) without package/protocol behavior changes; references/tooling/docs updated separately from functional edits.
+- **Acceptance:** Mechanical target layout (`android/`, `desktop/`, `apple/`, `native/protocol/fixtures/`; historical `web/` later retired and removed) without package/protocol behavior changes; references/tooling/docs updated separately from functional edits.
 - **Tests/evidence:** Full build/test before and after move; path map and zero-behavior-diff review.
 
 <a id="hard-034"></a>
-## HARD-034 — Consolidate fixtures and browser sources
+## HARD-034 — Consolidate protocol fixtures and remove duplicated sources
 
 - **Milestone / status:** M5 / COMPLETE.
 - **Dependencies:** HARD-033.
-- **Acceptance:** One authoritative fixture set and browser source; embedded/generated copies are reproducible rather than manually synchronized.
-- **Tests/evidence:** Cross-language fixture parity and deterministic generated-asset diff with generation commands.
+- **Acceptance:** One authoritative protocol fixture set (`native/protocol/fixtures/`); historical browser sources subsequently retired and removed from project scope (`planning/native-platforms/BROWSER_REMOVAL_INVENTORY.md`).
+- **Tests/evidence:** Cross-language fixture parity and deterministic asset verification.
 
 <a id="hard-035"></a>
 ## HARD-035 — Standardize developer commands/tooling
@@ -460,7 +460,7 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
   - Android security hardening: `AndroidSecurityHardeningTest.kt` (manifest component isolation, multi-version backup exclusion, FileProvider path scoping, share ingress validation, notification privacy, file opener security, secure UUID generation).
   - Acceptance gate: `SecurityGateAcceptanceTest.kt` verifying all 18 threat vectors (T01–T18) from `GLIDE_THREAT_MODEL.md` and all 17 security checklist items from `SECURITY_CHECKLIST.md`.
   - Desktop filesystem security: `WindowsPathSanitizerTests.cs` (traversal, UNC, drive letter, DOS devices), `QuarantineStagingTests.cs` (quarantine isolation, atomic commit).
-  - Web gateway security: `WebSecurityConformanceTests.cs`, `Hard003WebGatewayRegressionTests.cs` (token replay rejection, CSP headers, X-Content-Type-Options, frame options).
+  - Historical web gateway retirement: `WebSecurityConformanceTests.cs` and `Hard003WebGatewayRegressionTests.cs` superseded by complete removal of browser sharing from project scope (`planning/native-platforms/BROWSER_REMOVAL_INVENTORY.md`).
   - Signing custody: `verify-signing-custody.ps1` (0 committed keystores/secrets, comprehensive .gitignore exclusions, dynamic environment providers).
 
 <a id="hard-038"></a>
@@ -498,7 +498,7 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 - **Tests/evidence:**
   - Root CI gate `tools/verify.ps1` passing 4/4 gates (Architecture 7/7, Windows Companion 8/8, Build Debug Android & Desktop, Lint Android & Desktop).
   - Local gate `tools/verify-local.ps1` passing all checks.
-  - All 14 platform & spec auditors passing 100% (`verify-apple-platforms-spec.ps1`, `verify-folder-extension-spec.ps1`, `verify-hard017-evidence.ps1`, `verify-incident-operations.ps1`, `verify-lan-slice-spec.ps1`, `verify-linux-platform-spec.ps1`, `verify-production-health-baseline.ps1`, `verify-remote-transfer-spec.ps1`, `verify-resume-spec.ps1`, `verify-signing-custody.ps1`, `verify-transport-eval.ps1`, `verify-v1-closure.ps1`, `verify-web-transfer-spec.ps1`, `verify-windows-companion.ps1`).
+  - Platform & spec auditors passing (`verify-apple-platforms-spec.ps1`, `verify-folder-extension-spec.ps1`, `verify-hard017-evidence.ps1`, `verify-incident-operations.ps1`, `verify-lan-slice-spec.ps1`, `verify-linux-platform-spec.ps1`, `verify-production-health-baseline.ps1`, `verify-remote-transfer-spec.ps1`, `verify-resume-spec.ps1`, `verify-signing-custody.ps1`, `verify-transport-eval.ps1`, `verify-v1-closure.ps1`, `verify-windows-companion.ps1`; historical `verify-web-transfer-spec.ps1` retired with browser sharing removal).
   - Environment doctor `tools/doctor.ps1` passing.
   - Test suites green: 134 Gradle tasks green, 292 .NET unit tests green.
   - Spec link integrity: 0 broken links across core specs, ADRs, architecture, security, and planning documentation.
@@ -508,7 +508,7 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
 
 - **Milestone / status:** M7 / COMPLETE.
 - **Dependencies:** HARD-040.
-- **Acceptance:** Exact Android/Windows/Linux/web artifacts install/run/update as applicable; signatures/checksums/provenance recorded; packaging excludes insecure/deferred paths and includes required native dependencies.
+- **Acceptance:** Exact native platform artifacts (Android, Windows, Linux, Apple) install/run/update as applicable; signatures/checksums/provenance recorded; packaging excludes retired browser/insecure/deferred paths and includes required native dependencies.
 - **Tests/evidence:**
   - Full evidence report: [`doc/testing/evidence/HARD-041-release-artifacts-report.md`](testing/evidence/HARD-041-release-artifacts-report.md).
   - Session note: [`doc/development/sessions/2026-09-23-hard-041.md`](development/sessions/2026-09-23-hard-041.md).
@@ -517,7 +517,7 @@ Do not mark tasks complete because files exist, source-text checks pass, loopbac
   - Android signed artifacts: `build/distributions/android/app-release.aab` (9.61 MB) and `app-release.apk` (4.93 MB, v2/v3/v4 signatures and 16 KB page-size alignment verified).
   - Windows package: `build/distributions/windows/glide-windows-win-x64.zip` (552 KB).
   - Linux package: `build/distributions/linux/glide-linux-linux-x64.tar.gz` (30.62 MB, single-file self-contained).
-  - Web client package: `build/distributions/web/glide-web-client.zip` (10.9 KB, zero-CDN offline SPA).
+  - Historical web client package (`glide-web-client.zip`): Retired and removed from active project scope (`planning/native-platforms/BROWSER_REMOVAL_INVENTORY.md`).
 
 <a id="hard-042"></a>
 ## HARD-042 — Complete exact-candidate release dossier

@@ -20,7 +20,9 @@ The following production Release Candidate artifacts have been compiled, minifie
 | **fs-verity Signature File** | `app-release.apk.idsig`| 46.6 KB | Verified Android Signature Scheme v4 |
 | **Windows Desktop Package** | `glide-windows-win-x64.zip` | 552 KB | `aa395c77c4e8d732d96579a802a76dfe062565d6e0f9ea1cee5bdd041d212282` |
 | **Linux Distribution Tarball** | `glide-linux-linux-x64.tar.gz` | 30.62 MB | `8596e909c7305fcd31ad8ae46aaf21cedb0cb1fd3cdb0f3c1b027244a65f1b9c` |
-| **Web Client Package** | `glide-web-client.zip` | 10.9 KB | `b899693a97234cfdff611a16358449c50debb2b79bfae899fa3fad24558476d0` |
+| **Web Client Package *(Retired / Removed from Scope)*** | `glide-web-client.zip` *(retired)* | 10.9 KB | `b899693a97234cfdff611a16358449c50debb2b79bfae899fa3fad24558476d0` |
+
+> **Scope Update:** Browser local sharing (`glide-web-client.zip`) was subsequently retired and removed from project scope; active project scope covers only the four native platform families (**Android, Windows, Linux, and Apple**). See [`doc/planning/native-platforms/BROWSER_REMOVAL_INVENTORY.md`](../planning/native-platforms/BROWSER_REMOVAL_INVENTORY.md).
 
 ### Application Specification
 - **Application ID:** `dev.glide.app`

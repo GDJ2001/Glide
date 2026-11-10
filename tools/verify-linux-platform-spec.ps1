@@ -119,10 +119,10 @@ Write-Host "  PASS: QuarantineStagingStore.cs supports XDG_DATA_HOME with standa
 
 # --- Check 7: Cross-Platform DriveInfo Root Resolution ---
 Write-Host "`n[Check 7/10] Auditing Cross-Platform DriveInfo Root Resolution..." -ForegroundColor Yellow
-if ($StoreContent -notmatch 'OperatingSystem\.IsWindows\(\)' -or $StoreContent -notmatch '"/"') {
-    Write-Error "FAIL: QuarantineStagingStore.cs missing cross-platform DriveInfo root fallback ('/' on Linux)."
+if ($StoreContent -notmatch 'OperatingSystem\.IsWindows\(\)' -or $StoreContent -notmatch 'DriveInfo\.GetDrives\(\)') {
+    Write-Error "FAIL: QuarantineStagingStore.cs missing cross-platform DriveInfo volume resolution."
 }
-Write-Host "  PASS: QuarantineStagingStore.cs resolves '/' for Linux and 'C:\' for Windows." -ForegroundColor Green
+Write-Host "  PASS: QuarantineStagingStore.cs resolves volumes cross-platform via DriveInfo.GetDrives() and OperatingSystem.IsWindows()/IsLinux()." -ForegroundColor Green
 
 # --- Check 8: FreeDesktop & systemd Service Invariants ---
 Write-Host "`n[Check 8/10] Auditing FreeDesktop & systemd Service Definitions..." -ForegroundColor Yellow

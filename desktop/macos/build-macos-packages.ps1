@@ -124,7 +124,7 @@ cat > "$APP_DIR/Info.plist" << 'EOF'
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSLocalNetworkUsageDescription</key>
-    <string>Glide discovers and transfers files directly with nearby devices over your local Wi-Fi network using authenticated TLS 1.3 and WebRTC.</string>
+    <string>Glide discovers and transfers files directly with nearby devices over your local Wi-Fi network using authenticated TLS 1.3.</string>
     <key>NSBonjourServices</key>
     <array>
         <string>_glide-xfer._tcp</string>

@@ -40,7 +40,7 @@ This specification defines the complete architectural design, network wire proto
 |   |  FreeDesktop .desktop & Notifications  |   |  systemd User Service Unit    |   |
 |   +---------------------------------------+   +-------------------------------+   |
 |   |                     Glide.App (Unified CLI / Daemon Executable)            |   |
-|   |  - Commands: receive, send, web, daemon                                    |   |
+|   |  - Commands: receive, send, pair, list, daemon                             |   |
 |   |  - ANSI/UTF-8 Block QR Code Generator for Terminal Pairing                 |   |
 |   |  - XDG Base Directory Resolver (Data, Config, Cache, Downloads)           |   |
 |   +---------------------------------------------------------------------------+   |
@@ -50,12 +50,11 @@ This specification defines the complete architectural design, network wire proto
 |   |  - LanRecord Framing & Zero-Dependency MdnsDiscoveryService               |   |
 |   |  - TlsSocketListener & TlsSocketClient (TLS 1.3 via OpenSSL libcrypto)    |   |
 |   |  - QuarantineStagingStore & WindowsPathSanitizer (POSIX-safe superset)    |   |
-|   |  - Embedded GlideWebGateway (ADR-0019 Browser Zero-Install Gateway)       |   |
 |   +---------------------------------------------------------------------------+   |
 +-----------------------------------------------------------------------------------+
                                          ^
                                          | Local Wi-Fi / Ethernet Subnet
-                                         | (TLS 1.3 / mDNS / HTTP 1.1)
+                                         | (TLS 1.3 / mDNS)
                                          v
 +-----------------------------------------------------------------------------------+
 |                          Interoperating Peer Endpoints                            |
@@ -97,10 +96,10 @@ All filesystem paths on Linux resolve according to standard XDG environment vari
 
 ## 4. Terminal User Experience & Headless QR Code Rendering
 
-For headless Linux installations, servers, and remote SSH sessions without graphical browsers:
+For headless Linux installations, servers, and remote SSH sessions without graphical displays:
 
 ### 4.1 UTF-8 Block Character QR Rendering
-When `glide receive` or `glide web` starts, the console renders a compact, high-contrast QR code directly to `stdout` using UTF-8 half-block elements:
+When `glide receive` starts, the console renders a compact, high-contrast QR code directly to `stdout` using UTF-8 half-block elements:
 - Upper half block: `▀` (`\u2580`)
 - Lower half block: `▄` (`\u2584`)
 - Full block: `█` (`\u2588`)
@@ -115,9 +114,6 @@ glide receive [--port <port>]
 
 # Send files using an authenticated out-of-band pairing invitation:
 glide send --pair "glide://pair/v1#..." <file-paths...>
-
-# Launch zero-install web gateway for any browser on the local Wi-Fi:
-glide web [--port <port>] <file-paths...>
 
 # Run as a peer-specific background receiver.
 # The fingerprint must already be enrolled by verified persistent-identity proof.
@@ -140,7 +136,7 @@ glide daemon --accept-paired-offers \
   - `name`: User-facing machine or custom hostname
   - `spki`: Lowercase hex SHA-256 digest of the server's SubjectPublicKeyInfo
   - `presence`: 16-byte random presence token
-  - `cap`: Capability bitmask (`0x03` = LAN Profile 1 + Web Gateway)
+  - `cap`: Capability bitmask (`0x01` = LAN Profile 1)
 
 ### 5.2 Avahi & systemd-resolved Coexistence Invariant
 On standard Linux distributions (Ubuntu, Fedora, Arch, Debian), port `5353` is frequently bound by `avahi-daemon` or `systemd-resolved`.
@@ -170,21 +166,17 @@ Installed to `~/.local/share/applications/glide.desktop` or `/usr/share/applicat
 [Desktop Entry]
 Name=Glide
 Comment=High-Speed Zero-Cloud Local File Sharing
-Exec=glide web %F
+Exec=glide-desktop %F
 Icon=dev.glide.app
-Terminal=true
+Terminal=false
 Type=Application
 Categories=Network;FileTransfer;Utility;
 MimeType=all/allfiles;
-Actions=Receive;WebShare;
+Actions=Receive;
 
 [Desktop Action Receive]
 Name=Receive Files
 Exec=glide receive
-
-[Desktop Action WebShare]
-Name=Share to Web Browser
-Exec=glide web
 ```
 
 ### 7.2 Desktop Notifications
@@ -260,4 +252,3 @@ All Linux distributions execute the same automated test suite (`windows/Glide.Te
 - Short Authentication String (SAS) calculation matching Android and Windows.
 - QR Invitation URI encoding and decoding (`glide://pair/v1#...`).
 - Quarantine staging, incremental SHA-256 verification, and atomic commitment.
-- Zero-install web gateway (ADR-0019) HTTP/1.1 chunked streaming, range requests, proposal preflights, and token replay rejection.

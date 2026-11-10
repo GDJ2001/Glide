@@ -10,20 +10,21 @@ This is the current top-level engineering plan for Glide. The original September
 
 ## 1. Product direction
 
-Glide is an account-free file-sharing product built around a portable, authenticated transfer protocol. The hardening cycle has turned the Android, Windows 11, Linux, macOS, LAN/browser and recovery work into one verified, multi-platform release with full self-contained installers across all four primary operating systems.
+Glide is an account-free file-sharing product built around a portable, authenticated transfer protocol. The native-platform architecture unifies the four primary operating system scopes — **Android, Windows 11, Linux, and Apple (macOS/iOS/iPadOS)** — into a strictly peer-to-peer native application suite without browser gateways or cloud relays.
 
 ## 2. Active release scope
 
-Completed and verified:
+Active native platform scopes:
 
-- Android local sharing via Nearby and LAN (`build/distributions/android/Glide-v1.0.0-android.apk` & `app-release.apk`).
-- Windows 11 local sharing (`build/distributions/windows/Glide-Setup-v1.0.0-win-x64.exe` & `glide-windows-win-x64.zip`).
-- Linux local sharing (`build/distributions/linux/glide_1.0.0_amd64.deb`, `Glide-Installer-v1.0.0-linux-x64.run`, & `glide-linux-linux-x64.tar.gz`).
-- macOS Universal (`arm64` + `x64`) application bundle and installer (`build/distributions/macos/Glide-Installer-v1.0.0-macos-universal.command` & `Glide-v1.0.0-macos-universal.app.tar.gz`).
-- Secure browser sharing (`build/distributions/web/glide-web-client.zip`).
-- Multi-file and folder transfer.
+- **Android** local sharing via Nearby Connections and LAN TLS 1.3 (`android/`, `build/distributions/android/Glide-v1.0.0-android.apk` & `app-release.apk`).
+- **Windows 11** local sharing via WPF and CLI (`desktop/windows/`, `build/distributions/windows/Glide-Setup-v1.0.0-win-x64.exe` & `glide-windows-win-x64.zip`).
+- **Linux** local sharing via Avalonia UI, CLI, and systemd daemon (`desktop/linux/`, `build/distributions/linux/glide_1.0.0_amd64.deb`, `Glide-Installer-v1.0.0-linux-x64.run`, & `glide-linux-linux-x64.tar.gz`).
+- **Apple (macOS, iOS, iPadOS)** local sharing via `GlideCoreKit`, `GlideMac`, and `GlideiOS` (`apple/`, `build/distributions/macos/Glide-Installer-v1.0.0-macos-universal.command` & `Glide-v1.0.0-macos-universal.app.tar.gz`).
+- Multi-file and folder transfer across native endpoints.
 - Persistent device trust and true resume.
 - History, settings, accessibility, background behavior, packaging and release verification.
+
+> **Out of Scope / Retired:** Browser local sharing (HTTP/WebSocket/WebRTC gateways and `glide-web-client.zip`) and non-native transports have been retired and removed from project scope. See [`doc/planning/native-platforms/BROWSER_REMOVAL_INVENTORY.md`](planning/native-platforms/BROWSER_REMOVAL_INVENTORY.md) and [`doc/planning/native-platforms/RECOVERY_STATUS.md`](planning/native-platforms/RECOVERY_STATUS.md).
 
 ## 3. Review and reconciliation baselines
 
@@ -32,7 +33,7 @@ The evidence-backed hardening review inspected `main` at `ea2e811a7f2d8aaddc552e
 Key HARD-002 conclusions and final closure:
 
 - historical `COMPLETE`, `Production Shipped` and `Certified` labels were replaced by empirical HARD-001–HARD-043 production-path gates;
-- Android/Windows/Linux/browser completion was re-earned through physical multi-device and native-interoperability gates (`HARD-010`, `HARD-017`, `HARD-036`, `HARD-039`, `HARD-040`);
+- Android, Windows, Linux, and Apple native platform delivery replaced earlier browser-sharing prototypes (`HARD-010`, `HARD-017`, `HARD-036`, `HARD-039`, `HARD-040`, and native platform recovery);
 - the LAN framing specification was standardized to the 5-byte record header across Kotlin, C# and Swift;
 - exact release distributions and installers for Android, Windows, Linux, and macOS are packaged and cryptographically cataloged in `build/distributions/SHA256SUMS.txt` and `doc/release/RELEASE_ARTIFACTS_SHA256.txt`.
 
@@ -42,13 +43,13 @@ Key HARD-002 conclusions and final closure:
 
 Keep `transfer-core` transport-independent. Introduce a service-owned `TransferRuntime`; ViewModels observe immutable state and issue typed commands rather than constructing transports or owning transfer scopes. Navigation carries opaque IDs instead of live transport/session objects or credentials.
 
-### Desktop
+### Desktop (Windows & Linux)
 
-Create one shared application/transfer engine consumed by WPF and CLI. Keep protocol/domain, orchestration, transport, storage and presentation responsibilities separate. WPF and CLI must exercise the same validation, consent, session and recovery implementation.
+Create one shared application/transfer engine consumed by Windows WPF (`Glide.Windows.UI`), Linux Avalonia (`Glide.Linux.UI`), and the CLI/daemon (`Glide.App`). Keep protocol/domain, orchestration, transport, storage and presentation responsibilities separate. GUI and CLI must exercise the same validation, consent, session and recovery implementation.
 
-### Browser
+### Apple (macOS, iOS, iPadOS)
 
-The release browser path must use authenticated encrypted local WebRTC DataChannels loaded from a trusted static HTTPS client. File content and pairing secrets must not transit the web host, and release builds must not fall back to the existing plaintext HTTP transfer path.
+Use the shared Swift package `GlideCoreKit` with `Network.framework` (`NWListener`, `NWConnection`, `NWBrowser`) for TLS 1.3 LAN transport and Bonjour (`_glide._tcp`) discovery, consumed by the native macOS AppKit application (`GlideMac`) and iOS/iPadOS SwiftUI application (`GlideiOS`). Browser-based file sharing is retired and removed from project scope.
 
 ## 5. Security invariants
 
@@ -71,14 +72,14 @@ The program has eight milestones and 43 tasks (`43 / 43 COMPLETE`):
 | M1 | Android production flow | HARD-005–010 | **COMPLETE (6/6)** ✅ |
 | M2 | Desktop/native interoperability | HARD-011–017 | **COMPLETE (7/7)** ✅ |
 | M3 | Trust, folders and true resume | HARD-018–024 | **COMPLETE (7/7)** ✅ |
-| M4 | Secure browser sharing | HARD-025–030 | **COMPLETE (6/6)** ✅ |
+| M4 | Browser sharing (retired & superseded by native platforms) | HARD-025–030 | **RETIRED / SUPERSEDED** |
 | M5 | Structure/developer experience | HARD-031–035 | **COMPLETE (5/5)** ✅ |
 | M6 | Product quality/hardening | HARD-036–040 | **COMPLETE (5/5)** ✅ |
 | M7 | Release/operations | HARD-041–043 | **COMPLETE (3/3)** ✅ |
 
 ## 7. Evidence standard
 
-All 43 tasks satisfied their production-path tests and physical device evidence gates, including:
+All tasks satisfied their production-path tests and physical device evidence gates, including:
 
 - **HARD-010:** Physical Android-to-Android production send/receive matrix (`12 / 12 runs PASS`).
 - **HARD-017:** Physical cross-platform native interoperability matrix across Android (`OPPO CPH2371`), Windows 11 (`LAPTOP-H99OPQFQ`), and Linux (`18 / 18 runs PASS`).
@@ -87,7 +88,7 @@ All 43 tasks satisfied their production-path tests and physical device evidence 
 
 ## 8. Repository evolution
 
-The repository is cleanly organized across `android/`, `desktop/`, `web/` (embedded zero-CDN WebRTC assets), and `protocol/fixtures/`.
+The repository is cleanly organized across the four native platform scopes: `android/`, `desktop/` (Windows & Linux), `apple/` (macOS & iOS/iPadOS), and shared `native/` protocol fixtures. Browser sharing assets (`web/`) have been removed.
 
 ## 9. Completion status & release installers
 

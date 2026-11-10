@@ -38,19 +38,19 @@ Linux environments adhere strictly to FreeDesktop.org standards (XDG Base Direct
   - **Premier Performance:** Hardware-accelerated SHA-256 and AES/ChaCha via OpenSSL/libcrypto bindings; throughput exceeds 100+ MB/s.
   - **Flexible Deployment:** Can run via standard `dotnet` runtime or compile to a single-file, self-contained native ELF binary (`dotnet publish -r linux-x64 --self-contained -p:PublishSingleFile=true`) with zero external .NET dependencies.
   - **Unified CLI & Daemon:** `Glide.App` provides a premier console interface for desktop, server, and headless operation.
-- *Cons:* GUI frontend requires separate integration (desktop entry / browser gateway / future Avalonia/GTK UI).
+- *Cons:* GUI frontend uses a dedicated Avalonia desktop project (`desktop/linux/Glide.Linux.UI`) alongside the CLI/daemon (`Glide.App`).
 
 ---
 
 ## Decision
 
-Adopt **Option 3: Shared Cross-Platform .NET 10 Engine (`Glide.Core`, `Glide.Transport`, `Glide.App`)**, governed by the following architectural, filesystem, and integration contracts:
+Adopt **Option 3: Shared Cross-Platform .NET 10 Engine (`Glide.Core`, `Glide.Transport`, `Glide.Desktop`, `Glide.App`, `Glide.Linux.UI`)**, governed by the following architectural, filesystem, and integration contracts:
 
 ### 1. CLI & Daemon Architecture (`Glide.App`)
 The native Linux executable provides command-driven operation:
 - `glide receive [--port <port>]`: Starts the LAN Profile 1 listener on port 42424 (or dynamic), prints local network endpoints, displays the pairing invitation URI, and renders an ASCII QR code in the terminal.
 - `glide send --pair <pairing-uri> <files...>`: Instant QR-bootstrapped connection with SPKI hash pinning and SAS bypass.
-- `glide web [--port <port>] <files...>`: Launches the zero-install local web transfer gateway (ADR-0019) to share files with any browser.
+- `glide web`: Retired and disabled (prints an explicit retirement message; browser local sharing is removed from project scope).
 - `glide daemon --accept-paired-offers --trusted-peer <fingerprint> --max-offer-bytes <bytes> --destination <absolute-path> [--port <port>]`: Runs a persistent listener only under an explicit peer-specific authorization policy. The fingerprint must already be enrolled through verified persistent identity proof, and the live session must prove that same identity before an offer can be accepted headlessly.
 
 ### Headless authorization hardening (HARD-020 revision)

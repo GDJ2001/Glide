@@ -1,9 +1,11 @@
-# ADR-0019 — Browser and Web Client Zero-Install Local Transfer Gateway
+# [SUPERSEDED / RETIRED] ADR-0019 — Browser and Web Client Zero-Install Local Transfer Gateway
 
-- **Status:** Accepted (Fully Implemented across Windows .NET & Android Kotlin in Milestones M14–M18)
+> **Superseded / Retired:** Browser-based file sharing has been retired and removed from project scope. Active project scope consists exclusively of native peer-to-peer applications across **Android, Windows, Linux, and Apple** (`apple/`). See [`doc/planning/native-platforms/BROWSER_REMOVAL_INVENTORY.md`](../planning/native-platforms/BROWSER_REMOVAL_INVENTORY.md) and [`doc/planning/native-platforms/RECOVERY_STATUS.md`](../planning/native-platforms/RECOVERY_STATUS.md).
+
+- **Status:** Superseded / Retired (Browser local sharing removed from project scope; superseded by native Android, Windows, Linux, and Apple applications)
 - **Date:** 2026-09-17
 - **Authority:** [Cross-Platform Path](../future/CROSS_PLATFORM_PATH.md) | [Browser Web Specification](../future/ANDROID_BROWSER_WEB_SPECIFICATION.md) | [ADR-0018](ADR-0018-lan-qr-authentication-and-routing.md)
-- **Supersedes / Extends:** Fulfills Step 3 of [CROSS_PLATFORM_PATH.md](../future/CROSS_PLATFORM_PATH.md); extends [ADR-0008 (Protocol)](ADR-0008-protocol.md) and [ADR-0018 (LAN/QR)](ADR-0018-lan-qr-authentication-and-routing.md) to web browser runtimes.
+- **Supersedes / Extends:** Historical Step 3 of [CROSS_PLATFORM_PATH.md](../future/CROSS_PLATFORM_PATH.md); retired in favor of native client applications.
 
 ---
 

@@ -9,7 +9,7 @@
 
 ## 1. Review conclusion
 
-Glide has substantial reusable code, but it is not yet complete end to end. The major gaps are application wiring, native interoperability, security enforcement, browser transport security, recovery/trust integration and release verification that exercises the real product rather than source-text or loopback substitutes.
+Glide has substantial reusable code, but it is not yet complete end to end. The major gaps are application wiring, native interoperability, security enforcement, native platform transport security, recovery/trust integration and release verification that exercises the real product rather than source-text or loopback substitutes.
 
 ### Review-reported verification at `ea2e811`
 
@@ -20,7 +20,7 @@ Glide has substantial reusable code, but it is not yet complete end to end. The 
 | .NET tests | 168 passed |
 | Full desktop Release build | Passed |
 | Physical Android transfers | Not verified; no devices connected |
-| Linux runtime and browser user journeys | Not executed during the review |
+| Linux runtime and native desktop user journeys | Not executed during the review |
 | Repository changes during review | None |
 
 These results are evidence for the review baseline only. They are not a verification claim for later commits.
@@ -36,33 +36,33 @@ These results are evidence for the review baseline only. They are not a verifica
 | F-05 | High | Desktop send/receive loops do not implement one shared strict session machine, reuse/assume sequencing, and do not fully implement paged offers/correlation/terminal outcomes. | HARD-011, HARD-013, HARD-017 |
 | F-06 | High | Desktop senders use whole-file memory hashing (`ReadAllBytesAsync`) before transfer. | HARD-003, HARD-014 |
 | F-07 | High | Desktop SAS runtime paths derive codes with independently generated nonces; CLI confirmation is not a reliable authentication gate. | HARD-003, HARD-012, HARD-013 |
-| F-08 | High | Current browser transfer is local HTTP, exposes bearer/session credentials to plaintext LAN transport, proposals are advisory, host consent is incomplete and checksums are optional. | HARD-003, HARD-025–030 |
+| F-08 | High | Historical browser transfer was local HTTP, exposed bearer/session credentials to plaintext LAN transport, had advisory proposals, incomplete host consent and optional checksums. | HARD-003; browser local sharing subsequently retired and removed from project scope (`native-platforms/BROWSER_REMOVAL_INVENTORY.md`) |
 | F-09 | High | Trust/resume helpers exist without complete authenticated session integration; resume bookkeeping must only advance over contiguous verified chunks. | HARD-018–024 |
 | F-10 | High | Release/completion documentation and CI evidence overstate readiness; CI coverage does not represent all supported platform journeys and physical gates were historically mislabeled. | HARD-002, HARD-004, HARD-040–043 |
-| F-11 | Medium | Large Android Activity/ViewModel files, desktop `MainViewModel`, debug fixtures in production, global mutable ownership, duplicated browser assets and incomplete architecture rules increase regression risk. | HARD-031–035, HARD-040 |
+| F-11 | Medium | Large Android Activity/ViewModel files, desktop `MainViewModel`, debug fixtures in production, global mutable ownership, duplicated assets and incomplete architecture rules increase regression risk. | HARD-031–035, HARD-040 |
 
 ## 2. Agreed release scope
 
-### Complete in this hardening cycle
+### Active native platform scopes
 
-- Android local sharing through Nearby and LAN.
-- Windows 11 and Linux local sharing.
-- Secure browser sharing.
-- Multi-file and folder transfers.
+- **Android** local sharing through Nearby Connections and LAN TLS 1.3 (`android/`).
+- **Windows 11** local sharing through WPF (`Glide.Windows.UI`) and CLI (`desktop/windows/`).
+- **Linux** local sharing through Avalonia UI (`Glide.Linux.UI`), CLI, and systemd daemon (`desktop/linux/`).
+- **Apple (macOS, iOS, iPadOS)** native local sharing through `GlideCoreKit`, `GlideMac`, and `GlideiOS` (`apple/`).
+- Multi-file and folder transfers across native endpoints.
 - Persistent device trust and true resume.
 - History, settings, accessibility, background behavior, packaging and release verification.
 
-### Deferred in this hardening cycle
+### Removed from project scope / Retired
 
-- Native Apple applications.
-- Remote/Internet transfers.
-
-Existing Apple and remote code must be preserved as unfinished development material. New work in those areas requires explicit authorization after the local/native/browser release gates close.
+- **Browser local sharing (`[RETIRED / REMOVED FROM SCOPE]`):** Browser-based file sharing, HTTP/WebSocket gateways, embedded web clients, and WebRTC browser fallbacks have been retired and removed from project scope (see [`native-platforms/BROWSER_REMOVAL_INVENTORY.md`](native-platforms/BROWSER_REMOVAL_INVENTORY.md)).
+- **Remote/Internet transfers (`[REMOVED FROM ACTIVE SCOPE]`):** Non-native WAN/relay transfers are outside the active four-platform native local sharing scope.
 
 ### Platform choices
 
-- Android remains Kotlin/Compose.
-- Desktop remains C#/.NET with WPF on Windows and shared .NET engine/CLI on Linux.
+- Android remains Kotlin/Compose (`android/`).
+- Desktop remains C#/.NET 10 with WPF on Windows (`desktop/windows/`), Avalonia UI on Linux (`desktop/linux/`), and shared .NET engine/CLI (`desktop/src/`).
+- Apple uses Swift 6 (`GlideCoreKit`), AppKit on macOS (`GlideMac`), and SwiftUI on iOS/iPadOS (`GlideiOS`) (`apple/`).
 - Existing branding and Android application identifiers are preserved.
 - Windows support starts at Windows 11 because the current native transport design requires modern TLS 1.3 support. See Microsoft Schannel protocol support documentation: <https://learn.microsoft.com/en-us/windows/win32/secauthn/protocols-in-tls-ssl--schannel-ssp-/>
 
@@ -93,26 +93,16 @@ Preserve the transport-independent Glide protocol. Correct incompatible implemen
 - Initial native pairing uses pinned TLS plus an atomically consumed invitation and explicit offer consent.
 - Trusted pairing requires explicit enrollment and proof of possession of persistent keys.
 - Identity proofs bind both peers, roles, fresh challenges, session, capabilities and the actual secure channel. Signing an isolated nonce is insufficient.
-- Store keys in Android Keystore, Windows protected key storage and restricted Linux key storage. Browser identity uses non-extractable WebCrypto keys.
+- Store keys in Android Keystore, Windows protected key storage, Apple Keychain, and restricted Linux key storage.
 - Version trust/resume extensions explicitly and advertise them only after implementation passes interoperability tests.
 - Resume uses fixed negotiated chunks, authenticated content hashes, a durable contiguous-progress journal and final whole-file SHA-256 verification.
 - Revalidate changed sources, revoked permissions, retained chunks and peer identity before resuming.
 - Retained partials expire after 24 hours, respect storage limits and are removed on explicit cancellation.
 - Trusted devices never automatically authorize arbitrary incoming files. Headless receiving requires a separately enabled peer-specific destination and size policy.
 
-## 5. Secure browser direction
+## 5. Browser direction — `[RETIRED / REMOVED FROM SCOPE]`
 
-Replace release use of the local plaintext HTTP transfer path with a trusted static HTTPS client using local WebRTC DataChannels.
-
-- Initial loading may require Internet access, but file content and pairing secrets must not pass through the web host.
-- Exchange connection descriptions and DTLS fingerprints through two-way QR or explicit copy/paste.
-- Use local candidates only; no public STUN/TURN or signaling service in the browser-local profile.
-- Fail clearly when local connectivity is unavailable. Never silently fall back to HTTP file transfer.
-- Use native browser WebRTC and isolated native adapters. The starting native dependency candidate is data-only `libdatachannel` 0.24.5 with pinned build inputs and thin Kotlin/JNI and .NET bindings.
-- Keep hashing, writes and downloads bounded. Unsupported durable-storage capabilities must surface an explicit limitation instead of multi-gigabyte in-memory fallback.
-- Browser trust/resume belongs to the browser profile; clearing site data removes it.
-
-WebRTC encrypts DataChannels, but authenticated signaling remains Glide's responsibility. References: <https://www.w3.org/TR/webrtc/> and <https://github.com/paullouisageneau/libdatachannel>.
+> **Status:** Browser local sharing (both the early plaintext HTTP prototype and the historical M4 WebRTC gateway) has been retired and removed from project scope in favor of native client applications across the four active platform scopes (**Android, Windows, Linux, and Apple**). See [`native-platforms/BROWSER_REMOVAL_INVENTORY.md`](native-platforms/BROWSER_REMOVAL_INVENTORY.md).
 
 ## 6. Completion roadmap
 
@@ -162,23 +152,16 @@ Task IDs are authoritative in [`../TODO_MASTER.md`](../TODO_MASTER.md). Every ta
 
 **Gate:** Interrupted large transfers resume from verified progress, reject stale/forged authority and produce exactly the original bytes. No partial becomes completed prematurely.
 
-### M4 — Deliver secure browser sharing
+### M4 — Browser sharing (`[RETIRED / REMOVED FROM SCOPE]`)
 
-- **HARD-025:** Specify the secure browser transport profile and build the static HTTPS client.
-- **HARD-026:** Add the isolated Android WebRTC adapter and lifecycle integration.
-- **HARD-027:** Add the Windows/Linux WebRTC adapter with native-resource cleanup and packaging.
-- **HARD-028:** Implement browser offers, consent, bounded streaming, integrity verification, progress and safe file output.
-- **HARD-029:** Implement browser identity persistence and resume, including file reselection/source revalidation.
-- **HARD-030:** Execute browser security/compatibility tests and remove the insecure HTTP transfer path from release builds.
-
-**Gate:** Browser↔Android and browser↔desktop use authenticated encrypted local connections. Wrong fingerprints, replayed invitations and modified content fail closed.
+- **HARD-025–030:** Historical browser sharing milestone. Browser local sharing, WebRTC adapters, and static web client distributions have been retired and removed from project scope (`native-platforms/BROWSER_REMOVAL_INVENTORY.md`), superseded by native applications across Android, Windows, Linux, and Apple.
 
 ### M5 — Refactor structure and developer experience
 
 - **HARD-031:** Split Android entry-point/debug fixtures, route composition, screen sections and presentation mapping.
 - **HARD-032:** Split desktop presentation responsibilities; networking/filesystem work stays outside ViewModels.
 - **HARD-033:** Move platform trees in separate mechanical changes while preserving package IDs, logical module names and protocol behavior.
-- **HARD-034:** Consolidate protocol fixtures and browser sources; eliminate manually synchronized copies.
+- **HARD-034:** Consolidate protocol fixtures and remove duplicated sources.
 - **HARD-035:** Add consistent setup, verification, launch, preview, formatting and dependency-management commands.
 
 **Gate:** A fresh checkout builds using documented commands. Folder moves introduce no behavior changes and fixture/documentation paths resolve.
@@ -189,33 +172,32 @@ Task IDs are authoritative in [`../TODO_MASTER.md`](../TODO_MASTER.md). Every ta
 - **HARD-037:** Perform a production-entry-point security review and fix findings.
 - **HARD-038:** Review real UI journeys for accessibility, adaptive layout, keyboard operation, themes and truthful errors.
 - **HARD-039:** Measure startup, frame rendering, memory, throughput, hashing overhead, battery and thermals.
-- **HARD-040:** Complete CI coverage for browser tests, instrumentation, architecture boundaries, migrations, dependency review and documentation links.
+- **HARD-040:** Complete CI coverage for native tests, instrumentation, architecture boundaries, migrations, dependency review and documentation links.
 
 **Gate:** No unresolved Critical/High security issue or blocking functional defect. Performance claims derive from device measurements, not loopback throughput.
 
 ### M7 — Release and operations
 
-- **HARD-041:** Produce and test Android APK/AAB, Windows signed packages, Linux packages and versioned web artifacts.
+- **HARD-041:** Produce and test Android APK/AAB, Windows signed packages, Linux packages and macOS/Apple artifacts.
 - **HARD-042:** Complete install/update verification, privacy disclosures, licenses, signing custody, support matrices and exact-candidate evidence dossier.
 - **HARD-043:** Execute the explicitly authorized staged-release process with rollback, incident handling, maintenance ownership and developer handoff.
 
 **Gate:** Every published artifact maps to a reviewed commit, checksums, test evidence and operator approval. Deployment remains a separate authorized action.
 
-Default execution order is M0 → M1 → M2 → M3 → M4 → M5 → M6 → M7. Physical gates cannot be bypassed by relabeling unit, source-text, loopback or emulator tests.
+Default execution order is M0 → M1 → M2 → M3 → M5 → M6 → M7 (with M4 retired). Physical gates cannot be bypassed by relabeling unit, source-text, loopback or emulator tests.
 
 ## 7. Target repository structure
 
 Target structure beneath the repository root:
 
 ```text
-android/              Android Gradle project and existing modules
-desktop/              Shared .NET engine, transports, storage, CLI, WPF
-web/                  One authoritative browser client
-protocol/fixtures/    Shared cross-language conformance vectors
+android/              Android Gradle project and modules
+desktop/              Shared .NET engine, transports, storage, CLI, Windows WPF, Linux Avalonia
+apple/                Shared Swift GlideCoreKit, macOS AppKit, and iOS/iPadOS SwiftUI clients
+native/               Shared cross-language conformance fixtures
 asset/                Existing canonical brand assets
-docs/                 Product, architecture, tasks, review, evidence
+doc/                  Product, architecture, tasks, review, evidence
 tools/                Common entrypoint and platform-specific tooling
-packaging/            Windows and Linux distribution definitions
 .github/              CI and release workflows
 ```
 
@@ -227,7 +209,7 @@ The move itself is HARD-033 and must be mechanical and separately reviewed. Do n
 - Pin compatible JDK, .NET SDK, Node, native toolchain and dependency versions; resolve local/CI JDK mismatches.
 - Add EditorConfig, formatting checks, dependency locks/checksums and documented IDE launch configurations.
 - Keep debug fixtures in debug/test sources.
-- Provide Compose previews, WPF design-time states and browser state previews using synthetic data.
+- Provide Compose previews, WPF/Avalonia design-time states and SwiftUI previews using synthetic data.
 - Extend architecture checks to LAN, storage entities, fully qualified references and every production source set.
 - Keep file moves, formatting, behavioral fixes and protocol changes in separate reviewable changes.
 
@@ -236,12 +218,11 @@ The move itself is HARD-033 and must be mechanical and separately reviewed. Do n
 Required scenarios include:
 
 - Empty files; 10 MB, 100 MB, 1 GB and 5+ GB files; 1,000 small files; multi-page offers; nested folders.
-- Both directions for every supported native pairing and browser/native pairing.
+- Both directions for every supported native pairing across **Android, Windows, Linux, and Apple**.
 - Wrong pins, missing invitations, simultaneous redemption, replay, malformed metadata, sequence gaps and unauthorized offers.
 - Disconnect, lock, process death, permission revocation, disk full, duplicate names, symlinks/reparse points and different destination volumes.
 - Resume with missing chunks, corrupted retained data, modified sources, expired journals, changed keys and revoked peers.
-- Browser profile clearing, storage eviction, tab closure, unavailable download APIs and blocked local connectivity.
-- Real TalkBack/keyboard journeys, 200% text scaling, adaptive layouts and reduced motion.
+- Real TalkBack/VoiceOver/keyboard journeys, 200% text scaling, adaptive layouts and reduced motion.
 - Fresh installation and upgrade without losing verified files or corrupting history.
 
 Every task report must state implementation/review commit(s), files changed, commands run, observed results, manual checks outstanding, acceptance evidence, known limitations/blockers and the next READY task.

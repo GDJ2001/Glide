@@ -2,7 +2,7 @@
 
 - **Document Version:** 1.1.0 (HARD-002 reconciliation)
 - **Design Status:** Approved technical target
-- **Implementation Status:** **PARTIAL / DEFERRED from the current HARD release scope**
+- **Implementation Status:** **OUT OF ACTIVE SCOPE (Active project scope is restricted to local native sharing across Android, Windows, Linux, and Apple)**
 - **Original Milestone:** M21 — Remote & Internet Transfer Architecture & Conformance Specification
 - **Current Task Authority:** [HARD program](../TODO_MASTER.md)
 - **Architectural Decision:** [ADR-0022](../adr/ADR-0022-remote-internet-transfer.md)

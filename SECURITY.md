@@ -10,7 +10,7 @@ Only the latest active release branch receives security updates. We strongly enc
 
 | Version | Supported | Notes |
 | :--- | :---: | :--- |
-| **1.0.x** | :white_check_mark: | Current release line (Android, Windows, Linux) |
+| **1.0.x** | :white_check_mark: | Current release line (Android, Windows, Linux, Apple) |
 | **< 1.0.0** | :x: | Development / pre-release builds unsupported |
 
 ---

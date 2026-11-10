@@ -2,7 +2,7 @@
 
 Start every development session from the [documentation portal](../README.md), then read the [current hardening/completion plan](../planning/CODE_REVIEW_IMPROVEMENT_AND_HARDENING_PLAN.md), the [HARD-002 reconciliation](../planning/HARD_002_SOURCE_DOC_CLAIM_RECONCILIATION.md), and the selected task in [TODO_MASTER](../TODO_MASTER.md).
 
-Glide contains substantial Android, Windows/.NET, Linux, browser/LAN, Apple and remote-transfer work. Historical planning and completion records are evidence, not a substitute for inspecting the current checkout.
+Glide's active development scope covers the four native platform families — **Android, Windows/.NET, Linux, and Apple (macOS, iOS, iPadOS)** — while historical browser sharing and non-native remote-transfer work have been retired and removed from active scope. Historical planning and completion records are evidence, not a substitute for inspecting the current checkout.
 
 **Current active task:** [HARD-005](../TODO_MASTER.md#hard-005). M0 (HARD-001–004) is complete.
 
@@ -20,9 +20,9 @@ Never assume a historical `COMPLETE`, release or certification label applies to 
 
 ## Current scope
 
-The active hardening cycle completes Android local sharing, Windows 11/Linux local sharing, secure browser local sharing, folders, persistent trust, true resume and the quality/release gates required to ship them.
+Active project scope covers the four native platform families — **Android (`android/`), Windows 11 (`desktop/windows/`), Linux (`desktop/linux/`), and Apple (`apple/` — macOS, iOS, iPadOS)** — along with multi-file/folder transfer, persistent trust, true resume, and the quality/release gates required to verify them (see [`../planning/native-platforms/RECOVERY_STATUS.md`](../planning/native-platforms/RECOVERY_STATUS.md)).
 
-Native Apple applications and remote/Internet transfers are **deferred**, even though implementation material exists. Preserve that material; do not extend it unless a current HARD task or explicit user instruction authorizes it.
+Browser local sharing and non-native remote/Internet transports are **retired and removed from project scope** (`../planning/native-platforms/BROWSER_REMOVAL_INVENTORY.md`). Do not reintroduce browser gateways, WebRTC browser adapters, or web client assets.
 
 ## Immediate HARD-005 rule
 
@@ -53,14 +53,14 @@ HARD-005 is an Android runtime-ownership task. Keep `transfer-core` transport-in
 
 ### Desktop
 
-- WPF and CLI must use the same shared transfer/application engine.
+- WPF, Avalonia, and CLI must use the same shared transfer/application engine.
 - Networking, protocol state, hashing, file I/O and recovery do not belong in ViewModels.
 - Hashing/streaming must be bounded-memory; do not use whole-file production reads to calculate digests.
 - Windows/Linux security and storage behavior remain explicit platform adapters around shared protocol/application logic.
 
 ### Protocol and interoperability
 
-- Kotlin, C# and later browser/native adapters implement the same ordering, pagination, identifiers, consent and terminal-result semantics.
+- Kotlin, C#, and Swift native adapters implement the same ordering, pagination, identifiers, consent and terminal-result semantics.
 - LAN Profile 1 currently uses the reconciled 5-byte header and canonical record kinds; do not revive stale 4-byte framing from historical Apple documentation.
 - Any wire change updates specifications and shared golden fixtures before dependent implementations are considered complete.
 - Do not weaken one implementation to accommodate a broken peer. Fix the incompatible peer.
@@ -76,9 +76,9 @@ HARD-005 is an Android runtime-ownership task. Keep `transfer-core` transport-in
 - Resume advances only across contiguous verified chunks and ends with whole-file integrity verification.
 - Never commit secrets, signing material or sensitive runtime values.
 
-## Browser rule
+## Browser rule (Retired)
 
-The active direction is a trusted static HTTPS client using authenticated local WebRTC DataChannels. The existing plaintext HTTP web-transfer implementation is historical/transition code and must not be treated as release-safe. Do not add new release dependencies on it.
+Browser sharing is retired and removed from project scope. Do not reintroduce browser file transfer, HTTP/WebSocket gateways, WebRTC browser adapters, embedded web clients, or web distribution packages.
 
 ## Verification rules
 
@@ -96,7 +96,7 @@ Use `REVIEW_REQUIRED` or `BLOCKED` rather than manufacturing completion when req
 
 ## Repository changes
 
-A future target tree (`android/`, `desktop/`, `web/`, `protocol/fixtures/`) is authorized only under HARD-033. Until then, preserve current paths. Do not opportunistically move/rename source while fixing behavior.
+The repository is structured around the four native platform scopes (`android/`, `desktop/`, `apple/`) and shared `native/` protocol fixtures. Preserve clean module boundaries and do not opportunistically move/rename source while fixing behavior.
 
 ## Session completion
 
