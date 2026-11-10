@@ -19,13 +19,13 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "Glide"
-if (settingsDir.name == "android") {
-    rootProject.projectDir = settingsDir.parentFile
-}
-include(":android:app")
-include(":android:core")
-include(":android:data")
-include(":android:designsystem")
-include(":android:transport-lan")
-include(":android:transport-nearby")
-include(":android:benchmark")
+
+include(":app")
+include(":core")
+include(":data")
+include(":designsystem")
+include(":transport-lan")
+include(":transport-nearby")
+include(":benchmark")
+
+

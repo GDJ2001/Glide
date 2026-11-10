@@ -160,11 +160,11 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
 
     // Modules
-    implementation(project(":android:core"))
-    implementation(project(":android:designsystem"))
-    implementation(project(":android:data"))
-    implementation(project(":android:transport-nearby"))
-    implementation(project(":android:transport-lan"))
+    implementation(project(":core"))
+    implementation(project(":designsystem"))
+    implementation(project(":data"))
+    implementation(project(":transport-nearby"))
+    implementation(project(":transport-lan"))
 
     // Room (for DatabaseModule)
     implementation(libs.androidx.room.runtime)

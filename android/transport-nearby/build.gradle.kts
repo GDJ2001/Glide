@@ -18,7 +18,7 @@ android {
 }
 
 dependencies {
-    implementation(project(":android:core"))
+    implementation(project(":core"))
     implementation(libs.play.services.nearby)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.android)

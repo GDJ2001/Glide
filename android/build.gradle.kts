@@ -12,17 +12,17 @@ plugins {
 tasks.register("checkArchitecture") {
     group = "verification"
     description = "Enforces architecture boundaries, pure JVM core isolation, UI main-thread I/O checks, and dependency catalog usage."
-    dependsOn(":android:app:testDebugUnitTest")
+    dependsOn(":app:testDebugUnitTest")
 }
 
 tasks.register("checkLanGate") {
     group = "verification"
     description = "Runs functional LAN verification gates: TLS loopback, protocol vectors, network/storage chaos, and storage correctness."
     dependsOn(
-        ":android:core:test",
-        ":android:transport-lan:testDebugUnitTest",
-        ":android:data:testDebugUnitTest",
-        ":android:app:testDebugUnitTest"
+        ":core:test",
+        ":transport-lan:testDebugUnitTest",
+        ":data:testDebugUnitTest",
+        ":app:testDebugUnitTest"
     )
 }
 
@@ -39,7 +39,10 @@ tasks.register("checkDocumentation") {
             "doc/android/STORAGE_AND_BACKGROUND.md"
         )
         for (docPath in requiredDocs) {
-            val docFile = rootProject.file(docPath)
+            val docFile = listOf(
+                rootProject.file(docPath),
+                rootProject.file("../$docPath")
+            ).firstOrNull { it.exists() } ?: rootProject.file(docPath)
             if (!docFile.exists() || docFile.length() == 0L) {
                 throw GradleException("Required documentation file missing or empty: $docPath")
             }
