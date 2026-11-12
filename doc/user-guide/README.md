@@ -43,8 +43,8 @@ The original request's `Apps` picker category, `Pause` button, `LAN PIN` input, 
 - [x] English guide with matching numbered badge explanations
 - [x] Mixed Sinhala guide retaining English UI labels
 - [x] PNG export source tool
-- [ ] Seven PNG exports generated and visually reviewed
+- [x] Seven PNG exports generated and sample renderings visually reviewed
 - [ ] Fresh screenshots for every release dialog/state and Windows pages
-- [ ] Architectural check executed successfully in full repository tooling environment
+- [x] Architecture check passed in GitHub Actions (`pwsh -File tools/check-architecture.ps1 -FailFast`; run #43166227206)
 - [ ] Pixel-level comparison against signed release distributions
 
