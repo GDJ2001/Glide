@@ -31,6 +31,9 @@ jobs:
       - name: Check generated asset count
         run: |
           test "$(find doc/user-guide/assets -maxdepth 1 -name '*_annotated.png' | wc -l)" -eq 7
+      - name: Verify repository architecture
+        shell: pwsh
+        run: ./tools/check-architecture.ps1 -FailFast
       - name: Commit PNG screenshots to documentation branch
         run: |
           git config user.name "github-actions[bot]"
