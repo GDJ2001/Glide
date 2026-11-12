@@ -7,7 +7,7 @@ Create readable, source-grounded annotated visual guides for Glide v1.0.0 in Eng
 - `doc/user-guide/USER_GUIDE_EN.md`
 - `doc/user-guide/USER_GUIDE_SI_MIXED.md`
 - Seven editable, numbered real-screenshot annotated SVGs in `doc/user-guide/assets/`
-- Seven lossless PNG renders produced by `tools/generate-user-guide-assets.py` (see build status).
+- Seven lossless PNG renders produced by `tools/generate-user-guide-assets.py` (successful GitHub Actions run #43166094150).
 - `doc/user-guide/README.md` with source provenance and qualification checklist.
 
 ## Verification notes
@@ -17,8 +17,8 @@ Create readable, source-grounded annotated visual guides for Glide v1.0.0 in Eng
 - This work does not assert every dialog is captured, nor does it certify v1.0.0 release readiness.
 
 ## Remaining verification
-1. Generate the seven PNG files using the renderer.
-2. Inspect all PNGs for numbered badge legibility and alignment.
-3. Run `pwsh -File tools/check-architecture.ps1 -FailFast` in a complete checkout with PowerShell.
-4. Capture the remaining live Windows/Android/Linux dialogs against release binaries and add supplemental figures.
-5. Verify Sinhala wording with a native-speaking reviewer.
+1. **PASS:** Seven PNG images generated and saved under `doc/user-guide/assets/` by GitHub Actions run #43166094150.
+2. **PASS (sample visual checks):** Home, Incoming Offer, and Ubuntu Pair devices annotated PNGs were inspected; remaining images require a full release visual review.
+3. **PASS:** `pwsh -File tools/check-architecture.ps1 -FailFast` succeeded under GitHub Actions run #43166227206.
+4. **OPEN:** Capture missing live Windows/Android/Linux dialogs against release binaries and add supplemental figures.
+5. **OPEN:** Verify Sinhala wording with a native-speaking reviewer.
