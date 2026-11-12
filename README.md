@@ -6,6 +6,8 @@
 
 Glide is an offline, peer-to-peer, zero-cloud file transfer system engineered for secure, verifiable, high-speed local sharing across mobile and desktop devices.
 
+For illustrated Windows, Linux, and Android instructions, open the [English or Sinhala–English user guides](doc/user-guide/START-HERE.html). Offline HTML and PDF editions are included.
+
 ---
 
 ## Key Features

@@ -1,0 +1,834 @@
+[
+  {
+    "platform": "Windows",
+    "original": "Screenshot 2026-11-12 175332.png",
+    "renamed": "windows-send-empty-dark.png",
+    "state": "send-empty",
+    "theme": "dark",
+    "dimensions": [
+      1283,
+      826
+    ],
+    "sha256": "f8d6ed1feb84d36f15ad990bb1ac54d70d4872c221cccda7fd87e1def8d4eec1",
+    "published_sha256": "f8d6ed1feb84d36f15ad990bb1ac54d70d4872c221cccda7fd87e1def8d4eec1",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/windows/windows-send-empty-dark.png"
+  },
+  {
+    "platform": "Windows",
+    "original": "Screenshot 2026-11-12 175359.png",
+    "renamed": "windows-receive-ready-dark.png",
+    "state": "receive-ready",
+    "theme": "dark",
+    "dimensions": [
+      1283,
+      826
+    ],
+    "sha256": "152dd45ecf66b5d4f0fba91a7656ab814113937554fede411f182b8b9020e54f",
+    "published_sha256": "152dd45ecf66b5d4f0fba91a7656ab814113937554fede411f182b8b9020e54f",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/windows/windows-receive-ready-dark.png"
+  },
+  {
+    "platform": "Windows",
+    "original": "Screenshot 2026-11-12 175452.png",
+    "renamed": "windows-activity-history-dark.png",
+    "state": "activity-history",
+    "theme": "dark",
+    "dimensions": [
+      1283,
+      826
+    ],
+    "sha256": "a51c4cfbacd531a252b9867407e6b8885f96e95be0e272f214ee03553b9a23ba",
+    "published_sha256": "a51c4cfbacd531a252b9867407e6b8885f96e95be0e272f214ee03553b9a23ba",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/windows/windows-activity-history-dark.png"
+  },
+  {
+    "platform": "Windows",
+    "original": "Screenshot 2026-11-12 175534.png",
+    "renamed": "windows-pair-find-dark.png",
+    "state": "pair-find",
+    "theme": "dark",
+    "dimensions": [
+      1283,
+      826
+    ],
+    "sha256": "44cbd03ed2e6cce49c39d9fa892f08f6a19c5752338396dfe234de6ac5f7c2ed",
+    "published_sha256": "44cbd03ed2e6cce49c39d9fa892f08f6a19c5752338396dfe234de6ac5f7c2ed",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/windows/windows-pair-find-dark.png"
+  },
+  {
+    "platform": "Windows",
+    "original": "Screenshot 2026-11-12 175540.png",
+    "renamed": "windows-pair-enter-code-dark.png",
+    "state": "pair-enter-code",
+    "theme": "dark",
+    "dimensions": [
+      1283,
+      826
+    ],
+    "sha256": "4ce083c9f299ea0e15a0dc9a35749e859066a13415ca1d598090e76c5a04d86a",
+    "published_sha256": "4ce083c9f299ea0e15a0dc9a35749e859066a13415ca1d598090e76c5a04d86a",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/windows/windows-pair-enter-code-dark.png"
+  },
+  {
+    "platform": "Windows",
+    "original": "Screenshot 2026-11-12 175925.png",
+    "renamed": "windows-pair-complete-dark.png",
+    "state": "pair-complete",
+    "theme": "dark",
+    "dimensions": [
+      1283,
+      826
+    ],
+    "sha256": "61f33e25e61f5638eb62f555f54afa30a6907381e8c840c581ae763dfba3d3a8",
+    "published_sha256": "61f33e25e61f5638eb62f555f54afa30a6907381e8c840c581ae763dfba3d3a8",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/windows/windows-pair-complete-dark.png"
+  },
+  {
+    "platform": "Windows",
+    "original": "Screenshot 2026-11-12 175958.png",
+    "renamed": "windows-pair-show-qr-dark.png",
+    "state": "pair-show-qr",
+    "theme": "dark",
+    "dimensions": [
+      1283,
+      826
+    ],
+    "sha256": "480f12625ed0c6a96f5170f83ef92db999bb627b536c8b70d8b533c9cfb7e2bb",
+    "published_sha256": "480f12625ed0c6a96f5170f83ef92db999bb627b536c8b70d8b533c9cfb7e2bb",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/windows/windows-pair-show-qr-dark.png"
+  },
+  {
+    "platform": "Windows",
+    "original": "Screenshot 2026-11-12 180024.png",
+    "renamed": "windows-pair-enter-link-dark.png",
+    "state": "pair-enter-link",
+    "theme": "dark",
+    "dimensions": [
+      1283,
+      826
+    ],
+    "sha256": "b53d8feac175b7387e0b6bfcb5d2464edb3b452562120d54db0b5e1e987a53ac",
+    "published_sha256": "b53d8feac175b7387e0b6bfcb5d2464edb3b452562120d54db0b5e1e987a53ac",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/windows/windows-pair-enter-link-dark.png"
+  },
+  {
+    "platform": "Windows",
+    "original": "Screenshot 2026-11-12 180032.png",
+    "renamed": "windows-pair-by-address-dark.png",
+    "state": "pair-by-address",
+    "theme": "dark",
+    "dimensions": [
+      1283,
+      826
+    ],
+    "sha256": "87efdc656c482fe74031911effb1ee2f811a4bf961160b5a57acad0a23fd7a90",
+    "published_sha256": "87efdc656c482fe74031911effb1ee2f811a4bf961160b5a57acad0a23fd7a90",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/windows/windows-pair-by-address-dark.png"
+  },
+  {
+    "platform": "Windows",
+    "original": "Screenshot 2026-11-12 180149.png",
+    "renamed": "windows-settings-dark.png",
+    "state": "settings",
+    "theme": "dark",
+    "dimensions": [
+      1920,
+      1080
+    ],
+    "sha256": "a3c1e8da042b6519e62052ff8d5e1d6b017214cbfea6b0ad639dffe9a21f5180",
+    "published_sha256": "a3c1e8da042b6519e62052ff8d5e1d6b017214cbfea6b0ad639dffe9a21f5180",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/windows/windows-settings-dark.png"
+  },
+  {
+    "platform": "Windows",
+    "original": "Screenshot 2026-11-12 180311.png",
+    "renamed": "windows-send-qr-dialog-dark.png",
+    "state": "send-qr-dialog",
+    "theme": "dark",
+    "dimensions": [
+      1920,
+      1080
+    ],
+    "sha256": "e72b452d61aa16e09b106f41f170ced45c2c6d6ae4d78ca031123472a4b02d49",
+    "published_sha256": "e72b452d61aa16e09b106f41f170ced45c2c6d6ae4d78ca031123472a4b02d49",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/windows/windows-send-qr-dialog-dark.png"
+  },
+  {
+    "platform": "Windows",
+    "original": "Screenshot 2026-11-12 180321.png",
+    "renamed": "windows-send-paired-picker-dark.png",
+    "state": "send-paired-picker",
+    "theme": "dark",
+    "dimensions": [
+      1920,
+      1080
+    ],
+    "sha256": "5076fccf3bac3acb05e6ed1142a7de068471f1ff2d16165b23759c318726b554",
+    "published_sha256": "5076fccf3bac3acb05e6ed1142a7de068471f1ff2d16165b23759c318726b554",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/windows/windows-send-paired-picker-dark.png"
+  },
+  {
+    "platform": "Windows",
+    "original": "Screenshot 2026-11-12 180338.png",
+    "renamed": "windows-receive-large-qr-dark.png",
+    "state": "receive-large-qr",
+    "theme": "dark",
+    "dimensions": [
+      1920,
+      1080
+    ],
+    "sha256": "32498caf8bc8626a0aa7216289d328e4bd0fde06ee9abe9a08b4dc06f818942b",
+    "published_sha256": "32498caf8bc8626a0aa7216289d328e4bd0fde06ee9abe9a08b4dc06f818942b",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/windows/windows-receive-large-qr-dark.png"
+  },
+  {
+    "platform": "Windows",
+    "original": "WhatsApp Image 2026-11-12 at 5.57.07 PM.jpeg",
+    "renamed": "windows-pair-approval-dark.png",
+    "state": "pair-approval",
+    "theme": "dark",
+    "dimensions": [
+      1026,
+      713
+    ],
+    "sha256": "28bef0ba74c4a20740bff336b0ea84b4af6394e69700fbced01f0ab735752810",
+    "published_sha256": "28bef0ba74c4a20740bff336b0ea84b4af6394e69700fbced01f0ab735752810",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/windows/windows-pair-approval-dark.png"
+  },
+  {
+    "platform": "Windows",
+    "original": "WhatsApp Image 2026-11-12 at 6.30.44 PM.jpeg",
+    "renamed": "windows-receive-offer-dark.png",
+    "state": "receive-offer",
+    "theme": "dark",
+    "dimensions": [
+      1026,
+      713
+    ],
+    "sha256": "5d93b0a372200e8f8ad71a836d80683869f87d796f24f86d36e61add95c98d4d",
+    "published_sha256": "5d93b0a372200e8f8ad71a836d80683869f87d796f24f86d36e61add95c98d4d",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/windows/windows-receive-offer-dark.png"
+  },
+  {
+    "platform": "Windows",
+    "original": "WhatsApp Image 2026-11-12 at 6.32.08 PM.jpeg",
+    "renamed": "windows-activity-cancelled-dark.png",
+    "state": "activity-cancelled",
+    "theme": "dark",
+    "dimensions": [
+      1026,
+      713
+    ],
+    "sha256": "ff4e42d61909cdc2f5f1a8c9e9821fdbadf3e3d2827445668cc72c6ac102a86b",
+    "published_sha256": "ff4e42d61909cdc2f5f1a8c9e9821fdbadf3e3d2827445668cc72c6ac102a86b",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/windows/windows-activity-cancelled-dark.png"
+  },
+  {
+    "platform": "Windows",
+    "original": "WhatsApp Image 2026-11-12 at 6.32.47 PM.jpeg",
+    "renamed": "windows-activity-receiving-dark.png",
+    "state": "activity-receiving",
+    "theme": "dark",
+    "dimensions": [
+      1026,
+      713
+    ],
+    "sha256": "880e507185617595ea7d172b9517e1a4f056a7ec93c27d4339cc7bc4e6c238b2",
+    "published_sha256": "880e507185617595ea7d172b9517e1a4f056a7ec93c27d4339cc7bc4e6c238b2",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/windows/windows-activity-receiving-dark.png"
+  },
+  {
+    "platform": "Linux",
+    "original": "Screenshot From 2026-11-12 12-48-07.png",
+    "renamed": "linux-receive-ready-dark.png",
+    "state": "receive-ready",
+    "theme": "dark",
+    "dimensions": [
+      1040,
+      720
+    ],
+    "sha256": "b2bd7610b88843e8cc8d094bc799a59b088836ad526f4ba0cb247cd3e6eb4929",
+    "published_sha256": "b2bd7610b88843e8cc8d094bc799a59b088836ad526f4ba0cb247cd3e6eb4929",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/linux/linux-receive-ready-dark.png"
+  },
+  {
+    "platform": "Linux",
+    "original": "Screenshot From 2026-11-12 12-48-27.png",
+    "renamed": "linux-send-empty-dark.png",
+    "state": "send-empty",
+    "theme": "dark",
+    "dimensions": [
+      1040,
+      720
+    ],
+    "sha256": "45e38336d2becf86acd6d2f909fca8c807225fb46889ea2c1ba50dd134d52d1a",
+    "published_sha256": "45e38336d2becf86acd6d2f909fca8c807225fb46889ea2c1ba50dd134d52d1a",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/linux/linux-send-empty-dark.png"
+  },
+  {
+    "platform": "Linux",
+    "original": "Screenshot From 2026-11-12 12-48-41.png",
+    "renamed": "linux-activity-history-dark.png",
+    "state": "activity-history",
+    "theme": "dark",
+    "dimensions": [
+      1040,
+      720
+    ],
+    "sha256": "852ed7f8cf0eead85c7afc409ae8ea2706bd37a7e516995642135ae57070cdba",
+    "published_sha256": "852ed7f8cf0eead85c7afc409ae8ea2706bd37a7e516995642135ae57070cdba",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/linux/linux-activity-history-dark.png"
+  },
+  {
+    "platform": "Linux",
+    "original": "Screenshot From 2026-11-12 12-48-53.png",
+    "renamed": "linux-pair-find-dark.png",
+    "state": "pair-find",
+    "theme": "dark",
+    "dimensions": [
+      1040,
+      720
+    ],
+    "sha256": "61f9b35e61160693aef1e78c8fd04b41aed2231fcb80bb456d4206ae00af2fb1",
+    "published_sha256": "61f9b35e61160693aef1e78c8fd04b41aed2231fcb80bb456d4206ae00af2fb1",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/linux/linux-pair-find-dark.png"
+  },
+  {
+    "platform": "Linux",
+    "original": "Screenshot From 2026-11-12 12-49-04.png",
+    "renamed": "linux-pair-show-qr-dark.png",
+    "state": "pair-show-qr",
+    "theme": "dark",
+    "dimensions": [
+      1040,
+      720
+    ],
+    "sha256": "5dda4c4d61edffa4a7c853b47cb97cf9ec8fefbeabe72629c414a19a40ef1e08",
+    "published_sha256": "5dda4c4d61edffa4a7c853b47cb97cf9ec8fefbeabe72629c414a19a40ef1e08",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/linux/linux-pair-show-qr-dark.png"
+  },
+  {
+    "platform": "Linux",
+    "original": "Screenshot From 2026-11-12 12-49-12.png",
+    "renamed": "linux-pair-enter-link-dark.png",
+    "state": "pair-enter-link",
+    "theme": "dark",
+    "dimensions": [
+      1040,
+      720
+    ],
+    "sha256": "a434216726c7552aa590983eacfde142a154ca719c3501e25c48549c3ec93841",
+    "published_sha256": "a434216726c7552aa590983eacfde142a154ca719c3501e25c48549c3ec93841",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/linux/linux-pair-enter-link-dark.png"
+  },
+  {
+    "platform": "Linux",
+    "original": "Screenshot From 2026-11-12 12-49-18.png",
+    "renamed": "linux-pair-by-address-dark.png",
+    "state": "pair-by-address",
+    "theme": "dark",
+    "dimensions": [
+      1040,
+      720
+    ],
+    "sha256": "031040f356b12a0ccc1ea1e0e1a24c78b682fff52f225cdd3ca3dfa9e6e1729d",
+    "published_sha256": "031040f356b12a0ccc1ea1e0e1a24c78b682fff52f225cdd3ca3dfa9e6e1729d",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/linux/linux-pair-by-address-dark.png"
+  },
+  {
+    "platform": "Linux",
+    "original": "Screenshot From 2026-11-12 12-50-07.png",
+    "renamed": "linux-settings-upper-dark.png",
+    "state": "settings-upper",
+    "theme": "dark",
+    "dimensions": [
+      1533,
+      868
+    ],
+    "sha256": "1f3b7635c4707937f8527a2c7dc44cea85a872af919a50fb04d09bc87f84b956",
+    "published_sha256": "1f3b7635c4707937f8527a2c7dc44cea85a872af919a50fb04d09bc87f84b956",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/linux/linux-settings-upper-dark.png"
+  },
+  {
+    "platform": "Linux",
+    "original": "Screenshot From 2026-11-12 12-50-22.png",
+    "renamed": "linux-settings-lower-dark.png",
+    "state": "settings-lower",
+    "theme": "dark",
+    "dimensions": [
+      1533,
+      868
+    ],
+    "sha256": "ab771aae5f866409ff167c0b55ce654c76276f1070d7682884d579af1c97e878",
+    "published_sha256": "ab771aae5f866409ff167c0b55ce654c76276f1070d7682884d579af1c97e878",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/linux/linux-settings-lower-dark.png"
+  },
+  {
+    "platform": "Linux",
+    "original": "Screenshot From 2026-11-12 12-58-31.png",
+    "renamed": "linux-pair-not-found-dark.png",
+    "state": "pair-not-found",
+    "theme": "dark",
+    "dimensions": [
+      1040,
+      720
+    ],
+    "sha256": "65a7f9daae5d1667e888f2f1e6aa467ee72f657a0b0755d33b31e0e09d094146",
+    "published_sha256": "65a7f9daae5d1667e888f2f1e6aa467ee72f657a0b0755d33b31e0e09d094146",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/linux/linux-pair-not-found-dark.png"
+  },
+  {
+    "platform": "Linux",
+    "original": "Screenshot From 2026-11-12 12-59-04.png",
+    "renamed": "linux-pair-enter-code-dark.png",
+    "state": "pair-enter-code",
+    "theme": "dark",
+    "dimensions": [
+      1040,
+      720
+    ],
+    "sha256": "8649238c317125ad31487ba7075350fe84b5b2aff49e14a0336298863412d343",
+    "published_sha256": "8649238c317125ad31487ba7075350fe84b5b2aff49e14a0336298863412d343",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/linux/linux-pair-enter-code-dark.png"
+  },
+  {
+    "platform": "Linux",
+    "original": "Screenshot From 2026-11-12 12-59-38.png",
+    "renamed": "linux-pair-complete-dark.png",
+    "state": "pair-complete",
+    "theme": "dark",
+    "dimensions": [
+      1040,
+      720
+    ],
+    "sha256": "ba916c54dcafe5343c3f6c2c470e91e0a1a5c8260396c47f14b401e9d44540f4",
+    "published_sha256": "ba916c54dcafe5343c3f6c2c470e91e0a1a5c8260396c47f14b401e9d44540f4",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/linux/linux-pair-complete-dark.png"
+  },
+  {
+    "platform": "Linux",
+    "original": "Screenshot From 2026-11-12 12-59-52.png",
+    "renamed": "linux-send-qr-dialog-dark.png",
+    "state": "send-qr-dialog",
+    "theme": "dark",
+    "dimensions": [
+      1040,
+      720
+    ],
+    "sha256": "67e1458dd490872400b47abd220ffa8f9a15390324dc6abf6e467f8ff54ca7a4",
+    "published_sha256": "67e1458dd490872400b47abd220ffa8f9a15390324dc6abf6e467f8ff54ca7a4",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/linux/linux-send-qr-dialog-dark.png"
+  },
+  {
+    "platform": "Linux",
+    "original": "Screenshot From 2026-11-12 13-00-05.png",
+    "renamed": "linux-send-staged-dark.png",
+    "state": "send-staged",
+    "theme": "dark",
+    "dimensions": [
+      1040,
+      720
+    ],
+    "sha256": "d75c396b9cc826675b82f74787bfda17c0aeda7bcc60ebdbe046f0bb94f01a0d",
+    "published_sha256": "d75c396b9cc826675b82f74787bfda17c0aeda7bcc60ebdbe046f0bb94f01a0d",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/linux/linux-send-staged-dark.png"
+  },
+  {
+    "platform": "Linux",
+    "original": "Screenshot From 2026-11-12 13-01-09.png",
+    "renamed": "linux-activity-sending-dark.png",
+    "state": "activity-sending",
+    "theme": "dark",
+    "dimensions": [
+      1040,
+      720
+    ],
+    "sha256": "d66d83d08beef98076bd0cc35aabd12dc4322676c774085df870da7d9ba125c6",
+    "published_sha256": "d66d83d08beef98076bd0cc35aabd12dc4322676c774085df870da7d9ba125c6",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/linux/linux-activity-sending-dark.png"
+  },
+  {
+    "platform": "Linux",
+    "original": "Screenshot From 2026-11-12 13-08-00.png",
+    "renamed": "linux-receive-offer-dark.png",
+    "state": "receive-offer",
+    "theme": "dark",
+    "dimensions": [
+      1040,
+      720
+    ],
+    "sha256": "f1e18b90c9071351f6ab0971799324da434c5a5672d7de0e946e1c154aded47b",
+    "published_sha256": "f1e18b90c9071351f6ab0971799324da434c5a5672d7de0e946e1c154aded47b",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/linux/linux-receive-offer-dark.png"
+  },
+  {
+    "platform": "Android",
+    "original": "1000717648.jpg",
+    "renamed": "android-home-dark.jpg",
+    "state": "home",
+    "theme": "dark",
+    "dimensions": [
+      1080,
+      2400
+    ],
+    "sha256": "981c281329a1bb8c4839dc62f7da8584acf787422cdd8c230ab0ae0e070cf28c",
+    "published_sha256": "981c281329a1bb8c4839dc62f7da8584acf787422cdd8c230ab0ae0e070cf28c",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/android/android-home-dark.jpg"
+  },
+  {
+    "platform": "Android",
+    "original": "1000717649.jpg",
+    "renamed": "android-send-select-empty-dark.jpg",
+    "state": "send-select-empty",
+    "theme": "dark",
+    "dimensions": [
+      1080,
+      2400
+    ],
+    "sha256": "d437975e711a21a25754f8d0247311390071c9521a744855dcd4daaa2092654c",
+    "published_sha256": "d437975e711a21a25754f8d0247311390071c9521a744855dcd4daaa2092654c",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/android/android-send-select-empty-dark.jpg"
+  },
+  {
+    "platform": "Android",
+    "original": "1000717650.jpg",
+    "renamed": "android-send-select-staged-dark.jpg",
+    "state": "send-select-staged",
+    "theme": "dark",
+    "dimensions": [
+      1080,
+      2400
+    ],
+    "sha256": "e290b79b055867e68d678cd3bd664db7c6c0e7df563c7f2a697e0870916781a1",
+    "published_sha256": "e290b79b055867e68d678cd3bd664db7c6c0e7df563c7f2a697e0870916781a1",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/android/android-send-select-staged-dark.jpg"
+  },
+  {
+    "platform": "Android",
+    "original": "1000717651.jpg",
+    "renamed": "android-recipient-bluetooth-off-dark.jpg",
+    "state": "recipient-bluetooth-off",
+    "theme": "dark",
+    "dimensions": [
+      1080,
+      2400
+    ],
+    "sha256": "6477b69e7c394c132bdf0138672b910cd5134b32293349903918454bc8331c71",
+    "published_sha256": "6477b69e7c394c132bdf0138672b910cd5134b32293349903918454bc8331c71",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/android/android-recipient-bluetooth-off-dark.jpg"
+  },
+  {
+    "platform": "Android",
+    "original": "1000717652.jpg",
+    "renamed": "android-recipient-wifi-off-dark.jpg",
+    "state": "recipient-wifi-off",
+    "theme": "dark",
+    "dimensions": [
+      1080,
+      2400
+    ],
+    "sha256": "b40346214e2c38daff6ef2bf463ec2b5fcc13ae673c9e7460dca26598d243095",
+    "published_sha256": "b40346214e2c38daff6ef2bf463ec2b5fcc13ae673c9e7460dca26598d243095",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/android/android-recipient-wifi-off-dark.jpg"
+  },
+  {
+    "platform": "Android",
+    "original": "1000717653.jpg",
+    "renamed": "android-recipient-no-devices-dark.jpg",
+    "state": "recipient-no-devices",
+    "theme": "dark",
+    "dimensions": [
+      1080,
+      2400
+    ],
+    "sha256": "a1f031b7ee9ec6acc237bf943a80ddd2e8de4eefadc5b303126c97342924f30a",
+    "published_sha256": "a1f031b7ee9ec6acc237bf943a80ddd2e8de4eefadc5b303126c97342924f30a",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/android/android-recipient-no-devices-dark.jpg"
+  },
+  {
+    "platform": "Android",
+    "original": "1000717654.jpg",
+    "renamed": "android-send-qr-confirmation-dark.jpg",
+    "state": "send-qr-confirmation",
+    "theme": "dark",
+    "dimensions": [
+      1080,
+      2400
+    ],
+    "sha256": "458662d66a568a901d749435b05391afe367cbc1890af1881179fe1c58a63884",
+    "published_sha256": "458662d66a568a901d749435b05391afe367cbc1890af1881179fe1c58a63884",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/android/android-send-qr-confirmation-dark.jpg"
+  },
+  {
+    "platform": "Android",
+    "original": "1000717655.jpg",
+    "renamed": "android-send-progress-dark.jpg",
+    "state": "send-progress",
+    "theme": "dark",
+    "dimensions": [
+      1080,
+      2400
+    ],
+    "sha256": "a23a6a628a5b1d029855a4c45c415d794946da714d37ea7f653dea2f3292b9ea",
+    "published_sha256": "a23a6a628a5b1d029855a4c45c415d794946da714d37ea7f653dea2f3292b9ea",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/android/android-send-progress-dark.jpg"
+  },
+  {
+    "platform": "Android",
+    "original": "1000717656.jpg",
+    "renamed": "android-nearby-verify-dark.jpg",
+    "state": "nearby-verify",
+    "theme": "dark",
+    "dimensions": [
+      1080,
+      2400
+    ],
+    "sha256": "6678bc24b36490e2fb17e88a0b134a88b25e8d1c46b049ad45a1d52bd866f896",
+    "published_sha256": "6678bc24b36490e2fb17e88a0b134a88b25e8d1c46b049ad45a1d52bd866f896",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/android/android-nearby-verify-dark.jpg"
+  },
+  {
+    "platform": "Android",
+    "original": "1000717657.jpg",
+    "renamed": "android-receive-offer-dark.jpg",
+    "state": "receive-offer",
+    "theme": "dark",
+    "dimensions": [
+      1080,
+      2400
+    ],
+    "sha256": "6ac97fce0f8e35a342e326906c9395cfe21421a776d0805b96e2567077d027ca",
+    "published_sha256": "6ac97fce0f8e35a342e326906c9395cfe21421a776d0805b96e2567077d027ca",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/android/android-receive-offer-dark.jpg"
+  },
+  {
+    "platform": "Android",
+    "original": "1000717660.jpg",
+    "renamed": "android-receive-complete-dark.jpg",
+    "state": "receive-complete",
+    "theme": "dark",
+    "dimensions": [
+      1080,
+      2400
+    ],
+    "sha256": "4a794df5dbc5b13ec128ef288ac3e8030830471372c86756fd0d60604fd678bb",
+    "published_sha256": "4a794df5dbc5b13ec128ef288ac3e8030830471372c86756fd0d60604fd678bb",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/android/android-receive-complete-dark.jpg"
+  },
+  {
+    "platform": "Android",
+    "original": "1000717671.jpg",
+    "renamed": "android-recipient-list-dark.jpg",
+    "state": "recipient-list",
+    "theme": "dark",
+    "dimensions": [
+      1080,
+      2400
+    ],
+    "sha256": "4f25b0cfd11d83347930bfe8f896e21452438759dd1e156a3e244bba1644b35b",
+    "published_sha256": "4f25b0cfd11d83347930bfe8f896e21452438759dd1e156a3e244bba1644b35b",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/android/android-recipient-list-dark.jpg"
+  },
+  {
+    "platform": "Android",
+    "original": "1000717673.jpg",
+    "renamed": "android-nearby-verify-light-dark.jpg",
+    "state": "nearby-verify-light",
+    "theme": "light",
+    "dimensions": [
+      540,
+      1200
+    ],
+    "sha256": "72c9d4ce6e9f0f502b2c9eac018df37c6e6b4cf45193f22205923664a393de7a",
+    "published_sha256": "72c9d4ce6e9f0f502b2c9eac018df37c6e6b4cf45193f22205923664a393de7a",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/android/android-nearby-verify-light-dark.jpg"
+  },
+  {
+    "platform": "Android",
+    "original": "1000717676.jpg",
+    "renamed": "android-history-dark.jpg",
+    "state": "history",
+    "theme": "dark",
+    "dimensions": [
+      1080,
+      2400
+    ],
+    "sha256": "98bf68a26d2e0f17ba1fb2f2a361e28d59346a42616c405a86c58171d9e4abe5",
+    "published_sha256": "98bf68a26d2e0f17ba1fb2f2a361e28d59346a42616c405a86c58171d9e4abe5",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/android/android-history-dark.jpg"
+  },
+  {
+    "platform": "Android",
+    "original": "1000717677.jpg",
+    "renamed": "android-settings-appearance-dark.jpg",
+    "state": "settings-appearance",
+    "theme": "dark",
+    "dimensions": [
+      1080,
+      2400
+    ],
+    "sha256": "b2b357fd5f0a72cf2932f13744ce26308e95e6409e99f5268a09d51ef84cf404",
+    "published_sha256": "b2b357fd5f0a72cf2932f13744ce26308e95e6409e99f5268a09d51ef84cf404",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/android/android-settings-appearance-dark.jpg"
+  },
+  {
+    "platform": "Android",
+    "original": "1000717678.jpg",
+    "renamed": "android-settings-trust-dark.jpg",
+    "state": "settings-trust",
+    "theme": "dark",
+    "dimensions": [
+      1080,
+      2400
+    ],
+    "sha256": "3eb4f573906873ffaa280ae320bc812bb70bddb097ba827e1e4de010ea834641",
+    "published_sha256": "3eb4f573906873ffaa280ae320bc812bb70bddb097ba827e1e4de010ea834641",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/android/android-settings-trust-dark.jpg"
+  },
+  {
+    "platform": "Android",
+    "original": "1000717679.jpg",
+    "renamed": "android-settings-storage-dark.jpg",
+    "state": "settings-storage",
+    "theme": "dark",
+    "dimensions": [
+      1080,
+      2400
+    ],
+    "sha256": "abd1fe37ecabbbffe509eaab683778a53a0aefd5d36397337d7a78687ddc0029",
+    "published_sha256": "abd1fe37ecabbbffe509eaab683778a53a0aefd5d36397337d7a78687ddc0029",
+    "duplicate_of": null,
+    "redaction_regions": [],
+    "published": "assets/android/android-settings-storage-dark.jpg"
+  },
+  {
+    "platform": "Android",
+    "original": "WhatsApp Image 2026-11-12 at 7.27.00 PM.jpeg",
+    "renamed": "android-recipient-list-duplicate-dark.jpg",
+    "state": "recipient-list-duplicate",
+    "theme": "light",
+    "dimensions": [
+      540,
+      1200
+    ],
+    "sha256": "72c9d4ce6e9f0f502b2c9eac018df37c6e6b4cf45193f22205923664a393de7a",
+    "published_sha256": "72c9d4ce6e9f0f502b2c9eac018df37c6e6b4cf45193f22205923664a393de7a",
+    "duplicate_of": "android-nearby-verify-light-dark.jpg",
+    "redaction_regions": [],
+    "published": "assets/android/android-nearby-verify-light-dark.jpg"
+  },
+  {
+    "platform": "Android",
+    "original": "WhatsApp Image 2026-11-12 at 7.27.01 PM.jpeg",
+    "renamed": "android-nearby-verify-light-duplicate-dark.jpg",
+    "state": "nearby-verify-light-duplicate",
+    "theme": "light",
+    "dimensions": [
+      1080,
+      2400
+    ],
+    "sha256": "4f25b0cfd11d83347930bfe8f896e21452438759dd1e156a3e244bba1644b35b",
+    "published_sha256": "4f25b0cfd11d83347930bfe8f896e21452438759dd1e156a3e244bba1644b35b",
+    "duplicate_of": "android-recipient-list-dark.jpg",
+    "redaction_regions": [],
+    "published": "assets/android/android-recipient-list-dark.jpg"
+  }
+]
