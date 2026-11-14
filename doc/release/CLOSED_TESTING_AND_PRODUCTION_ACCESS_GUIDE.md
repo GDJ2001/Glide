@@ -146,9 +146,9 @@ Glide lets users transfer large files and batches directly between nearby device
 ### Part 3: Production Readiness
 
 #### Q3.1: *What changes did you make to your app based on what you learned during your closed test?*
-- **Text Box Answer (276 / 300 characters):**
+- **Text Box Answer (281 / 300 characters):**
 ```text
-Based on closed testing across phone and tablet screens, we refined the adaptive two-pane tablet layouts, improved in-app privacy and permission disclosures, verified foreground service notification cancellation behavior, and confirmed zero R8 serialization issues.
+Based on early tester feedback, we released build 2 (1.0.0) fixing paired-device LAN reconnection so trusted devices transfer without rescanning a QR code, added background receive readiness notifications, refined tablet layouts, and verified foreground service cleanup.
 ```
 
 #### Q3.2: *How did you decide that your app is ready for production? Include any metrics or criteria you used.*
@@ -166,8 +166,52 @@ Once you submit the **Apply for production** form on Day 14, Google Play reviews
 ### Final 4 Clicks to Publish Worldwide:
 1. Open Google Play Console $\rightarrow$ in the left sidebar click **Test and release** $\rightarrow$ **Testing** $\rightarrow$ **Closed testing** $\rightarrow$ **Manage track (Alpha)**.
 2. Next to your active release, click **`Promote release ▾`** $\rightarrow$ select **`Production`**.
-   *(Alternatively, go to **Test and release** $\rightarrow$ **Production** $\rightarrow$ **Create new release** $\rightarrow$ **Add from library** and select your bundle).*
+   *(Alternatively, go to **Test and release** $\rightarrow$ **Production** $\rightarrow$ **Create new release** $\rightarrow$ **Add from library** and select your bundle `2 (1.0.0)`).*
 3. In **Countries / regions** on the **Production** page, click **Add countries / regions**, select **All countries / regions** (178 countries), and click **Save**.
 4. Review the release, verify **Rollout percentage** is **`100%`**, and click **Save and publish** $\rightarrow$ **Send changes for review**.
 
 Within 1–3 days of submitting the Production release, **Glide — Fast Local Share** will be publicly live and searchable worldwide on the Google Play Store!
+
+---
+
+## Appendix: How to Update Your Uploaded App on Google Play Console (`versionCode 2`)
+
+When you fix a critical bug (such as the paired-device LAN reconnection fix where paired Android and desktop devices reconnect directly without re-scanning a QR code), **Google Play Console never allows replacing or deleting an existing `.aab` with the same `versionCode` (`1`)**—even if the app is only in Internal or Closed Testing. Instead, you upload a new bundle with **`versionCode = 2`** (`2 (1.0.0)`), which automatically supersedes `1 (1.0.0)` on your testing track and delivers an automatic Play Store update to anyone who already installed it.
+
+### 1. Newly Built & Signed Bundle (`2 (1.0.0)`)
+Built and signed with your production Upload Keystore (`C:\Users\Geethika Dilshan\.glide-signing\glide-upload-keystore.jks`):
+- **Upload File (`.aab`):** `C:\Users\Geethika Dilshan\Desktop\GIThub\Glide\build\play-store-release\glide-1.0.0-vc2-release.aab`
+- **AAB SHA-256:** `2c6b538eac19ca477ef2d3a2796c5f755c5d0e88ed6e32a1683acd62e0dc9fb7`
+- **APK File (`.apk`):** `C:\Users\Geethika Dilshan\Desktop\GIThub\Glide\build\play-store-release\glide-1.0.0-vc2-release.apk`
+- **APK SHA-256:** `211a6d8b0d84df580adfc1686ff0cad8aea72ce076de608ba1f2230a6845afa1`
+
+### 2. Step-by-Step: Update Closed Testing (`Alpha`) & Internal Testing
+1. Open [Google Play Console](https://play.google.com/console/) and select **Glide — Fast Local Share**.
+2. **Update Closed Testing (`Alpha`) first:**
+   - In the left menu, go to **Test and release** $\rightarrow$ **Testing** $\rightarrow$ **Closed testing**.
+   - Next to your **Alpha** track, click **Manage track**.
+   - In the top-right corner, click the blue **Create new release** button.
+   - Under **App bundles**, click **Upload** and select:
+     ```text
+     C:\Users\Geethika Dilshan\Desktop\GIThub\Glide\build\play-store-release\glide-1.0.0-vc2-release.aab
+     ```
+   - Wait for Google Play to finish processing the `.aab`. Confirm that **`2 (1.0.0)`** appears under **New app bundles** and that **`1 (1.0.0)`** automatically moves to **Not included (1)** (superseded).
+   - Under **Release details**:
+     - **Release name:** Leave as auto-filled **`2 (1.0.0)`**
+     - **Release notes (`en-US`):** Paste:
+       ```xml
+       <en-US>
+       Glide v1.0.0 (Build 2) — Paired Device Reconnect Update:
+       • Fixed paired-device transfers so saved phones and PCs reconnect directly over local Wi-Fi without scanning a new QR code.
+       • Added trusted LAN listener presence advertising and automatic stale-endpoint recovery.
+       • Added optional background receive readiness with a foreground notification and Stop action.
+       • Preserved explicit receiver approval and streaming SHA-256 integrity verification.
+       </en-US>
+       ```
+   - Click **Next** in the bottom-right corner.
+   - On the **Preview and confirm** screen, click **Save** (or **Save and publish**).
+3. **Send Changes for Review (if prompted):**
+   - Go to **Test and release** $\rightarrow$ **Publishing overview**.
+   - If you see `2 (1.0.0)` listed under **Changes ready to be sent for review**, click **Send changes for review**. *(Updates to an already-approved Closed Testing track typically pass automated review much faster than the initial upload—often within 15–60 minutes).*
+4. **Optional — Promote the Same Build to Internal Testing (0-minute instant delivery):**
+   - On your **Closed testing - Alpha** $\rightarrow$ **Releases** tab, click **`Promote release ▾`** $\rightarrow$ **Internal testing** $\rightarrow$ **Save and publish** (or go to **Internal testing** $\rightarrow$ **Create new release** $\rightarrow$ **Add from library** and pick `2 (1.0.0)`). Internal testers receive `2 (1.0.0)` immediately without waiting for review.

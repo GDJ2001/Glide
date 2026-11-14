@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Glide Test Script — HARD-035.
 .DESCRIPTION
@@ -41,7 +41,7 @@ $testErrors = [System.Collections.Generic.List[string]]::new()
 # --- Android Test ---
 if ($Target -eq "All" -or $Target -eq "Android") {
     Write-Host "`n[Android] Running unit tests via Gradle..." -ForegroundColor Yellow
-    $gradleTask = if ($Filter) { ":android:app:test${Configuration}UnitTest" } else { "test" }
+    $gradleTask = if ($Filter) { ":app:test${Configuration}UnitTest" } else { "test" }
     $gradleArgs = @($gradleTask, "--no-daemon")
     if ($Filter) {
         $gradleArgs += "--tests", $Filter

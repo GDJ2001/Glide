@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Builds, signs, and strictly verifies Google Play Store release artifacts (AAB & APK) for Glide.
 
@@ -20,7 +20,7 @@
 [CmdletBinding()]
 param (
     [string]$VersionName = "1.0.0",
-    [int]$VersionCode = 1,
+    [int]$VersionCode = 2,
     [string]$KeystorePath = "",
     [string]$KeyAlias = "glide-upload",
     [switch]$SkipTests = $false
@@ -179,7 +179,7 @@ $env:GLIDE_VERSION_CODE = $VersionCode.ToString()
 
 Push-Location $androidDir
 try {
-    & $gradlew :android:app:bundleRelease :android:app:assembleRelease `
+    & $gradlew :app:bundleRelease :app:assembleRelease `
         "-Pglide.versionName=$VersionName" `
         "-Pglide.versionCode=$VersionCode" `
         --no-daemon --console=plain

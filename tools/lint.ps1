@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Glide Lint Script — HARD-035.
 .DESCRIPTION
@@ -39,7 +39,7 @@ $lintErrors = [System.Collections.Generic.List[string]]::new()
 # --- Android Lint ---
 if ($Target -eq "All" -or $Target -eq "Android") {
     Write-Host "`n[Android] Running Android Lint..." -ForegroundColor Yellow
-    $gradleArgs = @(":android:app:lintDebug", "--no-daemon")
+    $gradleArgs = @(":app:lintDebug", "--no-daemon")
 
     Write-Host "  Running: gradlew.bat $($gradleArgs -join ' ')" -ForegroundColor Gray
     $pinfo = New-Object System.Diagnostics.ProcessStartInfo

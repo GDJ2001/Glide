@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Glide Build Script — HARD-035.
 .DESCRIPTION
@@ -37,7 +37,7 @@ $buildErrors = [System.Collections.Generic.List[string]]::new()
 # --- Android Build ---
 if ($Target -eq "All" -or $Target -eq "Android") {
     Write-Host "`n[Android] Building via Gradle..." -ForegroundColor Yellow
-    $gradleTask = if ($Configuration -eq "Release") { ":android:app:assembleRelease" } else { ":android:app:assembleDebug" }
+    $gradleTask = if ($Configuration -eq "Release") { ":app:assembleRelease" } else { ":app:assembleDebug" }
     $gradleArgs = @($gradleTask, "--no-daemon")
     if ($Configuration -eq "Release") {
         $gradleArgs += "--console=plain"

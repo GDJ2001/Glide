@@ -19,7 +19,7 @@ android {
     val customVersionCode = providers.environmentVariable("GLIDE_VERSION_CODE")
         .orElse(providers.gradleProperty("glide.versionCode"))
         .map { it.toInt() }
-        .getOrElse(1)
+        .getOrElse(2)
 
     val customVersionName = providers.environmentVariable("GLIDE_VERSION_NAME")
         .orElse(providers.gradleProperty("glide.versionName"))
