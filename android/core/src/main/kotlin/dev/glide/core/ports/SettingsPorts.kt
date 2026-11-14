@@ -22,6 +22,7 @@ data class GlideSettings(
     val reducedMotion: ReducedMotionPreference = ReducedMotionPreference.SYSTEM,
     val notificationDetails: Boolean = false,
     val keepScreenAwake: Boolean = false,
+    val keepReceivingInBackground: Boolean = false,
     /** Persisted SAF tree grant for an optional public save destination. Null uses Download/Glide. */
     val receivedFilesTreeUri: String? = null
 ) {
@@ -82,6 +83,8 @@ interface SettingsStore {
     suspend fun updateReducedMotion(motion: ReducedMotionPreference): Result<Unit>
     suspend fun updateNotificationDetails(enabled: Boolean): Result<Unit>
     suspend fun updateKeepScreenAwake(enabled: Boolean): Result<Unit>
+    suspend fun updateKeepReceivingInBackground(enabled: Boolean): Result<Unit> =
+        Result.failure(UnsupportedOperationException("Background receiving is unavailable"))
     suspend fun updateReceivedFilesTreeUri(uri: String?): Result<Unit> =
         Result.failure(UnsupportedOperationException("Custom receive folders are unavailable"))
 }

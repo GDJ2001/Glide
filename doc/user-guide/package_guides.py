@@ -16,8 +16,8 @@ from build_guides import ROOT, prepare_assets, make_html
 EDGE = Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe")
 OUT = Path.home() / "Downloads" / "Glide-User-Guides-1.0.0-2026-11-12.zip"
 TITLES = {
-    "en": ["Getting started", "Screen guide", "Pair devices", "Send and receive", "Find received files", "Activity and History", "Settings", "Troubleshooting", "Apple status and glossary"],
-    "si": ["ආරම්භය", "තිර හඳුනාගැනීම", "Device pair කිරීම", "Files යැවීම සහ ලැබීම", "ලැබුණු files සොයාගැනීම", "Activity සහ History", "Settings", "ගැටලු විසඳීම", "Apple තත්ත්වය සහ වචන"],
+    "en": ["Getting started", "Screen guide", "Pair devices", "Send and receive", "Find received files", "Activity and History", "Settings", "Troubleshooting"],
+    "si": ["ආරම්භය", "තිර හඳුනාගැනීම", "Device pair කිරීම", "Files යැවීම සහ ලැබීම", "ලැබුණු files සොයාගැනීම", "Activity සහ History", "Settings", "ගැටලු විසඳීම"],
 }
 
 def digest(path: Path) -> str:

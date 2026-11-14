@@ -11,6 +11,7 @@ import androidx.core.content.ContextCompat
 import android.content.pm.PackageManager
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.ui.NavDisplay
@@ -56,6 +57,23 @@ fun GlideAppNavDisplay(
     val isReducedMotion = LocalReducedMotion.current
     val windowSizeClass = rememberWindowSizeClass()
     val currentRoute = backStack.filterIsInstance<GlideRoute>().lastOrNull() ?: initialRoute
+
+    // Route an incoming offer once, regardless of the page showing when the
+    // authenticated desktop connects. Later manual navigation is respected.
+    if (transferRuntime != null) {
+        val incomingState by transferRuntime.transferState.collectAsStateWithLifecycle()
+        var lastIncomingRoute by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
+        androidx.compose.runtime.LaunchedEffect(incomingState) {
+            if (incomingState is dev.glide.app.ui.transfer.TransferUiState.AwaitingConsent &&
+                incomingState.role == dev.glide.core.domain.DeviceRole.Receiver &&
+                incomingState.sessionId != lastIncomingRoute) {
+                lastIncomingRoute = incomingState.sessionId
+                if (backStack.lastOrNull() !is GlideRoute.Transfer) {
+                    backStack.add(GlideRoute.Transfer(incomingState.sessionId))
+                }
+            }
+        }
+    }
 
     androidx.compose.runtime.LaunchedEffect(incomingRoute) {
         if (incomingRoute != null && incomingRoute != backStack.last()) {
@@ -310,6 +328,10 @@ fun GlideAppNavDisplay(
                 )
             }
             entry<GlideRoute.ReceiveReadiness> {
+                val receiveSettings by (customSettingsStore?.settingsFlow
+                    ?: kotlinx.coroutines.flow.flowOf(dev.glide.core.ports.GlideSettings()))
+                    .collectAsStateWithLifecycle(initialValue = dev.glide.core.ports.GlideSettings())
+                val receiveScope = androidx.compose.runtime.rememberCoroutineScope()
                 val viewModel = if (transferRuntime != null) {
                     val runtimeFactory = androidx.compose.runtime.remember(transferRuntime) {
                         object : androidx.lifecycle.ViewModelProvider.Factory {
@@ -459,38 +481,34 @@ fun GlideAppNavDisplay(
                 androidx.compose.runtime.LaunchedEffect(lanReceiverState) {
                     when (val state = lanReceiverState) {
                         dev.glide.app.lan.LanReceiverRuntimeState.Idle -> Unit
+                        dev.glide.app.lan.LanReceiverRuntimeState.Available -> Unit
                         dev.glide.app.lan.LanReceiverRuntimeState.Starting -> {
-                            qrViewModel.showLiveReceiverStarting()
-                            showQrSheet = true
+                            if (showQrSheet) qrViewModel.showLiveReceiverStarting()
                         }
                         is dev.glide.app.lan.LanReceiverRuntimeState.Ready -> {
-                            qrViewModel.showLiveReceiverInvitation(
-                                invitation = state.invitation,
-                                onRevoke = {
-                                    transferRuntime?.dispatch(
-                                        dev.glide.app.service.TransferRuntimeCommand.StopLanReceiver
-                                    )
-                                }
-                            )
-                            showQrSheet = true
+                            if (showQrSheet) {
+                                qrViewModel.showLiveReceiverInvitation(
+                                    invitation = state.invitation,
+                                    onRevoke = {
+                                        transferRuntime?.dispatch(
+                                            dev.glide.app.service.TransferRuntimeCommand.RevokeLanReceiverInvitation
+                                        )
+                                    }
+                                )
+                            }
                         }
                         is dev.glide.app.lan.LanReceiverRuntimeState.Error -> {
-                            qrViewModel.showLiveReceiverError(
-                                message = state.message,
-                                canRetry = state.canRetry
-                            )
-                            showQrSheet = true
+                            if (showQrSheet) {
+                                qrViewModel.showLiveReceiverError(
+                                    message = state.message,
+                                    canRetry = state.canRetry
+                                )
+                            }
                         }
                         is dev.glide.app.lan.LanReceiverRuntimeState.Connected -> {
                             qrViewModel.clearLiveReceiverPresentation()
                             showQrSheet = false
-                            if (backStack.lastOrNull() !is GlideRoute.Transfer) {
-                                backStack.add(
-                                    GlideRoute.Transfer(
-                                        sessionId = "lan-receive-${state.peer.id.value}"
-                                    )
-                                )
-                            }
+                            // The global offer observer opens Transfer when consent is needed.
                         }
                     }
                 }
@@ -510,6 +528,12 @@ fun GlideAppNavDisplay(
                     },
                     onRestartReceiving = startAdvertisingAtPointOfUse,
                     onShowQrCode = startLanReceiverAtPointOfUse,
+                    keepReceivingInBackground = receiveSettings.keepReceivingInBackground,
+                    onKeepReceivingInBackgroundChanged = if (customSettingsStore == null) null else { enabled ->
+                        receiveScope.launch {
+                            customSettingsStore.updateKeepReceivingInBackground(enabled)
+                        }
+                    },
                     onScanPcQr = {
                         viewModel.stopAdvertising()
                         backStack.add(

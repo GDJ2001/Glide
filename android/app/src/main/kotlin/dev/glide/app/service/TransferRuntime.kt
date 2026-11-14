@@ -276,6 +276,10 @@ class TransferRuntime private constructor(
                 startLanReceiver(command)
             TransferRuntimeCommand.StopLanReceiver ->
                 stopLanReceiver()
+            TransferRuntimeCommand.RevokeLanReceiverInvitation -> {
+                lanController?.revokeReceiverInvitation(closeListener = false)
+                true
+            }
             is TransferRuntimeCommand.BindPairingTransport -> bindPairingTransport(
                 command.transport,
                 command.onPairingSuccess
@@ -393,7 +397,8 @@ class TransferRuntime private constructor(
                 TransferRuntimeCommand.StartReceiver(
                     transport = transport,
                     peerId = peer.id,
-                    peerDisplayName = peer.displayName
+                    peerDisplayName = peer.displayName,
+                    expectedPeerFingerprintHex = transport.trustedInboundPeerFingerprint(peer.id)
                 )
             )
             if (!started) {
@@ -1229,7 +1234,8 @@ class TransferRuntime private constructor(
     }
 
     private fun startReceiveAvailability(localDeviceName: String): Boolean {
-        lanController?.stopAll()
+        // Nearby and trusted LAN availability have independent transports. Opening
+        // Receive must not withdraw the phone's authenticated LAN endpoint.
         val controller = discoveryController ?: run {
             _fallbackReceiveReadinessState.value = ReceiveReadinessUiState.Blocked(
                 BlockedReason.TransportError("Production advertising dependency is unavailable")
@@ -1498,6 +1504,7 @@ sealed interface TransferRuntimeCommand {
     ) : TransferRuntimeCommand
 
     data object StopLanReceiver : TransferRuntimeCommand
+    data object RevokeLanReceiverInvitation : TransferRuntimeCommand
 
     data class BindPairingTransport(
         val transport: TransferTransport,

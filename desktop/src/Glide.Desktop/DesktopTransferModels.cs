@@ -187,7 +187,9 @@ public sealed record DesktopSendRequest(
     string? ExpectedPeerFingerprintHex = null,
     LanInvitationAuthority? HostedInvitationAuthority = null,
     string? ExpectedPresenceId = null,
-    IReadOnlyList<LanEndpoint>? CandidateEndpoints = null);
+    IReadOnlyList<LanEndpoint>? CandidateEndpoints = null,
+    IReadOnlyList<Glide.Desktop.Services.TrustedEndpointCandidate>? CandidateDetails = null,
+    Func<CancellationToken, Task<IReadOnlyList<Glide.Desktop.Services.TrustedEndpointCandidate>>>? RefreshCandidatesAsync = null);
 
 public sealed record DesktopReceiveRequest(
     QuarantineStagingStore StagingStore,

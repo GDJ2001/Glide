@@ -43,7 +43,7 @@ public static class TrustedEndpointResolver
 
     /// <summary>
     /// Combines the peer's saved endpoint with eligible current discovery endpoints,
-    /// validates local addresses and ports, deduplicates, ranks the saved endpoint first,
+    /// validates local addresses and ports, deduplicates, ranks fresh discovery first,
     /// uses display name only as an ordering hint among discovery candidates, and bounds to at most <paramref name="maxCandidates"/>.
     /// </summary>
     public static IReadOnlyList<TrustedEndpointCandidate> ResolveCandidates(
@@ -59,16 +59,7 @@ public static class TrustedEndpointResolver
         var results = new List<TrustedEndpointCandidate>(limit);
         var seen = new HashSet<(string Host, int Port)>();
 
-        if (TryNormalizeEndpoint(peer.LastKnownHost, peer.LastKnownPort ?? 42424, policy, out var savedEndpoint))
-        {
-            seen.Add((savedEndpoint.Address, savedEndpoint.Port));
-            results.Add(new TrustedEndpointCandidate(
-                savedEndpoint,
-                IsSavedEndpoint: true,
-                DisplayNameMatched: true));
-        }
-
-        if (discoveredPeers != null && results.Count < limit)
+        if (discoveredPeers != null)
         {
             var eligibleDiscovery = new List<(DiscoveredPeer Peer, LanEndpoint Endpoint, int NameRank)>();
             foreach (var discovered in discoveredPeers)
@@ -113,6 +104,15 @@ public static class TrustedEndpointResolver
             }
         }
 
+        // Only an actual previously authenticated listening endpoint is reusable.
+        if (peer.LastKnownPort is > 0 &&
+            results.Count < limit &&
+            TryNormalizeEndpoint(peer.LastKnownHost, peer.LastKnownPort.Value, policy, out var savedEndpoint) &&
+            seen.Add((savedEndpoint.Address, savedEndpoint.Port)))
+        {
+            results.Add(new TrustedEndpointCandidate(savedEndpoint, true, true));
+        }
+
         return results;
     }
 
@@ -130,8 +130,7 @@ public static class TrustedEndpointResolver
 
     /// <summary>
     /// Builds the ordered, deduplicated, validated candidate list for an outgoing <see cref="DesktopSendRequest"/>.
-    /// Rank 0 is always the saved endpoint (<see cref="DesktopTrustedPeer.LastKnownHost"/>:<see cref="DesktopTrustedPeer.LastKnownPort"/>)
-    /// when valid, or the request's primary Host:Port when it matches the saved peer.
+    /// Preserve rich discovered candidates, then a previously authenticated saved endpoint.
     /// </summary>
     public static IReadOnlyList<TrustedEndpointCandidate> BuildSendCandidates(
         DesktopSendRequest request,
@@ -145,27 +144,46 @@ public static class TrustedEndpointResolver
         var results = new List<TrustedEndpointCandidate>(limit);
         var seen = new HashSet<(string Host, int Port)>();
 
-        bool hasSaved = TryNormalizeEndpoint(
+        LanEndpoint savedEndpoint = null!;
+        bool hasSaved = enrolledPeer.LastKnownPort is > 0 && TryNormalizeEndpoint(
             enrolledPeer.LastKnownHost,
-            enrolledPeer.LastKnownPort ?? 42424,
+            enrolledPeer.LastKnownPort.GetValueOrDefault(),
             IsValidCandidateAddress,
-            out var savedEndpoint);
+            out savedEndpoint);
 
-        if (hasSaved)
+        // Rich discovery candidates retain their presence lease through SESSION_OPEN.
+        if (request.CandidateDetails != null)
         {
-            seen.Add((savedEndpoint.Address, savedEndpoint.Port));
+            foreach (var candidate in request.CandidateDetails)
+            {
+                if (results.Count >= limit) break;
+                if (TryNormalizeEndpoint(candidate.Endpoint.Address, candidate.Endpoint.Port,
+                        IsValidCandidateAddress, out var normalized) &&
+                    seen.Add((normalized.Address, normalized.Port)))
+                {
+                    results.Add(candidate with { Endpoint = normalized });
+                }
+            }
+        }
+
+        if (hasSaved && results.Count < limit && seen.Add((savedEndpoint.Address, savedEndpoint.Port)))
+        {
             results.Add(new TrustedEndpointCandidate(
                 savedEndpoint,
                 IsSavedEndpoint: true,
                 DisplayNameMatched: true));
         }
 
-        int fallbackPort = request.Port > 0 ? request.Port : enrolledPeer.LastKnownPort ?? 42424;
+        int fallbackPort = request.Port > 0 ? request.Port : enrolledPeer.LastKnownPort ?? 0;
         if (results.Count < limit &&
             TryNormalizeEndpoint(request.Host, fallbackPort, IsValidCandidateAddress, out var primaryEndpoint) &&
             seen.Add((primaryEndpoint.Address, primaryEndpoint.Port)))
         {
-            bool isPrimarySaved = !hasSaved || request.CandidateEndpoints == null || request.CandidateEndpoints.Count <= 1;
+            bool isPrimarySaved = request.CandidateDetails == null
+                ? !hasSaved || request.CandidateEndpoints == null || request.CandidateEndpoints.Count <= 1
+                : hasSaved &&
+                    string.Equals(primaryEndpoint.Address, savedEndpoint.Address, StringComparison.Ordinal) &&
+                    primaryEndpoint.Port == savedEndpoint.Port;
             results.Add(new TrustedEndpointCandidate(
                 primaryEndpoint,
                 IsSavedEndpoint: isPrimarySaved,

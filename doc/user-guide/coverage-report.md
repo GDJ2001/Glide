@@ -13,6 +13,5 @@ The supplied collection was rechecked after the added Android screenshots: Windo
 - Android Receive readiness and pair-only approval/result were not supplied. Their controls are described from current app flow; capture them on a connected phone before claiming illustrated or physical validation.
 - Some desktop success, failure/retry, trust details, and minimum-size/light-theme states are not supplied as distinct captures. The guide uses the nearest observed screens and text where appropriate.
 - The nine ordered platform routes have actor-specific instructions. Screenshots and current source support those instructions, but this documentation pass did not perform nine physical transfers. Physical interoperability remains a separate test gate.
-- macOS and iOS target-host and device validation remain unavailable; the guide marks them pending.
 
 The source screenshot collection contains live values. The user explicitly authorized publishing those images without concealment. Users should enter fresh codes and scan their own current QR images when following the guide.

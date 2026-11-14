@@ -517,6 +517,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
         bool sawBusyOnSavedOrVerified = false;
         bool sawSavedEndpointIdentityChanged = false;
         bool sawUnrelatedCandidateIdentity = false;
+        bool sawStalePresence = false;
         var client = new TlsSocketClient();
 
         string localName = string.IsNullOrWhiteSpace(request.LocalDeviceName)
@@ -525,6 +526,8 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
         string localPublicKeyB64 =
             InvitationCodec.ToUnpaddedBase64Url(request.TrustManager.LocalPublicKeyDer());
 
+        for (int resolutionPass = 0; resolutionPass < 2; resolutionPass++)
+        {
         foreach (TrustedEndpointCandidate candidate in candidates)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -638,6 +641,11 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
 
             if (!ack.Accepted)
             {
+                if (string.Equals(ack.ErrorCode, Profile2Constants.ErrorStalePresence, StringComparison.Ordinal))
+                {
+                    sawStalePresence = true;
+                    continue;
+                }
                 if (responderFp != null && !responderMatchesExpectedFp)
                 {
                     // Connected peer proved a different identity key (e.g. another "ubuntu" device).
@@ -785,11 +793,30 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
             }
         }
 
+        if (resolutionPass == 0 && sawStalePresence &&
+            request.RefreshCandidatesAsync != null &&
+            !resolutionBudgetCts.IsCancellationRequested)
+        {
+            candidates = (await request.RefreshCandidatesAsync(resolutionBudgetCts.Token))
+                .Take(TrustedEndpointResolver.DefaultMaxCandidates)
+                .ToArray();
+            sawStalePresence = false;
+            continue;
+        }
+        break;
+        }
+
         TrustedResolutionFailureKind failureKind =
             TrustedEndpointResolver.ClassifyExhaustedCandidates(
                 sawBusyOnSavedOrVerified,
                 sawSavedEndpointIdentityChanged,
                 sawUnrelatedCandidateIdentity);
+        if (sawStalePresence && failureKind == TrustedResolutionFailureKind.DeviceUnavailable)
+        {
+            interaction.OnStatus(DesktopTransferDirection.Send, TrustedEndpointResolver.DeviceUnavailableMessage);
+            return DesktopTransferResult.Failed(
+                TrustedEndpointResolver.DeviceUnavailableMessage, TransferErrorCategory.Network);
+        }
         DesktopTransferResult failureResult = TrustedEndpointResolver.CreateFailureResult(failureKind);
         interaction.OnStatus(DesktopTransferDirection.Send, failureResult.Message);
         return failureResult;

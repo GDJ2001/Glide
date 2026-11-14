@@ -1598,7 +1598,9 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                     Platform: peer.Platform,
                     LastKnownHost: peer.LastKnownHost,
                     LastKnownPort: peer.LastKnownPort);
-            var candidates = TrustedEndpointResolver.ResolveEndpoints(
+            _mdnsService.QueryPeers();
+            await Task.Delay(450, _activeTransferCts.Token);
+            var candidates = TrustedEndpointResolver.ResolveCandidates(
                 trustedPeerModel,
                 _mdnsService.Snapshot.Peers);
             var files = SelectedFiles
@@ -1611,7 +1613,14 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                 LocalDeviceName: Environment.MachineName,
                 TrustManager: _trustManager,
                 ExpectedPeerFingerprintHex: peer.FingerprintHex,
-                CandidateEndpoints: candidates.Count > 0 ? candidates : null);
+                CandidateDetails: candidates.Count > 0 ? candidates : null,
+                RefreshCandidatesAsync: async ct =>
+                {
+                    _mdnsService.QueryPeers();
+                    await Task.Delay(450, ct);
+                    return TrustedEndpointResolver.ResolveCandidates(
+                        trustedPeerModel, _mdnsService.Snapshot.Peers);
+                });
             _pendingTrustedSend = true;
             DesktopTransferResult result = await _transferRuntime.SendTrustedAsync(
                 request, this, _activeTransferCts.Token);

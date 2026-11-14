@@ -524,8 +524,12 @@ public sealed class LinuxAuditRegressionTests
                 discoveredPeers,
                 addressPolicy: _ => true);
 
-            // Rank 0 is saved endpoint (127.0.0.1:1), followed by the two discovered endpoints
-            Assert.Equal(1, candidateEndpoints[0].Port);
+            // Fresh discovery is tried before the stale saved port.
+            Assert.Equal(unrelatedListener.BoundPort, candidateEndpoints[0].Port);
+            Assert.Equal(1, candidateEndpoints[^1].Port);
+            var richCandidates = TrustedEndpointResolver.ResolveCandidates(
+                savedRealPeer, discoveredPeers, addressPolicy: _ => true);
+            Assert.Equal(discoveredPeers[0].PresenceId, richCandidates[0].AdvertisedPresenceId);
 
             var sendRequest = new DesktopSendRequest(
                 Host: savedRealPeer.LastKnownHost ?? "127.0.0.1",

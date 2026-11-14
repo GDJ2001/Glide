@@ -41,6 +41,7 @@ object Profile2Constants {
 
     const val ERROR_BUSY = "BUSY"
     const val ERROR_EXPIRED = "EXPIRED"
+    const val ERROR_STALE_PRESENCE = "STALE_PRESENCE"
     const val ERROR_AUTH_FAILED = "AUTH_FAILED"
     const val ERROR_DECLINED = "DECLINED"
     const val ERROR_IDENTITY_CHANGED = "IDENTITY_CHANGED"

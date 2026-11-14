@@ -40,6 +40,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -66,7 +67,9 @@ fun ReceiveReadinessScreen(
     onRestartReceiving: () -> Unit,
     modifier: Modifier = Modifier,
     onShowQrCode: (() -> Unit)? = null,
-    onScanPcQr: (() -> Unit)? = null
+    onScanPcQr: (() -> Unit)? = null,
+    keepReceivingInBackground: Boolean = false,
+    onKeepReceivingInBackgroundChanged: ((Boolean) -> Unit)? = null
 ) {
     val scrollState = rememberScrollState()
     val context = LocalContext.current
@@ -107,6 +110,24 @@ fun ReceiveReadinessScreen(
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.semantics { heading() }
             )
+        }
+
+        if (onKeepReceivingInBackgroundChanged != null) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Keep receiving in background", style = MaterialTheme.typography.titleSmall)
+                    Text("Show a notification while Glide can receive from paired devices.",
+                        style = MaterialTheme.typography.bodySmall)
+                }
+                Switch(
+                    checked = keepReceivingInBackground,
+                    onCheckedChange = onKeepReceivingInBackgroundChanged
+                )
+            }
         }
 
         when (uiState) {

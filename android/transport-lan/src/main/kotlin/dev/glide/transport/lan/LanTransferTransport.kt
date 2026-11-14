@@ -117,6 +117,7 @@ class LanTransferTransport(
     private val activeConnections = ConcurrentHashMap<PeerId, ActiveConnection>()
     private val inboundSessionReserved = java.util.concurrent.atomic.AtomicBoolean(false)
     @Volatile private var inboundAcceptedSocket: SSLSocket? = null
+    @Volatile private var advertisedPresenceId: String? = null
     private val markedReadyStreams = Collections.synchronizedSet(mutableSetOf<BulkRef>())
 
     private var inboundAcceptJob: Job? = null
@@ -126,7 +127,8 @@ class LanTransferTransport(
         val socket: SSLSocket,
         val writer: LanRecordWriter,
         val readerJob: Job,
-        val channelContext: AuthenticatedChannelContext
+        val channelContext: AuthenticatedChannelContext,
+        val trustedPeerFingerprintHex: String? = null
     )
 
     fun registerPendingInvitation(
@@ -301,6 +303,19 @@ class LanTransferTransport(
         val saved = fingerprint?.let { manager?.trustedPeerByFingerprint(it) }
         val localFingerprint = runCatching { manager?.localFingerprintHex() }.getOrNull()
         val busy = activeConnections.isNotEmpty()
+        if (open.expectedPresenceId != null &&
+            open.expectedPresenceId != advertisedPresenceId) {
+            dev.glide.core.pairing.Profile2WireCodec.writeMessage(
+                output,
+                dev.glide.core.pairing.Profile2Message.SessionOpenAck(
+                    sessionId = open.sessionId,
+                    accepted = false,
+                    errorCode = dev.glide.core.pairing.Profile2Constants.ERROR_STALE_PRESENCE
+                )
+            )
+            socket.close()
+            return
+        }
         val authorized = open.purpose == dev.glide.core.pairing.Profile2Constants.PURPOSE_TRUSTED_SEND &&
             open.authMethod == dev.glide.core.pairing.Profile2Constants.AUTH_METHOD_IDENTITY_V1 &&
             manager != null && key != null && saved != null &&
@@ -349,7 +364,8 @@ class LanTransferTransport(
             channelContext = AuthenticatedChannelContext(
                 sessionId = SessionId(open.sessionId),
                 channelBindingHex = serverSpki
-            )
+            ),
+            trustedPeerFingerprintHex = fingerprint
         )
         inboundAcceptedSocket = socket
         readerJob.start()
@@ -359,6 +375,13 @@ class LanTransferTransport(
     override suspend fun startDiscovery(serviceId: String): Flow<DiscoveryEvent> {
         return nsdDiscoveryAdapter?.startDiscovery() ?: emptyFlow()
     }
+
+    fun trustedInboundPeerFingerprint(peerId: PeerId): String? =
+        activeConnections[peerId]?.trustedPeerFingerprintHex
+
+    val trustedAdvertisingStatus:
+        kotlinx.coroutines.flow.StateFlow<dev.glide.transport.lan.discovery.NsdDiscoveryAdapter.RegistrationStatus>?
+        get() = nsdDiscoveryAdapter?.registrationStatus
 
     override suspend fun stopDiscovery() {
         nsdDiscoveryAdapter?.stopDiscovery()
@@ -372,8 +395,33 @@ class LanTransferTransport(
         ) ?: emptyFlow()
     }
 
+    fun advertiseTrustedListener(deviceName: String, presenceId: String) {
+        val port = listener?.localPort ?: error("LAN listener is not bound")
+        check(port in 1..65535)
+        check(trustedIdentity != null) { "Trusted receive handler is unavailable" }
+        val adapter = nsdDiscoveryAdapter ?: error("LAN discovery is unavailable")
+        advertisedPresenceId = presenceId
+        try {
+            adapter.startAdvertising(
+                deviceName = deviceName,
+                localPort = port,
+                presenceId = presenceId,
+                supportsTrustedReconnect = true
+            )
+        } catch (error: Throwable) {
+            advertisedPresenceId = null
+            throw error
+        }
+    }
+
     override suspend fun stopAdvertising() {
         nsdDiscoveryAdapter?.stopAdvertising()
+        advertisedPresenceId = null
+    }
+
+    fun stopTrustedAdvertising() {
+        nsdDiscoveryAdapter?.stopAdvertising()
+        advertisedPresenceId = null
     }
 
     override suspend fun initiateConnection(peerId: PeerId, localDeviceName: String) {
@@ -744,6 +792,7 @@ class LanTransferTransport(
     }
 
     override fun close() {
+        advertisedPresenceId = null
         inboundAcceptJob?.cancel()
         for ((_, conn) in activeConnections) {
             conn.readerJob.cancel()

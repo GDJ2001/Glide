@@ -34,12 +34,15 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
 sealed interface LanReceiverRuntimeState {
     data object Idle : LanReceiverRuntimeState
     data object Starting : LanReceiverRuntimeState
+    data object Available : LanReceiverRuntimeState
 
     data class Ready(
         val invitation: LanInvitation,
@@ -132,7 +135,8 @@ class ProductionLanController private constructor(
         val transport: LanTransferTransport,
         val listenerScope: CoroutineScope,
         val transportScope: CoroutineScope,
-        val connectionJob: Job
+        val connectionJob: Job,
+        val networkJob: Job
     )
 
     private data class SenderResources(
@@ -167,6 +171,17 @@ class ProductionLanController private constructor(
         val existing = synchronized(lock) { receiverResources }
         if (existing != null) {
             existing.transport.configureTrustedReceive(trustedReceiveManager, deviceName)
+            if (trustedReceiveManager != null) {
+                runCatching {
+                    existing.transport.advertiseTrustedListener(
+                        deviceName.trim().ifEmpty { "Glide Device" },
+                        java.util.UUID.randomUUID().toString().replace("-", "")
+                    )
+                }.onFailure {
+                    _receiverState.value = LanReceiverRuntimeState.Error("Local discovery is unavailable.")
+                    return false
+                }
+            }
             val available = existing.networkScope.networkState.value as? LanNetworkState.Available
             val port = runCatching { existing.listener.localPort }.getOrDefault(-1)
             if (available != null && port > 0) {
@@ -248,6 +263,24 @@ class ProductionLanController private constructor(
                     networkGeneration = available.generation
                 )
 
+                if (trustedReceiveManager != null) {
+                    activeTransport.advertiseTrustedListener(
+                        deviceName.trim().ifEmpty { "Glide Device" },
+                        java.util.UUID.randomUUID().toString().replace("-", "")
+                    )
+                    val registered = withTimeoutOrNull(NETWORK_READY_TIMEOUT_MS) {
+                        activeTransport.trustedAdvertisingStatus
+                            ?.filter { status ->
+                                status == dev.glide.transport.lan.discovery.NsdDiscoveryAdapter.RegistrationStatus.Ready ||
+                                    status == dev.glide.transport.lan.discovery.NsdDiscoveryAdapter.RegistrationStatus.Failed
+                            }
+                            ?.first()
+                    }
+                    check(registered == dev.glide.transport.lan.discovery.NsdDiscoveryAdapter.RegistrationStatus.Ready) {
+                        "Local discovery could not advertise the bound receiver."
+                    }
+                }
+
                 lateinit var connectionJob: Job
                 connectionJob = activeTransportScope.launch {
                     activeTransport.observeConnectionEvents().collect { event ->
@@ -255,7 +288,6 @@ class ProductionLanController private constructor(
                         when (event) {
                             is ConnectionEvent.Connected -> {
                                 authority.revokeActiveInvitation()
-                                runCatching { activeListener.close() }
                                 _receiverState.value =
                                     LanReceiverRuntimeState.Connected(event.peer)
                                 onConnected(activeTransport, event.peer)
@@ -270,8 +302,47 @@ class ProductionLanController private constructor(
                                         "LAN pairing was rejected."
                                     )
                             }
-                            is ConnectionEvent.Disconnected,
+                            is ConnectionEvent.Disconnected -> {
+                                // The listener remains bound for the next authenticated offer.
+                                if (_receiverState.value is LanReceiverRuntimeState.Connected) {
+                                    _receiverState.value = LanReceiverRuntimeState.Available
+                                }
+                            }
                             is ConnectionEvent.Initiated -> Unit
+                        }
+                    }
+                }
+
+                val networkJob = activeListenerScope.launch {
+                    networkScope.networkState.collect { state ->
+                        if (!isCurrentGeneration(generation)) return@collect
+                        when (state) {
+                            is LanNetworkState.Available -> {
+                                if (state.generation != available.generation ||
+                                    state.localAddresses != available.localAddresses) {
+                                    ownerScope.launch {
+                                        stopAll()
+                                        startReceiver(ownerScope, deviceName, onConnected)
+                                    }
+                                }
+                            }
+                            else -> {
+                                activeTransport.stopTrustedAdvertising()
+                                _receiverState.value = LanReceiverRuntimeState.Error(
+                                    "Local network unavailable. Reconnect Wi-Fi and reopen Glide."
+                                )
+                            }
+                        }
+                    }
+                }
+
+                activeListenerScope.launch {
+                    activeTransport.trustedAdvertisingStatus?.collect { status ->
+                        if (status == dev.glide.transport.lan.discovery.NsdDiscoveryAdapter.RegistrationStatus.Failed &&
+                            isCurrentGeneration(generation)) {
+                            _receiverState.value = LanReceiverRuntimeState.Error(
+                                "Local discovery failed. Check Wi-Fi and try again."
+                            )
                         }
                     }
                 }
@@ -285,7 +356,8 @@ class ProductionLanController private constructor(
                         transport = activeTransport,
                         listenerScope = activeListenerScope,
                         transportScope = activeTransportScope,
-                        connectionJob = connectionJob
+                        connectionJob = connectionJob,
+                        networkJob = networkJob
                     )
                 }
 
@@ -481,7 +553,8 @@ class ProductionLanController private constructor(
         if (_receiverState.value is LanReceiverRuntimeState.Ready ||
             _receiverState.value is LanReceiverRuntimeState.Starting
         ) {
-            _receiverState.value = LanReceiverRuntimeState.Idle
+            _receiverState.value = if (closeListener) LanReceiverRuntimeState.Idle
+                else LanReceiverRuntimeState.Available
         }
     }
 
@@ -502,6 +575,7 @@ class ProductionLanController private constructor(
         receiver?.let {
             it.authority.revokeAll()
             it.connectionJob.cancel()
+            it.networkJob.cancel()
             runCatching { it.transport.close() }
             runCatching { it.listener.close() }
             runCatching { it.identity.close() }

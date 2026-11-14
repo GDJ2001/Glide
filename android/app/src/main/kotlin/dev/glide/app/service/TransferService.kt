@@ -3,6 +3,7 @@ package dev.glide.app.service
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -10,6 +11,7 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.ServiceCompat
+import androidx.core.app.NotificationCompat
 import dev.glide.app.ui.transfer.TransferUiState
 import dev.glide.core.domain.BatchId
 import dev.glide.core.domain.PeerId
@@ -52,15 +54,24 @@ class TransferService : Service() {
     }
 
     private var notificationObserverJob: kotlinx.coroutines.Job? = null
+    @Volatile private var keepReceivingInBackground = false
 
     private val startRequestLock = Any()
     private var lastStartRequestKey: String? = null
 
     override fun onCreate() {
         super.onCreate()
+        isRunning = true
         createNotificationChannel()
         runtime().attachServiceScope(serviceScope) {
-            handleTerminalTeardown()
+            if (keepReceivingInBackground && runtime().trustState.value.trustedPeers.isNotEmpty()) {
+                serviceScope.launch {
+                    kotlinx.coroutines.delay(3_000)
+                    if (!runtime().isSessionActive.value) postAvailabilityNotification()
+                }
+            } else {
+                handleTerminalTeardown()
+            }
         }
     }
 
@@ -159,16 +170,30 @@ class TransferService : Service() {
                 startNotificationUpdates()
                 val localDeviceName =
                     intent?.getStringExtra(EXTRA_LOCAL_DEVICE_NAME) ?: "Glide Device"
-                if (!runtime().dispatch(
-                        TransferRuntimeCommand.StartLanReceiver(localDeviceName)
-                    )
-                ) {
-                    handleTerminalTeardown()
+                serviceScope.launch {
+                    if (!runtime().refreshPersistentTrustState() ||
+                        !runtime().dispatch(
+                            TransferRuntimeCommand.StartLanReceiver(localDeviceName)
+                        )) {
+                        handleTerminalTeardown()
+                    }
                 }
             }
 
             ACTION_STOP_LAN_RECEIVER -> {
                 runtime().dispatch(TransferRuntimeCommand.StopLanReceiver)
+            }
+
+            ACTION_STOP_IDLE_LAN_RECEIVER -> {
+                serviceScope.launch {
+                    dev.glide.app.di.DatabaseModule.provideSettingsStore(applicationContext)
+                        .updateKeepReceivingInBackground(false)
+                    keepReceivingInBackground = false
+                    if (!runtime().isSessionActive.value) {
+                        runtime().dispatch(TransferRuntimeCommand.StopLanReceiver)
+                        handleTerminalTeardown()
+                    }
+                }
             }
 
             ACTION_CANCEL -> {
@@ -240,12 +265,16 @@ class TransferService : Service() {
         notificationObserverJob = serviceScope.launch {
             kotlinx.coroutines.flow.combine(
                 runtime().transferState,
-                settingsStore.settingsFlow
-            ) { state, settings ->
-                state to settings
-            }.collect { (state, settings) ->
+                settingsStore.settingsFlow,
+                runtime().lanReceiverState
+            ) { state, settings, lanState ->
+                Triple(state, settings, lanState)
+            }.collect { (state, settings, lanState) ->
+                keepReceivingInBackground = settings.keepReceivingInBackground
                 if (state !is TransferUiState.Idle) {
                     transferNotificationManager.dispatchUpdate(state, settings, serviceScope)
+                } else if (lanState is dev.glide.app.lan.LanReceiverRuntimeState.Ready) {
+                    postAvailabilityNotification()
                 }
             }
         }
@@ -308,16 +337,31 @@ class TransferService : Service() {
         return if (currentUiState !is TransferUiState.Idle) {
             transferNotificationManager.buildNotification(this, currentUiState, initialSettings)
         } else {
-            transferNotificationManager.buildNotification(
-                this,
-                TransferUiState.Connecting(
-                    sessionId = runtime().getActiveSessionId().orEmpty(),
-                    role = currentUiState.role,
-                    peerName = "Nearby device"
-                ),
-                initialSettings
-            )
+            buildAvailabilityNotification()
         }
+    }
+
+    private fun buildAvailabilityNotification(): Notification {
+        val stopIntent = Intent(this, TransferService::class.java).apply {
+            action = ACTION_STOP_IDLE_LAN_RECEIVER
+        }
+        val stopAction = PendingIntent.getService(
+            this, 71, stopIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+            .setSmallIcon(dev.glide.app.R.drawable.ic_notification)
+            .setContentTitle("Glide is ready to receive")
+            .setContentText("Paired devices on your local network can send an offer")
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setOngoing(true)
+            .addAction(0, "Stop", stopAction)
+            .build()
+    }
+
+    private fun postAvailabilityNotification() {
+        getSystemService(NotificationManager::class.java)?.notify(
+            NOTIFICATION_ID, buildAvailabilityNotification()
+        )
     }
 
     private fun createNotificationChannel() {
@@ -351,6 +395,7 @@ class TransferService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        isRunning = false
         notificationObserverJob?.cancel()
         notificationObserverJob = null
         synchronized(startRequestLock) {
@@ -415,6 +460,7 @@ class TransferService : Service() {
     }
 
     companion object {
+        @Volatile private var isRunning = false
         const val ACTION_START = "dev.glide.app.action.START_TRANSFER"
         const val ACTION_START_NEARBY_SENDER =
             "dev.glide.app.action.START_NEARBY_SENDER"
@@ -428,6 +474,8 @@ class TransferService : Service() {
             "dev.glide.app.action.START_LAN_RECEIVER_PAIRING"
         const val ACTION_STOP_LAN_RECEIVER =
             "dev.glide.app.action.STOP_LAN_RECEIVER"
+        const val ACTION_STOP_IDLE_LAN_RECEIVER =
+            "dev.glide.app.action.STOP_IDLE_LAN_RECEIVER"
         const val ACTION_STOP = "dev.glide.app.action.STOP_TRANSFER"
         const val ACTION_CANCEL = "dev.glide.app.action.CANCEL_TRANSFER"
         const val ACTION_ACCEPT = "dev.glide.app.action.ACCEPT_OFFER"
@@ -555,6 +603,14 @@ class TransferService : Service() {
                 action = ACTION_STOP_LAN_RECEIVER
             }
             context.startService(intent)
+        }
+
+        fun stopIdleLanReceiver(context: Context) {
+            val intent = Intent(context, TransferService::class.java).apply {
+                action = ACTION_STOP_IDLE_LAN_RECEIVER
+            }
+            // A foreground availability service is already running when needed.
+            if (isRunning) context.startService(intent)
         }
 
         fun stopService(context: Context) {

@@ -22,6 +22,9 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.isActive
@@ -54,6 +57,10 @@ class NsdDiscoveryAdapter(
     val serviceType: String = DEFAULT_SERVICE_TYPE,
     private val coroutineScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 ) : Closeable {
+
+    enum class RegistrationStatus { Stopped, Registering, Ready, Failed }
+    private val _registrationStatus = MutableStateFlow(RegistrationStatus.Stopped)
+    val registrationStatus: StateFlow<RegistrationStatus> = _registrationStatus.asStateFlow()
 
     private val _discoveryEvents = MutableSharedFlow<DiscoveryEvent>(
         replay = 32,
@@ -89,9 +96,12 @@ class NsdDiscoveryAdapter(
     fun startAdvertising(
         deviceName: String,
         localPort: Int,
-        presenceId: String = generateRandomPresenceId()
+        presenceId: String = generateRandomPresenceId(),
+        supportsTrustedReconnect: Boolean = false,
+        isPairReady: Boolean = false
     ): Flow<AdvertisingEvent> {
         stopAdvertising()
+        _registrationStatus.value = RegistrationStatus.Registering
 
         val record = LanTxtRecord(
             v = 1,
@@ -99,7 +109,9 @@ class NsdDiscoveryAdapter(
             q = 1,
             p = presenceId,
             dn = deviceName.take(LanTxtRecord.MAX_DN_CODE_POINTS),
-            dt = LanTxtRecord.DEVICE_TYPE_PHONE
+            dt = LanTxtRecord.DEVICE_TYPE_PHONE,
+            supportsTrustedReconnect = supportsTrustedReconnect,
+            isPairReady = isPairReady
         )
 
         val attributes = LanTxtCodec.encode(record).mapValues { String(it.value, StandardCharsets.UTF_8) }
@@ -108,11 +120,12 @@ class NsdDiscoveryAdapter(
 
         val callback = object : NsdRegistrationCallback {
             override fun onServiceRegistered(registeredName: String) {
-                // Registered successfully
+                _registrationStatus.value = RegistrationStatus.Ready
             }
 
             override fun onRegistrationFailed(errorCode: Int) {
                 stopAdvertising()
+                _registrationStatus.value = RegistrationStatus.Failed
             }
 
             override fun onServiceUnregistered() {
@@ -143,6 +156,7 @@ class NsdDiscoveryAdapter(
         val callback = activeRegistrationCallback ?: return
         activeRegistrationCallback = null
         clientWrapper.unregisterService(callback)
+        _registrationStatus.value = RegistrationStatus.Stopped
     }
 
     /**

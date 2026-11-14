@@ -25,6 +25,7 @@ public static class Profile2Constants
 
     public const string ErrorBusy = "BUSY";
     public const string ErrorExpired = "EXPIRED";
+    public const string ErrorStalePresence = "STALE_PRESENCE";
     public const string ErrorAuthFailed = "AUTH_FAILED";
     public const string ErrorDeclined = "DECLINED";
     public const string ErrorUntrustedPeer = "UNTRUSTED_PEER";

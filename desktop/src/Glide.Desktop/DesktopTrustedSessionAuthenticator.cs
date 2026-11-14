@@ -404,9 +404,9 @@ internal static class DesktopTrustedSessionAuthenticator
         if (connection.TcpClient.Client.RemoteEndPoint is System.Net.IPEndPoint remoteEp)
         {
             string host = remoteEp.Address.ToString();
-            int port = localEndpointHostsTls
-                ? Glide.Transport.Discovery.LanDiscoveryConstants.DefaultPort
-                : remoteEp.Port;
+            // The remote port on an inbound connection is ephemeral. It does not
+            // establish where this peer listens for a later trusted send.
+            int? port = localEndpointHostsTls ? null : remoteEp.Port;
             return new VerifiedDesktopPeerIdentity(
                 verified.FingerprintHex,
                 verified.PublicKeyDerHex,

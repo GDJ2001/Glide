@@ -20,6 +20,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.core.content.ContextCompat
+import android.content.pm.PackageManager
+import dev.glide.app.permission.PermissionPolicy
+import dev.glide.app.service.TransferService
+import dev.glide.app.lan.LanReceiverRuntimeState
 import dagger.hilt.android.AndroidEntryPoint
 import dev.glide.app.ingress.IngressOutcome
 import dev.glide.app.ingress.ShareIngressHandler
@@ -32,6 +40,10 @@ import dev.glide.core.ports.ThemePreference
 import dev.glide.designsystem.GlideTheme
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import javax.inject.Inject
 
 /**
@@ -55,11 +67,44 @@ class MainActivity : ComponentActivity() {
     lateinit var persistentTrustManager: dev.glide.core.identity.PersistentTrustManager
 
     private var lastHandledFingerprint: String? = null
+    @Volatile private var keepReceivingInBackground = false
     private val incomingOutcomeFlow = MutableStateFlow<IngressOutcome?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        lifecycleScope.launch {
+            settingsStore.settingsFlow.collect { settings ->
+                keepReceivingInBackground = settings.keepReceivingInBackground
+            }
+        }
+
+        // Foreground availability follows the Activity, not the Receive or QR screen.
+        // The service owns the socket so an incoming authenticated offer can be handled
+        // from Home, History or Settings. A terminal transfer may tear down the service;
+        // the resulting Idle state re-establishes availability while still foregrounded.
+        lifecycleScope.launch {
+            transferRuntime.refreshPersistentTrustState()
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                combine(persistentTrustManager.trustedPeers, transferRuntime.lanReceiverState) {
+                    peers, receiver -> peers.isNotEmpty() && receiver is LanReceiverRuntimeState.Idle
+                }.collect { shouldStart ->
+                    if (shouldStart && !transferRuntime.isSessionActive.value) {
+                        delay(250)
+                        val permitted = PermissionPolicy.lanTransferPermissions().all {
+                            ContextCompat.checkSelfPermission(this@MainActivity, it) ==
+                                PackageManager.PERMISSION_GRANTED
+                        }
+                        if (permitted &&
+                            transferRuntime.lanReceiverState.value is LanReceiverRuntimeState.Idle &&
+                            !transferRuntime.isSessionActive.value) {
+                            TransferService.startLanReceiver(this@MainActivity)
+                        }
+                    }
+                }
+            }
+        }
 
         val overrides = DebugLaunchHarness.prepareLaunchOverrides(
             activity = this,
@@ -173,6 +218,7 @@ class MainActivity : ComponentActivity() {
                         GlideAppNavDisplay(
                             transferRuntime = transferRuntime,
                             persistentTrustManager = persistentTrustManager,
+                            customSettingsStore = settingsStore,
                             initialRoute = initialRoute,
                             incomingRoute = incomingRoute,
                             initialUiState = overrides.debugUiState,
@@ -199,6 +245,11 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (!keepReceivingInBackground) TransferService.stopIdleLanReceiver(this)
     }
 
     override fun onNewIntent(intent: Intent) {

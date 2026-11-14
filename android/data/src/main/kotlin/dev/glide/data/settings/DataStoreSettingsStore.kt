@@ -41,6 +41,7 @@ class DataStoreSettingsStore(
         val KEY_REDUCED_MOTION = stringPreferencesKey("reduced_motion")
         val KEY_NOTIFICATION_DETAILS = booleanPreferencesKey("notification_details")
         val KEY_KEEP_SCREEN_AWAKE = booleanPreferencesKey("keep_screen_awake")
+        val KEY_KEEP_RECEIVING_IN_BACKGROUND = booleanPreferencesKey("keep_receiving_in_background")
         val KEY_RECEIVED_FILES_TREE_URI = stringPreferencesKey("received_files_tree_uri")
     }
 
@@ -122,6 +123,15 @@ class DataStoreSettingsStore(
         }
     }
 
+    override suspend fun updateKeepReceivingInBackground(enabled: Boolean): Result<Unit> = withContext(ioDispatcher) {
+        runCatching {
+            dataStore.edit { preferences ->
+                preferences[KEY_KEEP_RECEIVING_IN_BACKGROUND] = enabled
+            }
+            Unit
+        }
+    }
+
     override suspend fun updateReceivedFilesTreeUri(uri: String?): Result<Unit> = withContext(ioDispatcher) {
         if (uri != null && (!uri.startsWith("content://com.android.externalstorage.documents/") || uri.length > 4096)) {
             return@withContext Result.failure(IllegalArgumentException("Invalid folder selection"))
@@ -160,6 +170,7 @@ class DataStoreSettingsStore(
             reducedMotion = reducedMotion,
             notificationDetails = notificationDetails,
             keepScreenAwake = keepScreenAwake,
+            keepReceivingInBackground = preferences[KEY_KEEP_RECEIVING_IN_BACKGROUND] ?: false,
             receivedFilesTreeUri = preferences[KEY_RECEIVED_FILES_TREE_URI]
         )
     }

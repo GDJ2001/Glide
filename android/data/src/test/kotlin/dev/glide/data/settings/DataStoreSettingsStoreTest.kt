@@ -164,4 +164,18 @@ class DataStoreSettingsStoreTest {
             cleanup()
         }
     }
+
+    @Test
+    fun `background receiving defaults off and persists explicit choice`() = runTest(testDispatcher) {
+        val (store, cleanup) = createStore(this)
+        try {
+            assertFalse(store.getSettings().keepReceivingInBackground)
+            assertTrue(store.updateKeepReceivingInBackground(true).isSuccess)
+            assertTrue(store.getSettings().keepReceivingInBackground)
+            assertTrue(store.updateKeepReceivingInBackground(false).isSuccess)
+            assertFalse(store.getSettings().keepReceivingInBackground)
+        } finally {
+            cleanup()
+        }
+    }
 }

@@ -1083,7 +1083,9 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
             try
             {
                 var peer = SelectedTrustedPeer;
-                var candidateEndpoints = TrustedEndpointResolver.ResolveEndpoints(
+                _mdnsDiscovery.QueryPeers();
+                await Task.Delay(450, _activeTransferCts.Token);
+                var candidateEndpoints = TrustedEndpointResolver.ResolveCandidates(
                     peer,
                     _mdnsDiscovery.Snapshot.Peers);
                 var request = new DesktopSendRequest(
@@ -1093,7 +1095,14 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
                     LocalDeviceName: DeviceName,
                     TrustManager: _trustManager,
                     ExpectedPeerFingerprintHex: peer.FingerprintHex,
-                    CandidateEndpoints: candidateEndpoints.Count > 0 ? candidateEndpoints : null);
+                    CandidateDetails: candidateEndpoints.Count > 0 ? candidateEndpoints : null,
+                    RefreshCandidatesAsync: async ct =>
+                    {
+                        _mdnsDiscovery.QueryPeers();
+                        await Task.Delay(450, ct);
+                        return TrustedEndpointResolver.ResolveCandidates(
+                            peer, _mdnsDiscovery.Snapshot.Peers);
+                    });
                 DesktopTransferResult result = await _runtime.SendTrustedAsync(request, this, _activeTransferCts.Token);
                 StatusMessage = result.Message;
                 if (result.Success)

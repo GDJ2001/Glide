@@ -74,6 +74,27 @@ class NsdDiscoveryAdapterTest {
     }
 
     @Test
+    fun trustedListenerAdvertisesCurrentPortAndReconnectCapability(): Unit = runBlocking {
+        val fakeClient = FakeNsdClientWrapper()
+        val scope = createNetworkScopeStub()
+        val adapter = NsdDiscoveryAdapter(clientWrapper = fakeClient, networkScope = scope)
+
+        adapter.startAdvertising(
+            deviceName = "Paired phone",
+            localPort = 49152,
+            presenceId = testPresence,
+            supportsTrustedReconnect = true
+        )
+
+        val registration = fakeClient.registeredServices.single()
+        assertEquals(49152, registration.port)
+        assertEquals("1", registration.attributes["tr"])
+        assertEquals(null, registration.attributes["pair"])
+        assertEquals(testPresence, registration.attributes["p"])
+        adapter.close()
+    }
+
+    @Test
     fun testDiscoveryResolvesAndEmitsPeerAppeared(): Unit = runBlocking {
         val fakeClient = FakeNsdClientWrapper()
         val scope = createNetworkScopeStub()
