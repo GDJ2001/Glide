@@ -13,7 +13,115 @@
     "published_sha256": "f8d6ed1feb84d36f15ad990bb1ac54d70d4872c221cccda7fd87e1def8d4eec1",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/windows/windows-send-empty-dark.png"
+    "published": "assets/windows/windows-send-empty-dark.png",
+    "annotated": "assets/annotated/windows/windows-send-empty-dark-annotated.png",
+    "annotated_sha256": "e45373e8328ce69b852b244d94322da7cffc5dc837440b2019bcb8a4674a2c15",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          21,
+          148,
+          224,
+          226
+        ],
+        "label_en": "Navigation sidebar",
+        "desc_en": "Switch between Send, Receive, Activity, and Pair devices.",
+        "label_si": "Navigation sidebar (වම් මෙනුව)",
+        "desc_si": "Send, Receive, Activity සහ Pair devices අතර මාරු වීමට භාවිතා කරයි."
+      },
+      {
+        "n": 2,
+        "box": [
+          625,
+          336,
+          145,
+          50
+        ],
+        "label_en": "Add files",
+        "desc_en": "Pick one or more files from Windows Explorer to queue for sending.",
+        "label_si": "Add files",
+        "desc_si": "යැවීමට අවශ්‍ය file එකක් හෝ කිහිපයක් Windows Explorer මඟින් තෝරයි."
+      },
+      {
+        "n": 3,
+        "box": [
+          780,
+          336,
+          145,
+          50
+        ],
+        "label_en": "Add folder",
+        "desc_en": "Queue an entire folder while keeping its subfolder structure.",
+        "label_si": "Add folder",
+        "desc_si": "සම්පූර්ණ folder එකක් එහි ඇති අනු-folders සමඟම යැවීමට එකතු කරයි."
+      },
+      {
+        "n": 4,
+        "box": [
+          332,
+          538,
+          885,
+          78
+        ],
+        "label_en": "Quick share with QR",
+        "desc_en": "Start a one-time encrypted transfer by showing a QR code for a phone to scan.",
+        "label_si": "Quick share with QR",
+        "desc_si": "Phone එකකින් scan කර එක් වරක් පමණක් file ලබා ගැනීමට තාවකාලික QR code එකක් පෙන්වයි."
+      },
+      {
+        "n": 5,
+        "box": [
+          332,
+          625,
+          885,
+          78
+        ],
+        "label_en": "Paired device",
+        "desc_en": "Choose a previously paired PC or phone to send directly without scanning a QR.",
+        "label_si": "Paired device",
+        "desc_si": "පෙර pair කර ඇති PC හෝ phone එකකට QR නැවත scan නොකර කෙලින්ම යවයි."
+      },
+      {
+        "n": 6,
+        "box": [
+          21,
+          636,
+          224,
+          92
+        ],
+        "label_en": "Sharing is local",
+        "desc_en": "Confirms Glide uses your local Wi-Fi or Ethernet only, with no cloud servers.",
+        "label_si": "Sharing is local",
+        "desc_si": "Transfers සියල්ල ඔබේ local network එක තුළම සිදු වන බවත් cloud හරහා නොයන බවත් දන්වයි."
+      },
+      {
+        "n": 7,
+        "box": [
+          21,
+          745,
+          224,
+          53
+        ],
+        "label_en": "Settings",
+        "desc_en": "Change appearance, save folder, connection details, and trusted devices.",
+        "label_si": "Settings",
+        "desc_si": "Theme, ලැබෙන files save වන folder එක සහ trusted devices කළමනාකරණය කරයි."
+      },
+      {
+        "n": 8,
+        "box": [
+          1081,
+          73,
+          162,
+          68
+        ],
+        "label_en": "Received files",
+        "desc_en": "Header shortcut that opens your received-files folder in File Explorer.",
+        "label_si": "Received files",
+        "desc_si": "ලැබුණු files save වන folder එක ඉක්මනින් File Explorer හි විවෘත කරයි."
+      }
+    ]
   },
   {
     "platform": "Windows",
@@ -29,7 +137,89 @@
     "published_sha256": "152dd45ecf66b5d4f0fba91a7656ab814113937554fede411f182b8b9020e54f",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/windows/windows-receive-ready-dark.png"
+    "published": "assets/windows/windows-receive-ready-dark.png",
+    "annotated": "assets/annotated/windows/windows-receive-ready-dark-annotated.png",
+    "annotated_sha256": "2ed759d0d2d2566c1b33d9b982bb55ed168e835f2ea8391c702e9dd0f97c3d5e",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          21,
+          206,
+          224,
+          53
+        ],
+        "label_en": "Receive tab",
+        "desc_en": "Opens the Windows receiver controls and one-time phone transfer QR.",
+        "label_si": "Receive පිටුව",
+        "desc_si": "Windows receiver පාලන සහ phone එකකින් files එවීමට QR එක මෙහි ඇත."
+      },
+      {
+        "n": 2,
+        "box": [
+          332,
+          322,
+          137,
+          50
+        ],
+        "label_en": "Start receiving / Stop receiving",
+        "desc_en": "Toggles listening on this PC. Shows Start receiving when paused and Stop receiving while active.",
+        "label_si": "Start receiving / Stop receiving",
+        "desc_si": "PC එක files භාරගැනීමට සූදානම් කරයි හෝ නවත්වයි (Windows හි Start/Stop receiving ලෙස පෙනේ)."
+      },
+      {
+        "n": 3,
+        "box": [
+          332,
+          507,
+          253,
+          253
+        ],
+        "label_en": "One-time transfer QR",
+        "desc_en": "Scan this with Glide Mobile (Send files) to send directly to this Windows PC.",
+        "label_si": "Transfer QR code",
+        "desc_si": "Phone එකෙන් Send files තෝරා මෙම QR එක scan කළ විට කෙලින්ම PC එකට files එවිය හැක."
+      },
+      {
+        "n": 4,
+        "box": [
+          610,
+          551,
+          240,
+          50
+        ],
+        "label_en": "Show larger code",
+        "desc_en": "Enlarges the QR code for easier camera scanning from farther away.",
+        "label_si": "Show larger code",
+        "desc_si": "Camera එකෙන් පහසුවෙන් scan කිරීමට QR code එක විශාල කර පෙන්වයි."
+      },
+      {
+        "n": 5,
+        "box": [
+          610,
+          611,
+          240,
+          50
+        ],
+        "label_en": "Copy receive link",
+        "desc_en": "Copies the temporary glide:// invitation URI to paste into another device.",
+        "label_si": "Copy receive link",
+        "desc_si": "තාවකාලික glide:// ලිපිනය copy කර අනෙක් device එකේ paste කිරීමට ලබා දෙයි."
+      },
+      {
+        "n": 6,
+        "box": [
+          610,
+          671,
+          240,
+          50
+        ],
+        "label_en": "Refresh code",
+        "desc_en": "Replaces an expired or previously used QR code with a fresh one-time code.",
+        "label_si": "Refresh code",
+        "desc_si": "කල් ඉකුත් වූ හෝ භාවිතා කළ QR code එක වෙනුවට අලුත් එකක් සාදයි."
+      }
+    ]
   },
   {
     "platform": "Windows",
@@ -45,7 +235,89 @@
     "published_sha256": "a51c4cfbacd531a252b9867407e6b8885f96e95be0e272f214ee03553b9a23ba",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/windows/windows-activity-history-dark.png"
+    "published": "assets/windows/windows-activity-history-dark.png",
+    "annotated": "assets/annotated/windows/windows-activity-history-dark-annotated.png",
+    "annotated_sha256": "bb357123a5156e263388f44deecbce867c5e6669c5f34ea9b39cb9a88d05195b",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          948,
+          73,
+          162,
+          68
+        ],
+        "label_en": "Received files",
+        "desc_en": "Opens the configured receive destination folder in Windows Explorer.",
+        "label_si": "Received files",
+        "desc_si": "ලැබුණු files ඇති folder එක Windows Explorer හි විවෘත කරයි."
+      },
+      {
+        "n": 2,
+        "box": [
+          1120,
+          73,
+          123,
+          68
+        ],
+        "label_en": "Clear history",
+        "desc_en": "Removes history log rows from Activity without deleting your actual saved files.",
+        "label_si": "Clear history",
+        "desc_si": "Save වූ files මකා නොදමා, Activity ඉතිහාස ලැයිස්තුව පමණක් පිරිසිදු කරයි."
+      },
+      {
+        "n": 3,
+        "box": [
+          816,
+          350,
+          181,
+          50
+        ],
+        "label_en": "Search history",
+        "desc_en": "Filters history rows by device name or file summary.",
+        "label_si": "Search history",
+        "desc_si": "Device නම හෝ file නම අනුව පැරණි transfers සෙවීමට භාවිතා කරයි."
+      },
+      {
+        "n": 4,
+        "box": [
+          1005,
+          350,
+          191,
+          50
+        ],
+        "label_en": "All / Sent / Received",
+        "desc_en": "Switches between all records, sent transfers only, or received transfers only.",
+        "label_si": "All / Sent / Received",
+        "desc_si": "සියලුම වාර්තා, යැවූ දේ පමණක්, හෝ ලැබුණු දේ පමණක් වෙන වෙනම බැලීමට."
+      },
+      {
+        "n": 5,
+        "box": [
+          934,
+          452,
+          89,
+          28
+        ],
+        "label_en": "Completed",
+        "desc_en": "Indicates every item passed SHA-256 verification and committed cleanly.",
+        "label_si": "Completed",
+        "desc_si": "සෑම file එකකම SHA-256 පරීක්ෂාව සාර්ථකව සිදු වී save වූ බව තහවුරු කරයි."
+      },
+      {
+        "n": 6,
+        "box": [
+          1043,
+          441,
+          119,
+          50
+        ],
+        "label_en": "Open folder",
+        "desc_en": "Jumps directly to the folder containing that received transfer.",
+        "label_si": "Open folder",
+        "desc_si": "එම ලැබුණු file එක ඇති ස්ථානය කෙලින්ම විවෘත කරයි."
+      }
+    ]
   },
   {
     "platform": "Windows",
@@ -61,7 +333,89 @@
     "published_sha256": "44cbd03ed2e6cce49c39d9fa892f08f6a19c5752338396dfe234de6ac5f7c2ed",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/windows/windows-pair-find-dark.png"
+    "published": "assets/windows/windows-pair-find-dark.png",
+    "annotated": "assets/annotated/windows/windows-pair-find-dark-annotated.png",
+    "annotated_sha256": "f6844b8c2564cbb89463fbb6519b0aaccc0270e221d08b8ab6378d4ee737d7cc",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          332,
+          251,
+          129,
+          50
+        ],
+        "label_en": "Find devices",
+        "desc_en": "Scans your local network over mDNS to discover nearby desktop peers ready to pair.",
+        "label_si": "Find devices",
+        "desc_si": "එකම Wi-Fi/LAN ජාලයේ pair වීමට සූදානම් අනෙක් computers සොයයි."
+      },
+      {
+        "n": 2,
+        "box": [
+          471,
+          251,
+          191,
+          50
+        ],
+        "label_en": "Show my QR and code",
+        "desc_en": "Displays your pair-only QR code and 6-digit PIN for another device to connect.",
+        "label_si": "Show my QR and code",
+        "desc_si": "අනෙක් device එකට සම්බන්ධ වීම සඳහා ඔබේ pair-only QR code එක සහ ඉලක්කම් 6 කේතය පෙන්වයි."
+      },
+      {
+        "n": 3,
+        "box": [
+          672,
+          251,
+          154,
+          50
+        ],
+        "label_en": "Enter pairing link",
+        "desc_en": "Paste a glide://pair/v2 link copied from another device.",
+        "label_si": "Enter pairing link",
+        "desc_si": "අනෙක් device එකෙන් copy කළ pairing link එක paste කර pair වීමට යොදාගනී."
+      },
+      {
+        "n": 4,
+        "box": [
+          836,
+          251,
+          140,
+          50
+        ],
+        "label_en": "Pair by address",
+        "desc_en": "Fallback mode when local mDNS discovery is blocked: enter IP:port and 6-digit code.",
+        "label_si": "Pair by address",
+        "desc_si": "ස්වයංක්‍රීය සෙවීම අසාර්ථක නම් IP:port සහ ඉලක්කම් 6 කේතය යොදා pair වේ."
+      },
+      {
+        "n": 5,
+        "box": [
+          332,
+          358,
+          885,
+          50
+        ],
+        "label_en": "Discovered device row",
+        "desc_en": "Click a discovered desktop peer to open the 6-digit pairing code entry.",
+        "label_si": "හමු වූ device එක",
+        "desc_si": "මෙය මත click කළ විට ඉලක්කම් 6 කේතය ඇතුළු කිරීමේ පියවරට යයි."
+      },
+      {
+        "n": 6,
+        "box": [
+          1125,
+          535,
+          92,
+          50
+        ],
+        "label_en": "Remove",
+        "desc_en": "Revokes trust from an existing paired device so it must pair again next time.",
+        "label_si": "Remove",
+        "desc_si": "දැනට pair කර ඇති device එකක විශ්වාසනීය අවසරය ඉවත් කරයි."
+      }
+    ]
   },
   {
     "platform": "Windows",
@@ -77,7 +431,50 @@
     "published_sha256": "4ce083c9f299ea0e15a0dc9a35749e859066a13415ca1d598090e76c5a04d86a",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/windows/windows-pair-enter-code-dark.png"
+    "published": "assets/windows/windows-pair-enter-code-dark.png",
+    "annotated": "assets/annotated/windows/windows-pair-enter-code-dark-annotated.png",
+    "annotated_sha256": "ea175f09971d61829be9fcac04d34b93ed9dd1fdd394d0bcf37ed3588a948297",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          332,
+          390,
+          225,
+          62
+        ],
+        "label_en": "6-digit code box",
+        "desc_en": "Type the 6-digit code currently shown on the receiving computer.",
+        "label_si": "කේතය ලියන කොටුව",
+        "desc_si": "අනෙක් පරිගණකයේ පෙන්වන ඉලක්කම් 6 කේතය මෙහි type කරන්න."
+      },
+      {
+        "n": 2,
+        "box": [
+          332,
+          467,
+          66,
+          50
+        ],
+        "label_en": "Pair",
+        "desc_en": "Starts the mutual SPKI-verified handshake with the peer.",
+        "label_si": "Pair",
+        "desc_si": "දෙපසම තහවුරු කරන ආරක්ෂිත pair වීම ආරම්භ කරයි."
+      },
+      {
+        "n": 3,
+        "box": [
+          408,
+          467,
+          82,
+          50
+        ],
+        "label_en": "Cancel",
+        "desc_en": "Backs out to device discovery without saving trust.",
+        "label_si": "Cancel",
+        "desc_si": "Pair නොවී ආපසු සෙවීමේ ලැයිස්තුවට යයි."
+      }
+    ]
   },
   {
     "platform": "Windows",
@@ -93,7 +490,50 @@
     "published_sha256": "61f33e25e61f5638eb62f555f54afa30a6907381e8c840c581ae763dfba3d3a8",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/windows/windows-pair-complete-dark.png"
+    "published": "assets/windows/windows-pair-complete-dark.png",
+    "annotated": "assets/annotated/windows/windows-pair-complete-dark-annotated.png",
+    "annotated_sha256": "666f8de5fb11c4e25d17c983df07e14c792d808bebed6716be27adcaa5a2310f",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          327,
+          325,
+          145,
+          25
+        ],
+        "label_en": "Pairing status",
+        "desc_en": "Shows confirmation once both peers store each other's public key fingerprint.",
+        "label_si": "සාර්ථක තත්ත්වය",
+        "desc_si": "Device දෙකම එකිනෙකාගේ identity එක ආරක්ෂිතව save කළ බව පෙන්වයි."
+      },
+      {
+        "n": 2,
+        "box": [
+          332,
+          361,
+          74,
+          50
+        ],
+        "label_en": "Done",
+        "desc_en": "Completes pairing and returns you to the ready Pair devices view.",
+        "label_si": "Done",
+        "desc_si": "සම්පූර්ණ වූ පණිවිඩය වසා Pair devices පිටුවට යයි."
+      },
+      {
+        "n": 3,
+        "box": [
+          328,
+          535,
+          891,
+          54
+        ],
+        "label_en": "Paired devices entry",
+        "desc_en": "The newly paired device now appears under Paired devices for direct future sends.",
+        "label_si": "Paired devices ලැයිස්තුව",
+        "desc_si": "අලුතින් pair කළ device එක මෙහි පෙනෙන අතර, ඉදිරියේදී Send → Paired device හරහා කෙලින්ම යැවිය හැක."
+      }
+    ]
   },
   {
     "platform": "Windows",
@@ -109,7 +549,89 @@
     "published_sha256": "480f12625ed0c6a96f5170f83ef92db999bb627b536c8b70d8b533c9cfb7e2bb",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/windows/windows-pair-show-qr-dark.png"
+    "published": "assets/windows/windows-pair-show-qr-dark.png",
+    "annotated": "assets/annotated/windows/windows-pair-show-qr-dark-annotated.png",
+    "annotated_sha256": "81ed993d1b112aeb98aa28729c8a0decfa4b11acb0768352b495b70e57a22773",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          466,
+          251,
+          194,
+          50
+        ],
+        "label_en": "Pair-only mode",
+        "desc_en": "Remember: this QR only saves trusted identities for later; it does not send files.",
+        "label_si": "Pair-only ක්‍රමය",
+        "desc_si": "මතක තබාගන්න: මෙම QR එක trust save කිරීමට පමණි; මෙයින් files යැවෙන්නේ නැත."
+      },
+      {
+        "n": 2,
+        "box": [
+          332,
+          360,
+          326,
+          326
+        ],
+        "label_en": "Pair-only QR",
+        "desc_en": "Scan with Glide Mobile (Pair device) or share with another desktop.",
+        "label_si": "Pair-only QR code",
+        "desc_si": "Phone එකේ Pair device තුළින් මෙය scan කර device දෙක හඳුනාගැන්විය හැක."
+      },
+      {
+        "n": 3,
+        "box": [
+          674,
+          475,
+          253,
+          111
+        ],
+        "label_en": "6-digit pairing code",
+        "desc_en": "Read these 6 digits to the other computer to type into Find devices or Pair by address.",
+        "label_si": "ඉලක්කම් 6 කේතය",
+        "desc_si": "අනෙක් පරිගණකයේ Find devices හෝ Pair by address තුළ මෙම ඉලක්කම් 6 ඇතුළු කළ යුතුය."
+      },
+      {
+        "n": 4,
+        "box": [
+          332,
+          701,
+          101,
+          50
+        ],
+        "label_en": "Copy link",
+        "desc_en": "Copies the temporary glide://pair invitation link to your clipboard.",
+        "label_si": "Copy link",
+        "desc_si": "තාවකාලික pairing link එක copy කරගනී."
+      },
+      {
+        "n": 5,
+        "box": [
+          443,
+          701,
+          106,
+          50
+        ],
+        "label_en": "New code",
+        "desc_en": "Generates a fresh 6-digit PIN and QR when the current invitation expires.",
+        "label_si": "New code",
+        "desc_si": "පෙර කේතය කල් ඉකුත් වුවහොත් අලුත් ඉලක්කම් 6 කේතයක් සහ QR එකක් සාදයි."
+      },
+      {
+        "n": 6,
+        "box": [
+          559,
+          701,
+          82,
+          50
+        ],
+        "label_en": "Cancel",
+        "desc_en": "Ends pairing advertisement immediately.",
+        "label_si": "Cancel",
+        "desc_si": "Pair වීමේ ආරාධනාව නවත්වයි."
+      }
+    ]
   },
   {
     "platform": "Windows",
@@ -125,7 +647,63 @@
     "published_sha256": "b53d8feac175b7387e0b6bfcb5d2464edb3b452562120d54db0b5e1e987a53ac",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/windows/windows-pair-enter-link-dark.png"
+    "published": "assets/windows/windows-pair-enter-link-dark.png",
+    "annotated": "assets/annotated/windows/windows-pair-enter-link-dark-annotated.png",
+    "annotated_sha256": "1b88610d3e93eebaac6c9447f20e5d8e814bf35044a276f3fc856d83342d1360",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          667,
+          251,
+          156,
+          50
+        ],
+        "label_en": "Enter pairing link tab",
+        "desc_en": "Alternative when mDNS discovery misses a device but you copied its invite link.",
+        "label_si": "Enter pairing link පිටුව",
+        "desc_si": "Device එක ස්වයංක්‍රීයව හමු නොවන විට copy කළ link එකකින් pair වීමට භාවිතා කරයි."
+      },
+      {
+        "n": 2,
+        "box": [
+          332,
+          355,
+          885,
+          63
+        ],
+        "label_en": "Invitation link box",
+        "desc_en": "Paste the glide://pair URI copied from the other computer.",
+        "label_si": "Invitation link කොටුව",
+        "desc_si": "අනෙක් device එකෙන් copy කළ glide://pair සම්බන්ධතා ලිපිනය මෙහි paste කරන්න."
+      },
+      {
+        "n": 3,
+        "box": [
+          332,
+          428,
+          66,
+          50
+        ],
+        "label_en": "Pair",
+        "desc_en": "Validates the one-time link and starts mutual approval.",
+        "label_si": "Pair",
+        "desc_si": "ලිපිනය පරීක්ෂා කර pair වීම ආරම්භ කරයි."
+      },
+      {
+        "n": 4,
+        "box": [
+          408,
+          428,
+          82,
+          50
+        ],
+        "label_en": "Cancel",
+        "desc_en": "Clears the form without connecting.",
+        "label_si": "Cancel",
+        "desc_si": "සම්බන්ධ නොවී ආපසු යයි."
+      }
+    ]
   },
   {
     "platform": "Windows",
@@ -141,7 +719,76 @@
     "published_sha256": "87efdc656c482fe74031911effb1ee2f811a4bf961160b5a57acad0a23fd7a90",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/windows/windows-pair-by-address-dark.png"
+    "published": "assets/windows/windows-pair-by-address-dark.png",
+    "annotated": "assets/annotated/windows/windows-pair-by-address-dark-annotated.png",
+    "annotated_sha256": "51e3853afd3827b501464a5a6b079c502eb97a30e33a62fa032e140581beebc3",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          831,
+          251,
+          142,
+          50
+        ],
+        "label_en": "Pair by address tab",
+        "desc_en": "Connects directly over LAN IP/port when routers or firewalls block mDNS discovery.",
+        "label_si": "Pair by address පිටුව",
+        "desc_si": "Wi-Fi හි device සෙවීම (mDNS) අවහිර නම් කෙලින්ම IP:port මඟින් pair වේ."
+      },
+      {
+        "n": 2,
+        "box": [
+          332,
+          353,
+          400,
+          50
+        ],
+        "label_en": "Address & port box",
+        "desc_en": "Enter the target IPv4 address and listening port (shown in the other device's Settings).",
+        "label_si": "IP ලිපිනය සහ port",
+        "desc_si": "අනෙක් device එකේ Settings හි පෙන්වන IP ලිපිනය සහ port අංකය මෙහි ලියන්න."
+      },
+      {
+        "n": 3,
+        "box": [
+          332,
+          440,
+          400,
+          51
+        ],
+        "label_en": "6-digit code box",
+        "desc_en": "Enter the active 6-digit PIN from Show my QR and code on the target computer.",
+        "label_si": "ඉලක්කම් 6 කේතය",
+        "desc_si": "අනෙක් පරිගණකයේ Show my QR and code තුළ පෙන්වන ඉලක්කම් 6 කේතය ඇතුළු කරන්න."
+      },
+      {
+        "n": 4,
+        "box": [
+          332,
+          506,
+          66,
+          50
+        ],
+        "label_en": "Pair",
+        "desc_en": "Connects directly to that IP:port and verifies the one-time token.",
+        "label_si": "Pair",
+        "desc_si": "එම IP ලිපිනය වෙත කෙලින්ම සම්බන්ධ වී pair වීම අරඹයි."
+      },
+      {
+        "n": 5,
+        "box": [
+          408,
+          506,
+          82,
+          50
+        ],
+        "label_en": "Cancel",
+        "desc_en": "Cancels manual address entry.",
+        "label_si": "Cancel",
+        "desc_si": "ඇතුළු කිරීම නවතා දමයි."
+      }
+    ]
   },
   {
     "platform": "Windows",
@@ -157,7 +804,89 @@
     "published_sha256": "a3c1e8da042b6519e62052ff8d5e1d6b017214cbfea6b0ad639dffe9a21f5180",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/windows/windows-settings-dark.png"
+    "published": "assets/windows/windows-settings-dark.png",
+    "annotated": "assets/annotated/windows/windows-settings-dark-annotated.png",
+    "annotated_sha256": "980097f2d6ac16912a7c863dab31fac93b3450a0119c6fa9e2aefd2a887854db",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          331,
+          298,
+          225,
+          45
+        ],
+        "label_en": "Appearance",
+        "desc_en": "Choose System, Light, or Dark theme for the Windows app.",
+        "label_si": "Appearance",
+        "desc_si": "Windows යෙදුම සඳහා System, Light හෝ Dark වර්ණ තෝරන්න."
+      },
+      {
+        "n": 2,
+        "box": [
+          331,
+          478,
+          1379,
+          63
+        ],
+        "label_en": "Save received files to",
+        "desc_en": "Displays the current destination folder where verified downloads are saved.",
+        "label_si": "Save received files to",
+        "desc_si": "ලැබෙන files ස්වයංක්‍රීයව save වන folder මාර්ගය පෙන්වයි."
+      },
+      {
+        "n": 3,
+        "box": [
+          1720,
+          478,
+          134,
+          63
+        ],
+        "label_en": "Change folder",
+        "desc_en": "Pick any writable local folder as your new receive destination.",
+        "label_si": "Change folder",
+        "desc_si": "ලැබෙන files save වීමට වෙනත් folder එකක් තෝරා ගැනීමට භාවිතා කරයි."
+      },
+      {
+        "n": 4,
+        "box": [
+          331,
+          562,
+          236,
+          35
+        ],
+        "label_en": "Advanced connection details",
+        "desc_en": "Expand to see this PC's local IP address, listening port, and device SHA-256 fingerprint for Pair by address.",
+        "label_si": "Advanced connection details",
+        "desc_si": "Pair by address සඳහා අවශ්‍ය local IP ලිපිනය, port අංකය සහ device fingerprint මෙහි ඇත."
+      },
+      {
+        "n": 5,
+        "box": [
+          1762,
+          739,
+          92,
+          50
+        ],
+        "label_en": "Trusted devices → Remove",
+        "desc_en": "Revokes trust from a saved peer so it can no longer connect without re-pairing.",
+        "label_si": "Trusted devices → Remove",
+        "desc_si": "Save කර ඇති device එකක විශ්වාසය ඉවත් කරයි (නැවත pair කළ යුතු වේ)."
+      },
+      {
+        "n": 6,
+        "box": [
+          1718,
+          64,
+          162,
+          68
+        ],
+        "label_en": "Received files",
+        "desc_en": "Quickly opens the configured destination folder from the top bar.",
+        "label_si": "Received files",
+        "desc_si": "ඉහළ තීරුවෙන්ම ලැබුණු files ඇති folder එක විවෘත කරයි."
+      }
+    ]
   },
   {
     "platform": "Windows",
@@ -173,7 +902,63 @@
     "published_sha256": "e72b452d61aa16e09b106f41f170ced45c2c6d6ae4d78ca031123472a4b02d49",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/windows/windows-send-qr-dialog-dark.png"
+    "published": "assets/windows/windows-send-qr-dialog-dark.png",
+    "annotated": "assets/annotated/windows/windows-send-qr-dialog-dark-annotated.png",
+    "annotated_sha256": "c00dff55969e42a098d8a59a912d5594a7a71895cdbe4fc181c2e0b6abb2e89a",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          1530,
+          194,
+          324,
+          50
+        ],
+        "label_en": "Staged batch toolbar",
+        "desc_en": "Behind the dialog, Add files, Add folder, and Clear list manage queued items.",
+        "label_si": "තෝරාගත් files පාලනය",
+        "desc_si": "Add files, Add folder සහ Clear list මඟින් යැවීමට තැබූ files ලැයිස්තුව වෙනස් කළ හැක."
+      },
+      {
+        "n": 2,
+        "box": [
+          782,
+          379,
+          356,
+          356
+        ],
+        "label_en": "Sender QR code",
+        "desc_en": "Receiver scans this with Glide Mobile (Receive files → Scan PC QR code). Next, Windows asks you to Confirm receiving device → Send files.",
+        "label_si": "යැවීමේ QR code එක",
+        "desc_si": "ලබන phone එක Receive files → Scan PC QR code හරහා මෙය scan කළ පසු, Windows හි Confirm receiving device → Send files එබිය යුතුය."
+      },
+      {
+        "n": 3,
+        "box": [
+          755,
+          787,
+          200,
+          50
+        ],
+        "label_en": "Refresh code",
+        "desc_en": "Generates a new temporary QR if the previous one timed out.",
+        "label_si": "Refresh code",
+        "desc_si": "පෙර code එක කල් ඉකුත් වූවා නම් අලුත් තාවකාලික QR එකක් සාදයි."
+      },
+      {
+        "n": 4,
+        "box": [
+          965,
+          787,
+          200,
+          50
+        ],
+        "label_en": "Cancel QR share",
+        "desc_en": "Aborts the one-time QR session without removing your selected files.",
+        "label_si": "Cancel QR share",
+        "desc_si": "තෝරාගත් files ඉවත් නොකර QR share සැසිය නවතා දමයි."
+      }
+    ]
   },
   {
     "platform": "Windows",
@@ -189,7 +974,50 @@
     "published_sha256": "5076fccf3bac3acb05e6ed1142a7de068471f1ff2d16165b23759c318726b554",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/windows/windows-send-paired-picker-dark.png"
+    "published": "assets/windows/windows-send-paired-picker-dark.png",
+    "annotated": "assets/annotated/windows/windows-send-paired-picker-dark-annotated.png",
+    "annotated_sha256": "ee9d15c1a19f0111915efc04c5faed1bb1f8382000073e6b38228c147fa8cda7",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          696,
+          510,
+          528,
+          60
+        ],
+        "label_en": "Saved paired device",
+        "desc_en": "Click a saved device card to connect and offer your selected files directly.",
+        "label_si": "Save කළ device එක",
+        "desc_si": "මෙම device එක මත click කළ විට QR නොමැතිව කෙලින්ම සම්බන්ධ වී files යැවීමට අසයි."
+      },
+      {
+        "n": 2,
+        "box": [
+          696,
+          630,
+          155,
+          50
+        ],
+        "label_en": "Pair a new device",
+        "desc_en": "Jumps directly to Pair devices if your recipient is not listed yet.",
+        "label_si": "Pair a new device",
+        "desc_si": "අවශ්‍ය device එක ලැයිස්තුවේ නැතිනම් කෙලින්ම Pair devices පිටුවට යයි."
+      },
+      {
+        "n": 3,
+        "box": [
+          1147,
+          630,
+          77,
+          50
+        ],
+        "label_en": "Close",
+        "desc_en": "Returns to the Send queue without connecting.",
+        "label_si": "Close",
+        "desc_si": "සම්බන්ධ නොවී Send පිටුවට ආපසු යයි."
+      }
+    ]
   },
   {
     "platform": "Windows",
@@ -205,7 +1033,63 @@
     "published_sha256": "32498caf8bc8626a0aa7216289d328e4bd0fde06ee9abe9a08b4dc06f818942b",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/windows/windows-receive-large-qr-dark.png"
+    "published": "assets/windows/windows-receive-large-qr-dark.png",
+    "annotated": "assets/annotated/windows/windows-receive-large-qr-dark-annotated.png",
+    "annotated_sha256": "78f00cac9a602ad78721384c81b7fcdfb3e3b10c61e2f300ee1587417dc5ca55",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          740,
+          324,
+          440,
+          441
+        ],
+        "label_en": "Enlarged transfer QR",
+        "desc_en": "High-contrast QR opened by Show larger code for reliable phone camera scanning.",
+        "label_si": "විශාල transfer QR code එක",
+        "desc_si": "දුර සිට හෝ අඩු ආලෝකයේදී පවා phone camera එකෙන් පහසුවෙන් scan කිරීමට විශාල කර ඇත."
+      },
+      {
+        "n": 2,
+        "box": [
+          817,
+          787,
+          88,
+          50
+        ],
+        "label_en": "Refresh",
+        "desc_en": "Generates a fresh one-time receive QR code immediately.",
+        "label_si": "Refresh",
+        "desc_si": "අලුත් තාවකාලික QR code එකක් එසැණින් සාදයි."
+      },
+      {
+        "n": 3,
+        "box": [
+          915,
+          787,
+          101,
+          50
+        ],
+        "label_en": "Copy link",
+        "desc_en": "Copies the same receive invitation URI for camera-free pasting on Android.",
+        "label_si": "Copy link",
+        "desc_si": "Camera නොමැති විට Android හි Paste invitation වෙත යෙදීමට link එක copy කරයි."
+      },
+      {
+        "n": 4,
+        "box": [
+          1026,
+          787,
+          77,
+          50
+        ],
+        "label_en": "Close",
+        "desc_en": "Closes the enlarged dialog while keeping Receive mode active.",
+        "label_si": "Close",
+        "desc_si": "Receive සූදානම නොනවත්වා මෙම විශාල කවුළුව වසයි."
+      }
+    ]
   },
   {
     "platform": "Windows",
@@ -221,7 +1105,50 @@
     "published_sha256": "28bef0ba74c4a20740bff336b0ea84b4af6394e69700fbced01f0ab735752810",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/windows/windows-pair-approval-dark.png"
+    "published": "assets/windows/windows-pair-approval-dark.png",
+    "annotated": "assets/annotated/windows/windows-pair-approval-dark-annotated.png",
+    "annotated_sha256": "0baeffb1958aa561bca8f601fad246b326fd1ffc751f48ca242489242b4f4f8b",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          259,
+          257,
+          291,
+          32
+        ],
+        "label_en": "Incoming pairing request",
+        "desc_en": "Confirm the connecting device name matches your other device.",
+        "label_si": "සම්බන්ධ වන device එක",
+        "desc_si": "පෙන්වන නම ඔබ සම්බන්ධ කිරීමට උත්සාහ කරන අනෙක් device එකමදැයි බලන්න."
+      },
+      {
+        "n": 2,
+        "box": [
+          264,
+          295,
+          82,
+          43
+        ],
+        "label_en": "Approve",
+        "desc_en": "Saves this device in Trusted devices on both sides.",
+        "label_si": "Approve",
+        "desc_si": "මෙම device එක Trusted devices ලැයිස්තුවට save කිරීමට අනුමැතිය දෙයි."
+      },
+      {
+        "n": 3,
+        "box": [
+          352,
+          297,
+          71,
+          40
+        ],
+        "label_en": "Decline",
+        "desc_en": "Rejects an unexpected or unrecognized pairing request.",
+        "label_si": "Decline",
+        "desc_si": "නොදන්නා හෝ වැරදි pairing ඉල්ලීමක් ප්‍රතික්ෂේප කරයි."
+      }
+    ]
   },
   {
     "platform": "Windows",
@@ -237,7 +1164,50 @@
     "published_sha256": "5d93b0a372200e8f8ad71a836d80683869f87d796f24f86d36e61add95c98d4d",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/windows/windows-receive-offer-dark.png"
+    "published": "assets/windows/windows-receive-offer-dark.png",
+    "annotated": "assets/annotated/windows/windows-receive-offer-dark-annotated.png",
+    "annotated_sha256": "0a1f85d1c5876793a578d9471ab0d7e8789c713d79f53d795d0d1ed40c825146",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          320,
+          280,
+          390,
+          128
+        ],
+        "label_en": "Incoming transfer summary",
+        "desc_en": "Verify the sender name, file count, and total size before accepting anything.",
+        "label_si": "ලැබෙන file විස්තරය",
+        "desc_si": "Files භාරගැනීමට පෙර යවන්නාගේ නම, file ගණන සහ ප්‍රමාණය පරීක්ෂා කරන්න."
+      },
+      {
+        "n": 2,
+        "box": [
+          307,
+          420,
+          200,
+          40
+        ],
+        "label_en": "Decline",
+        "desc_en": "Refuses the transfer immediately; zero bytes are written to your disk.",
+        "label_si": "Decline",
+        "desc_si": "Transfer එක ප්‍රතික්ෂේප කරයි; කිසිදු file එකක් PC එකට save නොවේ."
+      },
+      {
+        "n": 3,
+        "box": [
+          517,
+          418,
+          203,
+          44
+        ],
+        "label_en": "Accept transfer",
+        "desc_en": "Required explicit consent before Glide receives, verifies SHA-256, and saves the files.",
+        "label_si": "Accept transfer",
+        "desc_si": "ඔබ මෙය එබූ පසු පමණක් files ලැබී, SHA-256 පරීක්ෂා කර folder එකට save වේ."
+      }
+    ]
   },
   {
     "platform": "Windows",
@@ -253,7 +1223,37 @@
     "published_sha256": "ff4e42d61909cdc2f5f1a8c9e9821fdbadf3e3d2827445668cc72c6ac102a86b",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/windows/windows-activity-cancelled-dark.png"
+    "published": "assets/windows/windows-activity-cancelled-dark.png",
+    "annotated": "assets/annotated/windows/windows-activity-cancelled-dark-annotated.png",
+    "annotated_sha256": "28ef9fbea546cf7f70b15bb111f42e236eeacfe6ca5669eea214e0355bb197e4",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          258,
+          207,
+          164,
+          78
+        ],
+        "label_en": "Cancelled result",
+        "desc_en": "Shows the transfer was aborted cleanly before completion.",
+        "label_si": "Cancelled තත්ත්වය",
+        "desc_si": "Transfer එක සම්පූර්ණ වීමට පෙර අවලංගු වූ බව පෙන්වයි."
+      },
+      {
+        "n": 2,
+        "box": [
+          266,
+          291,
+          124,
+          26
+        ],
+        "label_en": "Technical details",
+        "desc_en": "Expand to copy error diagnostics if a transfer failed unexpectedly.",
+        "label_si": "Technical details",
+        "desc_si": "දෝෂයක් ඇති වූ විට ගැටලුව හඳුනාගැනීමට තාක්ෂණික විස්තර විවෘත කර බැලිය හැක."
+      }
+    ]
   },
   {
     "platform": "Windows",
@@ -269,7 +1269,37 @@
     "published_sha256": "880e507185617595ea7d172b9517e1a4f056a7ec93c27d4339cc7bc4e6c238b2",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/windows/windows-activity-receiving-dark.png"
+    "published": "assets/windows/windows-activity-receiving-dark.png",
+    "annotated": "assets/annotated/windows/windows-activity-receiving-dark-annotated.png",
+    "annotated_sha256": "ee3089a921b5b54dc94d9658b730dff08ad3cb86ac8b758f990a4c4419d0474d",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          245,
+          177,
+          634,
+          148
+        ],
+        "label_en": "Live transfer progress card",
+        "desc_en": "Shows the current file, byte progress, transfer speed, and verification stage.",
+        "label_si": "සජීවී ප්‍රගති කාඩ්පත",
+        "desc_si": "දැනට ලැබෙමින් පවතින file එක, ප්‍රතිශතය, වේගය සහ පරීක්ෂා කිරීමේ තත්ත්වය පෙන්වයි."
+      },
+      {
+        "n": 2,
+        "box": [
+          889,
+          226,
+          66,
+          54
+        ],
+        "label_en": "Cancel",
+        "desc_en": "Stops an in-flight transfer safely; partial staged files are discarded.",
+        "label_si": "Cancel",
+        "desc_si": "සිදුවෙමින් පවතින transfer එක ආරක්ෂිතව නවතයි; අසම්පූර්ණ කොටස් folder එකට save නොවේ."
+      }
+    ]
   },
   {
     "platform": "Linux",
@@ -285,7 +1315,76 @@
     "published_sha256": "b2bd7610b88843e8cc8d094bc799a59b088836ad526f4ba0cb247cd3e6eb4929",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/linux/linux-receive-ready-dark.png"
+    "published": "assets/linux/linux-receive-ready-dark.png",
+    "annotated": "assets/annotated/linux/linux-receive-ready-dark-annotated.png",
+    "annotated_sha256": "8c6ca16140e71711c3c9580445686e8af3def334531c11b4a77bb83a27643958",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          265,
+          215,
+          156,
+          40
+        ],
+        "label_en": "Turn on receiving / Turn off receiving",
+        "desc_en": "Toggles listening on Linux (unlike Windows, which says Start/Stop receiving).",
+        "label_si": "Turn on receiving / Turn off receiving",
+        "desc_si": "Linux හි files භාරගැනීම සක්‍රිය/අක්‍රිය කරයි (Windows හි Start/Stop receiving වෙනුවට මෙය භාවිතා වේ)."
+      },
+      {
+        "n": 2,
+        "box": [
+          265,
+          373,
+          200,
+          200
+        ],
+        "label_en": "Connect a phone transfer QR",
+        "desc_en": "Scan with Glide Mobile → Send files to send straight to this Linux desktop.",
+        "label_si": "Phone එක සම්බන්ධ කරන QR",
+        "desc_si": "Phone එකේ Send files තුළින් මෙය scan කර Linux PC එකට කෙලින්ම files එවන්න."
+      },
+      {
+        "n": 3,
+        "box": [
+          485,
+          405,
+          192,
+          40
+        ],
+        "label_en": "Show larger code",
+        "desc_en": "Opens the Scan to Connect zoomed QR dialog.",
+        "label_si": "Show larger code",
+        "desc_si": "Scan කිරීම පහසු වන ලෙස QR code එක විශාල කර පෙන්වයි."
+      },
+      {
+        "n": 4,
+        "box": [
+          485,
+          453,
+          192,
+          40
+        ],
+        "label_en": "Copy receive link",
+        "desc_en": "Copies the temporary glide:// receive URI to paste into Android.",
+        "label_si": "Copy receive link",
+        "desc_si": "තාවකාලික glide:// ලිපිනය copy කර අනෙක් device එකේ paste කිරීමට ලබා දෙයි."
+      },
+      {
+        "n": 5,
+        "box": [
+          485,
+          501,
+          192,
+          40
+        ],
+        "label_en": "Refresh code",
+        "desc_en": "Rotates to a fresh one-time QR invitation.",
+        "label_si": "Refresh code",
+        "desc_si": "අලුත් තාවකාලික QR code එකක් සාදයි."
+      }
+    ]
   },
   {
     "platform": "Linux",
@@ -301,7 +1400,115 @@
     "published_sha256": "45e38336d2becf86acd6d2f909fca8c807225fb46889ea2c1ba50dd134d52d1a",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/linux/linux-send-empty-dark.png"
+    "published": "assets/linux/linux-send-empty-dark.png",
+    "annotated": "assets/annotated/linux/linux-send-empty-dark-annotated.png",
+    "annotated_sha256": "30ff80ec988e2b4ece662b0fd0b0007bf27ea1b7da4c53d353e6e257d2459689",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          12,
+          137,
+          187,
+          180
+        ],
+        "label_en": "Navigation sidebar",
+        "desc_en": "Switch between Send, Receive, Activity, and Pair devices.",
+        "label_si": "Navigation sidebar",
+        "desc_si": "Send, Receive, Activity සහ Pair devices පිටු අතර මාරු වීමට."
+      },
+      {
+        "n": 2,
+        "box": [
+          507,
+          300,
+          108,
+          40
+        ],
+        "label_en": "Add files...",
+        "desc_en": "Open the Linux file picker to queue files for sending.",
+        "label_si": "Add files...",
+        "desc_si": "යැවීමට අවශ්‍ය files තෝරාගැනීමට Linux ගොනු කවුළුව විවෘත කරයි."
+      },
+      {
+        "n": 3,
+        "box": [
+          627,
+          300,
+          110,
+          40
+        ],
+        "label_en": "Add folder...",
+        "desc_en": "Queue a complete directory tree while keeping subfolder layout.",
+        "label_si": "Add folder...",
+        "desc_si": "සම්පූර්ණ folder එකක් එහි ඇතුළත structure එක සමඟම යැවීමට එක් කරයි."
+      },
+      {
+        "n": 4,
+        "box": [
+          265,
+          455,
+          353,
+          38
+        ],
+        "label_en": "Quick share with QR",
+        "desc_en": "Generate a one-time QR code for an unpaired phone to scan and receive.",
+        "label_si": "Quick share with QR",
+        "desc_si": "Pair නොකළ phone එකකින් එක් වරක් scan කර files ගැනීමට තාවකාලික QR එකක් සාදයි."
+      },
+      {
+        "n": 5,
+        "box": [
+          626,
+          455,
+          353,
+          38
+        ],
+        "label_en": "Paired device card",
+        "desc_en": "Send directly to a saved peer without scanning a new QR code.",
+        "label_si": "Paired device කොටස",
+        "desc_si": "නැවත QR scan නොකර save කර ඇති device එකකට කෙලින්ම යවයි."
+      },
+      {
+        "n": 6,
+        "box": [
+          888,
+          528,
+          76,
+          30
+        ],
+        "label_en": "Connect",
+        "desc_en": "Initiates direct TLS connection to the chosen paired device.",
+        "label_si": "Connect",
+        "desc_si": "තෝරාගත් paired device එකට කෙලින්ම ආරක්ෂිත සම්බන්ධතාවය අරඹයි."
+      },
+      {
+        "n": 7,
+        "box": [
+          12,
+          563,
+          187,
+          42
+        ],
+        "label_en": "Settings",
+        "desc_en": "Configure theme, Device Name, Download Directory, port, and diagnostics.",
+        "label_si": "Settings",
+        "desc_si": "Theme, Device Name, Download Directory, port සහ diagnostic logs පරීක්ෂා කරයි."
+      },
+      {
+        "n": 8,
+        "box": [
+          12,
+          615,
+          187,
+          89
+        ],
+        "label_en": "Ready to receive status",
+        "desc_en": "Shows whether this Linux desktop is currently listening for incoming offers.",
+        "label_si": "Ready to receive තත්ත්වය",
+        "desc_si": "මෙම Linux පරිගණකය දැනට files ලබාගැනීමට සූදානම්ද යන්න මෙහි දැක්වේ."
+      }
+    ]
   },
   {
     "platform": "Linux",
@@ -317,7 +1524,76 @@
     "published_sha256": "852ed7f8cf0eead85c7afc409ae8ea2706bd37a7e516995642135ae57070cdba",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/linux/linux-activity-history-dark.png"
+    "published": "assets/linux/linux-activity-history-dark.png",
+    "annotated": "assets/annotated/linux/linux-activity-history-dark-annotated.png",
+    "annotated_sha256": "30af7bbeaa0184b5d7cfd93d17fb2f6bee1c2e52278a20e2ac018da17045b31b",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          755,
+          70,
+          122,
+          40
+        ],
+        "label_en": "Received files",
+        "desc_en": "Opens your Linux Download Directory in the system file manager.",
+        "label_si": "Received files",
+        "desc_si": "ලැබුණු files save වී ඇති folder එක Linux file manager තුළ විවෘත කරයි."
+      },
+      {
+        "n": 2,
+        "box": [
+          885,
+          70,
+          115,
+          40
+        ],
+        "label_en": "Clear history",
+        "desc_en": "Clears history entries from the screen while keeping your downloaded files intact.",
+        "label_si": "Clear history",
+        "desc_si": "Save වූ files මකා නොදමා, පැරණි වාර්තා ලැයිස්තුව පමණක් මකා දමයි."
+      },
+      {
+        "n": 3,
+        "box": [
+          592,
+          157,
+          170,
+          40
+        ],
+        "label_en": "Search history",
+        "desc_en": "Filters entries by device name or filename.",
+        "label_si": "Search history",
+        "desc_si": "Device නම හෝ file නම අනුව පැරණි transfers සොයයි."
+      },
+      {
+        "n": 4,
+        "box": [
+          770,
+          158,
+          209,
+          38
+        ],
+        "label_en": "All / Sent / Received",
+        "desc_en": "Shows all entries, sent batches only, or received batches only.",
+        "label_si": "All / Sent / Received",
+        "desc_si": "සියලුම, යැවූ හෝ ලැබුණු වාර්තා වෙන වෙනම පෙරා බලයි."
+      },
+      {
+        "n": 5,
+        "box": [
+          883,
+          229,
+          84,
+          23
+        ],
+        "label_en": "Completed",
+        "desc_en": "Confirms every file passed SHA-256 verification and committed safely.",
+        "label_si": "Completed",
+        "desc_si": "සෑම file එකක්ම SHA-256 පරීක්ෂාවෙන් සාර්ථකව සම්පූර්ණ වූ බව පෙන්වයි."
+      }
+    ]
   },
   {
     "platform": "Linux",
@@ -333,7 +1609,89 @@
     "published_sha256": "61f9b35e61160693aef1e78c8fd04b41aed2231fcb80bb456d4206ae00af2fb1",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/linux/linux-pair-find-dark.png"
+    "published": "assets/linux/linux-pair-find-dark.png",
+    "annotated": "assets/annotated/linux/linux-pair-find-dark-annotated.png",
+    "annotated_sha256": "644b4ea8224ce50fd20dc8d7fc91c6a5b79d43d7641beef9465bab5bcda2cd29",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          265,
+          189,
+          122,
+          40
+        ],
+        "label_en": "Find devices",
+        "desc_en": "Searches your local Wi-Fi or Ethernet LAN for desktop peers showing a pairing code.",
+        "label_si": "Find devices",
+        "desc_si": "Local ජාලයේ pair වීමට සූදානම් අනෙක් පරිගණක සොයයි."
+      },
+      {
+        "n": 2,
+        "box": [
+          395,
+          189,
+          180,
+          40
+        ],
+        "label_en": "Show my QR and code",
+        "desc_en": "Shows this Linux computer's pair-only QR code and 6-digit PIN.",
+        "label_si": "Show my QR and code",
+        "desc_si": "මෙම Linux පරිගණකයේ pair-only QR code එක සහ ඉලක්කම් 6 කේතය පෙන්වයි."
+      },
+      {
+        "n": 3,
+        "box": [
+          583,
+          189,
+          141,
+          40
+        ],
+        "label_en": "Enter pairing link",
+        "desc_en": "Accepts a pasted glide://pair URI from the peer device.",
+        "label_si": "Enter pairing link",
+        "desc_si": "අනෙක් device එකෙන් copy කළ pairing link එක paste කිරීමට භාවිතා කරයි."
+      },
+      {
+        "n": 4,
+        "box": [
+          732,
+          189,
+          133,
+          40
+        ],
+        "label_en": "Pair by address",
+        "desc_en": "Fallback pairing using IP:port + 6-digit PIN if discovery fails.",
+        "label_si": "Pair by address",
+        "desc_si": "ස්වයංක්‍රීය සෙවීම අසාර්ථක නම් IP:port සහ කේතය යොදා pair වේ."
+      },
+      {
+        "n": 5,
+        "box": [
+          265,
+          277,
+          714,
+          46
+        ],
+        "label_en": "Discovered device row",
+        "desc_en": "Click to proceed to the 6-digit pairing PIN prompt.",
+        "label_si": "හමු වූ device එක",
+        "desc_si": "මත click කර ඉලක්කම් 6 කේතය ඇතුළු කිරීමට යන්න."
+      },
+      {
+        "n": 6,
+        "box": [
+          896,
+          415,
+          83,
+          40
+        ],
+        "label_en": "Remove",
+        "desc_en": "Revokes trust for the listed saved peer.",
+        "label_si": "Remove",
+        "desc_si": "Save කර ඇති device එකේ විශ්වාසය ඉවත් කරයි."
+      }
+    ]
   },
   {
     "platform": "Linux",
@@ -349,7 +1707,89 @@
     "published_sha256": "5dda4c4d61edffa4a7c853b47cb97cf9ec8fefbeabe72629c414a19a40ef1e08",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/linux/linux-pair-show-qr-dark.png"
+    "published": "assets/linux/linux-pair-show-qr-dark.png",
+    "annotated": "assets/annotated/linux/linux-pair-show-qr-dark-annotated.png",
+    "annotated_sha256": "b1e53716d9c0f6242b1cda8f1fceba4b9b1940d625320474bad6b7a7c0f48c07",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          265,
+          281,
+          260,
+          260
+        ],
+        "label_en": "Pair-only QR",
+        "desc_en": "Used exclusively for saving trust (scan with Android Pair device). Never sends files directly.",
+        "label_si": "Pair-only QR code",
+        "desc_si": "විශ්වාසය (trust) save කිරීමට පමණක් භාවිතා වේ; කෙලින්ම files යවන්නේ නැත."
+      },
+      {
+        "n": 2,
+        "box": [
+          537,
+          358,
+          203,
+          118
+        ],
+        "label_en": "6-digit code",
+        "desc_en": "Enter these digits on the other desktop under Find devices or Pair by address.",
+        "label_si": "ඉලක්කම් 6 කේතය",
+        "desc_si": "අනෙක් පරිගණකයේ Find devices හෝ Pair by address තුළ මෙම ඉලක්කම් 6 type කරන්න."
+      },
+      {
+        "n": 3,
+        "box": [
+          265,
+          551,
+          91,
+          40
+        ],
+        "label_en": "Copy link",
+        "desc_en": "Copies the temporary glide://pair invitation URI.",
+        "label_si": "Copy link",
+        "desc_si": "තාවකාලික pairing link එක copy කරයි."
+      },
+      {
+        "n": 4,
+        "box": [
+          364,
+          551,
+          98,
+          40
+        ],
+        "label_en": "New code",
+        "desc_en": "Generates a fresh code and QR if the old one expired.",
+        "label_si": "New code",
+        "desc_si": "කේතය කල් ඉකුත් වුවහොත් අලුත් කේතයක් සාදයි."
+      },
+      {
+        "n": 5,
+        "box": [
+          470,
+          551,
+          76,
+          40
+        ],
+        "label_en": "Cancel",
+        "desc_en": "Closes the pair-only QR advertisement.",
+        "label_si": "Cancel",
+        "desc_si": "Pair වීමේ ආරාධනාව නවතයි."
+      },
+      {
+        "n": 6,
+        "box": [
+          265,
+          609,
+          714,
+          48
+        ],
+        "label_en": "Connection details",
+        "desc_en": "Expand to see this Linux PC's local IP address and port for Pair by address.",
+        "label_si": "Connection details",
+        "desc_si": "Pair by address සඳහා අවශ්‍ය local IP ලිපිනය සහ port අංකය මෙහි ඇත."
+      }
+    ]
   },
   {
     "platform": "Linux",
@@ -365,7 +1805,50 @@
     "published_sha256": "a434216726c7552aa590983eacfde142a154ca719c3501e25c48549c3ec93841",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/linux/linux-pair-enter-link-dark.png"
+    "published": "assets/linux/linux-pair-enter-link-dark.png",
+    "annotated": "assets/annotated/linux/linux-pair-enter-link-dark-annotated.png",
+    "annotated_sha256": "f11903e7306f629575d0ab063f10a2470f30546a393024a3151174203fead0ae",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          265,
+          281,
+          714,
+          40
+        ],
+        "label_en": "Pairing link field",
+        "desc_en": "Paste a current glide://pair link copied from another device.",
+        "label_si": "Pairing link කොටුව",
+        "desc_si": "අනෙක් device එකෙන් copy කළ වලංගු glide://pair link එක මෙහි paste කරන්න."
+      },
+      {
+        "n": 2,
+        "box": [
+          265,
+          331,
+          63,
+          40
+        ],
+        "label_en": "Pair",
+        "desc_en": "Connects using the link and verifies the one-time secret.",
+        "label_si": "Pair",
+        "desc_si": "ලිපිනය ඔස්සේ සම්බන්ධ වී pair වීම ආරම්භ කරයි."
+      },
+      {
+        "n": 3,
+        "box": [
+          336,
+          331,
+          76,
+          40
+        ],
+        "label_en": "Cancel",
+        "desc_en": "Cancels link entry.",
+        "label_si": "Cancel",
+        "desc_si": "අවලංගු කර ආපසු යයි."
+      }
+    ]
   },
   {
     "platform": "Linux",
@@ -381,7 +1864,63 @@
     "published_sha256": "031040f356b12a0ccc1ea1e0e1a24c78b682fff52f225cdd3ca3dfa9e6e1729d",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/linux/linux-pair-by-address-dark.png"
+    "published": "assets/linux/linux-pair-by-address-dark.png",
+    "annotated": "assets/annotated/linux/linux-pair-by-address-dark-annotated.png",
+    "annotated_sha256": "4f956bc321150461cd842a1dd213a6eaade951046e5359a32d5cd857b2b17654",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          265,
+          281,
+          153,
+          40
+        ],
+        "label_en": "Address and port",
+        "desc_en": "Type the peer's local IP address and port (for example 192.168.1.25:port).",
+        "label_si": "IP ලිපිනය සහ port",
+        "desc_si": "අනෙක් පරිගණකයේ IP ලිපිනය සහ Listening Port අංකය මෙහි ඇතුළු කරන්න."
+      },
+      {
+        "n": 2,
+        "box": [
+          265,
+          361,
+          320,
+          40
+        ],
+        "label_en": "6-digit pairing code",
+        "desc_en": "Enter the 6-digit PIN from Show my QR and code on that peer.",
+        "label_si": "ඉලක්කම් 6 කේතය",
+        "desc_si": "අනෙක් පරිගණකයේ පෙන්වන ඉලක්කම් 6 කේතය මෙහි ලියන්න."
+      },
+      {
+        "n": 3,
+        "box": [
+          265,
+          411,
+          63,
+          40
+        ],
+        "label_en": "Pair",
+        "desc_en": "Initiates direct LAN pairing.",
+        "label_si": "Pair",
+        "desc_si": "කෙලින්ම LAN ජාලය හරහා pair වීම අරඹයි."
+      },
+      {
+        "n": 4,
+        "box": [
+          336,
+          411,
+          76,
+          40
+        ],
+        "label_en": "Cancel",
+        "desc_en": "Leaves manual pairing.",
+        "label_si": "Cancel",
+        "desc_si": "අවලංගු කරයි."
+      }
+    ]
   },
   {
     "platform": "Linux",
@@ -397,7 +1936,89 @@
     "published_sha256": "1f3b7635c4707937f8527a2c7dc44cea85a872af919a50fb04d09bc87f84b956",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/linux/linux-settings-upper-dark.png"
+    "published": "assets/linux/linux-settings-upper-dark.png",
+    "annotated": "assets/annotated/linux/linux-settings-upper-dark-annotated.png",
+    "annotated_sha256": "98a240503d70979a191431dc92806e0d9c60cee79f3eeb7b51bc5052e9c17d25",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          265,
+          170,
+          258,
+          38
+        ],
+        "label_en": "Appearance",
+        "desc_en": "Select Follow System, Light, or Dark theme.",
+        "label_si": "Appearance",
+        "desc_si": "Follow System, Light හෝ Dark වර්ණය තෝරන්න."
+      },
+      {
+        "n": 2,
+        "box": [
+          265,
+          354,
+          1207,
+          40
+        ],
+        "label_en": "Device Name",
+        "desc_en": "Sets the name nearby Windows, Linux, and Android devices see.",
+        "label_si": "Device Name",
+        "desc_si": "අනෙක් devices වලට මෙම පරිගණකය පෙනෙන නම වෙනස් කරයි."
+      },
+      {
+        "n": 3,
+        "box": [
+          265,
+          454,
+          1106,
+          40
+        ],
+        "label_en": "Download Directory",
+        "desc_en": "Shows the folder where verified incoming files are committed.",
+        "label_si": "Download Directory",
+        "desc_si": "ලැබෙන files ස්වයංක්‍රීයව save වන folder මාර්ගය පෙන්වයි."
+      },
+      {
+        "n": 4,
+        "box": [
+          1381,
+          454,
+          91,
+          40
+        ],
+        "label_en": "Browse...",
+        "desc_en": "Chooses a different destination directory on Linux.",
+        "label_si": "Browse...",
+        "desc_si": "වෙනත් destination folder එකක් තෝරාගැනීමට භාවිතා කරයි."
+      },
+      {
+        "n": 5,
+        "box": [
+          289,
+          665,
+          1159,
+          48
+        ],
+        "label_en": "Trusted Devices Details",
+        "desc_en": "Expand any paired peer to inspect its verified identity fingerprint.",
+        "label_si": "Trusted Devices Details",
+        "desc_si": "Pair කළ device එකක fingerprint විස්තර බලාගැනීමට මෙය විවෘත කරන්න."
+      },
+      {
+        "n": 6,
+        "box": [
+          265,
+          749,
+          245,
+          38
+        ],
+        "label_en": "Revoke selected trusted device",
+        "desc_en": "Removes the selected peer from trusted storage.",
+        "label_si": "Revoke selected trusted device",
+        "desc_si": "තෝරාගත් device එකේ විශ්වාසය (trust) ඉවත් කරයි."
+      }
+    ]
   },
   {
     "platform": "Linux",
@@ -413,7 +2034,50 @@
     "published_sha256": "ab771aae5f866409ff167c0b55ce654c76276f1070d7682884d579af1c97e878",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/linux/linux-settings-lower-dark.png"
+    "published": "assets/linux/linux-settings-lower-dark.png",
+    "annotated": "assets/annotated/linux/linux-settings-lower-dark-annotated.png",
+    "annotated_sha256": "9812ba51b721fff08d09fe370884105afd0ab3d067fdad66fdfc276d2760cedc",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          265,
+          547,
+          140,
+          40
+        ],
+        "label_en": "Listening Port",
+        "desc_en": "Shows the fixed or active local TCP port needed if using Pair by address.",
+        "label_si": "Listening Port",
+        "desc_si": "Pair by address භාවිතයේදී අවශ්‍ය වන local TCP port අංකය පෙන්වයි."
+      },
+      {
+        "n": 2,
+        "box": [
+          265,
+          645,
+          178,
+          40
+        ],
+        "label_en": "Export diagnostic logs",
+        "desc_en": "Saves offline logs so you can inspect connection errors safely.",
+        "label_si": "Export diagnostic logs",
+        "desc_si": "ගැටලුවක් ඇති වුවහොත් පරීක්ෂා කිරීම සඳහා offline diagnostic logs file එකක් save කරයි."
+      },
+      {
+        "n": 3,
+        "box": [
+          244,
+          730,
+          1249,
+          114
+        ],
+        "label_en": "Glide for Linux (About)",
+        "desc_en": "Shows installed Glide version, local device details, and offline status.",
+        "label_si": "Glide for Linux (About)",
+        "desc_si": "ස්ථාපිත Glide අනුවාදය සහ තොරතුරු දක්වයි."
+      }
+    ]
   },
   {
     "platform": "Linux",
@@ -429,7 +2093,63 @@
     "published_sha256": "65a7f9daae5d1667e888f2f1e6aa467ee72f657a0b0755d33b31e0e09d094146",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/linux/linux-pair-not-found-dark.png"
+    "published": "assets/linux/linux-pair-not-found-dark.png",
+    "annotated": "assets/annotated/linux/linux-pair-not-found-dark-annotated.png",
+    "annotated_sha256": "367c58698bd0c60d31c29df8918c8de0f4c2afc8ffe3f698f547e8e570c39009",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          265,
+          277,
+          714,
+          46
+        ],
+        "label_en": "Discovery notice",
+        "desc_en": "Explains why no pairing peer appeared on the local network yet.",
+        "label_si": "හමු නොවීමේ දැන්වීම",
+        "desc_si": "අනෙක් device එක තවම සොයා ගැනීමට නොහැකි වූ හේතුව මෙහි දක්වයි."
+      },
+      {
+        "n": 2,
+        "box": [
+          265,
+          333,
+          99,
+          40
+        ],
+        "label_en": "Try again",
+        "desc_en": "Re-scans mDNS once the other desktop is on Show my QR and code.",
+        "label_si": "Try again",
+        "desc_si": "අනෙක් පරිගණකයේ Show my QR and code විවෘත කළ පසු නැවත සොයා බලයි."
+      },
+      {
+        "n": 3,
+        "box": [
+          372,
+          333,
+          133,
+          40
+        ],
+        "label_en": "Pair by address",
+        "desc_en": "Connects directly using IP:port and 6-digit PIN if discovery is blocked.",
+        "label_si": "Pair by address",
+        "desc_si": "මධ්‍ය ජාලය mDNS අවහිර කර ඇත්නම් IP:port සහ කේතය මඟින් සම්බන්ධ වේ."
+      },
+      {
+        "n": 4,
+        "box": [
+          513,
+          333,
+          125,
+          40
+        ],
+        "label_en": "Open Settings",
+        "desc_en": "Checks your Listening Port or network details in Settings.",
+        "label_si": "Open Settings",
+        "desc_si": "Settings වෙත ගොස් Listening Port සහ ජාල සැකසුම් පරීක්ෂා කරයි."
+      }
+    ]
   },
   {
     "platform": "Linux",
@@ -445,7 +2165,50 @@
     "published_sha256": "8649238c317125ad31487ba7075350fe84b5b2aff49e14a0336298863412d343",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/linux/linux-pair-enter-code-dark.png"
+    "published": "assets/linux/linux-pair-enter-code-dark.png",
+    "annotated": "assets/annotated/linux/linux-pair-enter-code-dark-annotated.png",
+    "annotated_sha256": "4bd54b7449dedeb595d5e87c23486c19981c9632d56fea975940391e0318af4b",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          265,
+          307,
+          180,
+          40
+        ],
+        "label_en": "6-digit code box",
+        "desc_en": "Type the 6-digit PIN currently shown on the peer computer.",
+        "label_si": "කේත කොටුව",
+        "desc_si": "අනෙක් පරිගණකයේ පෙන්වන ඉලක්කම් 6 කේතය මෙහි type කරන්න."
+      },
+      {
+        "n": 2,
+        "box": [
+          265,
+          357,
+          63,
+          40
+        ],
+        "label_en": "Pair",
+        "desc_en": "Begins verification so both computers approve and save trust.",
+        "label_si": "Pair",
+        "desc_si": "දෙපසම අනුමැතිය ලබා ගෙන pair වීම අරඹයි."
+      },
+      {
+        "n": 3,
+        "box": [
+          336,
+          357,
+          76,
+          40
+        ],
+        "label_en": "Cancel",
+        "desc_en": "Returns to Find devices without pairing.",
+        "label_si": "Cancel",
+        "desc_si": "Pair නොවී ආපසු සෙවීමට යයි."
+      }
+    ]
   },
   {
     "platform": "Linux",
@@ -461,7 +2224,50 @@
     "published_sha256": "ba916c54dcafe5343c3f6c2c470e91e0a1a5c8260396c47f14b401e9d44540f4",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/linux/linux-pair-complete-dark.png"
+    "published": "assets/linux/linux-pair-complete-dark.png",
+    "annotated": "assets/annotated/linux/linux-pair-complete-dark-annotated.png",
+    "annotated_sha256": "2a19ac26dbf82a0044b66fd08bcb116266798f971a84c6216b39fc4c7e94ca31",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          259,
+          248,
+          146,
+          24
+        ],
+        "label_en": "Pairing confirmed",
+        "desc_en": "Both devices now trust each other's verified public key fingerprint.",
+        "label_si": "Pair වීම සම්පූර්ණයි",
+        "desc_si": "Device දෙකම එකිනෙකාගේ identity එක ස්ථිරවම හඳුනාගෙන ඇත."
+      },
+      {
+        "n": 2,
+        "box": [
+          265,
+          278,
+          65,
+          40
+        ],
+        "label_en": "Done",
+        "desc_en": "Clears the completion banner so you can start sending.",
+        "label_si": "Done",
+        "desc_si": "පණිවිඩය වසා ඉදිරියට යාමට සූදානම් කරයි."
+      },
+      {
+        "n": 3,
+        "box": [
+          261,
+          416,
+          720,
+          44
+        ],
+        "label_en": "Paired devices entry",
+        "desc_en": "Shows the newly added device, which is also selectable under Send → Paired device.",
+        "label_si": "Paired devices ලැයිස්තුව",
+        "desc_si": "මෙහි එක් වූ device එකට Send → Paired device මඟින් කෙලින්ම files යැවිය හැක."
+      }
+    ]
   },
   {
     "platform": "Linux",
@@ -477,7 +2283,63 @@
     "published_sha256": "67e1458dd490872400b47abd220ffa8f9a15390324dc6abf6e467f8ff54ca7a4",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/linux/linux-send-qr-dialog-dark.png"
+    "published": "assets/linux/linux-send-qr-dialog-dark.png",
+    "annotated": "assets/annotated/linux/linux-send-qr-dialog-dark-annotated.png",
+    "annotated_sha256": "70c763f79b54f09efbf20fd4373165f4ec718e1d3f18b78ed4b610a5f42ac8f4",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          398,
+          236,
+          244,
+          244
+        ],
+        "label_en": "One-time send QR",
+        "desc_en": "Receiver scans this with Glide Mobile (Receive files → Scan PC QR code). Then Linux shows Confirm Recipient before sending.",
+        "label_si": "යැවීමේ QR code එක",
+        "desc_si": "Phone එකෙන් Receive files → Scan PC QR code මඟින් මෙය scan කළ පසු, Linux හි Confirm Recipient තහවුරු කළ යුතුය."
+      },
+      {
+        "n": 2,
+        "box": [
+          322,
+          494,
+          396,
+          48
+        ],
+        "label_en": "Connection details",
+        "desc_en": "Expand to inspect local LAN IP endpoints and invitation details.",
+        "label_si": "Connection details",
+        "desc_si": "දෝෂ ඇති වුවහොත් local IP ලිපිනය සහ port විස්තර මෙයින් බලාගත හැක."
+      },
+      {
+        "n": 3,
+        "box": [
+          375,
+          562,
+          118,
+          40
+        ],
+        "label_en": "Refresh code",
+        "desc_en": "Issues a new one-time QR invitation token.",
+        "label_si": "Refresh code",
+        "desc_si": "පෙර code එක කල් ඉකුත් වූවා නම් අලුත් තාවකාලික QR code එකක් සාදයි."
+      },
+      {
+        "n": 4,
+        "box": [
+          503,
+          563,
+          162,
+          38
+        ],
+        "label_en": "Cancel quick share",
+        "desc_en": "Closes the QR dialog without clearing your staged files (Windows calls this Cancel QR share).",
+        "label_si": "Cancel quick share",
+        "desc_si": "Files ඉවත් නොකර QR share කවුළුව වසයි (Windows හි Cancel QR share වේ)."
+      }
+    ]
   },
   {
     "platform": "Linux",
@@ -493,7 +2355,89 @@
     "published_sha256": "d75c396b9cc826675b82f74787bfda17c0aeda7bcc60ebdbe046f0bb94f01a0d",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/linux/linux-send-staged-dark.png"
+    "published": "assets/linux/linux-send-staged-dark.png",
+    "annotated": "assets/annotated/linux/linux-send-staged-dark-annotated.png",
+    "annotated_sha256": "22480be808c103cfc31a36fe512df62762f7e895d65259cc22646b35e1cef120",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          259,
+          154,
+          214,
+          42
+        ],
+        "label_en": "Queued summary",
+        "desc_en": "Displays item count and total batch size against the 1,000-item / 256 GiB limits.",
+        "label_si": "තෝරාගත් ගණන සහ ප්‍රමාණය",
+        "desc_si": "යැවීමට තැබූ files ගණන සහ මුළු ප්‍රමාණය (උපරිම 1,000 items / 256 GiB) පෙන්වයි."
+      },
+      {
+        "n": 2,
+        "box": [
+          265,
+          202,
+          100,
+          40
+        ],
+        "label_en": "Add files...",
+        "desc_en": "Appends more files to the existing batch.",
+        "label_si": "Add files...",
+        "desc_si": "දැනට තෝරාගත් ලැයිස්තුවට තව files එකතු කරයි."
+      },
+      {
+        "n": 3,
+        "box": [
+          373,
+          202,
+          110,
+          40
+        ],
+        "label_en": "Add folder...",
+        "desc_en": "Appends an entire folder to the batch.",
+        "label_si": "Add folder...",
+        "desc_si": "තවත් folder එකක් ලැයිස්තුවට එක් කරයි."
+      },
+      {
+        "n": 4,
+        "box": [
+          491,
+          202,
+          84,
+          40
+        ],
+        "label_en": "Clear all",
+        "desc_en": "Clears every staged item from the queue at once (Windows calls this Clear list).",
+        "label_si": "Clear all",
+        "desc_si": "ලැයිස්තුවේ ඇති සියලුම files එකවර ඉවත් කරයි (Windows හි Clear list ලෙස නම් කර ඇත)."
+      },
+      {
+        "n": 5,
+        "box": [
+          940,
+          275,
+          28,
+          28
+        ],
+        "label_en": "Remove item (✕)",
+        "desc_en": "Removes just that single item from the send queue (Windows shows Remove).",
+        "label_si": "ඉවත් කරන්න (✕)",
+        "desc_si": "ලැයිස්තුවෙන් එම තනි file එක පමණක් ඉවත් කරයි (Windows හි Remove ලෙස පෙනේ)."
+      },
+      {
+        "n": 6,
+        "box": [
+          888,
+          484,
+          76,
+          30
+        ],
+        "label_en": "Connect",
+        "desc_en": "Connects to the saved peer and delivers the transfer offer.",
+        "label_si": "Connect",
+        "desc_si": "Pair කළ device එකට සම්බන්ධ වී transfer එක ආරම්භ කරයි."
+      }
+    ]
   },
   {
     "platform": "Linux",
@@ -509,7 +2453,37 @@
     "published_sha256": "d66d83d08beef98076bd0cc35aabd12dc4322676c774085df870da7d9ba125c6",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/linux/linux-activity-sending-dark.png"
+    "published": "assets/linux/linux-activity-sending-dark.png",
+    "annotated": "assets/annotated/linux/linux-activity-sending-dark-annotated.png",
+    "annotated_sha256": "6a78a5aef5c2b73a22065bd11dc69fa27444ce76c6efa4dfe59accfc27048f57",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          244,
+          136,
+          588,
+          148
+        ],
+        "label_en": "Live transfer progress card",
+        "desc_en": "Displays active recipient, bytes transferred, transfer speed, and elapsed status.",
+        "label_si": "සජීවී ප්‍රගති කාඩ්පත",
+        "desc_si": "ලබන device එක, යැවුණු ප්‍රමාණය සහ වේගය පෙන්වයි."
+      },
+      {
+        "n": 2,
+        "box": [
+          841,
+          217,
+          137,
+          38
+        ],
+        "label_en": "Cancel transfer",
+        "desc_en": "Stops sending immediately before completion.",
+        "label_si": "Cancel transfer",
+        "desc_si": "Transfer එක සම්පූර්ණ වීමට පෙර නවතා දමයි."
+      }
+    ]
   },
   {
     "platform": "Linux",
@@ -525,7 +2499,50 @@
     "published_sha256": "f1e18b90c9071351f6ab0971799324da434c5a5672d7de0e946e1c154aded47b",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/linux/linux-receive-offer-dark.png"
+    "published": "assets/linux/linux-receive-offer-dark.png",
+    "annotated": "assets/annotated/linux/linux-receive-offer-dark-annotated.png",
+    "annotated_sha256": "4b5a8e9cc301b9b0f38deafe097f3021f687806eca621202a169eaef225cda1f",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          316,
+          268,
+          408,
+          150
+        ],
+        "label_en": "Sender & file summary",
+        "desc_en": "Check the sender name, file count, and size before approving.",
+        "label_si": "යවන්නා සහ files විස්තරය",
+        "desc_si": "Files ලබා ගැනීමට පෙර යවන්නා සහ ප්‍රමාණය නිවැරදිදැයි පරීක්ෂා කරන්න."
+      },
+      {
+        "n": 2,
+        "box": [
+          322,
+          440,
+          192,
+          38
+        ],
+        "label_en": "Decline",
+        "desc_en": "Rejects the offer immediately without saving anything.",
+        "label_si": "Decline",
+        "desc_si": "Transfer එක ප්‍රතික්ෂේප කරයි."
+      },
+      {
+        "n": 3,
+        "box": [
+          526,
+          439,
+          192,
+          40
+        ],
+        "label_en": "Accept Transfer",
+        "desc_en": "Receives into private staging, checks SHA-256, and moves into your Download Directory.",
+        "label_si": "Accept Transfer",
+        "desc_si": "අනුමත කළ පසු files ආරක්ෂිතව ලැබී, SHA-256 පරීක්ෂා කර Download Directory වෙත save වේ."
+      }
+    ]
   },
   {
     "platform": "Android",
@@ -541,7 +2558,76 @@
     "published_sha256": "981c281329a1bb8c4839dc62f7da8584acf787422cdd8c230ab0ae0e070cf28c",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/android/android-home-dark.jpg"
+    "published": "assets/android/android-home-dark.jpg",
+    "annotated": "assets/annotated/android/android-home-dark-annotated.png",
+    "annotated_sha256": "e6c019780da214c1ff556ceeef31c1cf5ec88676d1be1d15c52bb786d1d43200",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          60,
+          394,
+          960,
+          170
+        ],
+        "label_en": "Send files",
+        "desc_en": "Pick photos, files, or folders, then pick a nearby phone or scan a desktop QR.",
+        "label_si": "Send files",
+        "desc_si": "Photos, files හෝ folders තෝරා, ළඟ phone එකකට හෝ PC QR එකක් scan කර යවන්න."
+      },
+      {
+        "n": 2,
+        "box": [
+          60,
+          611,
+          960,
+          168
+        ],
+        "label_en": "Receive files",
+        "desc_en": "Makes your phone discoverable and lets you open Scan PC QR code or background receiving.",
+        "label_si": "Receive files",
+        "desc_si": "Phone එකට files ලැබීමට සූදානම් කිරීම හෝ PC QR code එක scan කිරීම අරඹයි."
+      },
+      {
+        "n": 3,
+        "box": [
+          755,
+          886,
+          248,
+          72
+        ],
+        "label_en": "Pair device",
+        "desc_en": "Scan a desktop pair-only QR code (or link) to save trusted identity for future sends.",
+        "label_si": "Pair device",
+        "desc_si": "PC එකේ Pair devices හි QR එක scan කර දීර්ඝකාලීන විශ්වාසය save කරගනී."
+      },
+      {
+        "n": 4,
+        "box": [
+          60,
+          1031,
+          960,
+          210
+        ],
+        "label_en": "Paired devices (Paired / Last seen)",
+        "desc_en": "Lists already paired devices with their Paired badge or Last seen timestamp. Saved peers don't need fresh QR pairing next time.",
+        "label_si": "Paired devices (Paired / Last seen)",
+        "desc_si": "දැනටමත් pair කර ඇති devices සහ අවසන් වරට හමු වූ වේලාව (Last seen) මෙහි පෙන්වයි."
+      },
+      {
+        "n": 5,
+        "box": [
+          60,
+          2138,
+          960,
+          172
+        ],
+        "label_en": "Bottom tabs (Home / History / Settings)",
+        "desc_en": "Switch between main actions, verified transfer history, and phone preferences.",
+        "label_si": "පහළ මෙනුව (Home / History / Settings)",
+        "desc_si": "ප්‍රධාන තිරය, පැරණි transfers ඉතිහාසය සහ Settings අතර මාරු වීමට."
+      }
+    ]
   },
   {
     "platform": "Android",
@@ -557,7 +2643,63 @@
     "published_sha256": "d437975e711a21a25754f8d0247311390071c9521a744855dcd4daaa2092654c",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/android/android-send-select-empty-dark.jpg"
+    "published": "assets/android/android-send-select-empty-dark.jpg",
+    "annotated": "assets/annotated/android/android-send-select-empty-dark-annotated.png",
+    "annotated_sha256": "fc5ed1ed84e88522e7345b2e484bf48c1d5ecdbf729579c0084f5bf2d3fbe758",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          60,
+          155,
+          238,
+          144
+        ],
+        "label_en": "Back",
+        "desc_en": "Returns to Home without sending.",
+        "label_si": "Back",
+        "desc_si": "Files නොයවා ආපසු Home වෙත යයි."
+      },
+      {
+        "n": 2,
+        "box": [
+          132,
+          566,
+          816,
+          168
+        ],
+        "label_en": "Choose photos & videos",
+        "desc_en": "Opens Android's system media picker without needing broad storage access.",
+        "label_si": "Choose photos & videos",
+        "desc_si": "Photos සහ videos පහසුවෙන් තේරීමට Android gallery picker විවෘත කරයි."
+      },
+      {
+        "n": 3,
+        "box": [
+          132,
+          782,
+          816,
+          144
+        ],
+        "label_en": "Choose files & documents",
+        "desc_en": "Opens Android's system file picker to choose one or many files.",
+        "label_si": "Choose files & documents",
+        "desc_si": "Documents, APKs, PDF හෝ වෙනත් ඕනෑම file එකක් තේරීමට."
+      },
+      {
+        "n": 4,
+        "box": [
+          132,
+          974,
+          816,
+          144
+        ],
+        "label_en": "Choose folder",
+        "desc_en": "Selects an entire folder (up to 10,000 inner files / 16 depth levels, 1,000 batch items).",
+        "label_si": "Choose folder",
+        "desc_si": "සම්පූර්ණ folder එකක්ම එකවර තෝරා ගැනීමට භාවිතා කරයි."
+      }
+    ]
   },
   {
     "platform": "Android",
@@ -573,7 +2715,76 @@
     "published_sha256": "e290b79b055867e68d678cd3bd664db7c6c0e7df563c7f2a697e0870916781a1",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/android/android-send-select-staged-dark.jpg"
+    "published": "assets/android/android-send-select-staged-dark.jpg",
+    "annotated": "assets/annotated/android/android-send-select-staged-dark-annotated.png",
+    "annotated_sha256": "7d29cdebf0f3e133b6cea41366ed3ee3d8ddec2930caa7cdd5e25c5baaf5ea20",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          818,
+          196,
+          164,
+          58
+        ],
+        "label_en": "Clear all",
+        "desc_en": "Empties the staged send list without touching your saved files on Android.",
+        "label_si": "Clear all",
+        "desc_si": "Phone එකේ files delete නොකර, යැවීමට තැබූ ලැයිස්තුව පමණක් හිස් කරයි."
+      },
+      {
+        "n": 2,
+        "box": [
+          59,
+          493,
+          962,
+          194
+        ],
+        "label_en": "Staged batch summary",
+        "desc_en": "Shows item count and total size before picking a receiver.",
+        "label_si": "තෝරාගත් විස්තරය",
+        "desc_si": "යැවීමට සූදානම් files ගණන සහ මුළු ප්‍රමාණය මෙහි පෙන්වයි."
+      },
+      {
+        "n": 3,
+        "box": [
+          795,
+          815,
+          154,
+          52
+        ],
+        "label_en": "Remove",
+        "desc_en": "Removes just that item from the batch.",
+        "label_si": "Remove",
+        "desc_si": "එම තනි file එක පමණක් ලැයිස්තුවෙන් ඉවත් කරයි."
+      },
+      {
+        "n": 4,
+        "box": [
+          60,
+          1789,
+          960,
+          170
+        ],
+        "label_en": "Proceed to send",
+        "desc_en": "Advances to Select recipient (nearby phones or QR scan for Windows/Linux).",
+        "label_si": "Proceed to send",
+        "desc_si": "ලබන device එක තේරීමේ තිරයට (හෝ QR scan කිරීමට) ඉදිරියට යයි."
+      },
+      {
+        "n": 5,
+        "box": [
+          60,
+          1982,
+          648,
+          312
+        ],
+        "label_en": "Add more photos / files / folder",
+        "desc_en": "Keep adding extra items before proceeding.",
+        "label_si": "තව files එකතු කරන්න",
+        "desc_si": "Proceed එබීමට පෙර තව photos, files හෝ folders මෙයටම එක් කළ හැක."
+      }
+    ]
   },
   {
     "platform": "Android",
@@ -589,7 +2800,37 @@
     "published_sha256": "6477b69e7c394c132bdf0138672b910cd5134b32293349903918454bc8331c71",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/android/android-recipient-bluetooth-off-dark.jpg"
+    "published": "assets/android/android-recipient-bluetooth-off-dark.jpg",
+    "annotated": "assets/annotated/android/android-recipient-bluetooth-off-dark-annotated.png",
+    "annotated_sha256": "8aff13ac8911694c61a0fa4e7d6de264024a4f5b68ba9c857630a0823b427b80",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          132,
+          1142,
+          816,
+          144
+        ],
+        "label_en": "Open Bluetooth settings",
+        "desc_en": "Jumps straight to Android Bluetooth settings so you can switch Bluetooth on.",
+        "label_si": "Open Bluetooth settings",
+        "desc_si": "Bluetooth on කිරීම සඳහා කෙලින්ම Android Bluetooth settings විවෘත කරයි."
+      },
+      {
+        "n": 2,
+        "box": [
+          132,
+          1322,
+          816,
+          144
+        ],
+        "label_en": "Check again",
+        "desc_en": "Re-evaluates radio readiness and resumes device discovery when you return.",
+        "label_si": "Check again",
+        "desc_si": "Bluetooth on කර ආපසු Glide වෙත පැමිණි පසු නැවත සෙවීම ආරම්භ කරයි."
+      }
+    ]
   },
   {
     "platform": "Android",
@@ -605,7 +2846,37 @@
     "published_sha256": "b40346214e2c38daff6ef2bf463ec2b5fcc13ae673c9e7460dca26598d243095",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/android/android-recipient-wifi-off-dark.jpg"
+    "published": "assets/android/android-recipient-wifi-off-dark.jpg",
+    "annotated": "assets/annotated/android/android-recipient-wifi-off-dark-annotated.png",
+    "annotated_sha256": "6804a7c59eb2d8e6b129309b988291a64f4b865f239bd8af4af2d0b3472e28a1",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          132,
+          1142,
+          816,
+          144
+        ],
+        "label_en": "Open Wi-Fi settings",
+        "desc_en": "Opens Android Wi-Fi settings so you can join the same local Wi-Fi as the peer.",
+        "label_si": "Open Wi-Fi settings",
+        "desc_si": "අනෙක් device එක ඇති Wi-Fi ජාලයටම සම්බන්ධ වීමට Wi-Fi settings විවෘත කරයි."
+      },
+      {
+        "n": 2,
+        "box": [
+          132,
+          1322,
+          816,
+          144
+        ],
+        "label_en": "Check again",
+        "desc_en": "Re-checks Wi-Fi connection and continues searching for receivers.",
+        "label_si": "Check again",
+        "desc_si": "Wi-Fi සම්බන්ධ කළ පසු නැවත devices සෙවීම අරඹයි."
+      }
+    ]
   },
   {
     "platform": "Android",
@@ -621,7 +2892,37 @@
     "published_sha256": "a1f031b7ee9ec6acc237bf943a80ddd2e8de4eefadc5b303126c97342924f30a",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/android/android-recipient-no-devices-dark.jpg"
+    "published": "assets/android/android-recipient-no-devices-dark.jpg",
+    "annotated": "assets/annotated/android/android-recipient-no-devices-dark-annotated.png",
+    "annotated_sha256": "f01060d43667f022fdaf44a432756591a2cbaf4b1cb240c1e920d02bfa6e5ebe",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          132,
+          1202,
+          390,
+          144
+        ],
+        "label_en": "Cancel",
+        "desc_en": "Returns to file selection; to send to a PC instead, choose Scan QR code or paste invite.",
+        "label_si": "Cancel",
+        "desc_si": "සෙවීම නවතා ආපසු යයි (PC එකකට යැවීමට නම් Scan QR code or paste invite භාවිතා කරන්න)."
+      },
+      {
+        "n": 2,
+        "box": [
+          558,
+          1202,
+          390,
+          144
+        ],
+        "label_en": "Retry",
+        "desc_en": "Searches again once the other Android phone opens Receive files on the same network.",
+        "label_si": "Retry",
+        "desc_si": "අනෙක් phone එකේ Receive files විවෘත කළ පසු නැවත සොයා බලයි."
+      }
+    ]
   },
   {
     "platform": "Android",
@@ -637,7 +2938,63 @@
     "published_sha256": "458662d66a568a901d749435b05391afe367cbc1890af1881179fe1c58a63884",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/android/android-send-qr-confirmation-dark.jpg"
+    "published": "assets/android/android-send-qr-confirmation-dark.jpg",
+    "annotated": "assets/annotated/android/android-send-qr-confirmation-dark-annotated.png",
+    "annotated_sha256": "dd80c49d0c6402ea46f54f7fa6ee2d1ab2e0551c9dc0949eb300adf07e6d0d72",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          88,
+          845,
+          904,
+          510
+        ],
+        "label_en": "Invitation summary dialog",
+        "desc_en": "Verify the target desktop device name and fingerprint snippet before connecting.",
+        "label_si": "සම්බන්ධ වන PC විස්තරය",
+        "desc_si": "සම්බන්ධ වීමට පෙර PC එකේ නම සහ fingerprint කොටස නිවැරදිදැයි බලන්න."
+      },
+      {
+        "n": 2,
+        "box": [
+          436,
+          1417,
+          164,
+          146
+        ],
+        "label_en": "Cancel",
+        "desc_en": "Declines connecting to that QR invitation.",
+        "label_si": "Cancel",
+        "desc_si": "මෙම QR ආරාධනාව අවලංගු කර ආපසු යයි."
+      },
+      {
+        "n": 3,
+        "box": [
+          647,
+          1417,
+          302,
+          146
+        ],
+        "label_en": "Connect",
+        "desc_en": "Connects to the desktop over encrypted TLS and waits for desktop acceptance.",
+        "label_si": "Connect",
+        "desc_si": "PC එකට ආරක්ෂිතව සම්බන්ධ වී transfer අනුමැතිය ඉල්ලයි."
+      },
+      {
+        "n": 4,
+        "box": [
+          145,
+          2127,
+          790,
+          150
+        ],
+        "label_en": "Paste invitation",
+        "desc_en": "Camera-free alternative: paste a glide:// link copied from Windows or Linux.",
+        "label_si": "Paste invitation",
+        "desc_si": "Camera අවසර නොදී PC එකෙන් copy කළ glide:// link එක paste කර සම්බන්ධ වීමට."
+      }
+    ]
   },
   {
     "platform": "Android",
@@ -653,7 +3010,50 @@
     "published_sha256": "a23a6a628a5b1d029855a4c45c415d794946da714d37ea7f653dea2f3292b9ea",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/android/android-send-progress-dark.jpg"
+    "published": "assets/android/android-send-progress-dark.jpg",
+    "annotated": "assets/annotated/android/android-send-progress-dark-annotated.png",
+    "annotated_sha256": "79afec2668794c6d8de3787aa0f5c58ee1dc1b35fcae89c60a632216aa25548d",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          60,
+          155,
+          238,
+          144
+        ],
+        "label_en": "Back",
+        "desc_en": "Minimizes/navigates without cancelling an active transfer if foreground notification is active.",
+        "label_si": "Back",
+        "desc_si": "Transfer එක නොනවත්වා ආපසු යා හැක (සක්‍රිය transfer අවසන් වන තුරු ඉදිරියට යයි)."
+      },
+      {
+        "n": 2,
+        "box": [
+          118,
+          825,
+          844,
+          414
+        ],
+        "label_en": "Item & overall progress",
+        "desc_en": "Shows current filename, percentage complete, and live transfer speed.",
+        "label_si": "ප්‍රගතිය සහ වේගය",
+        "desc_si": "යැවෙන file නම, ප්‍රතිශතය සහ දැනට වේගය පෙන්වයි."
+      },
+      {
+        "n": 3,
+        "box": [
+          131,
+          1309,
+          818,
+          146
+        ],
+        "label_en": "Cancel transfer",
+        "desc_en": "Aborts the transfer immediately; unverified partial items are cleaned up on the receiver.",
+        "label_si": "Cancel transfer",
+        "desc_si": "Files යැවීම වහාම නවතයි; අසම්පූර්ණ files ලබන්නාගේ folder එකට save නොවේ."
+      }
+    ]
   },
   {
     "platform": "Android",
@@ -669,7 +3069,50 @@
     "published_sha256": "6678bc24b36490e2fb17e88a0b134a88b25e8d1c46b049ad45a1d52bd866f896",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/android/android-nearby-verify-dark.jpg"
+    "published": "assets/android/android-nearby-verify-dark.jpg",
+    "annotated": "assets/annotated/android/android-nearby-verify-dark-annotated.png",
+    "annotated_sha256": "3df59e99f5edea31d36afe40517752b26f0863303ecde9c5db876cfea7c04b1d",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          131,
+          1139,
+          818,
+          176
+        ],
+        "label_en": "4-digit verification code",
+        "desc_en": "Read and compare these 4 digits out loud with the other phone. Both must show the same digits.",
+        "label_si": "ඉලක්කම් 4 තහවුරු කේතය",
+        "desc_si": "Phone දෙකේම මෙම ඉලක්කම් 4 සමානදැයි ඇසින් හෝ වචනයෙන් සසඳා බලන්න."
+      },
+      {
+        "n": 2,
+        "box": [
+          131,
+          1565,
+          818,
+          170
+        ],
+        "label_en": "Numbers match",
+        "desc_en": "Tap only when both phones display identical digits. This authorizes the phone-to-phone session.",
+        "label_si": "Numbers match",
+        "desc_si": "Phone දෙකේම අංක සමාන නම් පමණක් මෙය tap කරන්න (මෙය desktop ඉලක්කම් 6 කේතයට වෙනස්ය)."
+      },
+      {
+        "n": 3,
+        "box": [
+          132,
+          1764,
+          816,
+          156
+        ],
+        "label_en": "Don't match",
+        "desc_en": "Tap immediately to reject and disconnect if the 4 digits differ.",
+        "label_si": "Don't match",
+        "desc_si": "අංක වෙනස් නම් කිසිසේත් ඉදිරියට නොගොස් මෙයින් සම්බන්ධතාවය ප්‍රතික්ෂේප කරන්න."
+      }
+    ]
   },
   {
     "platform": "Android",
@@ -685,7 +3128,50 @@
     "published_sha256": "6ac97fce0f8e35a342e326906c9395cfe21421a776d0805b96e2567077d027ca",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/android/android-receive-offer-dark.jpg"
+    "published": "assets/android/android-receive-offer-dark.jpg",
+    "annotated": "assets/annotated/android/android-receive-offer-dark-annotated.png",
+    "annotated_sha256": "0fa366f63330270d0b7fc4c7ea4d138d85aba3cf3d4c9de5580dd3f562bc3aa3",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          132,
+          887,
+          816,
+          204
+        ],
+        "label_en": "Sender & file preview",
+        "desc_en": "Check who is sending, the filename/count, and total size before accepting.",
+        "label_si": "යවන්නා සහ file විස්තරය",
+        "desc_si": "Files භාරගැනීමට පෙර එවන්නේ කවුද, ගණන සහ ප්‍රමාණය කොපමණදැයි පරීක්ෂා කරන්න."
+      },
+      {
+        "n": 2,
+        "box": [
+          131,
+          1138,
+          818,
+          170
+        ],
+        "label_en": "Accept file",
+        "desc_en": "Explicit consent required before saving; shows 'Accept N files' for multi-file batches.",
+        "label_si": "Accept file",
+        "desc_si": "ඔබ මෙය tap කළ පසු පමණක් transfer එක ඇරඹේ (files කිහිපයකදී 'Accept N files' ලෙස පෙනේ)."
+      },
+      {
+        "n": 3,
+        "box": [
+          132,
+          1337,
+          816,
+          150
+        ],
+        "label_en": "Decline",
+        "desc_en": "Refuses the transfer immediately.",
+        "label_si": "Decline",
+        "desc_si": "අනවශ්‍ය file එකක් නම් මෙයින් ප්‍රතික්ෂේප කරන්න."
+      }
+    ]
   },
   {
     "platform": "Android",
@@ -701,7 +3187,63 @@
     "published_sha256": "4a794df5dbc5b13ec128ef288ac3e8030830471372c86756fd0d60604fd678bb",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/android/android-receive-complete-dark.jpg"
+    "published": "assets/android/android-receive-complete-dark.jpg",
+    "annotated": "assets/annotated/android/android-receive-complete-dark-annotated.png",
+    "annotated_sha256": "fa61dd4dfed8fc979f916783bcaf671c2db14b9745dbf7c68b9762853dfdd3f2",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          686,
+          1292,
+          227,
+          74
+        ],
+        "label_en": "Verified badge",
+        "desc_en": "Confirms Glide checked the file's SHA-256 checksum byte-for-byte before saving to Download/Glide.",
+        "label_si": "Verified සලකුණ",
+        "desc_si": "File එක කිසිදු හානියකින් තොරව (SHA-256 පරීක්ෂාවෙන්) සාර්ථකව Download/Glide වෙත save වූ බව තහවුරු කරයි."
+      },
+      {
+        "n": 2,
+        "box": [
+          132,
+          1642,
+          816,
+          144
+        ],
+        "label_en": "Share file",
+        "desc_en": "Opens the Android share sheet for the verified received file.",
+        "label_si": "Share file",
+        "desc_si": "ලැබුණු file එක phone එකේ වෙනත් යෙදුමකට share කිරීමට."
+      },
+      {
+        "n": 3,
+        "box": [
+          132,
+          1816,
+          816,
+          144
+        ],
+        "label_en": "Open file",
+        "desc_en": "Opens the saved file immediately with a compatible Android app.",
+        "label_si": "Open file",
+        "desc_si": "ලැබුණු file එක කෙලින්ම phone එකේ ඇති සුදුසු app එකකින් විවෘත කර බලයි."
+      },
+      {
+        "n": 4,
+        "box": [
+          132,
+          1990,
+          816,
+          144
+        ],
+        "label_en": "Done",
+        "desc_en": "Closes the completion summary and returns home.",
+        "label_si": "Done",
+        "desc_si": "ප්‍රතිඵල තිරය වසා මුල් තිරයට යයි."
+      }
+    ]
   },
   {
     "platform": "Android",
@@ -717,7 +3259,50 @@
     "published_sha256": "4f25b0cfd11d83347930bfe8f896e21452438759dd1e156a3e244bba1644b35b",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/android/android-recipient-list-dark.jpg"
+    "published": "assets/android/android-recipient-list-dark.jpg",
+    "annotated": "assets/annotated/android/android-recipient-list-dark-annotated.png",
+    "annotated_sha256": "d060feb6d15cc7c6f211a308a580ebdc5d6c9720fcab8e987504c76667680dad",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          757,
+          386,
+          251,
+          84
+        ],
+        "label_en": "Scanning",
+        "desc_en": "Shows Nearby discovery is actively looking for receiving Android devices.",
+        "label_si": "Scanning",
+        "desc_si": "අසල ඇති අනෙක් phones ස්වයංක්‍රීයව සොයමින් සිටින බව දක්වයි."
+      },
+      {
+        "n": 2,
+        "box": [
+          60,
+          554,
+          960,
+          211
+        ],
+        "label_en": "Discovered device card",
+        "desc_en": "Tap the receiver's phone name here for phone-to-phone transfer (opens 4-digit check next).",
+        "label_si": "හමු වූ phone එක",
+        "desc_si": "වෙනත් phone එකකට යැවීමට එහි නම මත tap කරන්න (ඉන්පසු ඉලක්කම් 4 තහවුරු කිරීම පැමිණේ)."
+      },
+      {
+        "n": 3,
+        "box": [
+          60,
+          830,
+          960,
+          192
+        ],
+        "label_en": "Scan QR code or paste invite",
+        "desc_en": "Tap here when sending to Windows or Linux: scan their Receive QR or paste the receive link.",
+        "label_si": "Scan QR code or paste invite",
+        "desc_si": "Windows හෝ Linux PC එකකට යැවීමේදී Receive QR එක scan කිරීමට හෝ link එක paste කිරීමට මෙය tap කරන්න."
+      }
+    ]
   },
   {
     "platform": "Android",
@@ -733,7 +3318,50 @@
     "published_sha256": "72c9d4ce6e9f0f502b2c9eac018df37c6e6b4cf45193f22205923664a393de7a",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/android/android-nearby-verify-light-dark.jpg"
+    "published": "assets/android/android-nearby-verify-light-dark.jpg",
+    "annotated": "assets/annotated/android/android-nearby-verify-light-dark-annotated.png",
+    "annotated_sha256": "be3ee2d3ab25a398c54eae8c12476fe57a5452d0c787deeeebc202cfd03dfe9c",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          64,
+          570,
+          411,
+          90
+        ],
+        "label_en": "Light-theme 4-digit display",
+        "desc_en": "Glide adapts automatically to Light mode while keeping identical security verification controls.",
+        "label_si": "Light theme හි ඉලක්කම් 4",
+        "desc_si": "Light theme හිදීත් ආරක්ෂාව සඳහා එකම ආකාරයේ ඉලක්කම් 4 සංසන්දනය පෙන්වයි."
+      },
+      {
+        "n": 2,
+        "box": [
+          64,
+          783,
+          412,
+          88
+        ],
+        "label_en": "Numbers match",
+        "desc_en": "Confirms both Android devices match before revealing any file offer.",
+        "label_si": "Numbers match",
+        "desc_si": "Phone දෙකේම අංක එක සමාන නම් තහවුරු කිරීමට tap කරන්න."
+      },
+      {
+        "n": 3,
+        "box": [
+          66,
+          883,
+          408,
+          79
+        ],
+        "label_en": "Don't match",
+        "desc_en": "Rejects mismatched verification digits safely.",
+        "label_si": "Don't match",
+        "desc_si": "අංක නොගැලපේ නම් වහාම ප්‍රතික්ෂේප කරයි."
+      }
+    ]
   },
   {
     "platform": "Android",
@@ -749,7 +3377,50 @@
     "published_sha256": "98bf68a26d2e0f17ba1fb2f2a361e28d59346a42616c405a86c58171d9e4abe5",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/android/android-history-dark.jpg"
+    "published": "assets/android/android-history-dark.jpg",
+    "annotated": "assets/annotated/android/android-history-dark-annotated.png",
+    "annotated_sha256": "8686c0346b565d32a2e8f8b15e4557315014a8fdbb047bc35468849343334d29",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          956,
+          169,
+          80,
+          80
+        ],
+        "label_en": "Clear history",
+        "desc_en": "Clears history log records only; received files remain untouched in Download/Glide.",
+        "label_si": "Clear history icon",
+        "desc_si": "Save වූ files මකා නොදමා History ලැයිස්තුව පමණක් පිරිසිදු කරයි."
+      },
+      {
+        "n": 2,
+        "box": [
+          218,
+          323,
+          644,
+          144
+        ],
+        "label_en": "All / Sent / Received",
+        "desc_en": "Filters history entries by direction.",
+        "label_si": "All / Sent / Received",
+        "desc_si": "සියලුම transfers, යැවූ files හෝ ලැබුණු files පමණක් වෙන්කර බැලීමට."
+      },
+      {
+        "n": 3,
+        "box": [
+          60,
+          515,
+          960,
+          282
+        ],
+        "label_en": "Verified session card",
+        "desc_en": "Tap any session card to open its items, verification status, or Open/Share actions.",
+        "label_si": "Transfer ඉතිහාස කාඩ්පත",
+        "desc_si": "මෙය මත tap කර එදා යැවූ හෝ ලැබුණු files නැවත විවෘත කිරීමට හෝ share කිරීමට හැක."
+      }
+    ]
   },
   {
     "platform": "Android",
@@ -765,7 +3436,63 @@
     "published_sha256": "b2b357fd5f0a72cf2932f13744ce26308e95e6409e99f5268a09d51ef84cf404",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/android/android-settings-appearance-dark.jpg"
+    "published": "assets/android/android-settings-appearance-dark.jpg",
+    "annotated": "assets/annotated/android/android-settings-appearance-dark-annotated.png",
+    "annotated_sha256": "cfa2eaf84ef744901c2b1c745ec1a4cbfb7bf5706af071079689192962fa0fb2",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          683,
+          476,
+          289,
+          120
+        ],
+        "label_en": "Edit (Device name)",
+        "desc_en": "Renames how this Android phone appears to Windows, Linux, and other phones.",
+        "label_si": "Edit (Device name)",
+        "desc_si": "අනෙක් devices වලට මෙම phone එක පෙනෙන නම වෙනස් කරයි."
+      },
+      {
+        "n": 2,
+        "box": [
+          97,
+          866,
+          411,
+          396
+        ],
+        "label_en": "Theme mode",
+        "desc_en": "Choose System default, Light, or Dark appearance.",
+        "label_si": "Theme mode",
+        "desc_si": "System, Light හෝ Dark වර්ණ මාදිලිය තෝරන්න."
+      },
+      {
+        "n": 3,
+        "box": [
+          816,
+          1346,
+          156,
+          96
+        ],
+        "label_en": "Dynamic color",
+        "desc_en": "Uses Android Material You wallpaper colors on supported devices.",
+        "label_si": "Dynamic color",
+        "desc_si": "ඔබේ phone wallpaper එකේ වර්ණ අනුව theme එක සකසයි."
+      },
+      {
+        "n": 4,
+        "box": [
+          97,
+          1511,
+          800,
+          492
+        ],
+        "label_en": "Reduced motion",
+        "desc_en": "Minimizes UI animations for calmer accessibility and lower visual distraction.",
+        "label_si": "Reduced motion",
+        "desc_si": "තිරයේ චලනයන් සහ animations අඩු කර පහසුවෙන් කියවීමට සකසයි."
+      }
+    ]
   },
   {
     "platform": "Android",
@@ -781,7 +3508,76 @@
     "published_sha256": "3eb4f573906873ffaa280ae320bc812bb70bddb097ba827e1e4de010ea834641",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/android/android-settings-trust-dark.jpg"
+    "published": "assets/android/android-settings-trust-dark.jpg",
+    "annotated": "assets/annotated/android/android-settings-trust-dark-annotated.png",
+    "annotated_sha256": "c4db5c86c5a8b8f697e0bb62eb07ce586513d68a4b3355586199d3d88cd62bc2",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          816,
+          468,
+          156,
+          96
+        ],
+        "label_en": "Notification details",
+        "desc_en": "Controls whether background transfer notifications show filenames and peer details.",
+        "label_si": "Notification details",
+        "desc_si": "Notification එකේ file නම් පෙන්වන්නේද යන්න පාලනය කරයි."
+      },
+      {
+        "n": 2,
+        "box": [
+          816,
+          669,
+          156,
+          96
+        ],
+        "label_en": "Keep screen awake",
+        "desc_en": "Prevents the phone screen from sleeping during long transfers.",
+        "label_si": "Keep screen awake",
+        "desc_si": "විශාල files යවන අතරතුර screen එක off වීම වළක්වයි."
+      },
+      {
+        "n": 3,
+        "box": [
+          108,
+          1195,
+          864,
+          144
+        ],
+        "label_en": "Manage trusted devices",
+        "desc_en": "View saved desktop fingerprints and revoke trust for any single device.",
+        "label_si": "Manage trusted devices",
+        "desc_si": "Pair කළ computers බැලීමට සහ අවශ්‍ය නම් ඉවත් කිරීමට."
+      },
+      {
+        "n": 4,
+        "box": [
+          108,
+          1375,
+          864,
+          144
+        ],
+        "label_en": "Pair with another device",
+        "desc_en": "Opens QR pairing scanner to save trust with a desktop.",
+        "label_si": "Pair with another device",
+        "desc_si": "අලුත් PC එකක් සමඟ pair වීමට QR scanner විවෘත කරයි."
+      },
+      {
+        "n": 5,
+        "box": [
+          580,
+          1792,
+          392,
+          120
+        ],
+        "label_en": "Delete all",
+        "desc_en": "Clears all Glide transfer history and temporary/saved data on request.",
+        "label_si": "Delete all",
+        "desc_si": "Transfer ඉතිහාසය සහ යෙදුම් දත්ත මකා දමයි (තහවුරු කිරීමක් අසයි)."
+      }
+    ]
   },
   {
     "platform": "Android",
@@ -797,7 +3593,76 @@
     "published_sha256": "abd1fe37ecabbbffe509eaab683778a53a0aefd5d36397337d7a78687ddc0029",
     "duplicate_of": null,
     "redaction_regions": [],
-    "published": "assets/android/android-settings-storage-dark.jpg"
+    "published": "assets/android/android-settings-storage-dark.jpg",
+    "annotated": "assets/annotated/android/android-settings-storage-dark-annotated.png",
+    "annotated_sha256": "9c4d1257201eb0c82347bb92dffec760e7693833e14b720a8f4c9637c1a04b0d",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          53,
+          447,
+          359,
+          59
+        ],
+        "label_en": "Download/Glide (default)",
+        "desc_en": "Default save location for all verified files received on Android.",
+        "label_si": "Download/Glide (පෙරනිමි ස්ථානය)",
+        "desc_si": "සාමාන්‍යයෙන් ලැබෙන සියලුම files save වන Android folder එක මෙයයි."
+      },
+      {
+        "n": 2,
+        "box": [
+          60,
+          673,
+          409,
+          120
+        ],
+        "label_en": "Choose folder",
+        "desc_en": "Select a custom folder (afterwards, Use Download/Glide resets back to default).",
+        "label_si": "Choose folder",
+        "desc_si": "වෙනත් folder එකක් තේරීමට (පසුව Use Download/Glide මඟින් මුල් ස්ථානයට ගත හැක)."
+      },
+      {
+        "n": 3,
+        "box": [
+          108,
+          1018,
+          864,
+          144
+        ],
+        "label_en": "Nearby diagnostics",
+        "desc_en": "Checks radio and permission readiness when nearby phones fail to appear.",
+        "label_si": "Nearby diagnostics",
+        "desc_si": "අසල devices නොපෙනෙන විට Bluetooth/Wi-Fi සහ අවසර තත්ත්වය පරීක්ෂා කරයි."
+      },
+      {
+        "n": 4,
+        "box": [
+          108,
+          1584,
+          864,
+          144
+        ],
+        "label_en": "Privacy policy",
+        "desc_en": "Confirms Glide operates 100% offline with zero telemetry or cloud storage.",
+        "label_si": "Privacy policy",
+        "desc_si": "Glide අන්තර්ජාලය හෝ cloud භාවිතා නොකරන බව දක්වන පෞද්ගලිකත්ව ප්‍රතිපත්තිය."
+      },
+      {
+        "n": 5,
+        "box": [
+          108,
+          1764,
+          864,
+          144
+        ],
+        "label_en": "Open source licenses",
+        "desc_en": "Lists third-party libraries bundled inside the offline app.",
+        "label_si": "Open source licenses",
+        "desc_si": "යෙදුම තුළ ඇති විවෘත කේත බලපත්‍ර විස්තර."
+      }
+    ]
   },
   {
     "platform": "Android",
@@ -813,7 +3678,50 @@
     "published_sha256": "72c9d4ce6e9f0f502b2c9eac018df37c6e6b4cf45193f22205923664a393de7a",
     "duplicate_of": "android-nearby-verify-light-dark.jpg",
     "redaction_regions": [],
-    "published": "assets/android/android-nearby-verify-light-dark.jpg"
+    "published": "assets/android/android-nearby-verify-light-dark.jpg",
+    "annotated": "assets/annotated/android/android-nearby-verify-light-dark-annotated.png",
+    "annotated_sha256": "be3ee2d3ab25a398c54eae8c12476fe57a5452d0c787deeeebc202cfd03dfe9c",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          64,
+          570,
+          411,
+          90
+        ],
+        "label_en": "Light-theme 4-digit display",
+        "desc_en": "Glide adapts automatically to Light mode while keeping identical security verification controls.",
+        "label_si": "Light theme හි ඉලක්කම් 4",
+        "desc_si": "Light theme හිදීත් ආරක්ෂාව සඳහා එකම ආකාරයේ ඉලක්කම් 4 සංසන්දනය පෙන්වයි."
+      },
+      {
+        "n": 2,
+        "box": [
+          64,
+          783,
+          412,
+          88
+        ],
+        "label_en": "Numbers match",
+        "desc_en": "Confirms both Android devices match before revealing any file offer.",
+        "label_si": "Numbers match",
+        "desc_si": "Phone දෙකේම අංක එක සමාන නම් තහවුරු කිරීමට tap කරන්න."
+      },
+      {
+        "n": 3,
+        "box": [
+          66,
+          883,
+          408,
+          79
+        ],
+        "label_en": "Don't match",
+        "desc_en": "Rejects mismatched verification digits safely.",
+        "label_si": "Don't match",
+        "desc_si": "අංක නොගැලපේ නම් වහාම ප්‍රතික්ෂේප කරයි."
+      }
+    ]
   },
   {
     "platform": "Android",
@@ -829,6 +3737,49 @@
     "published_sha256": "4f25b0cfd11d83347930bfe8f896e21452438759dd1e156a3e244bba1644b35b",
     "duplicate_of": "android-recipient-list-dark.jpg",
     "redaction_regions": [],
-    "published": "assets/android/android-recipient-list-dark.jpg"
+    "published": "assets/android/android-recipient-list-dark.jpg",
+    "annotated": "assets/annotated/android/android-recipient-list-dark-annotated.png",
+    "annotated_sha256": "d060feb6d15cc7c6f211a308a580ebdc5d6c9720fcab8e987504c76667680dad",
+    "callouts": [
+      {
+        "n": 1,
+        "box": [
+          757,
+          386,
+          251,
+          84
+        ],
+        "label_en": "Scanning",
+        "desc_en": "Shows Nearby discovery is actively looking for receiving Android devices.",
+        "label_si": "Scanning",
+        "desc_si": "අසල ඇති අනෙක් phones ස්වයංක්‍රීයව සොයමින් සිටින බව දක්වයි."
+      },
+      {
+        "n": 2,
+        "box": [
+          60,
+          554,
+          960,
+          211
+        ],
+        "label_en": "Discovered device card",
+        "desc_en": "Tap the receiver's phone name here for phone-to-phone transfer (opens 4-digit check next).",
+        "label_si": "හමු වූ phone එක",
+        "desc_si": "වෙනත් phone එකකට යැවීමට එහි නම මත tap කරන්න (ඉන්පසු ඉලක්කම් 4 තහවුරු කිරීම පැමිණේ)."
+      },
+      {
+        "n": 3,
+        "box": [
+          60,
+          830,
+          960,
+          192
+        ],
+        "label_en": "Scan QR code or paste invite",
+        "desc_en": "Tap here when sending to Windows or Linux: scan their Receive QR or paste the receive link.",
+        "label_si": "Scan QR code or paste invite",
+        "desc_si": "Windows හෝ Linux PC එකකට යැවීමේදී Receive QR එක scan කිරීමට හෝ link එක paste කිරීමට මෙය tap කරන්න."
+      }
+    ]
   }
 ]

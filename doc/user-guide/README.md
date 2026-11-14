@@ -1,28 +1,30 @@
-# Glide illustrated user guides
+# Glide 1.0.0 Illustrated User Guides
 
-Open [START-HERE.html](START-HERE.html), then choose English or Sinhala + English. The offline HTML and PDF editions are generated from `build_guides.py` and the supplied screenshots.
+Open [START-HERE.html](START-HERE.html), then choose English (`guide-en.html` / `guide-en.pdf`) or Sinhala + English (`guide-si.html` / `guide-si.pdf`). Both offline guides are generated deterministically from a single Python source of truth: `doc/user-guide/build_guides.py`.
 
-## Screenshot provenance
+## Screenshots and Annotations
 
-The user's originals are preserved under `C:\Users\GDJ\Pictures\Screenshots\Glide UI\_originals`. The active screenshot collection uses descriptive names in its Windows, Linux, and Android folders. The published images in `assets/` are byte-identical copies of those originals. The user explicitly authorized publication of the complete images without blur or masking. `screenshot-manifest.json` maps original and descriptive names and records source and published SHA-256 hashes.
-
-The 16 Ubuntu screenshots were obtained from the Ubuntu 26.04.1 LTS VM's `~/Pictures/Screenshots` folder and checked against a SHA-256 manifest generated inside the guest. The guest originals remain in place.
+- **Immutable originals**: Supplied source captures stay byte-identical inside `assets/windows/`, `assets/linux/`, and `assets/android/`.
+- **Numbered callout PNGs**: `build_guides.py` renders lossless PNG copies under `assets/annotated/<platform>/<name>-annotated.png` with rounded accent rectangles (`#5F86ED` on dark screens, `#D97706` amber on light screens), outside-placed numbered circle badges, and `"EXAMPLE ONLY - THIS CODE HAS EXPIRED"` banners on QR/numeric-code captures.
+- **Manifest**: `screenshot-manifest.json` maps every original capture, its SHA-256 checksum, its annotated image path and SHA-256, and every callout bounding box and EN/SI description (`52` rows covering all `50` unique captures + `2` exact Android duplicates).
 
 ## Rebuild
 
-Run `python doc/user-guide/package_guides.py` from the repository root to refresh the assets, HTML, PDFs, SHA-256 manifest, and transport ZIP. The package script uses Windows Microsoft Edge to print searchable PDFs with section bookmarks. `build_guides.py` refreshes only the assets and HTML.
+From the repository root:
 
-The equivalent manual PDF command, if needed, is:
+- **Rebuild HTML & annotated PNGs only** (uses existing `assets/` by default; never modifies external files):
+  ```powershell
+  python doc/user-guide/build_guides.py
+  ```
+- **Optionally import fresh screenshots non-destructively** (copies only; never deletes or renames source files):
+  ```powershell
+  python doc/user-guide/build_guides.py --source "C:\Path\To\Screenshots"
+  ```
+- **Rebuild everything (annotated PNGs, EN/SI HTML, bookmarked PDFs via Edge + `pypdf`, `SHA256SUMS.txt`, and offline transport ZIP)**:
+  ```powershell
+  python doc/user-guide/package_guides.py
+  ```
 
-```powershell
-$guide = (Resolve-Path 'doc/user-guide').Path
-$edge = 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
-foreach ($language in @('en','si')) {
-    $page = ([uri](Join-Path $guide "guide-$language.html")).AbsoluteUri
-    $pdf = Join-Path $guide "guide-$language.pdf"
-    $profile = Join-Path $env:TEMP ("glide-guide-" + [guid]::NewGuid().ToString('N'))
-    & $edge --headless=new --disable-gpu --user-data-dir="$profile" --no-pdf-header-footer --virtual-time-budget=10000 --print-to-pdf="$pdf" "$page"
-}
-```
+Requires `Pillow` for image annotation, Microsoft Edge (`--headless=new --print-to-pdf`) for offline PDF printing, and `pypdf` for adding the 10-section PDF outline bookmarks.
 
-Use `coverage-report.md` to identify illustrations or physical routes still awaiting confirmation. Verify the installed interface again before updating control names for a later release.
+See [coverage-report.md](coverage-report.md) for screenshot coverage details, uncaptured modal disclosures, and the source-verified UI label audit table (`label -> source file:line`).
