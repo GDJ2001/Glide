@@ -201,13 +201,13 @@ class StoreAssetsAndListingComplianceTest {
         val content = metadataFile.readText()
 
         // Extract Title
-        val titleMatch = Regex("""### App Title[^\n]*\n```text\n([^\n]+)\n```""").find(content)
+        val titleMatch = Regex("""### App Title[^\r\n]*\r?\n```text\r?\n([^\r\n]+)\r?\n```""").find(content)
         assertNotNull("App title block must be present", titleMatch)
         val title = titleMatch!!.groupValues[1].trim()
         assertTrue("App Title length must be in 1..30 characters (was ${title.length}: '$title')", title.length in 1..30)
 
         // Extract Short Description
-        val shortDescMatch = Regex("""### Short Description[^\n]*\n```text\n([^\n]+)\n```""").find(content)
+        val shortDescMatch = Regex("""### Short Description[^\r\n]*\r?\n```text\r?\n([^\r\n]+)\r?\n```""").find(content)
         assertNotNull("Short description block must be present", shortDescMatch)
         val shortDesc = shortDescMatch!!.groupValues[1].trim()
         assertTrue(
@@ -216,7 +216,7 @@ class StoreAssetsAndListingComplianceTest {
         )
 
         // Extract Full Description
-        val fullDescMatch = Regex("""### Full Description[^\n]*\n```text\n([\s\S]+?)\n```""").find(content)
+        val fullDescMatch = Regex("""### Full Description[^\r\n]*\r?\n```text\r?\n([\s\S]+?)\r?\n```""").find(content)
         assertNotNull("Full description block must be present", fullDescMatch)
         val fullDesc = fullDescMatch!!.groupValues[1].trim()
         assertTrue(

@@ -26,7 +26,7 @@ Write-Host "Building Android debug APK and AAB via Gradle..." -ForegroundColor C
 
 Push-Location $androidDir
 try {
-    & $gradlew :android:app:assembleDebug :android:app:bundleDebug "-Pglide.versionName=$Version" --no-daemon --console=plain
+    & $gradlew :app:assembleDebug :app:bundleDebug "-Pglide.versionName=$Version" --no-daemon --console=plain
     if ($LASTEXITCODE -ne 0) {
         throw "Gradle build failed with exit code $LASTEXITCODE"
     }

@@ -273,8 +273,11 @@ class TransferService : Service() {
                 keepReceivingInBackground = settings.keepReceivingInBackground
                 if (state !is TransferUiState.Idle) {
                     transferNotificationManager.dispatchUpdate(state, settings, serviceScope)
-                } else if (lanState is dev.glide.app.lan.LanReceiverRuntimeState.Ready) {
+                } else if (lanState is dev.glide.app.lan.LanReceiverRuntimeState.Ready ||
+                    lanState is dev.glide.app.lan.LanReceiverRuntimeState.Available) {
                     postAvailabilityNotification()
+                } else if (lanState is dev.glide.app.lan.LanReceiverRuntimeState.Error) {
+                    postUnavailableNotification()
                 }
             }
         }
@@ -337,9 +340,18 @@ class TransferService : Service() {
         return if (currentUiState !is TransferUiState.Idle) {
             transferNotificationManager.buildNotification(this, currentUiState, initialSettings)
         } else {
-            buildAvailabilityNotification()
+            buildStartingNotification()
         }
     }
+
+    private fun buildStartingNotification(): Notification =
+        NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+            .setSmallIcon(dev.glide.app.R.drawable.ic_notification)
+            .setContentTitle("Glide is starting local receiving")
+            .setContentText("Checking the local network")
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setOngoing(true)
+            .build()
 
     private fun buildAvailabilityNotification(): Notification {
         val stopIntent = Intent(this, TransferService::class.java).apply {
@@ -362,6 +374,17 @@ class TransferService : Service() {
         getSystemService(NotificationManager::class.java)?.notify(
             NOTIFICATION_ID, buildAvailabilityNotification()
         )
+    }
+
+    private fun postUnavailableNotification() {
+        val notification = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+            .setSmallIcon(dev.glide.app.R.drawable.ic_notification)
+            .setContentTitle("Glide cannot receive on this network")
+            .setContentText("Open Receive to check the connection")
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setOngoing(false)
+            .build()
+        getSystemService(NotificationManager::class.java)?.notify(NOTIFICATION_ID, notification)
     }
 
     private fun createNotificationChannel() {

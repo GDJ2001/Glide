@@ -533,7 +533,6 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
             cancellationToken.ThrowIfCancellationRequested();
             if (resolutionBudgetCts.IsCancellationRequested)
             {
-                sawUnrelatedCandidateIdentity = true;
                 break;
             }
 
@@ -797,9 +796,21 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
             request.RefreshCandidatesAsync != null &&
             !resolutionBudgetCts.IsCancellationRequested)
         {
-            candidates = (await request.RefreshCandidatesAsync(resolutionBudgetCts.Token))
-                .Take(TrustedEndpointResolver.DefaultMaxCandidates)
-                .ToArray();
+            try
+            {
+                candidates = (await request.RefreshCandidatesAsync(resolutionBudgetCts.Token))
+                    .Take(TrustedEndpointResolver.DefaultMaxCandidates)
+                    .ToArray();
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return DesktopTransferResult.CancelledByUser("Transfer cancelled.");
+            }
+            catch (Exception)
+            {
+                // Discovery failure does not revoke trust or imply an identity change.
+                break;
+            }
             sawStalePresence = false;
             continue;
         }

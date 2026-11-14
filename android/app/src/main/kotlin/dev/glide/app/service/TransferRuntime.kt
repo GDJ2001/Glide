@@ -398,7 +398,10 @@ class TransferRuntime private constructor(
                     transport = transport,
                     peerId = peer.id,
                     peerDisplayName = peer.displayName,
-                    expectedPeerFingerprintHex = transport.trustedInboundPeerFingerprint(peer.id)
+                    expectedPeerFingerprintHex =
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q)
+                            transport.trustedInboundPeerFingerprint(peer.id)
+                        else null
                 )
             )
             if (!started) {
