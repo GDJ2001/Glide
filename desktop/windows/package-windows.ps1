@@ -17,7 +17,8 @@ param(
     [string]$NsisCompiler = "",
     [string]$UpdateFeedUrl = "",
     [string]$UpdatePublicKey = "",
-    [switch]$SkipInstaller
+    [switch]$SkipInstaller,
+    [switch]$SkipPublish
 )
 
 $ErrorActionPreference = "Stop"
@@ -32,25 +33,33 @@ $portableArchive = Join-Path $outputRoot "glide-windows-$Runtime.zip"
 $installerOutput = Join-Path $outputRoot "Glide-Setup-$Version-$Runtime.exe"
 
 New-Item -ItemType Directory -Force -Path $outputRoot | Out-Null
-if (Test-Path $stageDirectory) {
-    Remove-Item -LiteralPath $stageDirectory -Recurse -Force
-}
 
-Write-Host "Publishing Glide $Version for $Runtime..." -ForegroundColor Cyan
-dotnet publish $project `
-    --configuration $Configuration `
-    --runtime $Runtime `
-    --self-contained true `
-    /p:PublishSingleFile=true `
-    /p:IncludeNativeLibrariesForSelfExtract=true `
-    /p:DebugType=None `
-    /p:DebugSymbols=false `
-    /p:Version=$Version `
-    /p:GlideUpdateFeedUrl=$UpdateFeedUrl `
-    /p:GlideUpdatePublicKey=$UpdatePublicKey `
-    --output $stageDirectory
-if ($LASTEXITCODE -ne 0) {
-    throw "Windows publish failed."
+if (-not $SkipPublish) {
+    if (Test-Path $stageDirectory) {
+        Remove-Item -LiteralPath $stageDirectory -Recurse -Force
+    }
+
+    Write-Host "Publishing Glide $Version for $Runtime..." -ForegroundColor Cyan
+    dotnet publish $project `
+        --configuration $Configuration `
+        --runtime $Runtime `
+        --self-contained true `
+        /p:PublishSingleFile=true `
+        /p:IncludeNativeLibrariesForSelfExtract=true `
+        /p:DebugType=None `
+        /p:DebugSymbols=false `
+        /p:Version=$Version `
+        /p:GlideUpdateFeedUrl=$UpdateFeedUrl `
+        /p:GlideUpdatePublicKey=$UpdatePublicKey `
+        --output $stageDirectory
+    if ($LASTEXITCODE -ne 0) {
+        throw "Windows publish failed."
+    }
+} else {
+    Write-Host "Reusing pre-staged binaries from '$stageDirectory' (-SkipPublish specified)..." -ForegroundColor Yellow
+    if (-not (Test-Path -LiteralPath $stageDirectory) -or -not (Test-Path -LiteralPath (Join-Path $stageDirectory "Glide.exe"))) {
+        throw "Cannot skip publish: staged binaries not found at '$stageDirectory'."
+    }
 }
 
 if (-not (Test-Path -LiteralPath $icon)) {
@@ -95,11 +104,18 @@ if ($LASTEXITCODE -ne 0) {
 
 $portableHash = (Get-FileHash -Algorithm SHA256 -Path $portableArchive).Hash.ToLowerInvariant()
 $installerHash = (Get-FileHash -Algorithm SHA256 -Path $installerOutput).Hash.ToLowerInvariant()
+$msiInstaller = Join-Path $outputRoot "Glide-Setup-$Version-$Runtime.msi"
+
 $shaFile = Join-Path $outputRoot "SHA256SUMS-$Runtime.txt"
-@(
-    "$portableHash  $(Split-Path -Leaf $portableArchive)",
-    "$installerHash  $(Split-Path -Leaf $installerOutput)"
-) | Set-Content -Path $shaFile -Encoding utf8
+$shaEntries = @(
+    "$installerHash  $(Split-Path -Leaf $installerOutput)",
+    "$portableHash  $(Split-Path -Leaf $portableArchive)"
+)
+if (Test-Path -LiteralPath $msiInstaller) {
+    $msiHash = (Get-FileHash -Algorithm SHA256 -Path $msiInstaller).Hash.ToLowerInvariant()
+    $shaEntries += "$msiHash  $(Split-Path -Leaf $msiInstaller)"
+}
+$shaEntries | Sort-Object | Set-Content -Path $shaFile -Encoding utf8
 
 $commit = (git -C $repoRoot rev-parse HEAD).Trim()
 $dotnetVersion = (dotnet --version).Trim()
@@ -107,18 +123,21 @@ $nsisVersionOutput = (& $NsisCompiler -VERSION 2>&1)
 $nsisVersion = if ($LASTEXITCODE -eq 0) { $nsisVersionOutput.Trim() } else { "NSIS 3.12+" }
 
 $manifestFile = Join-Path $outputRoot "BUILD-MANIFEST.txt"
-@"
-source_commit=$commit
-build_utc=$((Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ'))
-dotnet_sdk=$dotnetVersion
-nsis_version=$nsisVersion
-package_version=$Version
-runtime=$Runtime
-installer_artifact=$(Split-Path -Leaf $installerOutput)
-portable_artifact=$(Split-Path -Leaf $portableArchive)
-signing_status=unsigned_development
-installability=development_installable_unsigned
-"@ | Set-Content -Path $manifestFile -Encoding utf8
+$manifestLines = [System.Collections.Generic.List[string]]::new()
+$manifestLines.Add("source_commit=$commit")
+$manifestLines.Add("build_utc=$((Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ'))")
+$manifestLines.Add("dotnet_sdk=$dotnetVersion")
+$manifestLines.Add("nsis_version=$nsisVersion")
+$manifestLines.Add("package_version=$Version")
+$manifestLines.Add("runtime=$Runtime")
+$manifestLines.Add("installer_artifact=$(Split-Path -Leaf $installerOutput)")
+if (Test-Path -LiteralPath $msiInstaller) {
+    $manifestLines.Add("msi_artifact=$(Split-Path -Leaf $msiInstaller)")
+}
+$manifestLines.Add("portable_artifact=$(Split-Path -Leaf $portableArchive)")
+$manifestLines.Add("signing_status=unsigned_development")
+$manifestLines.Add("installability=development_installable_unsigned")
+$manifestLines | Set-Content -Path $manifestFile -Encoding utf8
 
 Write-Host "Portable archive: $portableArchive" -ForegroundColor Green
 Write-Host "Installer: $installerOutput" -ForegroundColor Green
