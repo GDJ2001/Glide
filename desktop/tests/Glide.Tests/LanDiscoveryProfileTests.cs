@@ -12,6 +12,30 @@ public sealed class LanDiscoveryProfileTests
     private const string Presence =
         "0123456789abcdef0123456789abcdef";
 
+    // Android NsdManager response captured from a phone advertising a live trusted
+    // listener. Its additional records use compressed DNS names and include an
+    // AAAA record before the TXT and SRV records.
+    private const string AndroidTrustedAnnouncement =
+        "000084000000000100000006065F676C696465045F746370056C6F63616C00000C00010000119400110E476C6964652D3439313534343333C00C" +
+        "10416E64726F69645F4D54305643434D46C018001C8001000000780010FE80000000000000700C2EFFFECC0AC2C03A002F800100000078" +
+        "0008C03A000440000008C0290010800100001194004E22703D3439313534343333646230393437393238386133373834353364323764666663" +
+        "03713D3103763D310F646E3D476C696465204465766963650864743D70686F6E650474723D310474763D31C02900218001000000780008" +
+        "000000008693C03AC03A00018001000000780004C0A8007DC029002F8001000000780009C02900050000800040";
+
+    [Fact]
+    public void AndroidCompressedAnnouncement_ExposesCurrentTrustedEndpoint()
+    {
+        using var service = new MdnsDiscoveryService();
+        service.ProcessIncomingPacketForTesting(
+            Convert.FromHexString(AndroidTrustedAnnouncement),
+            new IPEndPoint(IPAddress.Parse("192.168.0.125"), 5353));
+
+        DiscoveredPeer peer = Assert.Single(service.Snapshot.Peers);
+        Assert.Equal("192.168.0.125", peer.Host);
+        Assert.Equal(34451, peer.Port);
+        Assert.True(peer.SupportsTrustedReconnect);
+    }
+
     [Fact]
     public void CanonicalAvailabilityRecord_MatchesAndroidProfile()
     {

@@ -1509,37 +1509,55 @@ public sealed class MdnsDiscoveryService : IDisposable
     private static string ReadDnsName(byte[] buffer, ref int offset)
     {
         var builder = new StringBuilder();
-        int visited = 0;
         int current = offset;
+        int consumedOffset = -1;
+        int pointerCount = 0;
+        int nameWireBytes = 0;
 
-        while (current < buffer.Length && visited < 10)
+        while (current < buffer.Length)
         {
             byte length = buffer[current++];
             if (length == 0)
             {
-                offset = current;
-                break;
+                offset = consumedOffset >= 0 ? consumedOffset : current;
+                return builder.ToString();
             }
 
             if ((length & 0xC0) == 0xC0)
             {
-                if (current >= buffer.Length) break;
+                if (current >= buffer.Length)
+                {
+                    throw new InvalidDataException("Truncated DNS name pointer.");
+                }
                 int pointerOffset =
                     ((length & 0x3F) << 8) | buffer[current++];
-                offset = current;
+                if (pointerOffset >= buffer.Length || ++pointerCount > 10)
+                {
+                    throw new InvalidDataException("Invalid DNS name pointer.");
+                }
+                // Following the pointer must not move the caller's record cursor
+                // back into the pointed-to name. Android NSD compresses the owner
+                // names of its TXT, SRV and address records this way.
+                if (consumedOffset < 0)
+                {
+                    consumedOffset = current;
+                }
                 current = pointerOffset;
-                visited++;
                 continue;
             }
 
-            if (current + length > buffer.Length) break;
+            if ((length & 0xC0) != 0 || current + length > buffer.Length ||
+                (nameWireBytes += length + 1) > 255)
+            {
+                throw new InvalidDataException("Invalid DNS name label.");
+            }
             if (builder.Length > 0) builder.Append('.');
             builder.Append(
                 Encoding.UTF8.GetString(buffer, current, length));
             current += length;
         }
 
-        return builder.ToString();
+        throw new InvalidDataException("Unterminated DNS name.");
     }
 
     private static void SkipDnsName(byte[] buffer, ref int offset)
