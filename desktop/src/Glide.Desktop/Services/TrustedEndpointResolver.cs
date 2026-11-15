@@ -84,9 +84,7 @@ public static class TrustedEndpointResolver
             }
 
             foreach (var item in eligibleDiscovery
-                .OrderBy(x => x.NameRank)
-                .ThenBy(x => x.Endpoint.Address, StringComparer.Ordinal)
-                .ThenBy(x => x.Endpoint.Port))
+                .OrderBy(x => x.NameRank))
             {
                 if (results.Count >= limit)
                 {

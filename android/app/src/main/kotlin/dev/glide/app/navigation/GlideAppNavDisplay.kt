@@ -201,7 +201,11 @@ fun GlideAppNavDisplay(
                         backStack.add(GlideRoute.QrScanner(purpose = QrScanPurpose.PAIR_ONLY))
                     },
                     onSelectPairedDevice = { peer ->
-                        backStack.add(GlideRoute.Selection())
+                        backStack.add(
+                            GlideRoute.Selection(
+                                pairedPeerFingerprintHex = peer.peerFingerprintHex
+                            )
+                        )
                     },
                     recentActivities = recentSessions
                         .filter { it.outcome != null }
@@ -222,6 +226,33 @@ fun GlideAppNavDisplay(
                 )
             }
             entry<GlideRoute.Selection> { route ->
+                val context = androidx.compose.ui.platform.LocalContext.current
+                val proceedWithBatch: (dev.glide.core.domain.BatchId) -> Unit = { batchId ->
+                    val fingerprint = route.pairedPeerFingerprintHex
+                    if (fingerprint != null && transferRuntime != null) {
+                        dev.glide.app.service.TransferService.startTrustedSender(
+                            context = context,
+                            selectionId = batchId,
+                            peerFingerprintHex = fingerprint
+                        )
+                        backStack.add(
+                            GlideRoute.Transfer(
+                                sessionId = "trusted-send-${java.util.UUID.randomUUID()}",
+                                batchId = batchId.value,
+                                pairedPeerFingerprintHex = fingerprint
+                            )
+                        )
+                    } else {
+                        val sourceHandles = dev.glide.app.ui.selection.SelectedTransferStore
+                            .getSourceMap(batchId).values.map { it.value }
+                        backStack.add(
+                            GlideRoute.Discovery(
+                                batchId = batchId.value,
+                                sourceHandles = sourceHandles
+                            )
+                        )
+                    }
+                }
                 SelectionScreen(
                     initialUris = route.initialUris.map { android.net.Uri.parse(it) },
                     onBack = {
@@ -230,11 +261,15 @@ fun GlideAppNavDisplay(
                         }
                     },
                     onProceedToSend = { handle ->
-                        backStack.add(GlideRoute.Discovery(sourceHandles = listOf(handle.value)))
+                        val activeBatchId = dev.glide.app.ui.selection.SelectedTransferStore.getActive()?.batch?.id
+                        if (activeBatchId != null) {
+                            proceedWithBatch(activeBatchId)
+                        } else if (route.pairedPeerFingerprintHex == null) {
+                            backStack.add(GlideRoute.Discovery(sourceHandles = listOf(handle.value)))
+                        }
                     },
                     onProceedToSendBatch = { batch ->
-                        val sourceHandles = dev.glide.app.ui.selection.SelectedTransferStore.getSourceMap(batch.id).values.map { it.value }
-                        backStack.add(GlideRoute.Discovery(batchId = batch.id.value, sourceHandles = sourceHandles))
+                        proceedWithBatch(batch.id)
                     }
                 )
             }
@@ -614,7 +649,11 @@ fun GlideAppNavDisplay(
                     onConfirmMatch = { peerId -> viewModel.confirmPairing(peerId) },
                     onRejectMatch = { peerId -> viewModel.rejectPairing(peerId) },
                     onScanNewCode = {
-                        restartQrScanAfterPairingFailure(backStack, route)
+                        if (route.pairedPeerFingerprintHex != null) {
+                            if (backStack.size > 1) backStack.removeAt(backStack.lastIndex)
+                        } else {
+                            restartQrScanAfterPairingFailure(backStack, route)
+                        }
                     },
                     onApproveTrust = { viewModel.approvePendingTrust() },
                     onRejectTrust = { viewModel.rejectPendingTrust() },
@@ -629,7 +668,12 @@ fun GlideAppNavDisplay(
                     onRetryTransfer = {
                         val remainingUris = viewModel.getUnfinishedSourceUris()
                         if (remainingUris.isNotEmpty()) {
-                            backStack.add(GlideRoute.Selection(remainingUris))
+                            backStack.add(
+                                GlideRoute.Selection(
+                                    initialUris = remainingUris,
+                                    pairedPeerFingerprintHex = route.pairedPeerFingerprintHex
+                                )
+                            )
                         } else {
                             if (backStack.size > 1) {
                                 backStack.removeAt(backStack.lastIndex)

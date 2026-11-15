@@ -10,6 +10,7 @@ import dev.glide.app.config.LanFeatureConfig
 import dev.glide.app.permission.PermissionPolicy
 import dev.glide.core.domain.PeerDevice
 import dev.glide.core.domain.PeerId
+import dev.glide.core.domain.TrustedPeerRecord
 import dev.glide.core.identity.PersistentTrustManager
 import dev.glide.core.pairing.LanEndpoint
 import dev.glide.core.pairing.LanInvitation
@@ -29,6 +30,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -506,6 +508,132 @@ class ProductionLanController private constructor(
         return true
     }
 
+    /** Resolve a current LAN endpoint for an enrolled identity without minting a QR invitation. */
+    @SuppressLint("NewApi")
+    fun startTrustedSender(
+        ownerScope: CoroutineScope,
+        trustedPeer: TrustedPeerRecord,
+        trustManager: PersistentTrustManager,
+        localDeviceName: String,
+        onConnected: (LanTransferTransport, PeerDevice) -> Unit,
+        onFailure: (dev.glide.transport.lan.LanConnectionFailure) -> Unit
+    ): Boolean {
+        val readinessError = readinessError()
+        if (readinessError != null) {
+            onFailure(dev.glide.transport.lan.LanConnectionFailure.NetworkUnavailable(readinessError))
+            return false
+        }
+
+        stopAll()
+        val generation = synchronized(lock) { ++lifecycleGeneration }
+        setupJob = ownerScope.launch {
+            var networkScope: LanNetworkScope? = null
+            var transport: LanTransferTransport? = null
+            var transportScope: CoroutineScope? = null
+            try {
+                networkScope = networkScopeFactory()
+                check(awaitAvailableNetwork(networkScope) != null) {
+                    "No eligible local network is available."
+                }
+                val activeScope = childScope(ownerScope)
+                transportScope = activeScope
+                val activeTransport = transportFactory(networkScope, activeScope)
+                transport = activeTransport
+                val discovery = activeTransport.nsdDiscoveryAdapter
+                    ?: throw IllegalStateException("Local device discovery is unavailable.")
+                discovery.clearObservations()
+                discovery.startDiscovery()
+                val deadlineNs = System.nanoTime() + TRUSTED_DISCOVERY_TIMEOUT_MS * 1_000_000
+                fun currentCandidates(): List<dev.glide.transport.lan.discovery.NsdDiscoveryAdapter.TrustedReconnectCandidate> {
+                    val currentGeneration =
+                        (networkScope.networkState.value as? LanNetworkState.Available)?.generation
+                            ?: return emptyList()
+                    val nowMs = System.currentTimeMillis()
+                    return discovery.getTrustedReconnectCandidates().filter {
+                        it.networkGeneration == currentGeneration &&
+                            nowMs - it.observedAtMs in 0..TRUSTED_CANDIDATE_MAX_AGE_MS
+                    }
+                }
+                var found = currentCandidates()
+                while (found.none { it.displayName.equals(trustedPeer.displayName, ignoreCase = true) } &&
+                    System.nanoTime() < deadlineNs) {
+                    delay(150)
+                    found = currentCandidates()
+                }
+                discovery.stopDiscovery()
+
+                // Names order candidates; the selected saved identity is verified before any offer.
+                val candidates = found
+                    .sortedWith(compareByDescending<dev.glide.transport.lan.discovery.NsdDiscoveryAdapter.TrustedReconnectCandidate> {
+                        it.displayName.equals(trustedPeer.displayName, ignoreCase = true)
+                    }.thenByDescending { it.observedAtMs })
+                    .take(MAX_TRUSTED_CANDIDATES)
+                if (candidates.isEmpty()) {
+                    throw IllegalStateException("The paired device is not available on this network.")
+                }
+
+                val peerId = PeerId("lan-trusted-${java.util.UUID.randomUUID()}")
+                activeTransport.registerPendingTrustedPeer(
+                    peerId,
+                    LanTransferTransport.PendingTrustedPeer(
+                        expectedFingerprintHex = trustedPeer.peerFingerprintHex,
+                        expectedPublicKeyDerHex = trustedPeer.publicKeyDerHex,
+                        displayName = trustedPeer.displayName,
+                        endpoints = candidates.map { LanEndpoint(it.address, it.port) }.distinct(),
+                        localIdentityPublicKeyDer = trustManager.localPublicKeyDer(),
+                        expectedPresenceId = candidates.singleOrNull()?.presenceId
+                    )
+                )
+                val connectionJob = activeScope.launch {
+                    activeTransport.observeConnectionEvents().collect { event ->
+                        if (!isCurrentGeneration(generation)) return@collect
+                        when (event) {
+                            is ConnectionEvent.Connected -> onConnected(activeTransport, event.peer)
+                            is ConnectionEvent.Failed -> onFailure(
+                                dev.glide.transport.lan.LanConnectionFailure.Other(event.reason)
+                            )
+                            is ConnectionEvent.Rejected -> onFailure(
+                                dev.glide.transport.lan.LanConnectionFailure.Other("Connection declined.")
+                            )
+                            else -> Unit
+                        }
+                    }
+                }
+                synchronized(lock) {
+                    senderResources = SenderResources(
+                        networkScope = networkScope,
+                        transport = activeTransport,
+                        transportScope = activeScope,
+                        connectionJob = connectionJob
+                    )
+                }
+                activeTransport.initiateConnection(peerId, localDeviceName)
+            } catch (cancelled: CancellationException) {
+                runCatching { transport?.close() }
+                runCatching { networkScope?.close() }
+                transportScope?.cancel()
+            } catch (error: Throwable) {
+                runCatching { transport?.close() }
+                runCatching { networkScope?.close() }
+                transportScope?.cancel()
+                if (isCurrentGeneration(generation)) {
+                    val failure = when (error) {
+                        is dev.glide.transport.lan.LanConnectionException -> error.failure
+                        is javax.net.ssl.SSLHandshakeException ->
+                            dev.glide.transport.lan.LanConnectionFailure.AuthenticationFailed()
+                        is java.net.SocketTimeoutException ->
+                            dev.glide.transport.lan.LanConnectionFailure.Timeout()
+                        else -> dev.glide.transport.lan.LanConnectionFailure.Other(
+                            error.message ?: "Could not connect to the paired device."
+                        )
+                    }
+                    onFailure(failure)
+                }
+            }
+        }
+        return true
+    }
+
     /**
      * Connects to a sender-hosted invitation. The socket initiator is the local receiver;
      * transfer direction is therefore intentionally independent of connection direction.
@@ -657,6 +785,9 @@ class ProductionLanController private constructor(
 
     companion object {
         private const val NETWORK_READY_TIMEOUT_MS = 5_000L
+        private const val TRUSTED_DISCOVERY_TIMEOUT_MS = 6_000L
+        private const val TRUSTED_CANDIDATE_MAX_AGE_MS = 10_000L
+        private const val MAX_TRUSTED_CANDIDATES = 8
 
         @SuppressLint("NewApi")
         internal fun forTesting(

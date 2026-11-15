@@ -58,6 +58,15 @@ class NsdDiscoveryAdapter(
     private val coroutineScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 ) : Closeable {
 
+    data class TrustedReconnectCandidate(
+        val displayName: String,
+        val address: String,
+        val port: Int,
+        val presenceId: String,
+        val observedAtMs: Long,
+        val networkGeneration: Long
+    )
+
     enum class RegistrationStatus { Stopped, Registering, Ready, Failed }
     private val _registrationStatus = MutableStateFlow(RegistrationStatus.Stopped)
     val registrationStatus: StateFlow<RegistrationStatus> = _registrationStatus.asStateFlow()
@@ -79,6 +88,7 @@ class NsdDiscoveryAdapter(
 
     // Max 64 cached observations (serviceName -> PeerObservation)
     private val observationCache = Collections.synchronizedMap(LinkedHashMap<String, PeerObservation>(64, 0.75f, true))
+    private val trustedCandidates = Collections.synchronizedMap(LinkedHashMap<String, TrustedReconnectCandidate>())
 
     private var activeDiscoveryCallback: NsdDiscoveryCallback? = null
     private var activeRegistrationCallback: NsdRegistrationCallback? = null
@@ -298,9 +308,22 @@ class NsdDiscoveryAdapter(
                 val oldestKey = observationCache.keys.firstOrNull()
                 if (oldestKey != null) {
                     observationCache.remove(oldestKey)
+                    trustedCandidates.remove(oldestKey)
                 }
             }
             observationCache[resolved.serviceName] = observation
+            if (txtRecord.supportsTrustedReconnect && resolved.port in 1..65535) {
+                trustedCandidates[resolved.serviceName] = TrustedReconnectCandidate(
+                    displayName = observation.label,
+                    address = eligibleAddress.hostAddress?.substringBefore('%') ?: return,
+                    port = resolved.port,
+                    presenceId = txtRecord.p,
+                    observedAtMs = observation.observedAtMs,
+                    networkGeneration = networkGeneration
+                )
+            } else {
+                trustedCandidates.remove(resolved.serviceName)
+            }
         }
 
         // 5. Emit PeerAppeared
@@ -313,6 +336,7 @@ class NsdDiscoveryAdapter(
 
     private fun handleServiceLost(service: NsdDiscoveredService) {
         val removed = synchronized(observationCache) {
+            trustedCandidates.remove(service.serviceName)
             observationCache.remove(service.serviceName)
         }
         if (removed != null) {
@@ -324,8 +348,14 @@ class NsdDiscoveryAdapter(
         return synchronized(observationCache) { observationCache.values.toList() }
     }
 
+    fun getTrustedReconnectCandidates(): List<TrustedReconnectCandidate> =
+        synchronized(observationCache) { trustedCandidates.values.toList() }
+
     fun clearObservations() {
-        synchronized(observationCache) { observationCache.clear() }
+        synchronized(observationCache) {
+            observationCache.clear()
+            trustedCandidates.clear()
+        }
     }
 
     override fun close() {

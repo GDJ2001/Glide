@@ -154,6 +154,51 @@ class NsdDiscoveryAdapterTest {
     }
 
     @Test
+    fun trustedCandidatesRequireCapabilityAndDisappearWhenServiceIsLost(): Unit = runBlocking {
+        val fakeClient = FakeNsdClientWrapper()
+        val adapter = NsdDiscoveryAdapter(fakeClient, createNetworkScopeStub())
+        adapter.startDiscovery()
+        val service = NsdDiscoveredService("Glide-desktop", NsdDiscoveryAdapter.DEFAULT_SERVICE_TYPE)
+        val host = InetAddress.getByName("192.168.1.50")
+        var supportsReconnect = false
+        fakeClient.autoResolveService = {
+            NsdResolvedService(
+                serviceName = service.serviceName,
+                serviceType = service.serviceType,
+                host = host,
+                port = 42424,
+                attributes = LanTxtCodec.encode(
+                    LanTxtRecord(
+                        v = 1, tv = 1, q = 1, p = testPresence,
+                        dn = "Desktop", dt = LanTxtRecord.DEVICE_TYPE_DESKTOP,
+                        supportsTrustedReconnect = supportsReconnect
+                    )
+                )
+            )
+        }
+
+        fakeClient.simulateServiceFound(service)
+        withTimeout(5_000) {
+            while (adapter.getCachedObservations().isEmpty()) kotlinx.coroutines.delay(20)
+        }
+        assertTrue(adapter.getTrustedReconnectCandidates().isEmpty())
+
+        supportsReconnect = true
+        fakeClient.simulateServiceFound(service)
+        withTimeout(5_000) {
+            while (adapter.getTrustedReconnectCandidates().isEmpty()) kotlinx.coroutines.delay(20)
+        }
+        val candidate = adapter.getTrustedReconnectCandidates().single()
+        assertEquals("192.168.1.50", candidate.address)
+        assertEquals(42424, candidate.port)
+        assertEquals(testPresence, candidate.presenceId)
+
+        fakeClient.simulateServiceLost(service)
+        assertTrue(adapter.getTrustedReconnectCandidates().isEmpty())
+        adapter.close()
+    }
+
+    @Test
     fun testServiceLostRemovesObservationAndEmitsPeerLost(): Unit = runBlocking {
         val fakeClient = FakeNsdClientWrapper()
         val scope = createNetworkScopeStub()

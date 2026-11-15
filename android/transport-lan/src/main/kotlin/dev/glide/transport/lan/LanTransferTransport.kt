@@ -610,7 +610,8 @@ class LanTransferTransport(
                 initiatorDeviceName = localDeviceName,
                 initiatorPlatform = "android",
                 initiatorIdentityPublicKey = encoder.encodeToString(trustedPeer.localIdentityPublicKeyDer),
-                expectedPresenceId = trustedPeer.expectedPresenceId
+                expectedPresenceId = trustedPeer.expectedPresenceId,
+                expectedPeerIdentityFingerprint = trustedPeer.expectedFingerprintHex
             )
             dev.glide.core.pairing.Profile2WireCodec.writeMessage(outputStream, open)
 

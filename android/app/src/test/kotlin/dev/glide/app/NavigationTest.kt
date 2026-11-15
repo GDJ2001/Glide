@@ -55,6 +55,26 @@ class NavigationTest {
     }
 
     @Test
+    fun savedDeviceSend_keepsIdentityThroughSelectionAndReturnsWithoutQr() {
+        val selection = GlideRoute.Selection(pairedPeerFingerprintHex = "a".repeat(64))
+        val restored = json.decodeFromString(
+            GlideRoute.serializer(),
+            json.encodeToString(GlideRoute.serializer(), selection)
+        )
+        assertEquals(selection, restored)
+        val transfer = GlideRoute.Transfer(
+            sessionId = "trusted-send-1",
+            batchId = "batch-1",
+            pairedPeerFingerprintHex = selection.pairedPeerFingerprintHex
+        )
+        val backStack = NavBackStack<NavKey>(GlideRoute.Home)
+        backStack.add(selection)
+        backStack.add(transfer)
+        assertTrue(returnToFileSelectionAfterSend(backStack, transfer))
+        assertEquals(listOf(GlideRoute.Home, selection), backStack.toList())
+    }
+
+    @Test
     fun discoveryRoute_serializationRoundTrip() {
         val original = GlideRoute.Discovery(batchId = "batch-1", sourceHandles = listOf("handle-1", "handle-2"))
         val serialized = json.encodeToString(GlideRoute.serializer(), original)

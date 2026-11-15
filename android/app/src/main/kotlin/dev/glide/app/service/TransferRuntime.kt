@@ -270,6 +270,8 @@ class TransferRuntime private constructor(
                 startNearbySenderPairing(command)
             is TransferRuntimeCommand.StartLanSenderPairing ->
                 startLanSenderPairing(command)
+            is TransferRuntimeCommand.StartTrustedSender ->
+                startTrustedSender(command)
             is TransferRuntimeCommand.StartLanReceiverPairing ->
                 startLanReceiverPairing(command)
             is TransferRuntimeCommand.StartLanReceiver ->
@@ -371,6 +373,71 @@ class TransferRuntime private constructor(
                     primaryActionLabel = actionable.primaryActionLabel,
                     secondaryActionLabel = actionable.secondaryActionLabel,
                     troubleshootingHint = actionable.troubleshootingHint
+                )
+                terminalCallback?.invoke()
+            }
+        )
+    }
+
+    private fun startTrustedSender(command: TransferRuntimeCommand.StartTrustedSender): Boolean {
+        if (_isSessionActive.value) {
+            return failPairing("Device is busy", "Finish the current transfer, then try again.")
+        }
+        val controller = lanController ?: return failPairing(
+            "LAN unavailable", "Local network transfer is unavailable."
+        )
+        val manager = persistentTrustManager ?: return failPairing(
+            "Trust unavailable", "Saved device identity is unavailable."
+        )
+        val scope = synchronized(lock) { serviceScope } ?: return failPairing(
+            "Transfer service unavailable", "The transfer service is unavailable."
+        )
+        val prepared = SelectedTransferStore.get(command.selectionId) ?: return failPairing(
+            "Selection unavailable", "Choose files to send again."
+        )
+        if (prepared.batch.items.isEmpty() || prepared.sourceMap.isEmpty()) {
+            return failPairing("Selection unavailable", "Choose files to send again.")
+        }
+        val trustedPeer = _trustState.value.trustedPeers.firstOrNull {
+            it.peerFingerprintHex == command.peerFingerprintHex
+        } ?: return failPairing("Device no longer paired", "This device is no longer saved. Pair it again.")
+
+        discoveryController?.stopDiscovery()
+        discoveryController?.stopAdvertising()
+        clearPairingBinding()
+        _pairingState.value = PairingUiState.Connecting(
+            peerId = PeerId("saved-${trustedPeer.peerFingerprintHex.take(16)}"),
+            peerName = trustedPeer.displayName,
+            deviceType = DeviceType.fromDeviceName(trustedPeer.displayName)
+        )
+        return controller.startTrustedSender(
+            ownerScope = scope,
+            trustedPeer = trustedPeer,
+            trustManager = manager,
+            localDeviceName = command.localDeviceName,
+            onConnected = { transport, peer ->
+                _pairingState.value = PairingUiState.Connected(peer)
+                if (!startSender(
+                        TransferRuntimeCommand.StartSender(
+                            selectionId = command.selectionId,
+                            transport = transport,
+                            peerId = peer.id,
+                            peerDisplayName = trustedPeer.displayName,
+                            expectedPeerFingerprintHex = trustedPeer.peerFingerprintHex
+                        )
+                    )) {
+                    failPairing("Transfer could not start", "Choose the files again and retry.")
+                    terminalCallback?.invoke()
+                }
+            },
+            onFailure = { failure ->
+                val identityFailed = failure is dev.glide.transport.lan.LanConnectionFailure.AuthenticationFailed ||
+                    failure.message.contains("Identity changed", ignoreCase = true)
+                failPairing(
+                    title = if (identityFailed) "Device identity changed" else "Could not connect",
+                    message = if (identityFailed) "This saved device could not be verified. Pair it again."
+                        else "Keep Glide open on the receiving device and check the local network, then try again.",
+                    primaryActionLabel = "Try again"
                 )
                 terminalCallback?.invoke()
             }
@@ -1494,6 +1561,12 @@ sealed interface TransferRuntimeCommand {
     data class StartLanSenderPairing(
         val selectionId: BatchId? = null,
         val invitation: LanInvitation,
+        val localDeviceName: String = "Glide Device"
+    ) : TransferRuntimeCommand
+
+    data class StartTrustedSender(
+        val selectionId: BatchId,
+        val peerFingerprintHex: String,
         val localDeviceName: String = "Glide Device"
     ) : TransferRuntimeCommand
 

@@ -145,6 +145,27 @@ class TransferService : Service() {
                 }
             }
 
+            ACTION_START_TRUSTED_SENDER -> {
+                startForegroundWithNotification()
+                startNotificationUpdates()
+                val selectionId = intent?.getStringExtra(EXTRA_SELECTION_ID)?.let(::BatchId)
+                val fingerprint = intent?.getStringExtra(EXTRA_PEER_FINGERPRINT)
+                val localDeviceName =
+                    intent?.getStringExtra(EXTRA_LOCAL_DEVICE_NAME) ?: "Glide Device"
+                serviceScope.launch {
+                    val started = selectionId != null && fingerprint != null &&
+                        runtime().refreshPersistentTrustState() &&
+                        runtime().dispatch(
+                            TransferRuntimeCommand.StartTrustedSender(
+                                selectionId = selectionId,
+                                peerFingerprintHex = fingerprint,
+                                localDeviceName = localDeviceName
+                            )
+                        )
+                    if (!started) handleTerminalTeardown()
+                }
+            }
+
             ACTION_START_LAN_RECEIVER_PAIRING -> {
                 startForegroundWithNotification()
                 startNotificationUpdates()
@@ -454,6 +475,8 @@ class TransferService : Service() {
                 }.orEmpty()
                 "lan-sender:$selection:$invitationId"
             }
+            ACTION_START_TRUSTED_SENDER ->
+                "trusted-sender:${intent?.getStringExtra(EXTRA_ATTEMPT_ID).orEmpty()}"
             ACTION_START_LAN_RECEIVER -> null
             ACTION_START_LAN_RECEIVER_PAIRING -> {
                 val encoded = intent?.getStringExtra(EXTRA_LAN_INVITATION)
@@ -491,6 +514,8 @@ class TransferService : Service() {
             "dev.glide.app.action.START_NEARBY_RECEIVER"
         const val ACTION_START_LAN_SENDER =
             "dev.glide.app.action.START_LAN_SENDER"
+        const val ACTION_START_TRUSTED_SENDER =
+            "dev.glide.app.action.START_TRUSTED_SENDER"
         const val ACTION_START_LAN_RECEIVER =
             "dev.glide.app.action.START_LAN_RECEIVER"
         const val ACTION_START_LAN_RECEIVER_PAIRING =
@@ -510,6 +535,8 @@ class TransferService : Service() {
         const val EXTRA_SELECTION_ID = "dev.glide.app.extra.SELECTION_ID"
         const val EXTRA_LOCAL_DEVICE_NAME = "dev.glide.app.extra.LOCAL_DEVICE_NAME"
         const val EXTRA_LAN_INVITATION = "dev.glide.app.extra.LAN_INVITATION"
+        const val EXTRA_PEER_FINGERPRINT = "dev.glide.app.extra.PEER_FINGERPRINT"
+        const val EXTRA_ATTEMPT_ID = "dev.glide.app.extra.ATTEMPT_ID"
         const val EXTRA_IS_LAN = "dev.glide.app.extra.IS_LAN"
 
         const val NOTIFICATION_CHANNEL_ID = "glide_transfer_channel"
@@ -581,6 +608,26 @@ class TransferService : Service() {
                 putExtra(EXTRA_LAN_INVITATION, InvitationCodec.encode(invitation))
                 putExtra(EXTRA_LOCAL_DEVICE_NAME, localDeviceName)
                 selectionId?.let { putExtra(EXTRA_SELECTION_ID, it.value) }
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
+
+        fun startTrustedSender(
+            context: Context,
+            selectionId: BatchId,
+            peerFingerprintHex: String,
+            localDeviceName: String = "Glide Device"
+        ) {
+            val intent = Intent(context, TransferService::class.java).apply {
+                action = ACTION_START_TRUSTED_SENDER
+                putExtra(EXTRA_SELECTION_ID, selectionId.value)
+                putExtra(EXTRA_PEER_FINGERPRINT, peerFingerprintHex)
+                putExtra(EXTRA_LOCAL_DEVICE_NAME, localDeviceName)
+                putExtra(EXTRA_ATTEMPT_ID, java.util.UUID.randomUUID().toString())
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
