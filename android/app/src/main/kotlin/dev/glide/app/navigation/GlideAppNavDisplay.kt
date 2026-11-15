@@ -228,30 +228,20 @@ fun GlideAppNavDisplay(
             entry<GlideRoute.Selection> { route ->
                 val context = androidx.compose.ui.platform.LocalContext.current
                 val proceedWithBatch: (dev.glide.core.domain.BatchId) -> Unit = { batchId ->
-                    val fingerprint = route.pairedPeerFingerprintHex
-                    if (fingerprint != null && transferRuntime != null) {
-                        dev.glide.app.service.TransferService.startTrustedSender(
-                            context = context,
-                            selectionId = batchId,
-                            peerFingerprintHex = fingerprint
-                        )
-                        backStack.add(
-                            GlideRoute.Transfer(
-                                sessionId = "trusted-send-${java.util.UUID.randomUUID()}",
-                                batchId = batchId.value,
-                                pairedPeerFingerprintHex = fingerprint
+                    val sourceHandles = dev.glide.app.ui.selection.SelectedTransferStore
+                        .getSourceMap(batchId).values.map { it.value }
+                    backStack.add(nextRouteForPreparedSend(
+                        batchId = batchId,
+                        pairedPeerFingerprintHex = route.pairedPeerFingerprintHex,
+                        sourceHandles = sourceHandles,
+                        startTrustedSender = { selectedBatch, fingerprint ->
+                            dev.glide.app.service.TransferService.startTrustedSender(
+                                context = context,
+                                selectionId = selectedBatch,
+                                peerFingerprintHex = fingerprint
                             )
-                        )
-                    } else {
-                        val sourceHandles = dev.glide.app.ui.selection.SelectedTransferStore
-                            .getSourceMap(batchId).values.map { it.value }
-                        backStack.add(
-                            GlideRoute.Discovery(
-                                batchId = batchId.value,
-                                sourceHandles = sourceHandles
-                            )
-                        )
-                    }
+                        }
+                    ))
                 }
                 SelectionScreen(
                     initialUris = route.initialUris.map { android.net.Uri.parse(it) },

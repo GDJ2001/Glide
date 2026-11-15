@@ -2,6 +2,25 @@ package dev.glide.app.navigation
 
 import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.NavKey
+import dev.glide.core.domain.BatchId
+
+/** A saved-device send starts trusted reconnect immediately; only quick sharing opens discovery. */
+internal fun nextRouteForPreparedSend(
+    batchId: BatchId,
+    pairedPeerFingerprintHex: String?,
+    sourceHandles: List<String>,
+    startTrustedSender: (BatchId, String) -> Unit
+): GlideRoute {
+    if (pairedPeerFingerprintHex != null) {
+        startTrustedSender(batchId, pairedPeerFingerprintHex)
+        return GlideRoute.Transfer(
+            sessionId = "trusted-send-${java.util.UUID.randomUUID()}",
+            batchId = batchId.value,
+            pairedPeerFingerprintHex = pairedPeerFingerprintHex
+        )
+    }
+    return GlideRoute.Discovery(batchId = batchId.value, sourceHandles = sourceHandles)
+}
 
 /** A completed send returns to its file list, never to the QR scanner underneath it. */
 internal fun returnToFileSelectionAfterSend(

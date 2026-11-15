@@ -4,8 +4,10 @@ import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.NavKey
 import dev.glide.app.navigation.GlideRoute
 import dev.glide.app.navigation.QrScanPurpose
+import dev.glide.app.navigation.nextRouteForPreparedSend
 import dev.glide.app.navigation.restartQrScanAfterPairingFailure
 import dev.glide.app.navigation.returnToFileSelectionAfterSend
+import dev.glide.core.domain.BatchId
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.polymorphic
@@ -72,6 +74,33 @@ class NavigationTest {
         backStack.add(transfer)
         assertTrue(returnToFileSelectionAfterSend(backStack, transfer))
         assertEquals(listOf(GlideRoute.Home, selection), backStack.toList())
+    }
+
+    @Test
+    fun preparedSavedDeviceSend_startsTrustedReconnectAndSkipsQrDiscovery() {
+        val batchId = BatchId("12345678-1234-4234-9234-123456789abc")
+        val fingerprint = "a".repeat(64)
+        val requests = mutableListOf<Pair<BatchId, String>>()
+        val destination = nextRouteForPreparedSend(
+            batchId, fingerprint, listOf("content://example/file")
+        ) { selectedBatch, selectedFingerprint ->
+            requests += selectedBatch to selectedFingerprint
+        }
+        assertEquals(listOf(batchId to fingerprint), requests)
+        assertTrue(destination is GlideRoute.Transfer)
+        assertEquals(fingerprint, (destination as GlideRoute.Transfer).pairedPeerFingerprintHex)
+        assertEquals(batchId.value, destination.batchId)
+    }
+
+    @Test
+    fun preparedQuickShare_usesDiscoveryWithoutStartingTrustedReconnect() {
+        val destination = nextRouteForPreparedSend(
+            BatchId("12345678-1234-4234-9234-123456789abd"), null, listOf("content://example/file")
+        ) { _, _ -> error("Quick sharing must not start trusted reconnect") }
+        assertEquals(
+            GlideRoute.Discovery("12345678-1234-4234-9234-123456789abd", listOf("content://example/file")),
+            destination
+        )
     }
 
     @Test
