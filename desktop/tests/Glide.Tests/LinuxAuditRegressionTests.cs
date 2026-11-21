@@ -311,10 +311,10 @@ public sealed class LinuxAuditRegressionTests
         mdns.NotifyNetworkInterfacesChanged();
         mdns.NotifyNetworkInterfacesChanged();
 
-        // Wait for the asynchronous debounce to complete instead of assuming a loaded CI host
-        // schedules its timer within a fixed 250 ms window.
+        // Generation advances at the start of reconciliation, before sockets are rebound.
+        // Wait for the completed reconciliation before checking its count and diagnostics.
         var reconcileDeadline = Stopwatch.StartNew();
-        while (mdns.CurrentGeneration == initialGen &&
+        while (mdns.ReconcileCount == 0 &&
                reconcileDeadline.Elapsed < TimeSpan.FromSeconds(5))
         {
             await Task.Delay(20);
