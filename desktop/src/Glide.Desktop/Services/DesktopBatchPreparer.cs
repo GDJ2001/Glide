@@ -29,6 +29,13 @@ public static class DesktopBatchPreparer
 {
     public const int MaxItems = 1_000;
 
+    private static readonly EnumerationOptions SafeEnumeration = new()
+    {
+        RecurseSubdirectories = true,
+        IgnoreInaccessible = true,
+        AttributesToSkip = FileAttributes.ReparsePoint
+    };
+
     public static BatchPreparationResult Prepare(
         IEnumerable<string> selectedPaths,
         CancellationToken cancellationToken = default)
@@ -122,9 +129,174 @@ public static class DesktopBatchPreparer
             if (totalBytes > ProtocolCatalog.MaxBatchBytes)
                 throw new BatchLimitException("Total batch size exceeds the 256 GiB limit.");
 
-            files.Add(new DesktopTransferFile(path, relativePath));
+            files.Add(new DesktopTransferFile(path, relativePath, KnownSizeBytes: size));
         }
     }
+
+    public static DesktopTransferSelectionResult Expand(
+        IEnumerable<string> sourcePaths,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(sourcePaths);
+
+        var files = new List<DesktopTransferFile>();
+        var skipped = new List<DesktopTransferSelectionIssue>();
+        var seenSourcePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seenRelativePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        long totalBytes = 0;
+
+        foreach (string rawPath in sourcePaths)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (string.IsNullOrWhiteSpace(rawPath))
+            {
+                continue;
+            }
+
+            string path;
+            try
+            {
+                path = Path.GetFullPath(rawPath);
+            }
+            catch (Exception ex) when (ex is ArgumentException or NotSupportedException)
+            {
+                skipped.Add(new DesktopTransferSelectionIssue(rawPath, "The selected path is invalid."));
+                continue;
+            }
+
+            if (File.Exists(path))
+            {
+                AddExpandedFile(path, Path.GetFileName(path), files, skipped, seenSourcePaths, seenRelativePaths, ref totalBytes);
+                continue;
+            }
+
+            if (!Directory.Exists(path))
+            {
+                skipped.Add(new DesktopTransferSelectionIssue(path, "The selected item no longer exists."));
+                continue;
+            }
+
+            if (IsReparsePoint(path))
+            {
+                skipped.Add(new DesktopTransferSelectionIssue(path, "Linked folders are not transferred for safety."));
+                continue;
+            }
+
+            string directoryName = Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            if (string.IsNullOrWhiteSpace(directoryName))
+            {
+                skipped.Add(new DesktopTransferSelectionIssue(path, "The folder does not have a transferable name."));
+                continue;
+            }
+
+            int before = files.Count;
+            try
+            {
+                foreach (string filePath in Directory.EnumerateFiles(path, "*", SafeEnumeration))
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (IsReparsePoint(filePath))
+                    {
+                        skipped.Add(new DesktopTransferSelectionIssue(filePath, "Linked files are not transferred for safety."));
+                        continue;
+                    }
+
+                    string insideFolder = Path.GetRelativePath(path, filePath)
+                        .Replace(Path.DirectorySeparatorChar, '/')
+                        .Replace(Path.AltDirectorySeparatorChar, '/');
+                    AddExpandedFile(filePath, $"{directoryName}/{insideFolder}", files, skipped, seenSourcePaths, seenRelativePaths, ref totalBytes);
+                }
+            }
+            catch (UnauthorizedAccessException)
+            {
+                skipped.Add(new DesktopTransferSelectionIssue(path, "Glide does not have permission to read this folder."));
+            }
+            catch (IOException)
+            {
+                skipped.Add(new DesktopTransferSelectionIssue(path, "The folder could not be read."));
+            }
+
+            if (files.Count == before)
+            {
+                skipped.Add(new DesktopTransferSelectionIssue(path, "The folder contains no transferable files. Empty folders are not supported by the current Glide protocol."));
+            }
+        }
+
+        return new DesktopTransferSelectionResult(files, skipped);
+    }
+
+    private static void AddExpandedFile(
+        string filePath,
+        string relativePath,
+        ICollection<DesktopTransferFile> files,
+        ICollection<DesktopTransferSelectionIssue> skipped,
+        ISet<string> seenSourcePaths,
+        ISet<string> seenRelativePaths,
+        ref long totalBytes)
+    {
+        if (!seenSourcePaths.Add(filePath))
+        {
+            return;
+        }
+
+        if (files.Count >= MaxItems)
+        {
+            skipped.Add(new DesktopTransferSelectionIssue(filePath, $"A batch can contain at most {MaxItems} files."));
+            return;
+        }
+
+        string fileName = Path.GetFileName(filePath);
+        if (fileName.StartsWith(".glide-commit-", StringComparison.Ordinal) &&
+            fileName.EndsWith(".part", StringComparison.Ordinal))
+        {
+            skipped.Add(new DesktopTransferSelectionIssue(filePath, "A Glide temporary commit file cannot be shared."));
+            return;
+        }
+
+        if (IsReparsePoint(filePath))
+        {
+            skipped.Add(new DesktopTransferSelectionIssue(filePath, "Linked files are not transferred for safety."));
+            return;
+        }
+
+        try
+        {
+            string safeRelativePath = WindowsPathSanitizer.SanitizeRelativePath(relativePath);
+            if (!seenRelativePaths.Add(safeRelativePath))
+            {
+                skipped.Add(new DesktopTransferSelectionIssue(filePath, "Another selected item would use the same destination path."));
+                return;
+            }
+
+            var fileInfo = new FileInfo(filePath);
+            long size = fileInfo.Length;
+            if (size < 0 || size > ProtocolCatalog.MaxItemBytes)
+            {
+                skipped.Add(new DesktopTransferSelectionIssue(filePath, "The file exceeds the 64 GiB limit."));
+                return;
+            }
+
+            if (totalBytes > ProtocolCatalog.MaxBatchBytes - size)
+            {
+                skipped.Add(new DesktopTransferSelectionIssue(filePath, "Total batch size exceeds the 256 GiB limit."));
+                return;
+            }
+
+            totalBytes += size;
+            files.Add(new DesktopTransferFile(filePath, safeRelativePath, KnownSizeBytes: size));
+        }
+        catch (ArgumentException)
+        {
+            skipped.Add(new DesktopTransferSelectionIssue(filePath, "The file name cannot be safely transferred to Windows."));
+        }
+        catch (IOException)
+        {
+            skipped.Add(new DesktopTransferSelectionIssue(filePath, "The file could not be read."));
+        }
+    }
+
+    private static bool IsReparsePoint(string path) =>
+        (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0;
 
     private sealed class BatchLimitException(string message) : Exception(message) { }
 }

@@ -2,6 +2,7 @@ package dev.glide.app.service
 
 import android.content.Context
 import dev.glide.app.discovery.ProductionDiscoveryController
+import dev.glide.app.diagnostics.AndroidTransferDiagnosticsObserver
 import dev.glide.app.lan.LanReceiverRuntimeState
 import dev.glide.app.lan.ProductionLanController
 import dev.glide.app.ui.discovery.BlockedReason
@@ -17,6 +18,7 @@ import dev.glide.app.util.ReceivedFileSaver
 import dev.glide.data.export.AndroidFileExporter
 import dev.glide.app.ui.transfer.toUiState
 import dev.glide.core.coordinator.ItemPhase
+import dev.glide.core.coordinator.ReducerEvent
 import dev.glide.core.coordinator.SessionState
 import dev.glide.core.coordinator.TransferCoordinator
 import dev.glide.core.domain.BatchId
@@ -24,6 +26,7 @@ import dev.glide.core.domain.PeerId
 import dev.glide.core.domain.SessionId
 import dev.glide.core.domain.SourceHandle
 import dev.glide.core.domain.TransferBatch
+import dev.glide.core.domain.TransferFailure
 import dev.glide.core.identity.LocalIdentityInitialization
 import dev.glide.core.identity.PersistentTrustManager
 import dev.glide.core.identity.VerifiedPeerIdentity
@@ -140,6 +143,8 @@ class TransferRuntime private constructor(
 
     internal var timeProvider: () -> Long = { System.currentTimeMillis() }
     private val statePresenter = TransferStatePresenter(timeProvider = { timeProvider() })
+    private val diagnosticsObserver: AndroidTransferDiagnosticsObserver? =
+        applicationContext?.let { AndroidTransferDiagnosticsObserver(it) }
 
     private var lastTerminalState: SessionState? = null
     private var lastSenderBatch: TransferBatch? = null
@@ -254,6 +259,36 @@ class TransferRuntime private constructor(
             } finally {
                 coordinatorToStop.stop()
             }
+        }
+    }
+
+    /** Records a foreground-service startup failure through the owned session reducer. */
+    suspend fun reportForegroundServiceFailure(failure: TransferFailure) {
+        val coordinator = synchronized(lock) { activeCoordinator }
+        if (coordinator != null && !coordinator.state.value.phase.isTerminal) {
+            try {
+                coordinator.dispatch(
+                    ReducerEvent.TransportFailure(failure, System.currentTimeMillis())
+                )
+                coordinator.awaitTerminalCleanup()
+            } finally {
+                finalizeTerminalCoordinator(coordinator)
+            }
+            return
+        }
+
+        synchronized(lock) {
+            val current = _transferState.value
+            if (current is TransferUiState.Completed || current is TransferUiState.Failed) return
+            _transferState.value = TransferUiState.Failed(
+                sessionId = current.sessionId,
+                role = current.role,
+                message = failure.message,
+                code = failure.code,
+                isRecoverable = failure.isRecoverable
+            )
+            _isSessionActive.value = false
+            _activeSessionId.value = null
         }
     }
 
@@ -465,10 +500,7 @@ class TransferRuntime private constructor(
                     transport = transport,
                     peerId = peer.id,
                     peerDisplayName = peer.displayName,
-                    expectedPeerFingerprintHex =
-                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q)
-                            transport.trustedInboundPeerFingerprint(peer.id)
-                        else null
+                    expectedPeerFingerprintHex = transport.trustedInboundPeerFingerprint(peer.id)
                 )
             )
             if (!started) {
@@ -794,9 +826,15 @@ class TransferRuntime private constructor(
     ) {
         synchronized(lock) {
             activeCoordinatorJob?.cancel()
+            diagnosticsObserver?.onSessionStarted(
+                scope = scope,
+                sessionId = coordinator.sessionId.value,
+                role = coordinator.role
+            )
             activeCoordinatorJob = scope.launch {
                 coordinator.state.collect { sessionState ->
                     if (activeCoordinator !== coordinator) return@collect
+                    diagnosticsObserver?.onSessionState(sessionState)
 
                     val committedKeys = coordinator.committedItemFiles
                         .mapKeys { it.key.value }
@@ -917,9 +955,10 @@ class TransferRuntime private constructor(
 
     private suspend fun autoSaveVerifiedFiles(state: TransferUiState.Completed) {
         val context = applicationContext ?: return
+        diagnosticsObserver?.onSavingStarted()
         _autoSaveStatus.value = ExportUiStatus.Exporting
         val exporter = AndroidFileExporter(context)
-        _autoSaveStatus.value = publishVerifiedReceive(
+        val result = publishVerifiedReceive(
             state = state,
             resolve = { FileOpener.resolveReceivedFile(context, it) },
             save = { file, item ->
@@ -928,6 +967,8 @@ class TransferRuntime private constructor(
             },
             onSaved = { _autoSavedItemIds.value = _autoSavedItemIds.value + it }
         )
+        _autoSaveStatus.value = result
+        diagnosticsObserver?.onSavingFinished(result)
     }
 
     private fun confirmPairing(peerId: PeerId): Boolean {
@@ -990,6 +1031,7 @@ class TransferRuntime private constructor(
             if (_activeSessionId.value != sessionId) return false
             coordinator = activeCoordinator
             ownerScope = serviceScope
+            diagnosticsObserver?.onCancellationRequested(sessionId)
             if (coordinator == null) {
                 val current = _transferState.value
                 _transferState.value = TransferUiState.Cancelled(
@@ -997,6 +1039,7 @@ class TransferRuntime private constructor(
                     role = current.role,
                     reason = reason
                 )
+                diagnosticsObserver?.onCancellationUiUpdated(sessionId)
                 _isSessionActive.value = false
                 _activeSessionId.value = null
                 terminalCallback?.invoke()
@@ -1419,6 +1462,10 @@ class TransferRuntime private constructor(
         _activeSessionId.value = state.sessionId.takeIf { active && it.isNotEmpty() }
     }
 
+    internal fun setAutoSaveStatusForTesting(status: ExportUiStatus) {
+        _autoSaveStatus.value = status
+    }
+
     internal fun setPairingStateForTesting(state: PairingUiState) {
         _pairingState.value = state
     }
@@ -1452,6 +1499,8 @@ class TransferRuntime private constructor(
         lastSenderBatch = null
         lastSourceMap = emptyMap()
         _transferState.value = TransferUiState.Idle
+        _autoSaveStatus.value = ExportUiStatus.Idle
+        _autoSavedItemIds.value = emptySet()
         _pairingState.value = PairingUiState.Idle
         discoveryController?.resetForTesting()
         lanController?.stopAll()
@@ -1477,14 +1526,19 @@ class TransferRuntime private constructor(
     private fun finalizeTerminalCoordinator(coordinator: TransferCoordinator) {
         val peerDisplayName: String
         val callback: (() -> Unit)?
+        val terminalSessionState: SessionState
+        val terminalScope: CoroutineScope?
+        val exportStatusSnapshot: ExportUiStatus
         synchronized(lock) {
             if (activeCoordinator !== coordinator || !coordinator.state.value.phase.isTerminal) {
                 return
             }
 
             peerDisplayName = activePeerDisplayName
+            terminalScope = serviceScope
 
             val sessionState = coordinator.state.value
+            terminalSessionState = sessionState
             val committedKeys = coordinator.committedItemFiles
                 .mapKeys { it.key.value }
                 .mapValues { it.value.value }
@@ -1493,6 +1547,10 @@ class TransferRuntime private constructor(
                 committedFileKey = coordinator.lastCommittedFileHandle?.value,
                 committedItemKeys = committedKeys
             )
+            if (sessionState.phase == dev.glide.core.coordinator.SessionPhase.Cancelled) {
+                diagnosticsObserver?.onCancellationUiUpdated(coordinator.sessionId.value)
+            }
+            exportStatusSnapshot = _autoSaveStatus.value
             _isSessionActive.value = false
             _activeSessionId.value = null
             statePresenter.reset()
@@ -1507,6 +1565,11 @@ class TransferRuntime private constructor(
         }
 
         coordinator.stop()
+        diagnosticsObserver?.onTerminalState(
+            scope = terminalScope ?: coordinator.scope,
+            sessionState = terminalSessionState,
+            exportStatus = exportStatusSnapshot
+        )
         callback?.invoke()
     }
 

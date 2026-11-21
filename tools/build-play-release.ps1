@@ -9,7 +9,7 @@
     3. Execution of architecture, documentation, and unit test verification gates.
     4. Production release bundle and APK assembly with R8 minification and native debug symbols.
     5. Comprehensive binary audit:
-       - Badging check (versionName = 1.0.0, versionCode = 1, targetSdk = 37).
+       - Badging check (versionName = 1.0.0, versionCode = 2, targetSdk = 37).
        - Merged manifest hygiene (zero AD_ID, zero RECEIVE_BOOT_COMPLETED, connectedDevice sole FGS).
        - 16 KB native ELF page alignment verification.
        - Embedded native debug symbols and R8 mapping verification.

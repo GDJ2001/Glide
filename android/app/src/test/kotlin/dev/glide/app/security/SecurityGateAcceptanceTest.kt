@@ -465,7 +465,7 @@ class SecurityGateAcceptanceTest {
     // =========================================================================
     @Test
     fun threatT16_supplyChainAndSecrets_pinnedDependenciesAndZeroPrivateKeysInGit() {
-        val versionsFile = File(projectRoot, "gradle/libs.versions.toml")
+        val versionsFile = File(projectRoot, "android/gradle/libs.versions.toml")
         assertTrue("libs.versions.toml must exist", versionsFile.exists())
         val versionsText = versionsFile.readText()
         assertTrue("Dependencies must be pinned in libs.versions.toml", versionsText.contains("[versions]"))
@@ -512,7 +512,7 @@ class SecurityGateAcceptanceTest {
             File(projectRoot, "android/app/build.gradle.kts"),
             File(projectRoot, "android/data/build.gradle.kts"),
             File(projectRoot, "android/core/build.gradle.kts"),
-            File(projectRoot, "gradle/libs.versions.toml")
+            File(projectRoot, "android/gradle/libs.versions.toml")
         )
 
         val forbiddenSdkKeywords = listOf(

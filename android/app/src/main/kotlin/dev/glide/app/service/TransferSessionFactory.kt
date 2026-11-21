@@ -144,7 +144,9 @@ class TransferSessionFactory(
                         }
                     },
             enableTrueResumeCapability =
-                false
+                persistentTrustManager != null &&
+                    resumeSourceVerifier != null &&
+                    resumableStagingStore != null
         )
     }
 
@@ -258,7 +260,8 @@ class TransferSessionFactory(
                         }
                     },
             enableTrueResumeCapability =
-                false
+                persistentTrustManager != null &&
+                    resumableStagingStore != null
         )
     }
 

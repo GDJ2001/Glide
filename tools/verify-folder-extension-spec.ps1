@@ -3,7 +3,7 @@
     Glide GLIDE-069: Safe Folder Transfer Extension Specification Auditor.
 .DESCRIPTION
     Automated auditor validating the safe folder transfer extension specification (M13 Future Scope):
-    1. ADR-0014 existence, decision, and indexing in docs/adr/README.md.
+    1. ADR-0014 existence, decision, and indexing in doc/adr/README.md.
     2. SAFE_FOLDER_TRANSFER_SPECIFICATION.md completeness and bounded complexity limits.
     3. Storage Access Framework (SAF) direct ContentResolver query performance plan and loop detection.
     4. Destination collision non-destructive renaming and two-stage staging isolation.

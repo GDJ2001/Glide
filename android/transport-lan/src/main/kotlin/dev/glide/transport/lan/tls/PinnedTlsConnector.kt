@@ -30,7 +30,7 @@ import javax.net.ssl.TrustManager
  * - Negotiation of TLS 1.3 and ALPN "glide-lan/1".
  * - Fail-closed cleanup on any handshake error.
  */
-@RequiresApi(Build.VERSION_CODES.Q)
+@RequiresApi(Build.VERSION_CODES.O)
 class PinnedTlsConnector(
     private val networkScope: LanNetworkScope? = null,
     private val connectTimeoutMs: Int = 5_000,
@@ -55,7 +55,8 @@ class PinnedTlsConnector(
         address: InetAddress,
         port: Int,
         expectedSpkiSha256Hex: String? = null,
-        explicitSubnets: List<SubnetPrefix>? = null
+        explicitSubnets: List<SubnetPrefix>? = null,
+        connectTimeoutOverrideMs: Int? = null
     ): SSLSocket {
         // 1. Destination on-link validation (Section 11, Section 13)
         val activeSubnets = explicitSubnets ?: when (val state = networkScope?.networkState?.value) {
@@ -102,8 +103,8 @@ class PinnedTlsConnector(
                 }
             }
 
-            // 3. Connect raw TCP socket with 5-second timeout
-            rawSocket.connect(InetSocketAddress(address, port), connectTimeoutMs)
+            // 3. Connect raw TCP socket with 5-second timeout (or per-endpoint override)
+            rawSocket.connect(InetSocketAddress(address, port), connectTimeoutOverrideMs ?: connectTimeoutMs)
 
             // 4. Wrap with TLS 1.3 and PinnedTrustManager
             val trustManager = PinnedTrustManager(expectedSpkiSha256Hex)
@@ -124,9 +125,11 @@ class PinnedTlsConnector(
             sslSocket.useClientMode = true
             sslSocket.enabledProtocols = arrayOf(PROTOCOL_TLS_V1_3)
 
-            val params = sslSocket.sslParameters
-            params.applicationProtocols = arrayOf(ALPN_GLIDE_LAN_V1)
-            sslSocket.sslParameters = params
+            if (Build.VERSION.SDK_INT == 0 || Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val params = sslSocket.sslParameters
+                params.applicationProtocols = arrayOf(ALPN_GLIDE_LAN_V1)
+                sslSocket.sslParameters = params
+            }
             sslSocket.soTimeout = handshakeTimeoutMs
 
             // 5. Perform TLS handshake
@@ -138,9 +141,11 @@ class PinnedTlsConnector(
                 throw IOException("Incompatible TLS version: expected $PROTOCOL_TLS_V1_3, got $negotiatedProtocol")
             }
 
-            val negotiatedAlpn = sslSocket.applicationProtocol
-            if (negotiatedAlpn != ALPN_GLIDE_LAN_V1) {
-                throw IOException("Incompatible ALPN: expected '$ALPN_GLIDE_LAN_V1', got '$negotiatedAlpn'")
+            if (Build.VERSION.SDK_INT == 0 || Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val negotiatedAlpn = sslSocket.applicationProtocol
+                if (negotiatedAlpn != ALPN_GLIDE_LAN_V1) {
+                    throw IOException("Incompatible ALPN: expected '$ALPN_GLIDE_LAN_V1', got '$negotiatedAlpn'")
+                }
             }
 
             rawSocket.soTimeout = 0

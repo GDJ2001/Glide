@@ -93,7 +93,7 @@ class BoundedSourceStager(
                 )
 
             inputStream.use { input ->
-                FileOutputStream(partFile).use { output ->
+                java.io.BufferedOutputStream(FileOutputStream(partFile), BUFFER_SIZE).use { output ->
                     val buffer = ByteArray(BUFFER_SIZE)
                     while (true) {
                         ensureActive()

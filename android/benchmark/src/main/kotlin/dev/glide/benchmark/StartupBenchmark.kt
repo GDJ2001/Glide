@@ -6,6 +6,8 @@ import androidx.benchmark.macro.StartupMode
 import androidx.benchmark.macro.StartupTimingMetric
 import androidx.benchmark.macro.junit4.MacrobenchmarkRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.uiautomator.By
+import androidx.test.uiautomator.Until
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -29,6 +31,7 @@ class StartupBenchmark {
     companion object {
         const val TARGET_PACKAGE = "dev.glide.app"
         const val BENCHMARK_ITERATIONS = 5
+        const val UI_TIMEOUT_MS = 5000L
     }
 
     @Test
@@ -64,6 +67,9 @@ class StartupBenchmark {
             }
         ) {
             startActivityAndWait()
+            checkNotNull(device.wait(Until.findObject(By.text("Send files")), UI_TIMEOUT_MS)) {
+                "Home screen did not render interactive Send files action after startup"
+            }
         }
     }
 }

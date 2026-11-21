@@ -29,7 +29,8 @@ sealed interface PairOnlyUiState {
 /** Pair-only QR/link work belongs to this screen; it never invokes a transfer session. */
 class PairOnlyViewModel(
     private val appContext: Context,
-    private val trustManager: PersistentTrustManager
+    private val trustManager: PersistentTrustManager,
+    private val settingsStore: dev.glide.core.ports.SettingsStore? = null
 ) : ViewModel() {
     private val _state = MutableStateFlow<PairOnlyUiState>(PairOnlyUiState.Idle)
     val state: StateFlow<PairOnlyUiState> = _state.asStateFlow()
@@ -38,7 +39,7 @@ class PairOnlyViewModel(
 
     fun start(invitation: LanPairV2Invitation) {
         if (job?.isActive == true) return
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+        if (Build.VERSION.SDK_INT in 1 until Build.VERSION_CODES.O) {
             _state.value = PairOnlyUiState.Failure("Couldn’t reach this device — check the local network")
             return
         }
@@ -47,10 +48,14 @@ class PairOnlyViewModel(
             val network = LanNetworkScope(appContext.applicationContext)
             try {
                 trustManager.initialize()
+                val persistedName = runCatching { settingsStore?.getSettings()?.deviceName?.trim() }.getOrNull()
+                val localDeviceName = persistedName?.takeIf { it.isNotEmpty() }
+                    ?: Build.MODEL?.take(64)?.ifBlank { "Android device" }
+                    ?: "Android device"
                 val client = Profile2PairingClient(PinnedTlsConnector(network))
                 val outcome = client.runPairOnlyWithQrAsync(
                     invitation = invitation,
-                    localDeviceName = Build.MODEL?.take(64)?.ifBlank { "Android device" } ?: "Android device",
+                    localDeviceName = localDeviceName,
                     trustManager = trustManager,
                     approvePeer = { peer: VerifiedPeerIdentity ->
                         val decision = CompletableDeferred<Boolean>()
@@ -81,11 +86,15 @@ class PairOnlyViewModel(
     }
 
     companion object {
-        fun factory(context: Context, trustManager: PersistentTrustManager): ViewModelProvider.Factory =
+        fun factory(
+            context: Context,
+            trustManager: PersistentTrustManager,
+            settingsStore: dev.glide.core.ports.SettingsStore? = null
+        ): ViewModelProvider.Factory =
             object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                    PairOnlyViewModel(context.applicationContext, trustManager) as T
+                    PairOnlyViewModel(context.applicationContext, trustManager, settingsStore) as T
             }
     }
 }

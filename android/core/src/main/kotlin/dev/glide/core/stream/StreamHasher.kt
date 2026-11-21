@@ -103,7 +103,7 @@ object StreamHasher {
             )
         val readBuffer =
             ByteArray(bufferSize)
-        var chunkBuffer =
+        val chunkBuffer =
             ByteArray(chunkSize)
         var chunkUsed = 0
         var chunkIndex =
@@ -130,8 +130,6 @@ object StreamHasher {
                 exactChunk
             )
             chunkIndex++
-            chunkBuffer =
-                ByteArray(chunkSize)
             chunkUsed = 0
         }
 

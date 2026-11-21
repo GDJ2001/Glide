@@ -41,6 +41,14 @@ class LanLeaseIdentity(
      */
     val spkiSha256: String = computeSpkiSha256(certificate)
 
+    fun isExpiringSoon(
+        nowEpochMs: Long = System.currentTimeMillis(),
+        marginMs: Long = 30_000L
+    ): Boolean {
+        val effectiveMargin = marginMs.coerceAtMost(ttlMillis / 2).coerceAtLeast(0L)
+        return nowEpochMs >= (createdAtEpochMs + ttlMillis - effectiveMargin)
+    }
+
     /**
      * Creates an [SSLContext] initialized with this identity's key manager configured for TLS 1.3.
      */

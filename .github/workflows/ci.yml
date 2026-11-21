@@ -2,13 +2,7 @@ name: CI
 
 on:
   workflow_dispatch:
-  pull_request:
-    branches:
-      - main
-  push:
-    branches:
-      - main
-      - 'hardening/**'
+  # Disabled automatic push/pull_request triggers per R1 — manual/local verification only.
 
 permissions:
   contents: read
@@ -20,6 +14,7 @@ concurrency:
 jobs:
   android:
     name: Android Build, Lint & Test
+    if: false # Disabled per R1 — manual/local verification only
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     defaults:
@@ -54,10 +49,10 @@ jobs:
         run: ./gradlew checkArchitecture
 
       - name: Assemble Debug APK
-        run: ./gradlew :android:app:assembleDebug
+        run: ./gradlew :app:assembleDebug
 
       - name: Compile HARD-003 JVM regression sources
-        run: ./gradlew :android:app:compileDebugUnitTestKotlin :android:transport-lan:compileDebugUnitTestKotlin
+        run: ./gradlew :app:compileDebugUnitTestKotlin :transport-lan:compileDebugUnitTestKotlin
 
       - name: Run Behavioral LAN and Protocol Gates
         run: ./gradlew checkLanGate
@@ -66,7 +61,7 @@ jobs:
         run: ./gradlew test
 
       - name: Run Android Lint
-        run: ./gradlew :android:app:lintDebug
+        run: ./gradlew :app:lintDebug
 
       - name: Upload Debug APK
         if: always()
@@ -96,6 +91,7 @@ jobs:
 
   dotnet-linux:
     name: .NET Shared + Linux GUI and Packages
+    if: false # Disabled per R1 — manual/local verification only
     strategy:
       fail-fast: false
       matrix:
@@ -148,6 +144,7 @@ jobs:
 
   apple-build:
     name: Apple Swift, iOS and macOS development packages
+    if: false # Disabled per R1 — manual/local verification only
     runs-on: macos-26
     timeout-minutes: 45
 
@@ -191,6 +188,7 @@ jobs:
 
   dotnet-windows:
     name: Windows .NET Build & Test
+    if: false # Disabled per R1 — manual/local verification only
     runs-on: windows-2025
     timeout-minutes: 30
 
@@ -211,7 +209,7 @@ jobs:
 
       - name: Build self-contained Windows portable artifact
         shell: pwsh
-        run: ./desktop/windows/package-windows.ps1 -Configuration Release -Version 0.0.0-ci -SkipInstaller
+        run: ./desktop/windows/package-windows.ps1 -Configuration Release -Version 1.0.0 -SkipInstaller
 
       - name: Upload Windows test reports
         if: always()

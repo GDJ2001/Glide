@@ -9,6 +9,8 @@
 
 $ErrorActionPreference = "Stop"
 $ProjectRoot = Resolve-Path "$PSScriptRoot\.."
+. (Join-Path $PSScriptRoot 'resolve-dotnet.ps1')
+$null = Enable-GlideDotnetSdk
 
 Write-Host "=================================================================" -ForegroundColor Cyan
 Write-Host "   Glide.Windows Companion Client & Cross-Platform Auditor       " -ForegroundColor Cyan

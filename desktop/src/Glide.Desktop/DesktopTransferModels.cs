@@ -14,16 +14,35 @@ public enum DesktopTransferDirection
 /// An immutable source file selected for a transfer. <see cref="RelativePath"/> is the
 /// receiver-visible, protocol-safe path; it is deliberately separate from the local source path.
 /// </summary>
-public sealed record DesktopTransferFile(
-    string FilePath,
-    string? RelativePath = null)
+public sealed record DesktopTransferFile
 {
+    private long? _cachedSizeBytes;
+
+    public DesktopTransferFile(
+        string FilePath,
+        string? RelativePath = null,
+        long? KnownSizeBytes = null)
+    {
+        this.FilePath = FilePath;
+        this.RelativePath = RelativePath;
+        _cachedSizeBytes = KnownSizeBytes;
+    }
+
+    public string FilePath { get; init; }
+    public string? RelativePath { get; init; }
+
     public string Name => Path.GetFileName(FilePath);
 
     public string TransferRelativePath =>
         RelativePath ?? Name;
 
-    public long SizeBytes => new FileInfo(FilePath).Length;
+    public long SizeBytes => _cachedSizeBytes ??= new FileInfo(FilePath).Length;
+
+    public void Deconstruct(out string FilePath, out string? RelativePath)
+    {
+        FilePath = this.FilePath;
+        RelativePath = this.RelativePath;
+    }
 }
 
 public sealed record DesktopOfferItem(

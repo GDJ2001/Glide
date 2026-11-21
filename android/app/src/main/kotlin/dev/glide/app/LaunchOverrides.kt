@@ -1,6 +1,7 @@
 package dev.glide.app
 
 import dev.glide.app.navigation.GlideRoute
+import dev.glide.app.ui.transfer.ExportUiStatus
 import dev.glide.app.ui.transfer.TransferUiState
 import dev.glide.app.ui.discovery.DiscoveryUiState
 import dev.glide.app.ui.discovery.ReceiveReadinessUiState
@@ -16,6 +17,7 @@ import dev.glide.designsystem.DevicePostureInfo
 data class LaunchOverrides(
     val debugRoute: GlideRoute? = null,
     val debugUiState: TransferUiState? = null,
+    val debugAutoSaveStatus: ExportUiStatus? = null,
     val debugDiscoveryState: DiscoveryUiState? = null,
     val debugReceiveState: ReceiveReadinessUiState? = null,
     val debugPairingState: PairingUiState? = null,

@@ -28,6 +28,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 $projectRoot = (Resolve-Path "$PSScriptRoot\..").Path
+. (Join-Path $PSScriptRoot 'resolve-dotnet.ps1')
+$dotnetExecutable = if ($Target -in @('All', 'Windows', 'Desktop')) { Enable-GlideDotnetSdk } else { $null }
 
 Write-Host "=================================================================" -ForegroundColor Cyan
 Write-Host "   Glide Lint — Target: $Target                                   " -ForegroundColor Cyan
@@ -75,7 +77,7 @@ if ($Target -eq "All" -or $Target -eq "Windows" -or $Target -eq "Desktop") {
 
     Write-Host "  Running: dotnet $($dotnetArgs -join ' ')" -ForegroundColor Gray
     $pinfo = New-Object System.Diagnostics.ProcessStartInfo
-    $pinfo.FileName = "dotnet"
+    $pinfo.FileName = $dotnetExecutable
     $pinfo.Arguments = $dotnetArgs -join " "
     $pinfo.WorkingDirectory = $projectRoot
     $pinfo.UseShellExecute = $false

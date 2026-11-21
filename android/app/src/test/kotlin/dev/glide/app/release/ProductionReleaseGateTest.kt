@@ -1,24 +1,29 @@
 package dev.glide.app.release
 
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assume.assumeTrue
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 import java.security.MessageDigest
 
 /**
- * GLIDE-064 historical production-release gate verification.
+ * GLIDE-064 production-release gate verification.
  *
- * Documentation controls remain testable in ordinary source CI. Exact binary hash checks execute
- * only when the historical release-candidate artifacts are actually materialized on disk; current
- * release-candidate proof belongs to HARD-041/HARD-042.
+ * Historical V1 approval documentation controls remain testable in ordinary source CI.
+ * Release-candidate artifact checks target `android/app/build/outputs/...` for version `1.0.0`,
+ * skipping via `assumeTrue` when unmaterialized unless `-Dglide.requireReleaseArtifacts=true`
+ * (or `GLIDE_REQUIRE_RELEASE_ARTIFACTS=true`) is specified.
  */
 class ProductionReleaseGateTest {
 
-    // Historical values recorded in PRODUCTION_RC_APPROVAL.md.  This test
-    // checks record consistency when its archived binaries are materialized;
-    // it is not evidence that the current working tree is release-ready.
+    // Historical values recorded in PRODUCTION_RC_APPROVAL.md (0.1.0-alpha).
     private val expectedAabHash = "a2d12fb51e3fa293e9190849abae9ed72fb906dff05a2a18eb069ef1a5d941c2"
     private val expectedApkHash = "22d5db96b773c370a90c7fdf65f2b779e52437ecf4a2ccff94037b83d1489493"
     private val expectedMapHash = "e4c1de9006da57630b4c79773ae456d582cc14a8f9db5751db5edca631491cfd"
@@ -26,13 +31,17 @@ class ProductionReleaseGateTest {
     private fun resolveProjectRoot(): File {
         var current: File? = File(System.getProperty("user.dir") ?: ".").canonicalFile
         while (current != null) {
-            if (File(current, "doc").isDirectory || File(current, "docs").isDirectory) {
+            if (File(current, "doc").isDirectory && File(current, "android").isDirectory) {
                 return current
             }
             current = current.parentFile
         }
         return File(".").canonicalFile
     }
+
+    private fun isReleaseArtifactCheckRequired(): Boolean =
+        System.getProperty("glide.requireReleaseArtifacts").equals("true", ignoreCase = true) ||
+            System.getenv("GLIDE_REQUIRE_RELEASE_ARTIFACTS").equals("true", ignoreCase = true)
 
     private fun computeSha256(file: File): String {
         val digest = MessageDigest.getInstance("SHA-256")
@@ -44,6 +53,46 @@ class ProductionReleaseGateTest {
             }
         }
         return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    private fun parseSha256Sums(checksumFile: File): Map<String, String> {
+        val entries = mutableMapOf<String, String>()
+        val lineRegex = Regex("""^([0-9a-fA-F]{64})\s+(.+)$""")
+        checksumFile.readLines().forEach { rawLine ->
+            val trimmed = rawLine.trim()
+            if (trimmed.isNotEmpty()) {
+                val match = lineRegex.matchEntire(trimmed)
+                if (match != null) {
+                    val hash = match.groupValues[1].lowercase()
+                    val name = match.groupValues[2].trim().removePrefix("*").substringAfterLast('/').substringAfterLast('\\')
+                    entries[name] = hash
+                }
+            }
+        }
+        return entries
+    }
+
+    @Test
+    fun test0_buildConfiguration_targetsVersion1_0_0() {
+        val root = resolveProjectRoot()
+        val buildGradle = File(root, "android/app/build.gradle.kts")
+        assertTrue("android/app/build.gradle.kts must exist", buildGradle.exists())
+        val content = buildGradle.readText()
+
+        assertTrue(
+            "Default applicationId must be dev.glide.app",
+            Regex("""customApplicationId[\s\S]*?\.getOrElse\("dev\.glide\.app"\)""").containsMatchIn(content)
+        )
+        assertTrue(
+            "Default versionName must be 1.0.0",
+            Regex("""customVersionName[\s\S]*?\.getOrElse\("1\.0\.0"\)""").containsMatchIn(content)
+        )
+        val versionCodeMatch = Regex("""customVersionCode[\s\S]*?\.getOrElse\((\d+)\)""").find(content)
+        assertNotNull("Default customVersionCode must be declared", versionCodeMatch)
+        assertTrue(
+            "Default versionCode must be >= 1",
+            (versionCodeMatch!!.groupValues[1].toIntOrNull() ?: 0) >= 1
+        )
     }
 
     @Test
@@ -65,25 +114,41 @@ class ProductionReleaseGateTest {
     @Test
     fun test2_frozenArtifacts_matchAuthoritativeHashes_whenMaterialized() {
         val root = resolveProjectRoot()
-        val aabFile = File(root, "app/build/outputs/bundle/release/app-release.aab")
-        val apkFile = File(root, "app/build/outputs/apk/release/app-release.apk")
-        val mapFile = File(root, "app/build/outputs/mapping/release/mapping.txt")
-        val sumFile = File(root, "app/build/outputs/release-artifacts/SHA256SUMS.txt")
+        val aabFile = File(root, "android/app/build/outputs/bundle/release/app-release.aab")
+        val apkFile = File(root, "android/app/build/outputs/apk/release/app-release.apk")
+        val mapFile = File(root, "android/app/build/outputs/mapping/release/mapping.txt")
+        val sumFile = File(root, "android/app/build/outputs/release-artifacts/SHA256SUMS.txt")
+        val metadataFile = File(root, "android/app/build/outputs/apk/release/output-metadata.json")
 
-        val artifacts = listOf(aabFile, apkFile, mapFile, sumFile)
-        assumeTrue(
-            "Historical artifact hash verification requires a materialized candidate; ordinary source CI intentionally has none.",
-            artifacts.all { it.exists() }
-        )
+        val artifacts = listOf(aabFile, apkFile, mapFile, sumFile, metadataFile)
+        if (isReleaseArtifactCheckRequired()) {
+            for (artifact in artifacts) {
+                assertTrue("Required release artifact missing: ${artifact.absolutePath}", artifact.exists())
+            }
+        } else {
+            assumeTrue(
+                "Release artifact hash verification requires materialized 1.0.0 candidate outputs; ordinary source CI intentionally has none.",
+                artifacts.all { it.exists() }
+            )
+        }
 
-        assertEquals("AAB SHA-256 digest must match frozen candidate", expectedAabHash, computeSha256(aabFile))
-        assertEquals("APK SHA-256 digest must match frozen candidate", expectedApkHash, computeSha256(apkFile))
-        assertEquals("mapping.txt SHA-256 digest must match frozen candidate", expectedMapHash, computeSha256(mapFile))
+        assertTrue("APK size must be >= 1 MB", apkFile.length() > 1_000_000L)
+        assertTrue("AAB size must be >= 2 MB", aabFile.length() > 2_000_000L)
+        assertTrue("mapping.txt must be >= 100 KB", mapFile.length() > 100_000L)
 
-        val sumText = sumFile.readText()
-        assertTrue("SHA256SUMS.txt must contain AAB hash", sumText.contains(expectedAabHash))
-        assertTrue("SHA256SUMS.txt must contain APK hash", sumText.contains(expectedApkHash))
-        assertTrue("SHA256SUMS.txt must contain mapping hash", sumText.contains(expectedMapHash))
+        val checksums = parseSha256Sums(sumFile)
+        assertEquals("AAB SHA-256 digest must match SHA256SUMS.txt", computeSha256(aabFile), checksums["app-release.aab"])
+        assertEquals("APK SHA-256 digest must match SHA256SUMS.txt", computeSha256(apkFile), checksums["app-release.apk"])
+        assertEquals("mapping.txt SHA-256 digest must match SHA256SUMS.txt", computeSha256(mapFile), checksums["mapping.txt"])
+
+        val metadata = Json.parseToJsonElement(metadataFile.readText()).jsonObject
+        assertEquals("dev.glide.app", metadata["applicationId"]?.jsonPrimitive?.content)
+        assertEquals("release", metadata["variantName"]?.jsonPrimitive?.content)
+        val firstElement = metadata["elements"]?.jsonArray?.firstOrNull()?.jsonObject
+        assertNotNull("output-metadata.json must contain an element", firstElement)
+        assertEquals("1.0.0", firstElement!!["versionName"]?.jsonPrimitive?.content)
+        assertTrue((firstElement["versionCode"]?.jsonPrimitive?.intOrNull ?: 0) >= 1)
+        assertEquals("app-release.apk", firstElement["outputFile"]?.jsonPrimitive?.content)
     }
 
     @Test

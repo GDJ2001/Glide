@@ -15,7 +15,7 @@ namespace Glide.Transport.Discovery;
 /// Discovery is never an authentication channel and never advertises PINs, tokens, trust status,
 /// or certificate fingerprints.
 /// </summary>
-public sealed class MdnsDiscoveryService : IDisposable
+public sealed class MdnsDiscoveryService : IAsyncDisposable, IDisposable
 {
     private static readonly IPAddress MulticastAddress = IPAddress.Parse("224.0.0.251");
     private const int MulticastPort = 5353;
@@ -711,6 +711,13 @@ public sealed class MdnsDiscoveryService : IDisposable
         SendGoodbye();
     }
 
+    public ValueTask StopAdvertisingAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        StopAdvertising();
+        return ValueTask.CompletedTask;
+    }
+
     public void QueryPeers()
     {
         Interlocked.Increment(ref _querySentCount);
@@ -913,6 +920,11 @@ public sealed class MdnsDiscoveryService : IDisposable
             return;
         }
 
+        if (!IsMatchingGlideQueryPacket(buffer))
+        {
+            return;
+        }
+
         lock (_advertisementLock)
         {
             if (_isAdvertising)
@@ -920,6 +932,58 @@ public sealed class MdnsDiscoveryService : IDisposable
                 SendAnnouncement();
             }
         }
+    }
+
+    public static bool IsMatchingGlideQueryPacket(byte[] buffer)
+    {
+        if (buffer == null || buffer.Length < 12)
+        {
+            return false;
+        }
+
+        ushort flags = (ushort)((buffer[2] << 8) | buffer[3]);
+        if ((flags & 0x8000) != 0)
+        {
+            return false;
+        }
+
+        ushort questionCount = (ushort)((buffer[4] << 8) | buffer[5]);
+        if (questionCount == 0 || questionCount > 64)
+        {
+            return false;
+        }
+
+        try
+        {
+            int offset = 12;
+            for (int i = 0; i < questionCount && offset < buffer.Length; i++)
+            {
+                string qname = ReadDnsName(buffer, ref offset).TrimEnd('.');
+                if (offset + 4 > buffer.Length)
+                {
+                    return false;
+                }
+
+                ushort qtype = (ushort)((buffer[offset] << 8) | buffer[offset + 1]);
+                offset += 4;
+
+                bool nameMatches =
+                    string.Equals(qname, ServiceType, StringComparison.OrdinalIgnoreCase) ||
+                    qname.EndsWith("." + ServiceType, StringComparison.OrdinalIgnoreCase);
+
+                bool typeMatches = qtype is 12 or 33 or 16 or 1 or 255;
+                if (nameMatches && typeMatches)
+                {
+                    return true;
+                }
+            }
+        }
+        catch
+        {
+            return false;
+        }
+
+        return false;
     }
 
     private void SendAnnouncement()
@@ -1595,13 +1659,21 @@ public sealed class MdnsDiscoveryService : IDisposable
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
         StopAdvertising();
+        List<Task> backgroundTasks;
+        CancellationTokenSource? listenCts;
+        CancellationTokenSource? serviceCts;
+
         lock (_socketLock)
         {
             Interlocked.Increment(ref _generation);
             _reconcileDebounceTimer?.Dispose();
             _reconcileDebounceTimer = null;
-            try { _listenCts?.Cancel(); } catch { }
-            try { _serviceCts?.Cancel(); } catch { }
+            listenCts = _listenCts;
+            _listenCts = null;
+            serviceCts = _serviceCts;
+            _serviceCts = null;
+            try { listenCts?.Cancel(); } catch { }
+            try { serviceCts?.Cancel(); } catch { }
             _udpClient?.Dispose();
             _udpClient = null;
             foreach (UdpClient ifaceClient in _interfaceClients)
@@ -1609,12 +1681,90 @@ public sealed class MdnsDiscoveryService : IDisposable
                 try { ifaceClient.Dispose(); } catch { }
             }
             _interfaceClients.Clear();
+            backgroundTasks = [.. _listenTasks];
             _listenTasks.Clear();
-            _listenCts?.Dispose();
-            _listenCts = null;
-            _serviceCts?.Dispose();
-            _serviceCts = null;
+            if (_queryLoopTask != null)
+            {
+                backgroundTasks.Add(_queryLoopTask);
+                _queryLoopTask = null;
+            }
         }
+
+        if (backgroundTasks.Count > 0)
+        {
+            try
+            {
+                Task.WhenAll(backgroundTasks).Wait(TimeSpan.FromSeconds(2));
+            }
+            catch
+            {
+                // Background loops cancelled or sockets closed
+            }
+        }
+
+        try { listenCts?.Dispose(); } catch { }
+        try { serviceCts?.Dispose(); } catch { }
+        _reconcileGate.Dispose();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+
+        await StopAdvertisingAsync().ConfigureAwait(false);
+        List<Task> backgroundTasks;
+        CancellationTokenSource? listenCts;
+        CancellationTokenSource? serviceCts;
+        Timer? debounceTimer;
+
+        lock (_socketLock)
+        {
+            Interlocked.Increment(ref _generation);
+            debounceTimer = _reconcileDebounceTimer;
+            _reconcileDebounceTimer = null;
+            listenCts = _listenCts;
+            _listenCts = null;
+            serviceCts = _serviceCts;
+            _serviceCts = null;
+            try { listenCts?.Cancel(); } catch { }
+            try { serviceCts?.Cancel(); } catch { }
+            _udpClient?.Dispose();
+            _udpClient = null;
+            foreach (UdpClient ifaceClient in _interfaceClients)
+            {
+                try { ifaceClient.Dispose(); } catch { }
+            }
+            _interfaceClients.Clear();
+            backgroundTasks = [.. _listenTasks];
+            _listenTasks.Clear();
+            if (_queryLoopTask != null)
+            {
+                backgroundTasks.Add(_queryLoopTask);
+                _queryLoopTask = null;
+            }
+        }
+
+        if (debounceTimer != null)
+        {
+            try { await debounceTimer.DisposeAsync().ConfigureAwait(false); } catch { }
+        }
+
+        if (backgroundTasks.Count > 0)
+        {
+            try
+            {
+                await Task.WhenAll(backgroundTasks)
+                    .WaitAsync(TimeSpan.FromSeconds(2))
+                    .ConfigureAwait(false);
+            }
+            catch
+            {
+                // Background loops cancelled or sockets closed
+            }
+        }
+
+        try { listenCts?.Dispose(); } catch { }
+        try { serviceCts?.Dispose(); } catch { }
         _reconcileGate.Dispose();
     }
 }

@@ -100,7 +100,7 @@ class HistoryViewModel(
                 startedAtMs = session.startedAtMs,
                 endedAtMs = session.endedAtMs,
                 outcome = session.outcome,
-                failureCode = null,
+                failureCode = session.failureCode,
                 itemCount = items.size,
                 totalBytes = items.sumOf { it.actualBytes ?: it.offeredBytes }
             )
@@ -123,7 +123,7 @@ class HistoryViewModel(
                     offeredBytes = item.offeredBytes,
                     actualBytes = item.actualBytes,
                     outcome = item.outcome,
-                    failureCode = null,
+                    failureCode = item.failureCode,
                     receivedFileKey = receivedFileKey,
                     isFileAvailable = isFileAvailable,
                     relativePath = item.relativePath

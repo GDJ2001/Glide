@@ -57,13 +57,22 @@ public sealed class DesktopStateStore
 
             try
             {
-                if (!File.Exists(_statePath))
+                string readPath = _statePath;
+                if (!File.Exists(readPath))
                 {
-                    return _cached = CreateDefaultState();
+                    string? legacyPath = TryResolveLegacyLinuxStatePath(readPath);
+                    if (legacyPath != null && File.Exists(legacyPath))
+                    {
+                        readPath = legacyPath;
+                    }
+                    else
+                    {
+                        return _cached = CreateDefaultState();
+                    }
                 }
 
                 string json =
-                    File.ReadAllText(_statePath);
+                    File.ReadAllText(readPath);
                 using JsonDocument document = JsonDocument.Parse(json);
                 bool hasSchemaVersion = document.RootElement.TryGetProperty(
                     "SchemaVersion",
@@ -200,18 +209,27 @@ public sealed class DesktopStateStore
         }
 
         string tempPath =
-            _statePath + ".tmp";
-        string json =
-            JsonSerializer.Serialize(
+            $"{_statePath}.{Guid.NewGuid():N}.tmp";
+        byte[] jsonBytes =
+            JsonSerializer.SerializeToUtf8Bytes(
                 state,
                 new JsonSerializerOptions
                 {
                     WriteIndented = true
                 });
 
-        File.WriteAllText(
+        using (var fs = new FileStream(
             tempPath,
-            json);
+            FileMode.Create,
+            FileAccess.Write,
+            FileShare.None,
+            bufferSize: 4096,
+            options: FileOptions.WriteThrough))
+        {
+            fs.Write(jsonBytes, 0, jsonBytes.Length);
+            fs.Flush(flushToDisk: true);
+        }
+
         File.Move(
             tempPath,
             _statePath,
@@ -255,30 +273,60 @@ public sealed class DesktopStateStore
     private static DesktopPersistentState CreateDefaultState() =>
         new(DesktopSettings.CreateDefault(), []);
 
-    private static string GetDefaultStatePath()
+    public static string GetDefaultStatePath()
     {
-        string root;
         if (OperatingSystem.IsLinux())
         {
-            root =
-                Environment.GetEnvironmentVariable(
-                    "XDG_STATE_HOME")
-                ?? Path.Combine(
+            string? xdgState = Environment.GetEnvironmentVariable("XDG_STATE_HOME");
+            string root = !string.IsNullOrWhiteSpace(xdgState)
+                ? xdgState
+                : Path.Combine(
                     Environment.GetFolderPath(
                         Environment.SpecialFolder.UserProfile),
                     ".local",
                     "state");
-        }
-        else
-        {
-            root =
-                Environment.GetFolderPath(
-                    Environment.SpecialFolder.LocalApplicationData);
+
+            string preferred = Path.Combine(root, "glide", "desktop-state.json");
+            string legacy = Path.Combine(root, "Glide", "desktop-state.json");
+            if (!File.Exists(preferred) && File.Exists(legacy))
+            {
+                return legacy;
+            }
+            return preferred;
         }
 
+        string appDataRoot =
+            Environment.GetFolderPath(
+                Environment.SpecialFolder.LocalApplicationData);
+
         return Path.Combine(
-            root,
+            appDataRoot,
             "Glide",
             "desktop-state.json");
+    }
+
+    private static string? TryResolveLegacyLinuxStatePath(string currentPath)
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return null;
+        }
+
+        string? dir = Path.GetDirectoryName(currentPath);
+        if (string.IsNullOrWhiteSpace(dir))
+        {
+            return null;
+        }
+
+        string dirName = Path.GetFileName(dir);
+        if (!string.Equals(dirName, "glide", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        string? parent = Path.GetDirectoryName(dir);
+        return string.IsNullOrWhiteSpace(parent)
+            ? null
+            : Path.Combine(parent, "Glide", Path.GetFileName(currentPath));
     }
 }

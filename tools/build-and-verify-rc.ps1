@@ -122,8 +122,8 @@ Write-Host "  Key Alias: $activeAlias" -ForegroundColor Green
 # --------------------------------------------------------------------------------------------------
 Write-Host "`n[Step 3/8] Compiling and assembling minified Release Candidate artifacts..." -ForegroundColor Yellow
 $gradleArgs = @(
-    ":android:app:bundleRelease",
-    ":android:app:assembleRelease",
+    ":app:bundleRelease",
+    ":app:assembleRelease",
     "-Pglide.release.keystorePath=$activeKeystore",
     "-Pglide.release.keystorePassword=$activeStorePass",
     "-Pglide.release.keyAlias=$activeAlias",

@@ -417,29 +417,39 @@ public sealed class LanRecordChannel : IAsyncDisposable, IDisposable
         try
         {
             ThrowIfWriteFaulted();
-            byte[] writeBuf = EnsureWriteBuffer();
 
             if (!_coalesceWrites)
             {
-                int written = LanRecordCodec.EncodeDataRecordToSpan(bulkRef, chunk.Span, writeBuf.AsSpan(0, frameLength));
-                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_channelCts.Token, cancellationToken);
-                using var abortReg = linkedCts.Token.Register(static state => ((LanRecordChannel)state!).CancelAndAbortTransport(), this);
+                byte[] headerBuf = ArrayPool<byte>.Shared.Rent(32);
                 try
                 {
-                    await _stream.WriteAsync(writeBuf.AsMemory(0, written), linkedCts.Token).ConfigureAwait(false);
-                    await _stream.FlushAsync(linkedCts.Token).ConfigureAwait(false);
-                }
-                catch (Exception error)
-                {
-                    _writeFault ??= ExceptionDispatchInfo.Capture(error);
-                    if (cancellationToken.IsCancellationRequested && error is not OperationCanceledException)
+                    int headerWritten = LanRecordCodec.EncodeDataHeaderToSpan(bulkRef, chunk.Length, headerBuf.AsSpan(0, LanRecordCodec.DataHeaderAndUuidSize));
+                    using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_channelCts.Token, cancellationToken);
+                    using var abortReg = linkedCts.Token.Register(static state => ((LanRecordChannel)state!).CancelAndAbortTransport(), this);
+                    try
                     {
-                        throw new OperationCanceledException("Channel write cancelled.", error, cancellationToken);
+                        await _stream.WriteAsync(headerBuf.AsMemory(0, headerWritten), linkedCts.Token).ConfigureAwait(false);
+                        await _stream.WriteAsync(chunk, linkedCts.Token).ConfigureAwait(false);
+                        await _stream.FlushAsync(linkedCts.Token).ConfigureAwait(false);
                     }
-                    throw;
+                    catch (Exception error)
+                    {
+                        _writeFault ??= ExceptionDispatchInfo.Capture(error);
+                        if (cancellationToken.IsCancellationRequested && error is not OperationCanceledException)
+                        {
+                            throw new OperationCanceledException("Channel write cancelled.", error, cancellationToken);
+                        }
+                        throw;
+                    }
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(headerBuf);
                 }
                 return;
             }
+
+            byte[] writeBuf = EnsureWriteBuffer();
 
             long now = Stopwatch.GetTimestamp();
             if (_pendingWriteBytes > 0 &&
@@ -498,6 +508,39 @@ public sealed class LanRecordChannel : IAsyncDisposable, IDisposable
         try
         {
             ThrowIfWriteFaulted();
+            if (!_coalesceWrites && _pendingWriteBytes == 0)
+            {
+                byte[] directEndBuf = ArrayPool<byte>.Shared.Rent(LanRecordCodec.StreamEndFrameSize);
+                try
+                {
+                    int writtenEnd = LanRecordCodec.EncodeStreamEndToSpan(
+                        bulkRef,
+                        actualBytes,
+                        directEndBuf.AsSpan(0, LanRecordCodec.StreamEndFrameSize));
+                    using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_channelCts.Token, cancellationToken);
+                    using var abortReg = linkedCts.Token.Register(static state => ((LanRecordChannel)state!).CancelAndAbortTransport(), this);
+                    try
+                    {
+                        await _stream.WriteAsync(directEndBuf.AsMemory(0, writtenEnd), linkedCts.Token).ConfigureAwait(false);
+                        await _stream.FlushAsync(linkedCts.Token).ConfigureAwait(false);
+                    }
+                    catch (Exception error)
+                    {
+                        _writeFault ??= ExceptionDispatchInfo.Capture(error);
+                        if (cancellationToken.IsCancellationRequested && error is not OperationCanceledException)
+                        {
+                            throw new OperationCanceledException("Channel write cancelled.", error, cancellationToken);
+                        }
+                        throw;
+                    }
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(directEndBuf);
+                }
+                return;
+            }
+
             byte[] writeBuf = EnsureWriteBuffer();
             if (_pendingWriteBytes > 0 &&
                 _pendingWriteBytes + LanRecordCodec.StreamEndFrameSize > writeBuf.Length)

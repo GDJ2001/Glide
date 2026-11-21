@@ -301,6 +301,8 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
         }
     }
 
+    public int BoundListeningPort => _listenerSupervisor.BoundPort;
+
     public bool IsListening
     {
         get => _isListening;
@@ -320,7 +322,7 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
     public string ReceivingButtonText => IsListening ? "Turn off receiving" : "Turn on receiving";
     public string ReceivingStatusText => IsListening ? "Ready to receive" : "Receiving is off";
     public string ReceivingStatusDetail => IsListening
-        ? $"Listening on port {ListeningPort} as {DeviceName}"
+        ? $"Listening on port {BoundListeningPort} as {DeviceName}"
         : "Turn on receiving to accept incoming transfers";
     public bool ReceivingStatusActive => IsListening;
 
@@ -1349,7 +1351,8 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
                         HandleIncomingConnectionAsync, _lifetimeCts.Token,
                         HandleProfile2ConnectionAsync);
                 }
-                ListeningPort = boundPort;
+                OnPropertyChanged(nameof(BoundListeningPort));
+                OnPropertyChanged(nameof(ReceivingStatusDetail));
                 RefreshInvitation();
                 _listenerSupervisor.StartInvitationRotation(
                     TimeSpan.FromSeconds(105),
@@ -1396,7 +1399,7 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
             Directory.CreateDirectory(exportDir);
             string fileName = $"glide-diagnostics-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}.jsonl";
             string targetPath = Path.Combine(exportDir, fileName);
-            string summary = $"device={DeviceName};listening={IsListening};port={ListeningPort};networkReady={IsNetworkReady};discovery={DiscoveryDiagnostics.Status}";
+            string summary = $"device={DeviceName};listening={IsListening};configuredPort={ListeningPort};boundPort={BoundListeningPort};networkReady={IsNetworkReady};discovery={DiscoveryDiagnostics.Status}";
             string written = await BoundedTransferDiagnosticSink.ExportSanitizedDiagnosticBundleAsync(
                 targetPath,
                 _diagnosticSink.LogFilePath,
@@ -1560,7 +1563,8 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
         try
         {
             int boundPort = _listenerSupervisor.Start(ListeningPort);
-            ListeningPort = boundPort;
+            OnPropertyChanged(nameof(BoundListeningPort));
+            OnPropertyChanged(nameof(ReceivingStatusDetail));
             _listenerSupervisor.StartListenerLoop(
                 HandleIncomingConnectionAsync, _lifetimeCts.Token,
                 HandleProfile2ConnectionAsync);

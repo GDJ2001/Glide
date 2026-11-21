@@ -15,6 +15,7 @@ import androidx.core.app.NotificationCompat
 import dev.glide.app.ui.transfer.TransferUiState
 import dev.glide.core.domain.BatchId
 import dev.glide.core.domain.PeerId
+import dev.glide.core.domain.TransferFailure
 import dev.glide.core.pairing.InvitationCodec
 import dev.glide.core.pairing.LanInvitation
 import kotlinx.coroutines.CoroutineScope
@@ -319,39 +320,28 @@ class TransferService : Service() {
             }
         } catch (e: SecurityException) {
             // API 34+ throws SecurityException if prerequisite connected device permissions are denied
-            runtime().setTransferStateForTesting(
-                TransferUiState.Failed(
-                    sessionId = runtime().transferState.value.sessionId,
-                    role = runtime().transferState.value.role,
-                    message = "Missing nearby device permission to maintain background transfer.",
-                    code = "MISSING_PERMISSION",
-                    isRecoverable = false
-                )
-            )
-            handleTerminalTeardown()
+            failForegroundService(TransferFailure.PermissionDenied(
+                "Nearby device permission is required to maintain background transfer."
+            ))
         } catch (e: IllegalStateException) {
             // API 31+ ForegroundServiceStartNotAllowedException is a subclass of IllegalStateException
-            runtime().setTransferStateForTesting(
-                TransferUiState.Failed(
-                    sessionId = runtime().transferState.value.sessionId,
-                    role = runtime().transferState.value.role,
-                    message = "Cannot maintain background transfer while Glide is in the background.",
-                    code = "FOREGROUND_START_NOT_ALLOWED",
-                    isRecoverable = false
-                )
-            )
-            handleTerminalTeardown()
+            failForegroundService(TransferFailure.SystemCancelled(
+                "Open Glide to continue receiving."
+            ))
         } catch (e: Exception) {
-            runtime().setTransferStateForTesting(
-                TransferUiState.Failed(
-                    sessionId = runtime().transferState.value.sessionId,
-                    role = runtime().transferState.value.role,
-                    message = "Failed to start transfer foreground service: ${e.message}",
-                    code = "SERVICE_START_FAILED",
-                    isRecoverable = false
-                )
-            )
-            handleTerminalTeardown()
+            failForegroundService(TransferFailure.SystemCancelled(
+                "Could not keep receiving in the background. Open Glide and try again."
+            ))
+        }
+    }
+
+    private fun failForegroundService(failure: TransferFailure) {
+        serviceScope.launch {
+            try {
+                runtime().reportForegroundServiceFailure(failure)
+            } finally {
+                handleTerminalTeardown()
+            }
         }
     }
 

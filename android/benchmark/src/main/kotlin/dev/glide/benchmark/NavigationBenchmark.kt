@@ -44,23 +44,36 @@ class NavigationBenchmark {
                 startActivityAndWait()
             }
         ) {
-            // Wait for Home screen to settle
-            device.wait(Until.hasObject(By.pkg(TARGET_PACKAGE).depth(0)), UI_TIMEOUT_MS)
+            // Wait for interactive Home screen
+            checkNotNull(device.wait(Until.findObject(By.text("Send files")), UI_TIMEOUT_MS)) {
+                "Home screen did not render"
+            }
 
-            // Navigate to History if visible
-            val historyButton = device.findObject(By.descContains("History").clazz("android.widget.Button"))
-                ?: device.findObject(By.textContains("History"))
-            historyButton?.click()
-            device.waitForIdle()
+            // Navigate to History (explicit wait + fail-fast selector)
+            val historyNav = checkNotNull(
+                device.wait(Until.findObject(By.res("nav_history")), UI_TIMEOUT_MS)
+                    ?: device.wait(Until.findObject(By.descContains("Navigate to History")), 1000L)
+            ) { "History navigation target not found" }
+            historyNav.click()
+            checkNotNull(device.wait(Until.findObject(By.text("Transfer history")), UI_TIMEOUT_MS)) {
+                "History screen did not render after clicking History navigation"
+            }
 
-            // Navigate to Settings if visible
-            val settingsButton = device.findObject(By.descContains("Settings").clazz("android.widget.Button"))
-                ?: device.findObject(By.textContains("Settings"))
-            settingsButton?.click()
-            device.waitForIdle()
+            // Navigate to Settings (explicit wait + fail-fast selector)
+            val settingsNav = checkNotNull(
+                device.wait(Until.findObject(By.res("nav_settings")), UI_TIMEOUT_MS)
+                    ?: device.wait(Until.findObject(By.descContains("Navigate to Settings")), 1000L)
+            ) { "Settings navigation target not found" }
+            settingsNav.click()
+            checkNotNull(device.wait(Until.findObject(By.desc("Navigate back from settings")), UI_TIMEOUT_MS)) {
+                "Settings screen did not render after clicking Settings navigation"
+            }
 
             // Return to Home
             device.pressBack()
+            checkNotNull(device.wait(Until.findObject(By.text("Send files")), UI_TIMEOUT_MS)) {
+                "Failed to return to Home screen after back navigation"
+            }
             device.waitForIdle()
         }
     }

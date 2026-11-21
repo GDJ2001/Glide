@@ -180,7 +180,7 @@ class ProcessDeathReconcilerTest {
 
         val updatedItem = itemDao.getByItemId(itemId.value)
         assertNotNull(updatedItem)
-        assertEquals("Completed", updatedItem!!.outcome)
+        assertEquals("Verified", updatedItem!!.outcome)
         assertEquals(payload.size.toLong(), updatedItem.actualBytes)
         assertEquals(digest.value, updatedItem.digest)
     }
@@ -240,7 +240,7 @@ class ProcessDeathReconcilerTest {
 
         val updatedItem = itemDao.getByItemId(itemId.value)
         assertNotNull(updatedItem)
-        assertEquals("Completed", updatedItem!!.outcome)
+        assertEquals("Verified", updatedItem!!.outcome)
     }
 
     @Test
@@ -308,7 +308,7 @@ class ProcessDeathReconcilerTest {
         assertNull("Journal entry must be cleaned", journalDao.getByItemId(itemId.value))
         assertEquals(1, fileCatalogDao.files.size) // No duplicate!
         val item = itemDao.getByItemId(itemId.value)
-        assertEquals("Completed", item!!.outcome)
+        assertEquals("Verified", item!!.outcome)
     }
 
     @Test
@@ -360,7 +360,7 @@ class ProcessDeathReconcilerTest {
         // Assert:
         val item = itemDao.getByItemId(itemId.value)
         assertNotNull(item)
-        assertEquals("Completed", item!!.outcome)
+        assertEquals("Verified", item!!.outcome)
         assertEquals(payload.size.toLong(), item.actualBytes)
         assertEquals(digest.value, item.digest)
     }

@@ -149,7 +149,7 @@ class ResumeStreamSupportTest {
                             index,
                             data ->
                             indices += index
-                            chunks += data
+                            chunks += data.copyOf()
                         }
                     )
 

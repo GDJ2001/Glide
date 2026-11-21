@@ -30,6 +30,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -122,6 +123,7 @@ fun GlideAdaptiveScaffold(
                             icon = { Icon(Icons.Default.Home, contentDescription = null) },
                             label = { Text("Home") },
                             modifier = Modifier
+                                .testTag("nav_home")
                                 .glideHoverHand()
                                 .semantics {
                                     contentDescription = "Navigate to Home tab"
@@ -133,6 +135,7 @@ fun GlideAdaptiveScaffold(
                             icon = { Icon(Icons.Default.History, contentDescription = null) },
                             label = { Text("History") },
                             modifier = Modifier
+                                .testTag("nav_history")
                                 .glideHoverHand()
                                 .semantics {
                                     contentDescription = "Navigate to History tab"
@@ -144,6 +147,7 @@ fun GlideAdaptiveScaffold(
                             icon = { Icon(Icons.Default.Settings, contentDescription = null) },
                             label = { Text("Settings") },
                             modifier = Modifier
+                                .testTag("nav_settings")
                                 .glideHoverHand()
                                 .semantics {
                                     contentDescription = "Navigate to Settings tab"
@@ -194,6 +198,7 @@ fun GlideAdaptiveScaffold(
                     icon = { Icon(Icons.Default.Home, contentDescription = null) },
                     label = { Text("Home") },
                     modifier = Modifier
+                        .testTag("nav_home")
                         .glideHoverHand()
                         .semantics {
                             contentDescription = "Navigate to Home section"
@@ -205,6 +210,7 @@ fun GlideAdaptiveScaffold(
                     icon = { Icon(Icons.Default.History, contentDescription = null) },
                     label = { Text("History") },
                     modifier = Modifier
+                        .testTag("nav_history")
                         .glideHoverHand()
                         .semantics {
                             contentDescription = "Navigate to History section"
@@ -216,6 +222,7 @@ fun GlideAdaptiveScaffold(
                     icon = { Icon(Icons.Default.Settings, contentDescription = null) },
                     label = { Text("Settings") },
                     modifier = Modifier
+                        .testTag("nav_settings")
                         .glideHoverHand()
                         .semantics {
                             contentDescription = "Navigate to Settings section"

@@ -13,6 +13,10 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    if (providers.gradleProperty("benchmarkSuppressEmulator").orNull == "true") {
+        defaultConfig.testInstrumentationRunnerArguments["androidx.benchmark.suppressErrors"] = "EMULATOR"
+    }
+
     buildTypes {
         debug {
             isDebuggable = true

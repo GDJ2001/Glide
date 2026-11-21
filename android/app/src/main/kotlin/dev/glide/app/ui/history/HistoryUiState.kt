@@ -9,6 +9,16 @@ enum class HistoryFilter {
     RECEIVED
 }
 
+fun formatHistoryOutcomeLabel(outcome: String?, failureCode: String? = null): String {
+    return when (outcome) {
+        "Completed", "Verified" -> "Completed (Verified)"
+        "Failed", "Interrupted" -> if (!failureCode.isNullOrBlank()) "Failed: $failureCode" else outcome
+        "Cancelled" -> if (!failureCode.isNullOrBlank()) "Cancelled: $failureCode" else "Cancelled"
+        null -> "In progress"
+        else -> if (!failureCode.isNullOrBlank()) "$outcome: $failureCode" else outcome
+    }
+}
+
 data class HistorySessionItem(
     val sessionId: String,
     val role: DeviceRole,
@@ -19,7 +29,9 @@ data class HistorySessionItem(
     val failureCode: String? = null,
     val itemCount: Int = 0,
     val totalBytes: Long = 0L
-)
+) {
+    val statusDisplay: String get() = formatHistoryOutcomeLabel(outcome, failureCode)
+}
 
 data class HistoryItemDetail(
     val itemId: String,
@@ -33,7 +45,9 @@ data class HistoryItemDetail(
     val receivedFileKey: String? = null,
     val isFileAvailable: Boolean = false,
     val relativePath: String? = null
-)
+) {
+    val statusDisplay: String get() = formatHistoryOutcomeLabel(outcome, failureCode)
+}
 
 data class HistorySessionDetail(
     val session: HistorySessionItem,

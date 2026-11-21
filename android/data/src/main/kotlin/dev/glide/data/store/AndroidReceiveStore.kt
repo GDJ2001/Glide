@@ -98,6 +98,10 @@ class AndroidReceiveStore(
         }
         stagingFile.createNewFile()
 
+        val sanitizedRelativePath = relativePath?.let { raw ->
+            dev.glide.core.folder.SafeRelativePath.parse(raw).getOrNull()?.normalizedPath
+        }
+
         val entry = ReceiveJournalEntity(
             itemId = itemId.value,
             sessionId = sessionId.value,
@@ -109,7 +113,7 @@ class AndroidReceiveStore(
             verifiedDigest = null,
             phase = JournalPhases.PREPARED,
             updatedAtMs = clock(),
-            relativePath = relativePath
+            relativePath = sanitizedRelativePath
         )
         journalDao.insertOrUpdate(entry)
 
@@ -131,7 +135,7 @@ class AndroidReceiveStore(
         }
 
         journalDao.updatePhase(itemId, JournalPhases.WRITING, clock())
-        FileOutputStream(stagingFile)
+        java.io.BufferedOutputStream(FileOutputStream(stagingFile), 64 * 1024)
     }
 
     override suspend fun commitVerified(
@@ -275,6 +279,9 @@ class AndroidReceiveStore(
                     }
 
                     if (isValid) {
+                        val sanitizedRelativePath = entry.relativePath?.let { raw ->
+                            dev.glide.core.folder.SafeRelativePath.parse(raw).getOrNull()?.normalizedPath
+                        }
                         fileCatalogDao.insertOrUpdate(
                             ReceivedFileEntity(
                                 fileKey = entry.finalKey,
@@ -283,7 +290,8 @@ class AndroidReceiveStore(
                                 mime = entry.mimeType,
                                 length = entry.expectedBytes,
                                 digest = entry.verifiedDigest,
-                                receivedAtMs = entry.updatedAtMs
+                                receivedAtMs = entry.updatedAtMs,
+                                relativePath = sanitizedRelativePath
                             )
                         )
                         journalDao.delete(entry.itemId)
@@ -309,6 +317,9 @@ class AndroidReceiveStore(
                         // Atomically complete the rename to finalKey
                         val renamed = stagingFile.renameTo(finalFile)
                         if (renamed) {
+                            val sanitizedRelativePath = entry.relativePath?.let { raw ->
+                                dev.glide.core.folder.SafeRelativePath.parse(raw).getOrNull()?.normalizedPath
+                            }
                             fileCatalogDao.insertOrUpdate(
                                 ReceivedFileEntity(
                                     fileKey = entry.finalKey,
@@ -317,7 +328,8 @@ class AndroidReceiveStore(
                                     mime = entry.mimeType,
                                     length = entry.expectedBytes,
                                     digest = entry.verifiedDigest,
-                                    receivedAtMs = entry.updatedAtMs
+                                    receivedAtMs = entry.updatedAtMs,
+                                    relativePath = sanitizedRelativePath
                                 )
                             )
                             journalDao.delete(entry.itemId)

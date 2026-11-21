@@ -111,7 +111,29 @@ class RouteSelectorTest {
     }
 
     @Test
-    fun testApiLevelBelow29_rejectsLanRoute() {
+    fun testApiLevel26To28_allowsLanRoute() {
+        val lanRoute = RouteCandidate(
+            routeId = "route-lan-1",
+            transportType = TransportType.LAN_NSD_TLS,
+            endpointHandle = "192.168.1.50:42424",
+            trustEvidence = VerificationEvidence.InvitationVerified("inv-api26", "pin-api26")
+        )
+        val candidate = PeerCandidate(
+            uiKey = "qr:inv-api26",
+            displayName = "LAN Device",
+            routes = listOf(lanRoute),
+            verificationStatus = CandidateVerificationStatus.PINNED_INVITATION
+        )
+
+        for (apiLevel in 26..28) {
+            val apiContext = defaultContext.copy(apiLevel = apiLevel)
+            val result = RouteSelector.selectRoute(candidate, apiContext)
+            assertTrue("API $apiLevel must allow pinned LAN route", result is RouteSelectionResult.Selected)
+        }
+    }
+
+    @Test
+    fun testApiLevelBelow26_rejectsLanRoute() {
         val lanRoute = RouteCandidate(
             routeId = "route-lan-1",
             transportType = TransportType.LAN_NSD_TLS,
@@ -123,11 +145,11 @@ class RouteSelectorTest {
             routes = listOf(lanRoute)
         )
 
-        val oldApiContext = defaultContext.copy(apiLevel = 28)
+        val oldApiContext = defaultContext.copy(apiLevel = 25)
         val result = RouteSelector.selectRoute(candidate, oldApiContext)
         assertTrue(result is RouteSelectionResult.Rejected)
         val rejected = result as RouteSelectionResult.Rejected
-        assertTrue(rejected.reason.contains("API 29+"))
+        assertTrue(rejected.reason.contains("API 26+"))
     }
 
     @Test

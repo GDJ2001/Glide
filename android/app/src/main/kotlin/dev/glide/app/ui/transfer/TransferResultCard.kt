@@ -36,6 +36,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -167,6 +168,7 @@ private fun CompletedResultCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
         modifier = modifier
             .fillMaxWidth()
+            .testTag("transfer_completed_card")
             .semantics {
                 contentDescription = "Transfer complete: $filesSummary."
             }
@@ -403,6 +405,7 @@ private fun CompletedResultCard(
                         textAlign = TextAlign.Center,
                         modifier = Modifier
                             .fillMaxWidth()
+                            .testTag("transfer_saving_status")
                             .semantics { contentDescription = "Saving verified files" }
                     )
                 }
@@ -414,6 +417,7 @@ private fun CompletedResultCard(
                         textAlign = TextAlign.Center,
                         modifier = Modifier
                             .fillMaxWidth()
+                            .testTag("transfer_saved_status")
                             .semantics { contentDescription = "Saved ${exportStatus.destinationName} to your selected folder" }
                     )
                 }
@@ -597,6 +601,7 @@ private fun FailedResultCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
         modifier = modifier
             .fillMaxWidth()
+            .testTag("transfer_failed_card")
             .semantics {
                 contentDescription = "$headline: $recoveryMessage."
             }
@@ -792,6 +797,7 @@ private fun CancelledResultCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
         modifier = modifier
             .fillMaxWidth()
+            .testTag("transfer_cancelled_card")
             .semantics {
                 contentDescription = "Transfer cancelled: ${state.reason}."
             }

@@ -17,13 +17,13 @@ Glide's active development and release scope covers four native platform familie
 
 ## Android Module Architecture
 
-- `:android:app` (`android/app`) — Single-Activity Jetpack Compose UI, ViewModels, Navigation 3, Hilt DI composition, Foreground Service (`TransferService`), and `TransferRuntime`.
-- `:android:core` (`android/core`) — Pure Kotlin JVM library (`:transfer-core`). Zero Android/GMS/Compose/Room dependencies. Owns domain models, Protocol V1 and LAN Profile 1 codecs, state reducer, and abstract ports.
-- `:android:transport-nearby` (`android/transport-nearby`) — Google Play Services Nearby Connections adapter.
-- `:android:transport-lan` (`android/transport-lan`) — Authenticated TLS 1.3 over TCP socket adapter with NSD/mDNS discovery and SPKI pinning.
-- `:android:data` (`android/data`) — Room database (`GlideDatabase` v5), Jetpack DataStore preferences, Android Keystore identity store, and `QuarantineStagingStore`.
-- `:android:designsystem` (`android/designsystem`) — Material 3 theme tokens, adaptive layout helpers, icons, and reusable Compose components.
-- `:android:baselineprofile` (`android/baselineprofile`) — Baseline Profile generator for startup and frame-timing optimization.
+- `:app` (`android/app`) — Single-Activity Jetpack Compose UI, ViewModels, Navigation 3, Hilt DI composition, Foreground Service (`TransferService`), and `TransferRuntime`.
+- `:core` (`android/core`) — Pure Kotlin JVM library (`:transfer-core`). Zero Android/GMS/Compose/Room dependencies. Owns domain models, Protocol V1 and LAN Profile 1 codecs, state reducer, and abstract ports.
+- `:transport-nearby` (`android/transport-nearby`) — Google Play Services Nearby Connections adapter.
+- `:transport-lan` (`android/transport-lan`) — Authenticated TLS 1.3 over TCP socket adapter with NSD/mDNS discovery and SPKI pinning.
+- `:data` (`android/data`) — Room database (`GlideDatabase` v5), Jetpack DataStore preferences, Android Keystore identity store, and `QuarantineStagingStore`.
+- `:designsystem` (`android/designsystem`) — Material 3 theme tokens, adaptive layout helpers, icons, and reusable Compose components.
+- `:benchmark` (`android/benchmark`) — Macrobenchmark and Baseline Profile generator for startup and frame-timing optimization.
 
 ## Security & Protocol Guardrails
 

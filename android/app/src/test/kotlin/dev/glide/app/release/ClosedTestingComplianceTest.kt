@@ -1,28 +1,71 @@
 package dev.glide.app.release
 
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assume.assumeTrue
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import java.security.MessageDigest
 
 /**
  * GLIDE-063: Closed Testing Compliance & Readiness Verification Suite.
  *
  * Historical V1 release evidence remains useful, but exact release-artifact checks are only
  * meaningful in a release-candidate workspace where those artifacts have been materialized.
- * Ordinary source CI must not pretend historical binary outputs exist in a clean checkout.
+ * Ordinary source CI must not pretend historical binary outputs exist in a clean checkout,
+ * while setting `-Dglide.requireReleaseArtifacts=true` (or `GLIDE_REQUIRE_RELEASE_ARTIFACTS=true`)
+ * fails closed if release artifacts are missing.
  */
 class ClosedTestingComplianceTest {
 
     private fun resolveProjectRoot(): File {
         var current: File? = File(System.getProperty("user.dir") ?: ".").canonicalFile
         while (current != null) {
-            if (File(current, "doc").isDirectory || File(current, "docs").isDirectory) {
+            if (File(current, "doc").isDirectory && File(current, "android").isDirectory) {
                 return current
             }
             current = current.parentFile
         }
         return File(".").canonicalFile
+    }
+
+    private fun isReleaseArtifactCheckRequired(): Boolean =
+        System.getProperty("glide.requireReleaseArtifacts").equals("true", ignoreCase = true) ||
+            System.getenv("GLIDE_REQUIRE_RELEASE_ARTIFACTS").equals("true", ignoreCase = true)
+
+    private fun computeSha256(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(8192)
+            var bytesRead: Int
+            while (input.read(buffer).also { bytesRead = it } != -1) {
+                digest.update(buffer, 0, bytesRead)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    private fun parseSha256Sums(checksumFile: File): Map<String, String> {
+        val entries = mutableMapOf<String, String>()
+        val lineRegex = Regex("""^([0-9a-fA-F]{64})\s+(.+)$""")
+        checksumFile.readLines().forEach { rawLine ->
+            val trimmed = rawLine.trim()
+            if (trimmed.isNotEmpty()) {
+                val match = lineRegex.matchEntire(trimmed)
+                if (match != null) {
+                    val hash = match.groupValues[1].lowercase()
+                    val name = match.groupValues[2].trim().removePrefix("*").substringAfterLast('/').substringAfterLast('\\')
+                    entries[name] = hash
+                }
+            }
+        }
+        return entries
     }
 
     @Test
@@ -76,24 +119,43 @@ class ClosedTestingComplianceTest {
     @Test
     fun test5_releaseCandidateArtifacts_presentAndValid_whenMaterialized() {
         val root = resolveProjectRoot()
-        val apkFile = File(root, "app/build/outputs/apk/release/app-release.apk")
-        val aabFile = File(root, "app/build/outputs/bundle/release/app-release.aab")
-        val mappingFile = File(root, "app/build/outputs/mapping/release/mapping.txt")
-        val checksumFile = File(root, "app/build/outputs/release-artifacts/SHA256SUMS.txt")
+        val apkFile = File(root, "android/app/build/outputs/apk/release/app-release.apk")
+        val aabFile = File(root, "android/app/build/outputs/bundle/release/app-release.aab")
+        val mappingFile = File(root, "android/app/build/outputs/mapping/release/mapping.txt")
+        val checksumFile = File(root, "android/app/build/outputs/release-artifacts/SHA256SUMS.txt")
+        val metadataFile = File(root, "android/app/build/outputs/apk/release/output-metadata.json")
 
-        val artifacts = listOf(apkFile, aabFile, mappingFile, checksumFile)
-        assumeTrue(
-            "Exact release-candidate artifact checks run only after a candidate is materialized; HARD-041/042 own that gate.",
-            artifacts.all { it.exists() }
-        )
+        val artifacts = listOf(apkFile, aabFile, mappingFile, checksumFile, metadataFile)
+        if (isReleaseArtifactCheckRequired()) {
+            for (artifact in artifacts) {
+                assertTrue("Required release artifact missing: ${artifact.absolutePath}", artifact.exists())
+            }
+        } else {
+            assumeTrue(
+                "Exact release-candidate artifact checks run only after a candidate is materialized; HARD-041/042 own that gate.",
+                artifacts.all { it.exists() }
+            )
+        }
 
         assertTrue("APK size must be >= 1 MB", apkFile.length() > 1_000_000L)
         assertTrue("AAB size must be >= 2 MB", aabFile.length() > 2_000_000L)
         assertTrue("mapping.txt must be non-empty", mappingFile.length() > 100_000L)
 
-        val checksumText = checksumFile.readText()
-        assertTrue("Checksums must reference app-release.apk", checksumText.contains("app-release.apk"))
-        assertTrue("Checksums must reference app-release.aab", checksumText.contains("app-release.aab"))
+        val checksums = parseSha256Sums(checksumFile)
+        assertEquals("SHA256SUMS.txt must match app-release.apk SHA-256", computeSha256(apkFile), checksums["app-release.apk"])
+        assertEquals("SHA256SUMS.txt must match app-release.aab SHA-256", computeSha256(aabFile), checksums["app-release.aab"])
+        checksums["mapping.txt"]?.let { recordedMapHash ->
+            assertEquals("SHA256SUMS.txt must match mapping.txt SHA-256", computeSha256(mappingFile), recordedMapHash)
+        }
+
+        val metadata = Json.parseToJsonElement(metadataFile.readText()).jsonObject
+        assertEquals("dev.glide.app", metadata["applicationId"]?.jsonPrimitive?.content)
+        assertEquals("release", metadata["variantName"]?.jsonPrimitive?.content)
+        val firstElement = metadata["elements"]?.jsonArray?.firstOrNull()?.jsonObject
+        assertNotNull("output-metadata.json must contain at least one element", firstElement)
+        assertEquals("1.0.0", firstElement!!["versionName"]?.jsonPrimitive?.content)
+        assertTrue((firstElement["versionCode"]?.jsonPrimitive?.intOrNull ?: 0) >= 1)
+        assertEquals("app-release.apk", firstElement["outputFile"]?.jsonPrimitive?.content)
     }
 
     @Test

@@ -274,9 +274,16 @@ class TransferCoordinator(
     private var sessionHistoryRecorded = false
 
     private suspend fun recordInitialHistory(batch: TransferBatch) {
-        if (sessionHistoryRecorded) return
+        val shouldRecord = mutex.withLock {
+            if (sessionHistoryRecorded) {
+                false
+            } else {
+                sessionHistoryRecorded = true
+                true
+            }
+        }
+        if (!shouldRecord) return
         val store = historyStore ?: return
-        sessionHistoryRecorded = true
         store.recordSession(
             SessionRecord(
                 sessionId = sessionId,
@@ -294,16 +301,24 @@ class TransferCoordinator(
                     ordinal = index,
                     displayName = item.name,
                     mimeType = item.mimeType,
-                    offeredBytes = item.sizeBytes
+                    offeredBytes = item.sizeBytes,
+                    relativePath = item.relativePath
                 )
             )
         }
     }
 
-    private suspend fun ensureSessionRecorded(outcome: String) {
-        if (sessionHistoryRecorded) return
+    private suspend fun ensureSessionRecorded(outcome: String, failureCode: String? = null) {
+        val shouldRecord = mutex.withLock {
+            if (sessionHistoryRecorded) {
+                false
+            } else {
+                sessionHistoryRecorded = true
+                true
+            }
+        }
+        if (!shouldRecord) return
         val store = historyStore ?: return
-        sessionHistoryRecorded = true
         val batch = _state.value.batch ?: senderBatch
         val batchId = batch?.id ?: BatchId(sessionId.value)
         store.recordSession(
@@ -314,30 +329,41 @@ class TransferCoordinator(
                 peerLabel = peerId.value,
                 startedAtMs = clock(),
                 endedAtMs = clock(),
-                outcome = outcome
+                outcome = outcome,
+                failureCode = failureCode
             )
         )
     }
 
-    private val activeJobs = mutableListOf<Job>()
+    private val activeJobs: MutableList<Job> = Collections.synchronizedList(mutableListOf<Job>())
     private val terminalCleanupLock = Any()
     private var terminalCleanupBarrier: CompletableDeferred<Unit>? = null
+
+    private fun launchTracked(
+        context: kotlin.coroutines.CoroutineContext = kotlin.coroutines.EmptyCoroutineContext,
+        block: suspend CoroutineScope.() -> Unit
+    ): Job {
+        val job = scope.launch(context, block = block)
+        activeJobs += job
+        job.invokeOnCompletion { activeJobs.remove(job) }
+        return job
+    }
 
     /**
      * Starts background observation of transport events (control, bulk, stream, connection)
      * and initiates protocol negotiation if this device is the Sender.
      */
     fun start() {
-        activeJobs += scope.launch { observeControlMessages() }
-        activeJobs += scope.launch { observeBulkProgress() }
-        activeJobs += scope.launch { observeConnectionEvents() }
+        launchTracked { observeControlMessages() }
+        launchTracked { observeBulkProgress() }
+        launchTracked { observeConnectionEvents() }
 
         if (role == DeviceRole.Receiver) {
-            activeJobs += scope.launch { observeIncomingStreams() }
+            launchTracked { observeIncomingStreams() }
         }
 
         if (role == DeviceRole.Sender) {
-            scope.launch {
+            launchTracked {
                 dispatch(
                     ReducerEvent.StartNegotiation(
                         ephemeralPeerId = UUID.randomUUID().toString(),
@@ -355,7 +381,7 @@ class TransferCoordinator(
      * Receiver consent acceptance: verifies batch space reservation before dispatching positive offer decision (LAN-022).
      */
      fun acceptOffer() {
-        scope.launch {
+        launchTracked {
             val batch =
                 _state.value.batch
             if (batch != null) {
@@ -379,7 +405,7 @@ class TransferCoordinator(
                                     clock()
                             )
                     )
-                    return@launch
+                    return@launchTracked
                 }
 
                 if (isTrueResumeNegotiated()) {
@@ -398,7 +424,7 @@ class TransferCoordinator(
                                 clock()
                             )
                         )
-                        return@launch
+                        return@launchTracked
                     }
 
                     val peerFingerprint =
@@ -413,7 +439,7 @@ class TransferCoordinator(
                                 clock()
                             )
                         )
-                        return@launch
+                        return@launchTracked
                     }
 
                     try {
@@ -447,7 +473,7 @@ class TransferCoordinator(
                                 clock()
                             )
                         )
-                        return@launch
+                        return@launchTracked
                     }
                 }
             }
@@ -465,7 +491,7 @@ class TransferCoordinator(
      * Receiver consent rejection: dispatches rejection offer decision.
      */
     fun rejectOffer(reason: String = "USER_REJECTED") {
-        scope.launch {
+        launchTracked {
             dispatch(
                 ReducerEvent.SubmitOfferDecision(
                     accepted = false,
@@ -480,7 +506,7 @@ class TransferCoordinator(
      * User cancellation: terminates ongoing transfer and cleans up unverified artifacts.
      */
     fun cancel(reason: String = "USER_CANCELLED") {
-        scope.launch {
+        launchTracked {
             dispatch(
                 ReducerEvent.RequestCancel(
                     code = reason,
@@ -576,8 +602,10 @@ class TransferCoordinator(
         identityTimeoutJob = null
         resumeTimeoutJob?.cancel()
         resumeTimeoutJob = null
-        activeJobs.forEach { it.cancel() }
-        activeJobs.clear()
+        val jobsToCancel = synchronized(activeJobs) {
+            activeJobs.toList().also { activeJobs.clear() }
+        }
+        jobsToCancel.forEach { it.cancel() }
         closePreparedSources()
     }
 
@@ -1962,7 +1990,7 @@ class TransferCoordinator(
                 .SenderAccepted,
         bulkRef: BulkRef
     ) {
-        scope.launch(
+        launchTracked(
             ioDispatcher
         ) {
             val prepared =
@@ -1981,7 +2009,7 @@ class TransferCoordinator(
                             WireErrorCodes
                                 .TRANSFER_INTERRUPTED
                         )
-                return@launch
+                return@launchTracked
             }
 
             val stream =
@@ -2200,11 +2228,13 @@ class TransferCoordinator(
 
                 is ReducerEffect.NotifyTerminalOutcome -> {
                     val terminalOutcome = effect.phase.name
-                    ensureSessionRecorded(terminalOutcome)
-                    historyStore?.updateSessionOutcome(sessionId, terminalOutcome, clock())
+                    val failureCode = effect.failure?.code ?: _state.value.failure?.code
+                    ensureSessionRecorded(terminalOutcome, failureCode)
+                    historyStore?.updateSessionOutcome(sessionId, terminalOutcome, clock(), failureCode)
                     _state.value.itemStates.forEach { (id, itState) ->
                         if (itState.phase != ItemPhase.Verified) {
-                            historyStore?.updateItemOutcome(id, itState.phase.name, itState.transferredBytes, itState.actualDigest)
+                            val itemFailureCode = itState.failure?.code ?: failureCode
+                            historyStore?.updateItemOutcome(id, itState.phase.name, itState.transferredBytes, itState.actualDigest, itemFailureCode)
                         }
                     }
                 }
@@ -2213,7 +2243,7 @@ class TransferCoordinator(
     }
 
     private fun startSendingStream(itemId: ItemId, bulkRef: BulkRef) {
-        scope.launch(ioDispatcher) {
+        launchTracked(ioDispatcher) {
             val prepared = synchronized(preparedSourcesLock) {
                 preparedSources.remove(bulkRef)
             }
@@ -2226,7 +2256,7 @@ class TransferCoordinator(
                         )
                     )
                 }
-                return@launch
+                return@launchTracked
             }
 
             val hashingStream = prepared.stream
@@ -2234,7 +2264,7 @@ class TransferCoordinator(
                 val sampler = StreamProgressSampler(
                     clock = clock,
                     onSample = { bytesRead ->
-                        scope.launch {
+                        launchTracked {
                             dispatch(ReducerEvent.StreamProgress(itemId, bytesRead, clock()))
                         }
                     }
@@ -2311,10 +2341,10 @@ class TransferCoordinator(
     }
 
     private fun commitDestination(itemId: ItemId) {
-        scope.launch(ioDispatcher) {
-            val staging = stagingHandles[itemId] ?: currentStagingHandle ?: return@launch
-            val itemState = _state.value.itemStates[itemId] ?: return@launch
-            val digest = itemState.actualDigest ?: return@launch
+        launchTracked(ioDispatcher) {
+            val staging = stagingHandles[itemId] ?: currentStagingHandle ?: return@launchTracked
+            val itemState = _state.value.itemStates[itemId] ?: return@launchTracked
+            val digest = itemState.actualDigest ?: return@launchTracked
             try {
                 val committed = receiveStore.commitVerified(staging, digest)
                 _committedFiles.add(committed)
@@ -2681,11 +2711,8 @@ class TransferCoordinator(
         transport.observeBulkProgress().collect { progress ->
             val curItem = _state.value.itemStates.values.firstOrNull { it.bulkRef == progress.bulkRef }
                 ?: return@collect
-            if (curItem.bulkRef == progress.bulkRef) {
-                dispatch(ReducerEvent.StreamProgress(curItem.item.id, progress.bytesTransferred, clock()))
-                if (progress.isComplete) {
-                    dispatch(ReducerEvent.TransportPayloadSuccess(curItem.item.id, progress.bulkRef, clock()))
-                }
+            if (curItem.bulkRef == progress.bulkRef && progress.isComplete) {
+                dispatch(ReducerEvent.TransportPayloadSuccess(curItem.item.id, progress.bulkRef, clock()))
             }
         }
     }
@@ -2709,7 +2736,7 @@ class TransferCoordinator(
                     ResumeReconnectPlan
                         .Receiver
             ) {
-                scope.launch(
+                launchTracked(
                     ioDispatcher
                 ) {
                     receiveResumeRemainder(
@@ -2720,11 +2747,11 @@ class TransferCoordinator(
                 return@collect
             }
 
-            scope.launch(ioDispatcher) {
+            launchTracked(ioDispatcher) {
                 // If coordinator is already terminal, close stream immediately (LAN-001)
                 if (_state.value.isTerminal) {
                     try { incoming.stream.close() } catch (_: Exception) {}
-                    return@launch
+                    return@launchTracked
                 }
 
                 // Security check T04/T07/T17: Strict consent ordering
@@ -2737,7 +2764,7 @@ class TransferCoordinator(
                             clock()
                         )
                     )
-                    return@launch
+                    return@launchTracked
                 }
 
                 // LAN-001: Exact bulkRef match required; never fall back to currentItemState
@@ -2750,7 +2777,7 @@ class TransferCoordinator(
                             clock()
                         )
                     )
-                    return@launch
+                    return@launchTracked
                 }
 
                 // LAN-001: Check for stale or inactive bulkRef
@@ -2763,7 +2790,7 @@ class TransferCoordinator(
                             clock()
                         )
                     )
-                    return@launch
+                    return@launchTracked
                 }
 
                 val staging = stagingHandles[curItem.item.id] ?: currentStagingHandle
@@ -2776,14 +2803,14 @@ class TransferCoordinator(
                             clock()
                         )
                     )
-                    return@launch
+                    return@launchTracked
                 }
 
                 try {
                     val sampler = StreamProgressSampler(
                         clock = clock,
                         onSample = { bytesRead ->
-                            scope.launch {
+                            launchTracked {
                                 dispatch(ReducerEvent.StreamProgress(curItem.item.id, bytesRead, clock()))
                             }
                         }

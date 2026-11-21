@@ -32,9 +32,10 @@ data class Profile2AndroidPairOutcome(
  * Executes a Profile 2 pair-only QR/link handshake (`qr-token-v2`) from Android to a desktop peer.
  * Never sends or accepts file offers on this session.
  */
-@RequiresApi(Build.VERSION_CODES.Q)
+@RequiresApi(Build.VERSION_CODES.O)
 class Profile2PairingClient(
-    private val connector: PinnedTlsConnector
+    private val connector: PinnedTlsConnector,
+    private val perEndpointConnectTimeoutMs: Int = 3_500
 ) {
     private val secureRandom = SecureRandom()
 
@@ -55,29 +56,38 @@ class Profile2PairingClient(
             )
         }
 
-        val endpoint = invitation.endpoints.firstOrNull()
-            ?: return@withContext Profile2AndroidPairOutcome(
+        if (invitation.endpoints.isEmpty()) {
+            return@withContext Profile2AndroidPairOutcome(
                 succeeded = false,
                 errorCode = "INVALID_ENDPOINT",
                 userMessage = "Couldn’t reach this device — check the local network"
             )
+        }
 
-        val sslSocket = try {
-            val address = InetAddress.getByName(endpoint.address)
-            connector.connect(
-                address = address,
-                port = endpoint.port,
-                expectedSpkiSha256Hex = invitation.spkiSha256
-            )
-        } catch (_: Exception) {
-            return@withContext Profile2AndroidPairOutcome(
+        var sslSocket: javax.net.ssl.SSLSocket? = null
+        for (endpoint in invitation.endpoints) {
+            try {
+                val address = InetAddress.getByName(endpoint.address)
+                sslSocket = connector.connect(
+                    address = address,
+                    port = endpoint.port,
+                    expectedSpkiSha256Hex = invitation.spkiSha256,
+                    connectTimeoutOverrideMs = perEndpointConnectTimeoutMs
+                )
+                break
+            } catch (_: Exception) {
+                // Continue trying remaining candidate endpoints
+            }
+        }
+
+        val connectedSocket = sslSocket
+            ?: return@withContext Profile2AndroidPairOutcome(
                 succeeded = false,
                 errorCode = "UNREACHABLE",
                 userMessage = "Couldn’t reach this device — check the local network"
             )
-        }
 
-        sslSocket.use { socket ->
+        connectedSocket.use { socket ->
             socket.soTimeout = 30_000
             val input = socket.inputStream
             val output = socket.outputStream
