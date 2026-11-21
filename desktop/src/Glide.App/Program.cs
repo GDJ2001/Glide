@@ -2,11 +2,13 @@ using System.Net;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using Glide.Core.Pairing;
+using Glide.Core.Models;
 using Glide.Core.Security;
 using Glide.Core.Storage;
 using Glide.Desktop;
 using Glide.Desktop.Services;
 using Glide.Transport.Discovery;
+using Glide.Transport.Framing;
 using Glide.Transport.Sockets;
 
 namespace Glide.App;
@@ -74,6 +76,9 @@ public static class Program
         Console.WriteLine("  glide send --pair <pairing-invitation-uri> [--trusted-peer <fingerprint>] <file-paths...>");
         Console.WriteLine("      Connect with pinned TLS 1.3 + one-use invitation authentication.");
         Console.WriteLine("      --trusted-peer additionally requires the enrolled persistent identity and rejects downgrade.\n");
+        Console.WriteLine("  glide send --trusted-peer <fingerprint> --connect <host:port> <file-paths...>");
+        Console.WriteLine("      Send to an enrolled peer without a new invitation; the peer must still approve the offer.");
+        Console.WriteLine("      For IPv6 use [address]:port. A saved authenticated endpoint can be used when --connect is omitted.\n");
         Console.WriteLine("  glide identity show");
         Console.WriteLine("  glide identity rotate --yes");
         Console.WriteLine("      Inspect or explicitly rotate this device's persistent identity. Rotation revokes all remembered peers.\n");
@@ -225,6 +230,7 @@ public static class Program
     private static async Task<int> RunReceiveAsync(string[] args)
     {
         int port = LanDiscoveryConstants.DefaultPort;
+        bool portExplicitlySpecified = false;
         string? trustedPeerFingerprint = null;
         for (int i = 0; i < args.Length; i++)
         {
@@ -233,6 +239,7 @@ public static class Program
                 int.TryParse(args[i + 1], out int parsedPort))
             {
                 port = parsedPort;
+                portExplicitlySpecified = true;
                 i++;
             }
             else if (args[i] == "--trusted-peer" &&
@@ -243,8 +250,19 @@ public static class Program
             }
         }
 
-        var trustManager =
-            CreateDesktopTrustManager();
+        return await RunReceiveWithOptionsAsync(
+            port, portExplicitlySpecified, trustedPeerFingerprint,
+            enableMdns: true, trustManager: CreateDesktopTrustManager());
+    }
+
+    public static async Task<int> RunReceiveWithOptionsAsync(
+        int port,
+        bool portExplicitlySpecified,
+        string? trustedPeerFingerprint,
+        bool enableMdns,
+        DesktopPersistentTrustManager trustManager)
+    {
+        ArgumentNullException.ThrowIfNull(trustManager);
         trustManager.Initialize();
 
         if (trustedPeerFingerprint != null &&
@@ -259,22 +277,29 @@ public static class Program
             return 1;
         }
 
-        using var listenerOwner = OperatingSystem.IsLinux()
-            ? DesktopListenerOwnership.AcquireLinux() : null;
+        using var listenerOwner = TryAcquireListenerOwnership();
+        if (OperatingSystem.IsLinux() && listenerOwner is null)
+            return 1;
         TlsSocketListener listener;
         try
         {
             listener = new TlsSocketListener(port);
         }
-        catch
+        catch (Exception ex) when (!portExplicitlySpecified)
         {
-            Console.WriteLine($"[INFO] Port {port} unavailable, falling back to ephemeral port...");
+            Console.WriteLine($"[INFO] Port {port} unavailable ({ex.GetType().Name}); using an ephemeral port...");
             listener = new TlsSocketListener(0);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[ERROR] Requested port {port} could not be bound: {ex.Message}");
+            return 1;
         }
 
         using (listener)
         {
             int boundPort = listener.BoundPort;
+            await using var mdns = enableMdns ? TryStartMdnsAdvertiser(boundPort) : null;
             string hostName = Dns.GetHostName();
             var ips = Dns.GetHostAddresses(hostName)
                 .Where(ip => ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
@@ -342,25 +367,13 @@ public static class Program
                             invitationCts.Token);
                     var engine =
                         new DesktopTransferEngine();
-                    var interaction =
-                        new ConsoleDesktopTransferInteraction(
-                            isDaemon: false,
-                            trustManager:
-                                trustManager);
-
-                    var result =
-                        await engine.ReceiveAsync(
-                            connection,
-                            new DesktopReceiveRequest(
-                                stagingStore,
-                                invitationAuthority,
-                                LocalDeviceName:
-                                    Environment.MachineName,
-                                TrustManager:
-                                    trustManager,
-                                ExpectedPeerFingerprintHex:
-                                    trustedPeerFingerprint),
-                            interaction);
+                    DesktopTransferResult result = await DispatchAcceptedConnectionAsync(
+                        connection, engine, stagingStore, invitationAuthority,
+                        trustManager, trustManager.LocalFingerprintHex(),
+                        isDaemon: false,
+                        authorizedPeerFingerprintHex: trustedPeerFingerprint,
+                        destinationRoot: stagingStore.DestinationRoot,
+                        cancellationToken: CancellationToken.None);
 
                     return result.Success ? 0 : 1;
                 }
@@ -375,10 +388,116 @@ public static class Program
         }
     }
 
+    public static bool TryParseConnectEndpoint(string value, out string? host, out int port)
+    {
+        host = null;
+        port = 0;
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        string candidate = value.Trim();
+        if (candidate.StartsWith('['))
+        {
+            int closing = candidate.IndexOf(']');
+            if (closing < 2) return false;
+            host = candidate[1..closing];
+            if (closing + 1 == candidate.Length) return true;
+            return candidate[closing + 1] == ':' &&
+                int.TryParse(candidate[(closing + 2)..], out port) && port is > 0 and <= 65535;
+        }
+        if (IPAddress.TryParse(candidate, out _))
+        {
+            host = candidate;
+            return true;
+        }
+        int separator = candidate.LastIndexOf(':');
+        if (separator > 0)
+        {
+            host = candidate[..separator];
+            return int.TryParse(candidate[(separator + 1)..], out port) && port is > 0 and <= 65535;
+        }
+        host = candidate;
+        return true;
+    }
+
+    private static DesktopListenerOwnership? TryAcquireListenerOwnership()
+    {
+        if (!OperatingSystem.IsLinux())
+            return null;
+
+        try
+        {
+            return DesktopListenerOwnership.AcquireLinux();
+        }
+        catch (IOException ex)
+        {
+            Console.Error.WriteLine($"[ERROR] Cannot start receiving: {ex.Message}");
+            return null;
+        }
+    }
+
+    private static MdnsDiscoveryService? TryStartMdnsAdvertiser(int boundPort)
+    {
+        MdnsDiscoveryService? mdns = null;
+        try
+        {
+            mdns = new MdnsDiscoveryService();
+            mdns.Start(enableBrowsing: false);
+            mdns.StartAdvertising(
+                Environment.MachineName,
+                boundPort,
+                LanDiscoveryConstants.GeneratePresenceId(),
+                pairReady: false,
+                trustedReconnectSupported: true);
+            return mdns;
+        }
+        catch (Exception ex)
+        {
+            mdns?.Dispose();
+            Console.Error.WriteLine($"[WARN] Local discovery unavailable ({ex.GetType().Name}); use a validated local address.");
+            return null;
+        }
+    }
+
+    public static async Task<DesktopTransferResult> DispatchAcceptedConnectionAsync(
+        TlsSocketConnection connection,
+        DesktopTransferEngine engine,
+        QuarantineStagingStore stagingStore,
+        LanInvitationAuthority invitationAuthority,
+        DesktopPersistentTrustManager trustManager,
+        string localFingerprintHex,
+        bool isDaemon,
+        string? authorizedPeerFingerprintHex,
+        string destinationRoot,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        if (!string.Equals(trustManager.LocalFingerprintHex(), localFingerprintHex, StringComparison.Ordinal))
+            return DesktopTransferResult.Failed("Local identity changed.", TransferErrorCategory.Security);
+        LanSessionDispatchKind kind = await LanSessionPreambleInspector.InspectAndPrepareAsync(
+            connection, cancellationToken).ConfigureAwait(false);
+        var interaction = new ConsoleDesktopTransferInteraction(
+            isDaemon, trustManager, authorizedPeerFingerprintHex, destinationRoot);
+        var request = new DesktopReceiveRequest(
+            stagingStore, invitationAuthority, Environment.MachineName,
+            trustManager, authorizedPeerFingerprintHex);
+        if (kind == LanSessionDispatchKind.Profile1LanRecord)
+            return await engine.ReceiveAsync(connection, request, interaction, cancellationToken).ConfigureAwait(false);
+        if (kind == LanSessionDispatchKind.Profile2Gld2)
+        {
+            Profile2Message first = await Profile2WireCodec.ReadMessageAsync(
+                connection.TransportStream, cancellationToken).ConfigureAwait(false);
+            if (first is Profile2Message.SessionOpen open &&
+                string.Equals(open.Purpose, Profile2Constants.PurposeTrustedSend, StringComparison.Ordinal))
+                return await engine.ReceiveTrustedAsync(connection, open, request, interaction,
+                    cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+        return DesktopTransferResult.Failed("Unsupported or incomplete session.", TransferErrorCategory.Protocol);
+    }
+
     private static async Task<int> RunDaemonAsync(string[] args)
     {
         int port =
             LanDiscoveryConstants.DefaultPort;
+        bool portExplicitlySpecified = false;
         bool acceptPairedOffers = false;
         string? trustedPeerFingerprint = null;
         long maxOfferBytes =
@@ -394,6 +513,7 @@ public static class Program
                     out int parsedPort))
             {
                 port = parsedPort;
+                portExplicitlySpecified = true;
                 i++;
             }
             else if (args[i] ==
@@ -441,22 +561,29 @@ public static class Program
             return 1;
         }
 
-        using var listenerOwner = OperatingSystem.IsLinux()
-            ? DesktopListenerOwnership.AcquireLinux() : null;
+        using var listenerOwner = TryAcquireListenerOwnership();
+        if (OperatingSystem.IsLinux() && listenerOwner is null)
+            return 1;
         TlsSocketListener listener;
         try
         {
             listener = new TlsSocketListener(port);
         }
-        catch
+        catch (Exception ex) when (!portExplicitlySpecified)
         {
-            Console.WriteLine($"[{DateTime.UtcNow:O}] [INFO] Port {port} unavailable, falling back to ephemeral port...");
+            Console.WriteLine($"[{DateTime.UtcNow:O}] [INFO] Port {port} unavailable ({ex.GetType().Name}); using an ephemeral port...");
             listener = new TlsSocketListener(0);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[ERROR] Requested port {port} could not be bound: {ex.Message}");
+            return 1;
         }
 
         using (listener)
         {
             int boundPort = listener.BoundPort;
+            await using var mdns = TryStartMdnsAdvertiser(boundPort);
             string hostName = Dns.GetHostName();
             var ips = Dns.GetHostAddresses(hostName)
                 .Where(ip => ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
@@ -499,15 +626,6 @@ public static class Program
 
             var engine =
                 new DesktopTransferEngine();
-            var interaction =
-                new ConsoleDesktopTransferInteraction(
-                    isDaemon: true,
-                    trustManager:
-                        trustManager,
-                    authorizedPeerFingerprintHex:
-                        headlessPolicy.PeerFingerprintHex,
-                    destinationRoot:
-                        headlessPolicy.DestinationRoot);
             var invitationAuthority = new LanInvitationAuthority();
             using var invitationFile = new DaemonInvitationFile();
 
@@ -567,17 +685,13 @@ public static class Program
                                 invitationCts.Token);
                         Console.WriteLine($"[{DateTime.UtcNow:O}] [DAEMON] Incoming connection established.");
 
-                        await engine.ReceiveAsync(
-                            connection,
-                            new DesktopReceiveRequest(
-                                stagingStore,
-                                invitationAuthority,
-                                LocalDeviceName: Environment.MachineName,
-                                TrustManager: trustManager,
-                                ExpectedPeerFingerprintHex:
-                                    trustedPeer.FingerprintHex),
-                            interaction,
-                            cts.Token);
+                        await DispatchAcceptedConnectionAsync(
+                            connection, engine, stagingStore, invitationAuthority,
+                            trustManager, trustInitialization.LocalFingerprintHex,
+                            isDaemon: true,
+                            authorizedPeerFingerprintHex: trustedPeer.FingerprintHex,
+                            destinationRoot: headlessPolicy.DestinationRoot,
+                            cancellationToken: cts.Token);
 
                         // A connection attempt consumes or invalidates the current authorization.
                         invitationAuthority.RevokeActive();
@@ -623,25 +737,19 @@ public static class Program
 
     private static async Task<int> RunSendAsync(string[] args)
     {
-        if (args.Length < 3 || args[0] is not ("--pair" or "-p"))
-        {
-            Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine(
-                "[ERROR] Authenticated pairing is required. Use: glide send --pair <pairing-invitation-uri> <file-paths...>");
-            Console.ResetColor();
-            return 1;
-        }
-
-        string pairUri = args[1];
+        string? pairUri = null;
         string? trustedPeerFingerprint = null;
         string? targetHost = null;
         int targetPort = 0;
         var fileArgs = new List<string>();
 
-        for (int i = 2; i < args.Length; i++)
+        for (int i = 0; i < args.Length; i++)
         {
-            if (args[i] == "--trusted-peer" &&
-                i + 1 < args.Length)
+            if (args[i] is "--pair" or "-p" && i + 1 < args.Length)
+            {
+                pairUri = args[++i];
+            }
+            else if (args[i] == "--trusted-peer" && i + 1 < args.Length)
             {
                 trustedPeerFingerprint =
                     args[++i];
@@ -650,21 +758,27 @@ public static class Program
                      i + 1 < args.Length)
             {
                 string connectStr = args[++i];
-                if (connectStr.Contains(':'))
+                if (!TryParseConnectEndpoint(connectStr, out targetHost, out targetPort))
                 {
-                    var parts = connectStr.Split(':');
-                    targetHost = parts[0];
-                    if (int.TryParse(parts[1], out int p)) targetPort = p;
+                    Console.Error.WriteLine("[ERROR] Invalid --connect endpoint. Use host:port or [IPv6]:port.");
+                    return 1;
                 }
-                else
-                {
-                    targetHost = connectStr;
-                }
+            }
+            else if (args[i].StartsWith("-", StringComparison.Ordinal))
+            {
+                Console.Error.WriteLine($"[ERROR] Unknown or incomplete option: {args[i]}");
+                return 1;
             }
             else
             {
                 fileArgs.Add(args[i]);
             }
+        }
+
+        if (pairUri == null && trustedPeerFingerprint == null)
+        {
+            Console.Error.WriteLine("[ERROR] Supply --pair <invitation> or --trusted-peer <enrolled-fingerprint>.");
+            return 1;
         }
 
         if (fileArgs.Count == 0)
@@ -689,39 +803,40 @@ public static class Program
             files.Add(new DesktopTransferFile(filePath));
         }
 
-        LanInvitation invitation;
-        try
+        LanInvitation? invitation = null;
+        if (pairUri != null)
         {
-            invitation = InvitationCodec.Decode(pairUri);
-            if (invitation.IsExpired())
+            try
             {
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine(
-                    "[ERROR] Pairing invitation has expired. Request a new QR/pairing link.");
-                Console.ResetColor();
+                invitation = InvitationCodec.Decode(pairUri);
+                if (invitation.IsExpired())
+                {
+                    Console.WriteLine("[ERROR] Pairing invitation has expired. Request a new QR/pairing link.");
+                    return 1;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ERROR] Invalid pairing link: {ex.Message}");
                 return 1;
             }
         }
-        catch (Exception ex)
+
+        LanEndpoint? endpoint = invitation?.Endpoints.FirstOrDefault();
+        if (invitation != null && endpoint == null)
         {
-            Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine($"[ERROR] Invalid pairing link: {ex.Message}");
-            Console.ResetColor();
+            Console.Error.WriteLine("[ERROR] Pairing invitation has no endpoint.");
             return 1;
         }
-
-        var endpoint = invitation.Endpoints.First();
-        Console.WriteLine(
-            $"[INFO] Authenticated pairing invitation for '{invitation.Name}' ({endpoint.Address}:{endpoint.Port})");
 
         var engine = new DesktopTransferEngine();
         var trustManager =
             CreateDesktopTrustManager();
         trustManager.Initialize();
 
-        if (trustedPeerFingerprint != null &&
-            trustManager.GetTrustedPeer(
-                trustedPeerFingerprint) == null)
+        DesktopTrustedPeer? trustedPeer = trustedPeerFingerprint == null
+            ? null : trustManager.GetTrustedPeer(trustedPeerFingerprint);
+        if (trustedPeerFingerprint != null && trustedPeer == null)
         {
             Console.ForegroundColor =
                 ConsoleColor.Red;
@@ -731,21 +846,37 @@ public static class Program
             return 1;
         }
 
+        if (invitation == null && targetHost == null && trustedPeer?.LastKnownPort is not > 0)
+        {
+            Console.Error.WriteLine("[ERROR] No authenticated endpoint is saved. Supply --connect <host:port>.");
+            return 1;
+        }
+
+        if (invitation == null && targetHost != null && targetPort == 0)
+        {
+            Console.Error.WriteLine("[ERROR] Trusted --connect requires an explicit listening port.");
+            return 1;
+        }
+
+        if (invitation != null)
+            Console.WriteLine($"[INFO] Authenticated pairing invitation for '{invitation.Name}' ({endpoint!.Address}:{endpoint.Port})");
+
         var interaction =
             new ConsoleDesktopTransferInteraction(
                 isDaemon: false,
                 trustManager: trustManager);
-        var result = await engine.SendAsync(
-            new DesktopSendRequest(
-                targetHost ?? endpoint.Address,
-                targetPort > 0 ? targetPort : endpoint.Port,
+        var request = new DesktopSendRequest(
+                targetHost ?? endpoint?.Address ?? trustedPeer?.LastKnownHost ?? string.Empty,
+                targetPort > 0 ? targetPort : endpoint?.Port ?? trustedPeer?.LastKnownPort ?? 0,
                 files,
                 invitation,
                 Environment.MachineName,
                 TrustManager: trustManager,
                 ExpectedPeerFingerprintHex:
-                    trustedPeerFingerprint),
-            interaction);
+                    trustedPeerFingerprint);
+        var result = invitation == null
+            ? await engine.SendTrustedAsync(request, interaction)
+            : await engine.SendAsync(request, interaction);
 
         if (!result.Success)
         {

@@ -9,10 +9,12 @@ sealed class Program
     public static void Main(string[] args)
     {
         using var singleInstance = new LinuxSingleInstance();
-        if (!singleInstance.TryAcquire())
+        if (!singleInstance.TryAcquire(args))
         {
             return;
         }
+
+        App.PrimaryInstance = singleInstance;
 
         BuildAvaloniaApp()
             .StartWithClassicDesktopLifetime(args);

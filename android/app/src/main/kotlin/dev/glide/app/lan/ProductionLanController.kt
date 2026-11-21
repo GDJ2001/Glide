@@ -105,27 +105,19 @@ class ProductionLanController private constructor(
         },
         apiLevelProvider = { Build.VERSION.SDK_INT },
         transportFactory = { networkScope, scope ->
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                LanTransferTransport(
-                    networkScope = networkScope,
-                    coroutineScope = scope
-                )
-            } else {
-                throw IllegalStateException("LAN transfer requires Android 10 or newer.")
-            }
+            LanTransferTransport(
+                networkScope = networkScope,
+                coroutineScope = scope
+            )
         },
         allowLoopbackEndpointsForTesting = false,
         listenerFactory = { identity, networkScope, scope ->
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                LanListener(
-                    identity = identity,
-                    networkScope = networkScope,
-                    port = 0,
-                    coroutineScope = scope
-                )
-            } else {
-                throw IllegalStateException("LAN listener requires Android 10 or newer.")
-            }
+            LanListener(
+                identity = identity,
+                networkScope = networkScope,
+                port = 0,
+                coroutineScope = scope
+            )
         }
     )
 
@@ -171,7 +163,7 @@ class ProductionLanController private constructor(
         }
 
         val existing = synchronized(lock) { receiverResources }
-        if (existing != null) {
+        if (existing != null && !existing.identity.isExpiringSoon()) {
             existing.transport.configureTrustedReceive(trustedReceiveManager, deviceName)
             if (trustedReceiveManager != null) {
                 runCatching {
@@ -345,6 +337,24 @@ class ProductionLanController private constructor(
                             _receiverState.value = LanReceiverRuntimeState.Error(
                                 "Local discovery failed. Check Wi-Fi and try again."
                             )
+                        }
+                    }
+                }
+
+                // Rotate ephemeral LanLeaseIdentity before its 2-minute certificate validity window expires
+                val rotationMarginMs = (activeIdentity.ttlMillis / 4).coerceAtMost(LEASE_RENEWAL_MARGIN_MS)
+                val rotationDelayMs = (activeIdentity.ttlMillis - rotationMarginMs).coerceAtLeast(1_000L)
+                activeListenerScope.launch {
+                    delay(rotationDelayMs)
+                    while (isCurrentGeneration(generation) &&
+                        _receiverState.value is LanReceiverRuntimeState.Connected
+                    ) {
+                        delay(2_000L)
+                    }
+                    if (isCurrentGeneration(generation)) {
+                        ownerScope.launch {
+                            stopAll()
+                            startReceiver(ownerScope, deviceName, onConnected)
                         }
                     }
                 }
@@ -765,8 +775,8 @@ class ProductionLanController private constructor(
         if (!LanFeatureConfig.isLanTransportEnabled) {
             return "LAN transfer is disabled in this build."
         }
-        if (apiLevelProvider() < Build.VERSION_CODES.Q) {
-            return "LAN transfer requires Android 10 or newer."
+        if (apiLevelProvider() < Build.VERSION_CODES.O) {
+            return "LAN transfer requires Android 8.0 or newer."
         }
         val missing = PermissionPolicy.lanTransferPermissions(apiLevelProvider())
             .filterNot(permissionChecker)
@@ -788,6 +798,7 @@ class ProductionLanController private constructor(
         private const val TRUSTED_DISCOVERY_TIMEOUT_MS = 6_000L
         private const val TRUSTED_CANDIDATE_MAX_AGE_MS = 10_000L
         private const val MAX_TRUSTED_CANDIDATES = 8
+        private const val LEASE_RENEWAL_MARGIN_MS = 30_000L
 
         @SuppressLint("NewApi")
         internal fun forTesting(

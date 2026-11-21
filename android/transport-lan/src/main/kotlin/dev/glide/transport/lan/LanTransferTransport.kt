@@ -59,7 +59,7 @@ import javax.net.ssl.SSLSocket
  * Scoped to transfer session lifecycle. Fully wires pinned TLS connector, server listener,
  * strict bootstrap, serialized record framing, and bounded stream bridging.
  */
-@RequiresApi(Build.VERSION_CODES.Q)
+@RequiresApi(Build.VERSION_CODES.O)
 class LanTransferTransport(
     val networkScope: LanNetworkScope,
     private val allowLoopbackForTesting: Boolean = false,

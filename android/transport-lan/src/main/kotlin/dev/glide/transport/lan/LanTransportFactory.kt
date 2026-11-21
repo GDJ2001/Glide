@@ -11,7 +11,7 @@ import kotlinx.coroutines.SupervisorJob
 /**
  * Factory for creating [LanTransferTransport] instances bound to Android network scope (LAN-013).
  */
-@RequiresApi(Build.VERSION_CODES.Q)
+@RequiresApi(Build.VERSION_CODES.O)
 open class LanTransportFactory(
     private val context: Context?
 ) {

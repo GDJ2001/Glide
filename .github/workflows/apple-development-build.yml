@@ -1,17 +1,15 @@
 name: Apple development build
 
 on:
-  push:
-    branches:
-      - fix/native-completion-hardening
-      - 'codex/**'
   workflow_dispatch:
+  # Disabled automatic push triggers per R1.
 
 permissions:
   contents: read
 
 jobs:
   compile:
+    if: false # Disabled per R1 — manual/local verification only
     runs-on: macos-26
     timeout-minutes: 35
     steps:

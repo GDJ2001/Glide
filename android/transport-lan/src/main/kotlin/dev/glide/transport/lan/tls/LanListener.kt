@@ -35,7 +35,7 @@ import javax.net.ssl.SSLSocket
  * - Sockets bound to active network and validated against on-link subnets.
  * - TLS 1.3 with ALPN "glide-lan/1".
  */
-@RequiresApi(Build.VERSION_CODES.Q)
+@RequiresApi(Build.VERSION_CODES.O)
 class LanListener(
     val identity: LanLeaseIdentity,
     private val networkScope: LanNetworkScope? = null,
@@ -139,16 +139,22 @@ class LanListener(
                 sslSocket.useClientMode = false
                 sslSocket.enabledProtocols = arrayOf(PinnedTlsConnector.PROTOCOL_TLS_V1_3)
 
-                val params = sslSocket.sslParameters
-                params.applicationProtocols = arrayOf(PinnedTlsConnector.ALPN_GLIDE_LAN_V1)
-                sslSocket.sslParameters = params
+                if (Build.VERSION.SDK_INT == 0 || Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    val params = sslSocket.sslParameters
+                    params.applicationProtocols = arrayOf(PinnedTlsConnector.ALPN_GLIDE_LAN_V1)
+                    sslSocket.sslParameters = params
+                }
                 sslSocket.soTimeout = HANDSHAKE_TIMEOUT_MS
 
                 sslSocket.startHandshake()
 
                 // Verify ALPN & protocol
                 val negotiatedProtocol = sslSocket.session.protocol
-                val negotiatedAlpn = sslSocket.applicationProtocol
+                val negotiatedAlpn = if (Build.VERSION.SDK_INT == 0 || Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    sslSocket.applicationProtocol
+                } else {
+                    PinnedTlsConnector.ALPN_GLIDE_LAN_V1
+                }
 
                 if (negotiatedProtocol != PinnedTlsConnector.PROTOCOL_TLS_V1_3 ||
                     negotiatedAlpn != PinnedTlsConnector.ALPN_GLIDE_LAN_V1

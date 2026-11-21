@@ -6,6 +6,8 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.printToString
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -60,7 +62,11 @@ class VisualRegressionTest {
         launch("discovery_peers", "light").use { scenario ->
             compose.onNodeWithText("Scan QR code or paste invite").performScrollTo().performClick()
             repeat(2) { attempt ->
-                compose.waitUntil(15_000) { compose.onAllNodesWithText("Scan QR code").fetchSemanticsNodes().isNotEmpty() }
+                try {
+                    compose.waitUntil(15_000) { compose.onAllNodesWithText("Scan receiving device QR").fetchSemanticsNodes().isNotEmpty() }
+                } catch (e: Throwable) {
+                    throw AssertionError("Scanner missing after recreation attempt $attempt:\n${compose.onRoot().printToString()}", e)
+                }
                 compose.waitForIdle()
                 scenario.onActivity { activity ->
                     val controller = WindowCompat.getInsetsController(activity.window, activity.window.decorView)

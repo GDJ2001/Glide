@@ -131,12 +131,12 @@ class TransportRouter @Inject constructor(
 
                 TransportType.LAN_NSD_TLS -> {
                     checkNotNull(lanTransportFactory) {
-                        "LanTransportFactory is not available on this platform (requires API 29+)"
+                        "LanTransportFactory is not available on this platform (requires API 26+)"
                     }
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O || Build.VERSION.SDK_INT == 0) {
                         lanTransportFactory.createTransport(coroutineScope = coroutineScope)
                     } else {
-                        throw IllegalStateException("LAN transport requires Android API 29+ (current: ${Build.VERSION.SDK_INT})")
+                        throw IllegalStateException("LAN transport requires Android API 26+ (current: ${Build.VERSION.SDK_INT})")
                     }
                 }
 

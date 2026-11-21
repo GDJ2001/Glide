@@ -5,8 +5,8 @@ Captures physical emulator screenshots for GLIDE-037 Home and Discovery surfaces
 #>
 param(
     [string]$AdbPath = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe",
-    [string]$OutputDir = "d:\GITHub\Glide\docs\testing\evidence\screenshots",
-    [string]$ArtifactsDir = "C:\Users\GDJ\.gemini\antigravity\brain\ac444b3f-013a-405b-8007-34183b37abfd"
+    [string]$OutputDir = (Join-Path (Split-Path -Parent $PSScriptRoot) "doc\testing\evidence\screenshots"),
+    [string]$ArtifactsDir = ""
 )
 
 $ErrorActionPreference = 'Stop'
@@ -52,7 +52,7 @@ foreach ($s in $scenarios) {
     & $AdbPath pull $remotePath $destPath
     & $AdbPath shell rm -f $remotePath
 
-    if (Test-Path $ArtifactsDir) {
+    if (-not [string]::IsNullOrWhiteSpace($ArtifactsDir) -and (Test-Path $ArtifactsDir)) {
         $artPath = Join-Path $ArtifactsDir "$name.png"
         Copy-Item -Path $destPath -Destination $artPath -Force
     }
@@ -61,4 +61,4 @@ foreach ($s in $scenarios) {
     Write-Host "  -> Saved $name.png ($fileSize bytes)" -ForegroundColor Green
 }
 
-Write-Host "`nAll 6 emulator screenshots successfully captured for GLIDE-037." -ForegroundColor Green
+Write-Host "`nAll $($scenarios.Count) emulator screenshots successfully captured for GLIDE-037." -ForegroundColor Green

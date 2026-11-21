@@ -3,7 +3,7 @@
     Glide GLIDE-070: Persistent Identity & True Resume Extension Specification Auditor.
 .DESCRIPTION
     Automated auditor validating the persistent identity and true resume specification (M13 Future Scope):
-    1. ADR-0015 existence, decision, and indexing in docs/adr/README.md.
+    1. ADR-0015 existence, decision, and indexing in doc/adr/README.md.
     2. PERSISTENT_IDENTITY_AND_RESUME_SPECIFICATION.md completeness and hardware Keystore identity.
     3. Rejection of offset-only fake resume and requirement for chunk Merkle digest tree verification.
     4. Retained-partial lifecycle governance (24-hour TTL, storage pressure purge, staging isolation).

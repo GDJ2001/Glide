@@ -10,7 +10,7 @@ Mechanically generates:
 - Notification small icon (ic_notification.png) across densities (pure white alpha silhouette)
 - Splash screen logo (ic_splash_logo.png) across densities
 
-Preserves canonical brand masters in asset/ without modification.
+Preserves canonical brand masters in assets/ without modification.
 #>
 [CmdletBinding()]
 param(
@@ -21,9 +21,9 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
 
-$resDir = Join-Path $ProjectRoot "app\src\main\res"
-$mastersDir = Join-Path $ProjectRoot "asset\masters"
-$platformAndroidDir = Join-Path $ProjectRoot "asset\platforms\android\res"
+$resDir = Join-Path $ProjectRoot "android\app\src\main\res"
+$mastersDir = Join-Path $ProjectRoot "assets\masters"
+$platformAndroidDir = Join-Path $ProjectRoot "assets\platforms\android\res"
 
 $symbolGradientPath = Join-Path $mastersDir "glide-symbol-gradient.png"
 $symbolWhitePath = Join-Path $mastersDir "glide-symbol-white.png"
@@ -169,13 +169,13 @@ try {
         $logoHeightPx = [int][Math]::Round(44 * $scale)
 
         $logoColorBmp = New-CenteredBitmap -SourceImage $imgLogoColor -CanvasWidth $logoWidthPx -CanvasHeight $logoHeightPx -TargetDrawWidth $logoWidthPx -TargetDrawHeight $logoHeightPx
-        $logoColorPath = Join-Path $drawableDir "ic_glide_logo_color.png"
-        $logoColorBmp.Save($logoColorPath, [System.Drawing.Imaging.ImageFormat]::Png)
+        $dstLogoColorPath = Join-Path $drawableDir "ic_glide_logo_color.png"
+        $logoColorBmp.Save($dstLogoColorPath, [System.Drawing.Imaging.ImageFormat]::Png)
         $logoColorBmp.Dispose()
 
         $logoInvBmp = New-CenteredBitmap -SourceImage $imgLogoInverse -CanvasWidth $logoWidthPx -CanvasHeight $logoHeightPx -TargetDrawWidth $logoWidthPx -TargetDrawHeight $logoHeightPx
-        $logoInvPath = Join-Path $drawableDir "ic_glide_logo_inverse.png"
-        $logoInvBmp.Save($logoInvPath, [System.Drawing.Imaging.ImageFormat]::Png)
+        $dstLogoInvPath = Join-Path $drawableDir "ic_glide_logo_inverse.png"
+        $logoInvBmp.Save($dstLogoInvPath, [System.Drawing.Imaging.ImageFormat]::Png)
         $logoInvBmp.Dispose()
 
         # 6. In-app symbol (48dp x 48dp)
@@ -185,7 +185,7 @@ try {
         $symBmp.Save($symPath, [System.Drawing.Imaging.ImageFormat]::Png)
         $symBmp.Dispose()
 
-        # 7. Legacy flat launcher icons (copy from asset/platforms/android/res)
+        # 7. Legacy flat launcher icons (copy from assets/platforms/android/res)
         $srcLauncherPath = Join-Path $platformAndroidDir "mipmap-$densityName\ic_launcher.png"
         $dstLauncherPath = Join-Path $mipmapDir "ic_launcher.png"
         if (Test-Path $srcLauncherPath) {

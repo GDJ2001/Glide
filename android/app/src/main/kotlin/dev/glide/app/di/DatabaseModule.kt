@@ -105,8 +105,8 @@ object DatabaseModule {
     ): dev.glide.data.store.ResumableStagingStore {
         val root =
             java.io.File(
-                context.cacheDir,
-                "staging/resumable-v1"
+                context.filesDir,
+                "glide_resume_staging"
             )
         return dev.glide.data.store
             .ResumableStagingStore(

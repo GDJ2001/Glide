@@ -18,6 +18,8 @@ param()
 
 $ErrorActionPreference = "Stop"
 $projectRoot = (Resolve-Path "$PSScriptRoot\..").Path
+. (Join-Path $PSScriptRoot 'resolve-dotnet.ps1')
+$null = Enable-GlideDotnetSdk -AllowMissing
 
 Write-Host "=================================================================" -ForegroundColor Cyan
 Write-Host "   Glide Developer Environment Doctor (HARD-035)                  " -ForegroundColor Cyan

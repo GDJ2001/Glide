@@ -1,9 +1,17 @@
 using System.Diagnostics;
 using Glide.Transport.Sockets;
+using Glide.Desktop.Diagnostics;
 using Glide.Desktop.Services;
 using Glide.Core.Security;
 
 namespace Glide.Desktop;
+
+public sealed record DesktopCancellationTiming(
+    long RequestedTimestamp,
+    long UiUpdatedTimestamp,
+    long ResourcesReleasedTimestamp,
+    double UiCancelLatencyMs,
+    double ResourceReleaseLatencyMs);
 
 /// <summary>
 /// Owns the single active desktop batch. Both GUI and CLI callers use this boundary so a second
@@ -15,7 +23,10 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
     private readonly SemaphoreSlim _activeBatch = new(1, 1);
     private readonly object _gate = new();
     private CancellationTokenSource? _activeCancellation;
+    private Task? _activeTransferTask;
     private DesktopTransferSnapshot _snapshot = DesktopTransferSnapshot.Idle;
+    private long _activeCancelRequestedTimestamp;
+    private long _activeCancelUiUpdatedTimestamp;
 
     public DesktopTransferRuntime(IDesktopTransferExecutor? executor = null)
     {
@@ -24,6 +35,9 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
 
     public event EventHandler<DesktopTransferSnapshot>? SnapshotChanged;
     public event EventHandler<TransferEvent>? EventOccurred;
+
+    public DesktopCancellationTiming? LastCancellationTiming { get; private set; }
+    public R3DiagnosticReport? LastR3DiagnosticReport { get; private set; }
 
     public DesktopTransferSnapshot Snapshot
     {
@@ -47,6 +61,7 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
                 return false;
             }
 
+            Volatile.Write(ref _activeCancelRequestedTimestamp, Stopwatch.GetTimestamp());
             _activeCancellation.Cancel();
             return true;
         }
@@ -104,7 +119,7 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
             interaction,
             cancellationToken,
             (token) => _executor.ReceiveTrustedAsync(
-                connection, open, request, interaction, isBusy: true, token));
+                connection, open, request, SilentInteraction.Instance, isBusy: true, token));
     }
 
     public Task<DesktopTransferResult> ReceiveFromInvitationAsync(
@@ -154,6 +169,8 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
         lock (_gate)
         {
             _activeCancellation = linkedCancellation;
+            Volatile.Write(ref _activeCancelRequestedTimestamp, 0);
+            Volatile.Write(ref _activeCancelUiUpdatedTimestamp, 0);
         }
 
         Guid runId = Guid.NewGuid();
@@ -166,9 +183,14 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
 
         try
         {
-            DesktopTransferResult result = await Task.Run(
+            Task<DesktopTransferResult> operationTask = Task.Run(
                 () => operation(observer, linkedCancellation.Token),
-                CancellationToken.None).ConfigureAwait(false);
+                CancellationToken.None);
+            lock (_gate)
+            {
+                _activeTransferTask = operationTask;
+            }
+            DesktopTransferResult result = await operationTask.ConfigureAwait(false);
             observer.MarkCompleted();
             DesktopTransferPhase phase = result switch
             {
@@ -178,6 +200,10 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
                 _ => DesktopTransferPhase.Failed
             };
             SetSnapshot(new DesktopTransferSnapshot(phase, direction, observer.PeerName, result.Message, result, runId));
+            if (phase == DesktopTransferPhase.Cancelled && Volatile.Read(ref _activeCancelRequestedTimestamp) > 0)
+            {
+                Volatile.Write(ref _activeCancelUiUpdatedTimestamp, Stopwatch.GetTimestamp());
+            }
             NotifyEvent(result.Success ? new TransferEvent.Completed(result) :
                 new TransferEvent.Failed(result.ErrorCategory, result.Message));
             return result;
@@ -192,6 +218,10 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
                 direction,
                 observer.PeerName,
                 message, result, runId));
+            if (Volatile.Read(ref _activeCancelRequestedTimestamp) > 0)
+            {
+                Volatile.Write(ref _activeCancelUiUpdatedTimestamp, Stopwatch.GetTimestamp());
+            }
             NotifyEvent(new TransferEvent.Failed(result.ErrorCategory, message));
             return result;
         }
@@ -210,8 +240,32 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
             lock (_gate)
             {
                 _activeCancellation = null;
+                _activeTransferTask = null;
             }
             _activeBatch.Release();
+
+            long cancelReqTs = Volatile.Read(ref _activeCancelRequestedTimestamp);
+            R3DiagnosticReport? engineReport = (_executor as DesktopTransferEngine)?.LastR3DiagnosticReport;
+            if (cancelReqTs > 0)
+            {
+                long releaseTs = Stopwatch.GetTimestamp();
+                long uiTs = Volatile.Read(ref _activeCancelUiUpdatedTimestamp);
+                if (uiTs <= 0) uiTs = releaseTs;
+                double uiMs = Math.Round(Math.Max(0.0, Stopwatch.GetElapsedTime(cancelReqTs, uiTs).TotalMilliseconds), 2);
+                double relMs = Math.Round(Math.Max(0.0, Stopwatch.GetElapsedTime(cancelReqTs, releaseTs).TotalMilliseconds), 2);
+                LastCancellationTiming = new DesktopCancellationTiming(cancelReqTs, uiTs, releaseTs, uiMs, relMs);
+                if (engineReport != null)
+                {
+                    engineReport = engineReport with
+                    {
+                        Cancellation = new R3CancellationInfo(
+                            CancellationRequested: true,
+                            UiCancelLatencyMs: MetricValue<double>.Available(uiMs),
+                            ResourceReleaseLatencyMs: MetricValue<double>.Available(relMs))
+                    };
+                }
+            }
+            LastR3DiagnosticReport = engineReport;
         }
     }
 
@@ -344,14 +398,31 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
         }
     }
 
-    public ValueTask DisposeAsync()
+    private sealed class SilentInteraction : DesktopTransferInteractionBase
+    {
+        public static SilentInteraction Instance { get; } = new();
+    }
+
+    public async ValueTask DisposeAsync()
     {
         CancelActiveTransfer();
-        // A caller may dispose the application boundary while an executor is still observing
-        // cancellation. Disposing the semaphore here would make that executor's finally block
-        // throw when it releases the lease. The runtime is process-owned and has no unmanaged
-        // resources, so cancellation is the safe shutdown operation.
-        return ValueTask.CompletedTask;
+        Task? runningTask;
+        lock (_gate)
+        {
+            runningTask = _activeTransferTask;
+        }
+
+        if (runningTask != null)
+        {
+            try
+            {
+                await runningTask.ConfigureAwait(false);
+            }
+            catch
+            {
+                // Active transfer observed cancellation and completed cleanup.
+            }
+        }
     }
 }
 

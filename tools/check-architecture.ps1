@@ -225,7 +225,7 @@ foreach ($dir in $scanPaths) {
 Write-Host "[Check 7/7] Verifying dependency catalog usage and zero unreviewed dependencies..." -ForegroundColor Yellow
 
 $buildFiles = @(
-    "$projectRoot/build.gradle.kts",
+    "$projectRoot/android/build.gradle.kts",
     "$projectRoot/android/app/build.gradle.kts",
     "$projectRoot/android/core/build.gradle.kts",
     "$projectRoot/android/data/build.gradle.kts",

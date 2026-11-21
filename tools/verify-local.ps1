@@ -34,7 +34,7 @@ Write-Host "`n=== 4. Running Android Lint Analysis ===" -ForegroundColor Cyan
 $LASTEXITCODE = 0
 Push-Location (Join-Path $PSScriptRoot "..\android")
 try {
-    & .\gradlew.bat :android:app:lintDebug
+    & .\gradlew.bat :app:lintDebug
 } finally {
     Pop-Location
 }

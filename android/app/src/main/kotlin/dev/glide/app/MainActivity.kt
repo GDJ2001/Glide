@@ -19,6 +19,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
@@ -42,6 +44,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import javax.inject.Inject
@@ -69,6 +72,7 @@ class MainActivity : ComponentActivity() {
     private var lastHandledFingerprint: String? = null
     @Volatile private var keepReceivingInBackground = false
     private val incomingOutcomeFlow = MutableStateFlow<IngressOutcome?>(null)
+    private val incomingRouteNonceFlow = MutableStateFlow(0L)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -99,7 +103,10 @@ class MainActivity : ComponentActivity() {
                         if (permitted &&
                             transferRuntime.lanReceiverState.value is LanReceiverRuntimeState.Idle &&
                             !transferRuntime.isSessionActive.value) {
-                            TransferService.startLanReceiver(this@MainActivity)
+                            TransferService.startLanReceiver(
+                                this@MainActivity,
+                                settingsStore.settingsFlow.first().deviceName
+                            )
                         }
                     }
                 }
@@ -188,14 +195,17 @@ class MainActivity : ComponentActivity() {
                     dev.glide.designsystem.LocalDevicePosture provides postureInfo
                 ) {
                     Surface(
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .semantics { testTagsAsResourceId = true },
                         color = MaterialTheme.colorScheme.background
                     ) {
                         val latestOutcome by incomingOutcomeFlow.collectAsStateWithLifecycle()
+                        val latestOutcomeNonce by incomingRouteNonceFlow.collectAsStateWithLifecycle()
                         var incomingRoute by remember { mutableStateOf<GlideRoute?>(null) }
                         var ingressDialog by remember { mutableStateOf<IngressDialogState?>(initialDialogState) }
 
-                        LaunchedEffect(latestOutcome) {
+                        LaunchedEffect(latestOutcome, latestOutcomeNonce) {
                             when (val outcome = latestOutcome) {
                                 is IngressOutcome.Route -> {
                                     ShareIngressHandler.tryTakePersistableUriPermissions(contentResolver, outcome.urisToPersist)
@@ -221,7 +231,9 @@ class MainActivity : ComponentActivity() {
                             customSettingsStore = settingsStore,
                             initialRoute = initialRoute,
                             incomingRoute = incomingRoute,
+                            incomingRouteNonce = latestOutcomeNonce,
                             initialUiState = overrides.debugUiState,
+                            initialAutoSaveStatus = overrides.debugAutoSaveStatus,
                             initialPairingState = overrides.debugPairingState,
                             initialDiscoveryState = overrides.debugDiscoveryState,
                             initialReceiveState = overrides.debugReceiveState,
@@ -255,6 +267,15 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        DebugLaunchHarness.onNewIntent(
+            activity = this,
+            intent = intent,
+            transferRuntime = transferRuntime
+        )?.let { debugRoute ->
+            incomingOutcomeFlow.value = IngressOutcome.Route(debugRoute)
+            incomingRouteNonceFlow.value = incomingRouteNonceFlow.value + 1L
+            return
+        }
         val (outcome, fingerprint) = ShareIngressHandler.handleNewIntent(
             intent = intent,
             isSessionActive = transferRuntime.isSessionActive.value,
@@ -264,6 +285,7 @@ class MainActivity : ComponentActivity() {
         lastHandledFingerprint = fingerprint
         if (outcome !is IngressOutcome.NoOp) {
             incomingOutcomeFlow.value = outcome
+            incomingRouteNonceFlow.value = incomingRouteNonceFlow.value + 1L
         }
     }
 }

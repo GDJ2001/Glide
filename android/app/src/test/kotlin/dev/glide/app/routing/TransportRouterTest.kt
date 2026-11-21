@@ -263,7 +263,7 @@ class TransportRouterTest {
             lanNetworkScope = networkScope,
             nearbyAvailabilityChecker = { NearbyHardwareStatus.Available },
             permissionChecker = { true },
-            apiLevelProvider = { 28 } // Android 9 (API 28) - below TLS 1.3 gate
+            apiLevelProvider = { 25 } // Below API 26 gate
         )
 
         val lanRoute = RouteCandidate(
@@ -283,10 +283,22 @@ class TransportRouterTest {
             verificationStatus = CandidateVerificationStatus.PINNED_INVITATION
         )
 
+        for (api in 26..28) {
+            val allowedRouter = TransportRouter(
+                context = null,
+                lanTransportFactory = createLanTransportFactoryStub(),
+                lanNetworkScope = networkScope,
+                nearbyAvailabilityChecker = { NearbyHardwareStatus.Available },
+                permissionChecker = { true },
+                apiLevelProvider = { api }
+            )
+            assertTrue(allowedRouter.evaluateRoute(candidate) is RouteSelectionResult.Selected)
+        }
+
         val result = router.evaluateRoute(candidate)
         assertTrue(result is RouteSelectionResult.Rejected)
         val rejected = result as RouteSelectionResult.Rejected
-        assertTrue(rejected.reason.contains("API 29+"))
+        assertTrue(rejected.reason.contains("API 26+"))
     }
 
     @Test

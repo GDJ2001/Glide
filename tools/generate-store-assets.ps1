@@ -7,9 +7,6 @@ param()
 $ErrorActionPreference = "Stop"
 $projectRoot = (Resolve-Path "$PSScriptRoot\..").Path
 $storeAssetsDir = "$projectRoot\doc\release\store_assets"
-if (-not (Test-Path $storeAssetsDir)) {
-    $storeAssetsDir = "$projectRoot\docs\release\store_assets"
-}
 $phoneScreensDir = "$storeAssetsDir\screenshots\phone"
 $tabletScreensDir = "$storeAssetsDir\screenshots\tablet"
 $tablet7InchScreensDir = "$storeAssetsDir\screenshots\tablet_7inch"
@@ -32,9 +29,6 @@ Add-Type -AssemblyName System.Drawing
 # --------------------------------------------------------------------------------------------------
 Write-Host "`n[Step 1/3] Preparing 512x512 Store Icon..." -ForegroundColor Yellow
 $sourceIcon = "$projectRoot\assets\platforms\android\play-store-icon.png"
-if (-not (Test-Path $sourceIcon)) {
-    $sourceIcon = "$projectRoot\asset\platforms\android\play-store-icon.png"
-}
 $targetIcon = "$storeAssetsDir\icon_512.png"
 
 if (Test-Path $sourceIcon) {
@@ -53,7 +47,7 @@ Write-Host "`n[Step 2/3] Generating 1024x500 Feature Graphic..." -ForegroundColo
 $targetFeatureGraphic = "$storeAssetsDir\feature_graphic_1024x500.png"
 $sourceLogo = "$projectRoot\assets\masters\glide-logo-horizontal-white.png"
 if (-not (Test-Path $sourceLogo)) {
-    $sourceLogo = "$projectRoot\asset\masters\glide-logo-horizontal-white.png"
+    throw "Source logo not found at $sourceLogo"
 }
 
 $fgWidth = 1024
@@ -121,7 +115,7 @@ Write-Host "  Feature graphic saved: $targetFeatureGraphic (1024x500, 24-bit RGB
 Write-Host "`n[Step 3/3] Curating Real Device Screenshots..." -ForegroundColor Yellow
 $evidenceScreenshots = "$projectRoot\doc\testing\evidence\screenshots"
 if (-not (Test-Path $evidenceScreenshots)) {
-    $evidenceScreenshots = "$projectRoot\docs\testing\evidence\screenshots"
+    throw "Evidence screenshots directory not found at $evidenceScreenshots"
 }
 
 # Curated Phone Screens (Ensure 24-bit RGB, 1080x1920 aspect ratio, no alpha)

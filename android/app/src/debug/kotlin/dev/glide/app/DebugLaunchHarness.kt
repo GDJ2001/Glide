@@ -951,4 +951,11 @@ object DebugLaunchHarness {
             postureOverride = postureInfo
         )
     }
+
+    @Suppress("UNUSED_PARAMETER")
+    fun onNewIntent(
+        activity: Activity,
+        intent: Intent?,
+        transferRuntime: TransferRuntime
+    ): GlideRoute? = null
 }

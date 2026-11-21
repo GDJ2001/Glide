@@ -1,6 +1,7 @@
 using System.IO;
 using System.Net.Sockets;
 using System.Text;
+using System.Text.Json;
 
 namespace Glide.Linux.UI.Services;
 
@@ -16,6 +17,7 @@ public sealed class LinuxSingleInstance : IDisposable
     private bool _ownsSocket;
 
     public event Action? Activated;
+    public event Action<string[]>? ActivatedWithArguments;
 
     public LinuxSingleInstance()
     {
@@ -25,7 +27,7 @@ public sealed class LinuxSingleInstance : IDisposable
     /// <summary>
     /// Attempts to register as the primary instance. Returns false if an active instance responded.
     /// </summary>
-    public bool TryAcquire()
+    public bool TryAcquire(string[]? launchArguments = null)
     {
         if (!OperatingSystem.IsLinux()) return false;
         var lockPath = _socketPath + ".lock";
@@ -40,7 +42,7 @@ public sealed class LinuxSingleInstance : IDisposable
         {
             _ownerLock?.Dispose();
             _ownerLock = null;
-            ActivateExisting();
+            ActivateExisting(launchArguments);
             return false;
         }
 
@@ -68,13 +70,19 @@ public sealed class LinuxSingleInstance : IDisposable
         }
     }
 
-    private void ActivateExisting()
+    private void ActivateExisting(string[]? launchArguments)
     {
         try
         {
             using var client = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
             client.Connect(new UnixDomainSocketEndPoint(_socketPath));
-            client.Send(Encoding.UTF8.GetBytes("ACTIVATE\n"));
+            string encodedArgs = Convert.ToBase64String(
+                Encoding.UTF8.GetBytes(JsonSerializer.Serialize(launchArguments ?? [])));
+            byte[] message = Encoding.UTF8.GetBytes($"ACTIVATE {encodedArgs}\n");
+            if (message.Length > 16 * 1024) return;
+            int offset = 0;
+            while (offset < message.Length)
+                offset += client.Send(message.AsSpan(offset));
         }
         catch (SocketException)
         {
@@ -106,16 +114,33 @@ public sealed class LinuxSingleInstance : IDisposable
     {
         using (client)
         {
-            var buffer = new byte[256];
-            int read = await client.ReceiveAsync(buffer.AsMemory(), SocketFlags.None);
-            if (read > 0)
+            var buffer = new byte[16 * 1024];
+            int read = 0;
+            while (read < buffer.Length)
             {
-                var msg = Encoding.UTF8.GetString(buffer, 0, read).Trim();
-                if (msg.StartsWith("ACTIVATE", StringComparison.OrdinalIgnoreCase))
+                int next = await client.ReceiveAsync(buffer.AsMemory(read), SocketFlags.None);
+                if (next == 0) break;
+                read += next;
+                if (buffer.AsSpan(0, read).Contains((byte)'\n')) break;
+            }
+            if (read == 0 || read == buffer.Length || buffer[read - 1] != (byte)'\n') return;
+            string msg = Encoding.UTF8.GetString(buffer, 0, read - 1);
+            if (!msg.StartsWith("ACTIVATE", StringComparison.Ordinal)) return;
+            string[] arguments = [];
+            if (msg.Length > "ACTIVATE ".Length && msg.StartsWith("ACTIVATE ", StringComparison.Ordinal))
+            {
+                try
                 {
-                    Activated?.Invoke();
+                    byte[] json = Convert.FromBase64String(msg["ACTIVATE ".Length..]);
+                    arguments = JsonSerializer.Deserialize<string[]>(json) ?? [];
+                }
+                catch (Exception ex) when (ex is FormatException or JsonException)
+                {
+                    return;
                 }
             }
+            Activated?.Invoke();
+            ActivatedWithArguments?.Invoke(arguments);
         }
     }
 

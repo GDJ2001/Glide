@@ -3,7 +3,7 @@
 
 param(
     [string]$AdbPath = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe",
-    [string]$EvidenceDir = "docs/testing/evidence/screenshots"
+    [string]$EvidenceDir = (Join-Path (Split-Path -Parent $PSScriptRoot) "doc\testing\evidence\screenshots")
 )
 
 $ErrorActionPreference = "Stop"

@@ -26,6 +26,8 @@ param(
 $ErrorActionPreference = "Stop"
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = (Resolve-Path (Join-Path $scriptRoot "..\..")).Path
+. (Join-Path $repoRoot 'tools\resolve-dotnet.ps1')
+$null = Enable-GlideDotnetSdk
 $project = Join-Path $scriptRoot "Glide.Windows.UI\Glide.Windows.UI.csproj"
 $icon = Join-Path $scriptRoot "Glide.Windows.UI\glide.ico"
 $installerScript = Join-Path $scriptRoot "installer\Glide.wxs"

@@ -178,7 +178,7 @@ fun HistoryDetailContent(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                StatusBadge(outcome = detail.session.outcome)
+                StatusBadge(outcome = detail.session.outcome, failureCode = detail.session.failureCode)
 
                 val duration = formatDuration(detail.session.startedAtMs, detail.session.endedAtMs)
                 if (duration.isNotEmpty()) {
@@ -422,7 +422,7 @@ fun HistoryItemCard(
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.weight(1f)
                 )
-                ItemOutcomeBadge(outcome = item.outcome)
+                ItemOutcomeBadge(outcome = item.outcome, failureCode = item.failureCode)
             }
 
             Spacer(modifier = Modifier.height(4.dp))
@@ -434,7 +434,7 @@ fun HistoryItemCard(
                     modifier = Modifier.padding(bottom = 4.dp)
                 ) {
                     Text(
-                        text = item.relativePath,
+                        text = item.relativePath.isolateBidi(),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onTertiaryContainer,
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
@@ -516,7 +516,7 @@ fun HistoryItemCard(
                         modifier = Modifier
                             .fillMaxWidth()
                             .background(
-                                color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f),
+                                color = MaterialTheme.colorScheme.errorContainer,
                                 shape = RoundedCornerShape(8.dp)
                             )
                             .padding(horizontal = 10.dp, vertical = 8.dp),
@@ -542,22 +542,23 @@ fun HistoryItemCard(
 }
 
 @Composable
-fun StatusBadge(outcome: String?, modifier: Modifier = Modifier) {
+fun StatusBadge(outcome: String?, failureCode: String? = null, modifier: Modifier = Modifier) {
+    val label = formatHistoryOutcomeLabel(outcome, failureCode)
     val (containerColor, contentColor, text) = when (outcome) {
-        "Completed" -> Triple(
+        "Completed", "Verified" -> Triple(
             MaterialTheme.colorScheme.primaryContainer,
             MaterialTheme.colorScheme.onPrimaryContainer,
-            "Completed"
+            label
         )
-        "Failed" -> Triple(
+        "Failed", "Interrupted" -> Triple(
             MaterialTheme.colorScheme.errorContainer,
             MaterialTheme.colorScheme.onErrorContainer,
-            "Failed"
+            label
         )
         "Cancelled" -> Triple(
             MaterialTheme.colorScheme.surfaceVariant,
             MaterialTheme.colorScheme.onSurfaceVariant,
-            "Cancelled"
+            label
         )
         null -> Triple(
             MaterialTheme.colorScheme.tertiaryContainer,
@@ -567,7 +568,7 @@ fun StatusBadge(outcome: String?, modifier: Modifier = Modifier) {
         else -> Triple(
             MaterialTheme.colorScheme.surfaceVariant,
             MaterialTheme.colorScheme.onSurfaceVariant,
-            outcome
+            label
         )
     }
 
@@ -585,22 +586,23 @@ fun StatusBadge(outcome: String?, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun ItemOutcomeBadge(outcome: String?, modifier: Modifier = Modifier) {
+fun ItemOutcomeBadge(outcome: String?, failureCode: String? = null, modifier: Modifier = Modifier) {
+    val label = formatHistoryOutcomeLabel(outcome, failureCode)
     val (containerColor, contentColor, text) = when (outcome) {
-        "Verified" -> Triple(
+        "Verified", "Completed" -> Triple(
             MaterialTheme.colorScheme.primaryContainer,
             MaterialTheme.colorScheme.onPrimaryContainer,
-            "Verified"
+            label
         )
-        "Failed" -> Triple(
+        "Failed", "Interrupted" -> Triple(
             MaterialTheme.colorScheme.errorContainer,
             MaterialTheme.colorScheme.onErrorContainer,
-            "Failed"
+            label
         )
         "Cancelled" -> Triple(
             MaterialTheme.colorScheme.surfaceVariant,
             MaterialTheme.colorScheme.onSurfaceVariant,
-            "Cancelled"
+            label
         )
         null -> Triple(
             MaterialTheme.colorScheme.surfaceVariant,
@@ -610,7 +612,7 @@ fun ItemOutcomeBadge(outcome: String?, modifier: Modifier = Modifier) {
         else -> Triple(
             MaterialTheme.colorScheme.surfaceVariant,
             MaterialTheme.colorScheme.onSurfaceVariant,
-            outcome
+            label
         )
     }
 

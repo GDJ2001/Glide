@@ -41,6 +41,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -144,6 +145,7 @@ private fun ActiveTransferringCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
         modifier = modifier
             .fillMaxWidth()
+            .testTag("transfer_progress_card")
             .semantics {
                 liveRegion = LiveRegionMode.Polite
                 contentDescription = "$roleLabel: ${state.itemName.isolateBidi()}. $percentText complete, ${TransferFormatting.formatBytes(state.transferredBytes)} of ${TransferFormatting.formatBytes(state.totalBytes)}."
@@ -301,6 +303,7 @@ private fun IntegrityVerifyingCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
         modifier = modifier
             .fillMaxWidth()
+            .testTag("transfer_verifying_card")
             .semantics {
                 contentDescription = "$headline: $description"
             }

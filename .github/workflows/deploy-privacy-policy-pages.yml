@@ -1,13 +1,8 @@
 name: Deploy Privacy Policy to GitHub Pages
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'docs/**'
-      - '.github/workflows/deploy-privacy-policy-pages.yml'
   workflow_dispatch:
+  # Disabled automatic push triggers per R1 (paths fixed to doc/**).
 
 permissions:
   contents: read
@@ -20,6 +15,7 @@ concurrency:
 
 jobs:
   deploy:
+    if: false # Disabled per R1 — manual/local verification only
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -34,7 +30,7 @@ jobs:
       - name: Upload Pages Artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: 'docs'
+          path: 'doc'
 
       - name: Deploy to GitHub Pages
         id: deployment

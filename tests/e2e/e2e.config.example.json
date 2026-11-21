@@ -1,0 +1,26 @@
+{
+  "vm": {
+    "host": "192.168.0.245",
+    "user": "Ubuntu 26",
+    "sshPort": 22,
+    "sshKeyPath": "",
+    "remoteSandboxRoot": "/tmp/glide-e2e",
+    "remoteArtifactsDir": "/tmp/glide-e2e/artifacts"
+  },
+  "android": {
+    "serial": "emulator-5554",
+    "avdName": "Pixel_10a",
+    "debugPackage": "dev.glide.app.debug",
+    "releasePackage": "dev.glide.app",
+    "deviceTempDir": "/sdcard/Download/glide-e2e"
+  },
+  "timeouts": {
+    "processSeconds": 120,
+    "sshConnectSeconds": 5,
+    "transferSmallSeconds": 60,
+    "transferLargeSeconds": 600
+  },
+  "paths": {
+    "evidenceRoot": "build/test-evidence/e2e"
+  }
+}

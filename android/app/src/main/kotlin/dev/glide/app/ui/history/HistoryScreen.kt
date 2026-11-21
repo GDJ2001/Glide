@@ -432,7 +432,7 @@ fun HistorySessionCard(
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    StatusBadge(outcome = session.outcome)
+                    StatusBadge(outcome = session.outcome, failureCode = session.failureCode)
                 }
 
                 Spacer(modifier = Modifier.height(4.dp))

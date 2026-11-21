@@ -85,10 +85,10 @@ class ProcessDeathReconciler(
                 val finalFile = if (catalogRecord != null) File(receiveStore.receivedDir, catalogRecord.fileKey) else null
 
                 if (catalogRecord != null && catalogRecord.deletedAtMs == null && finalFile?.exists() == true) {
-                    // Item was successfully committed and exists on disk! Mark completed in history
+                    // Item was successfully committed and exists on disk! Mark verified in history
                     itemDao.updateOutcome(
                         itemId = item.itemId,
-                        outcome = "Completed",
+                        outcome = "Verified",
                         actualBytes = catalogRecord.length,
                         digest = catalogRecord.digest,
                         failureCode = null

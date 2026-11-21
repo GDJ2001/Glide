@@ -106,7 +106,7 @@ object TransferModule {
     @Provides
     @Singleton
     fun provideLanTransportFactory(@ApplicationContext context: Context): dev.glide.transport.lan.LanTransportFactory? {
-        return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q &&
+        return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O &&
             dev.glide.app.config.LanFeatureConfig.isLanTransportEnabled
         ) {
             dev.glide.transport.lan.LanTransportFactory(context)

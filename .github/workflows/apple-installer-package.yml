@@ -1,20 +1,15 @@
 name: Apple installer package
 
 on:
-  push:
-    branches:
-      - 'codex/**'
-    paths:
-      - apple/scripts/package-macos.sh
-      - apple/installer/**
-      - .github/workflows/apple-installer-package.yml
   workflow_dispatch:
+  # Disabled automatic push triggers per R1.
 
 permissions:
   contents: read
 
 jobs:
   macos-installer:
+    if: false # Disabled per R1 — manual/local verification only
     runs-on: macos-26
     timeout-minutes: 20
     steps:

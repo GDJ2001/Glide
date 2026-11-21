@@ -67,7 +67,8 @@ data class SessionRecord(
     val peerLabel: String,
     val startedAtMs: Long,
     val endedAtMs: Long? = null,
-    val outcome: String? = null
+    val outcome: String? = null,
+    val failureCode: String? = null
 )
 
 data class ItemRecord(
@@ -80,7 +81,8 @@ data class ItemRecord(
     val actualBytes: Long? = null,
     val digest: Sha256Digest? = null,
     val outcome: String? = null,
-    val relativePath: String? = null
+    val relativePath: String? = null,
+    val failureCode: String? = null
 )
 
 data class SessionSummary(
@@ -100,8 +102,20 @@ interface HistoryStore {
     suspend fun recordSession(record: SessionRecord)
     suspend fun recordItem(record: ItemRecord)
     suspend fun updateSessionOutcome(sessionId: SessionId, outcome: String, endedAtMs: Long)
+    suspend fun updateSessionOutcome(sessionId: SessionId, outcome: String, endedAtMs: Long, failureCode: String?) {
+        updateSessionOutcome(sessionId, outcome, endedAtMs)
+    }
     suspend fun getSession(sessionId: SessionId): SessionRecord?
     suspend fun updateItemOutcome(itemId: ItemId, outcome: String, actualBytes: Long? = null, digest: Sha256Digest? = null) {}
+    suspend fun updateItemOutcome(
+        itemId: ItemId,
+        outcome: String,
+        actualBytes: Long? = null,
+        digest: Sha256Digest? = null,
+        failureCode: String?
+    ) {
+        updateItemOutcome(itemId, outcome, actualBytes, digest)
+    }
     suspend fun getItemsForSession(sessionId: SessionId): List<ItemRecord> = emptyList()
     suspend fun getSessionsPaged(role: DeviceRole? = null, limit: Int = 50, offset: Int = 0): List<SessionSummary> = emptyList()
     /**

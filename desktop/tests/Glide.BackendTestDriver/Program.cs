@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -49,6 +50,7 @@ public static class Program
                 "test-trust" => await RunTestTrustAsync(args[1..]),
                 "test-discovery" => await RunTestDiscoveryAsync(args[1..]),
                 "test-ownership" => await RunTestOwnershipAsync(args[1..]),
+                "storage-baseline" => await RunStorageBaselineAsync(args[1..]),
                 "benchmark" => await RunBenchmarkAsync(args[1..]),
                 _ => PrintUnknownCommand(command)
             };
@@ -85,7 +87,8 @@ public static class Program
         Console.Error.WriteLine("  test-trust");
         Console.Error.WriteLine("  test-discovery");
         Console.Error.WriteLine("  test-ownership");
-        Console.Error.WriteLine("  benchmark [--size-mb N] [--mode legacy|current] [--path all|1|2|3|4] [--run both|cold|warm] [--stage NAME] [--output-json PATH] [--output-log PATH]");
+        Console.Error.WriteLine("  storage-baseline [--target-dir DIR] [--size-mb N] [--buffer-kb K] [--repetitions N] [--output-json PATH] [--r3-report PATH]");
+        Console.Error.WriteLine("  benchmark [--size-mb N] [--mode legacy|current] [--path all|1|2|3|4] [--run both|cold|warm] [--stage NAME] [--bench-root DIR] [--corpus-path PATH] [--dataset single|mixed|small-1000] [--incompressible] [--repetitions N] [--timeout-seconds N] [--output-json PATH] [--output-log PATH] [--r3-report PATH]");
     }
 
     private static int PrintUnknownCommand(string command)
@@ -323,6 +326,7 @@ public static class Program
         string? identityStorePath = null;
         long cancelAfterBytes = -1;
         int timeoutSeconds = 60;
+        string? r3ReportPath = null;
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -339,6 +343,7 @@ public static class Program
                 case "--identity-store" when i + 1 < args.Length: identityStorePath = args[++i]; break;
                 case "--cancel-after-bytes" when i + 1 < args.Length: cancelAfterBytes = long.Parse(args[++i]); break;
                 case "--timeout-seconds" when i + 1 < args.Length: timeoutSeconds = int.Parse(args[++i]); break;
+                case "--r3-report" when i + 1 < args.Length: r3ReportPath = args[++i]; break;
             }
         }
 
@@ -392,6 +397,10 @@ public static class Program
             DesktopTransferResult res = await engine.ReceiveAsync(conn, req, interaction, cts.Token);
             bool cleanQuarantine = IsQuarantineEmpty(stagingDir);
             JsonArray files = CollectReceivedFiles(destDir);
+            if (!string.IsNullOrWhiteSpace(r3ReportPath) && engine.LastR3DiagnosticReport != null)
+            {
+                await BoundedTransferDiagnosticSink.WriteR3ReportFileAsync(r3ReportPath, engine.LastR3DiagnosticReport);
+            }
 
             var resultEvt = new JsonObject
             {
@@ -440,6 +449,7 @@ public static class Program
         string? identityStorePath = null;
         long cancelAfterBytes = -1;
         int timeoutSeconds = 60;
+        string? r3ReportPath = null;
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -456,6 +466,7 @@ public static class Program
                 case "--identity-store" when i + 1 < args.Length: identityStorePath = args[++i]; break;
                 case "--cancel-after-bytes" when i + 1 < args.Length: cancelAfterBytes = long.Parse(args[++i]); break;
                 case "--timeout-seconds" when i + 1 < args.Length: timeoutSeconds = int.Parse(args[++i]); break;
+                case "--r3-report" when i + 1 < args.Length: r3ReportPath = args[++i]; break;
             }
         }
 
@@ -504,6 +515,10 @@ public static class Program
                 HostedInvitationAuthority: authority);
 
             DesktopTransferResult res = await engine.SendHostedAsync(conn, req, interaction, cts.Token);
+            if (!string.IsNullOrWhiteSpace(r3ReportPath) && engine.LastR3DiagnosticReport != null)
+            {
+                await BoundedTransferDiagnosticSink.WriteR3ReportFileAsync(r3ReportPath, engine.LastR3DiagnosticReport);
+            }
             var resultEvt = new JsonObject
             {
                 ["event"] = "result",
@@ -544,6 +559,7 @@ public static class Program
         string? identityStorePath = null;
         long cancelAfterBytes = -1;
         int timeoutSeconds = 60;
+        string? r3ReportPath = null;
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -557,6 +573,7 @@ public static class Program
                 case "--identity-store" when i + 1 < args.Length: identityStorePath = args[++i]; break;
                 case "--cancel-after-bytes" when i + 1 < args.Length: cancelAfterBytes = long.Parse(args[++i]); break;
                 case "--timeout-seconds" when i + 1 < args.Length: timeoutSeconds = int.Parse(args[++i]); break;
+                case "--r3-report" when i + 1 < args.Length: r3ReportPath = args[++i]; break;
             }
         }
 
@@ -589,6 +606,10 @@ public static class Program
                 ExpectedPeerFingerprintHex: expectedPeer);
 
             DesktopTransferResult res = await engine.SendAsync(req, interaction, cts.Token);
+            if (!string.IsNullOrWhiteSpace(r3ReportPath) && engine.LastR3DiagnosticReport != null)
+            {
+                await BoundedTransferDiagnosticSink.WriteR3ReportFileAsync(r3ReportPath, engine.LastR3DiagnosticReport);
+            }
             var resultEvt = new JsonObject
             {
                 ["event"] = "result",
@@ -630,6 +651,7 @@ public static class Program
         string? identityStorePath = null;
         long cancelAfterBytes = -1;
         int timeoutSeconds = 60;
+        string? r3ReportPath = null;
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -644,6 +666,7 @@ public static class Program
                 case "--identity-store" when i + 1 < args.Length: identityStorePath = args[++i]; break;
                 case "--cancel-after-bytes" when i + 1 < args.Length: cancelAfterBytes = long.Parse(args[++i]); break;
                 case "--timeout-seconds" when i + 1 < args.Length: timeoutSeconds = int.Parse(args[++i]); break;
+                case "--r3-report" when i + 1 < args.Length: r3ReportPath = args[++i]; break;
             }
         }
 
@@ -683,6 +706,10 @@ public static class Program
             DesktopTransferResult res = await engine.ReceiveFromInvitationAsync(req, interaction, cts.Token);
             bool cleanQuarantine = IsQuarantineEmpty(stagingDir);
             JsonArray files = CollectReceivedFiles(destDir);
+            if (!string.IsNullOrWhiteSpace(r3ReportPath) && engine.LastR3DiagnosticReport != null)
+            {
+                await BoundedTransferDiagnosticSink.WriteR3ReportFileAsync(r3ReportPath, engine.LastR3DiagnosticReport);
+            }
 
             var resultEvt = new JsonObject
             {
@@ -1121,6 +1148,7 @@ public static class Program
         int smallCount = 32;
         int largeMiB = 100;
         bool addExtraCases = true;
+        bool incompressible = true;
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -1130,8 +1158,10 @@ public static class Program
                 case "--small-count" when i + 1 < args.Length: smallCount = int.Parse(args[++i]); break;
                 case "--large-mib" when i + 1 < args.Length: largeMiB = int.Parse(args[++i]); break;
                 case "--no-extra": addExtraCases = false; break;
+                case "--incompressible": incompressible = true; break;
             }
         }
+        _ = incompressible;
 
         Directory.CreateDirectory(outputDir);
 
@@ -1234,20 +1264,52 @@ public static class Program
 
     private static void WritePatternFile(string path, long sizeBytes, int seed, byte[] buffer)
     {
-        for (int i = 0; i < buffer.Length; i++)
-        {
-            buffer[i] = (byte)((i + seed) % 251);
-        }
+        WriteIncompressibleFile(path, sizeBytes, (ulong)(uint)seed ^ 0xA0761D6478BD642FUL, buffer);
+    }
 
+    private static string WriteIncompressibleFile(string path, long sizeBytes, ulong seed, byte[] buffer)
+    {
         using var fs = File.Open(path, FileMode.Create, FileAccess.Write, FileShare.None);
+        using var hasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        ulong state = seed == 0 ? 0x9E3779B97F4A7C15UL : seed;
         long remaining = sizeBytes;
         while (remaining > 0)
         {
             int count = (int)Math.Min(buffer.Length, remaining);
+            FillSplitMix64(buffer.AsSpan(0, count), ref state);
             fs.Write(buffer, 0, count);
+            hasher.AppendData(buffer, 0, count);
             remaining -= count;
         }
         fs.Flush();
+        return Convert.ToHexStringLower(hasher.GetHashAndReset());
+    }
+
+    private static void FillSplitMix64(Span<byte> dest, ref ulong state)
+    {
+        Span<ulong> words = MemoryMarshal.Cast<byte, ulong>(dest);
+        for (int i = 0; i < words.Length; i++)
+        {
+            state += 0x9E3779B97F4A7C15UL;
+            ulong z = state;
+            z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9UL;
+            z = (z ^ (z >> 27)) * 0x94D049BB133111EBUL;
+            words[i] = z ^ (z >> 31);
+        }
+
+        int tailStart = words.Length * sizeof(ulong);
+        if (tailStart < dest.Length)
+        {
+            state += 0x9E3779B97F4A7C15UL;
+            ulong z = state;
+            z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9UL;
+            z = (z ^ (z >> 27)) * 0x94D049BB133111EBUL;
+            z ^= z >> 31;
+            for (int b = 0; b < dest.Length - tailStart; b++)
+            {
+                dest[tailStart + b] = (byte)(z >> (b * 8));
+            }
+        }
     }
 
     private static int RunVerifyCorpus(string[] args)
@@ -1621,16 +1683,24 @@ public static class Program
         private readonly bool _useBlockingUiInvoke;
         private readonly DesktopTransferRateCalculator _rateCalculator = new();
         private readonly long _totalBytes;
+        private readonly List<(double ElapsedSec, long Bytes)> _oneSecondPoints = new(256);
         private long _startTimestamp;
+        private long _lastSampleTimestamp;
         private long _firstQuarterStartTimestamp;
         private long _firstQuarterEndTimestamp;
         private long _finalQuarterStartTimestamp;
         private long _finalQuarterEndTimestamp;
+        private long _slice45GbTimestamp;
+        private long _slice45GbBytes;
+        private long _slice50GbTimestamp;
+        private long _slice50GbBytes;
         private long _firstQuarterStartBytes;
         private long _firstQuarterEndBytes;
         private long _finalQuarterStartBytes;
         private long _finalQuarterEndBytes;
         private long _lastProgressCallbacks;
+        private const long Slice45GbThreshold = 4_500_000_000L;
+        private const long Slice50GbThreshold = 5_000_000_000L;
 
         public BenchmarkProgressTracker(
             long totalBytes,
@@ -1644,6 +1714,44 @@ public static class Program
         }
 
         public long ProgressCallbacks => Interlocked.Read(ref _lastProgressCallbacks);
+
+        public IReadOnlyList<(double ElapsedSec, long Bytes)> ProgressPoints => _oneSecondPoints;
+
+        public IReadOnlyList<double> ComputeOneSecondRatesMBps()
+        {
+            var rates = new List<double>();
+            for (int i = 1; i < _oneSecondPoints.Count; i++)
+            {
+                double dt = _oneSecondPoints[i].ElapsedSec - _oneSecondPoints[i - 1].ElapsedSec;
+                long db = Math.Max(0L, _oneSecondPoints[i].Bytes - _oneSecondPoints[i - 1].Bytes);
+                if (dt >= 0.25)
+                {
+                    rates.Add(Math.Round((db / dt) / 1_000_000.0, 2));
+                }
+            }
+            return rates;
+        }
+
+        public JsonObject? BuildSlice4_5To5_0GbJson()
+        {
+            if (_totalBytes < Slice50GbThreshold || _slice45GbTimestamp == 0 || _slice50GbTimestamp <= _slice45GbTimestamp)
+            {
+                return null;
+            }
+            double durMs = Stopwatch.GetElapsedTime(_slice45GbTimestamp, _slice50GbTimestamp).TotalMilliseconds;
+            long deltaBytes = Math.Max(0L, _slice50GbBytes - _slice45GbBytes);
+            double rateMBps = durMs > 0.1 ? (deltaBytes / (durMs / 1000.0)) / 1_000_000.0 : 0.0;
+            double? q1 = FirstQuarterMBps;
+            double? ratio = q1 > 0.1 ? Math.Round(rateMBps / q1.Value, 3) : null;
+            return new JsonObject
+            {
+                ["startBytes"] = _slice45GbBytes,
+                ["endBytes"] = _slice50GbBytes,
+                ["durationMs"] = Math.Round(durMs, 2),
+                ["rateMBps"] = Math.Round(rateMBps, 2),
+                ["ratioToFirstQuarter"] = ratio
+            };
+        }
 
         public double? FirstQuarterMBps
         {
@@ -1693,8 +1801,16 @@ public static class Program
             if (_startTimestamp == 0)
             {
                 _startTimestamp = now;
+                _lastSampleTimestamp = now;
                 _firstQuarterStartTimestamp = now;
                 _firstQuarterStartBytes = progress.TransferredBytes;
+                _oneSecondPoints.Add((0.0, progress.TransferredBytes));
+            }
+
+            if (Stopwatch.GetElapsedTime(_lastSampleTimestamp, now).TotalSeconds >= 1.0 && _oneSecondPoints.Count < 10_800)
+            {
+                _lastSampleTimestamp = now;
+                _oneSecondPoints.Add((Stopwatch.GetElapsedTime(_startTimestamp, now).TotalSeconds, progress.TransferredBytes));
             }
 
             long q1Bytes = _totalBytes / 4;
@@ -1710,10 +1826,28 @@ public static class Program
                 _finalQuarterStartTimestamp = now;
                 _finalQuarterStartBytes = progress.TransferredBytes;
             }
+            if (_totalBytes >= Slice50GbThreshold)
+            {
+                if (_slice45GbTimestamp == 0 && progress.TransferredBytes >= Slice45GbThreshold)
+                {
+                    _slice45GbTimestamp = now;
+                    _slice45GbBytes = progress.TransferredBytes;
+                }
+                if (_slice50GbTimestamp == 0 && progress.TransferredBytes >= Slice50GbThreshold)
+                {
+                    _slice50GbTimestamp = now;
+                    _slice50GbBytes = progress.TransferredBytes;
+                }
+            }
             if (progress.TransferredBytes >= _totalBytes)
             {
                 _finalQuarterEndTimestamp = now;
                 _finalQuarterEndBytes = progress.TransferredBytes;
+                if (_oneSecondPoints.Count < 10_800 &&
+                    (_oneSecondPoints.Count == 0 || _oneSecondPoints[^1].Bytes < progress.TransferredBytes))
+                {
+                    _oneSecondPoints.Add((Stopwatch.GetElapsedTime(_startTimestamp, now).TotalSeconds, progress.TransferredBytes));
+                }
             }
 
             if (_uiContext != null)
@@ -1730,6 +1864,229 @@ public static class Program
         }
     }
 
+    private static async Task<int> RunStorageBaselineAsync(string[] args)
+    {
+        string targetDir = Path.GetTempPath();
+        long sizeDecimalMB = 256;
+        int bufferKiB = 1024;
+        int repetitions = 1;
+        string? outputJson = null;
+        string? r3ReportPath = null;
+
+        for (int i = 0; i < args.Length; i++)
+        {
+            switch (args[i])
+            {
+                case "--target-dir" when i + 1 < args.Length: targetDir = args[++i]; break;
+                case "--size-mb" when i + 1 < args.Length: sizeDecimalMB = long.Parse(args[++i]); break;
+                case "--buffer-kb" when i + 1 < args.Length: bufferKiB = int.Parse(args[++i]); break;
+                case "--repetitions" when i + 1 < args.Length: repetitions = Math.Clamp(int.Parse(args[++i]), 1, 50); break;
+                case "--output-json" when i + 1 < args.Length: outputJson = args[++i]; break;
+                case "--r3-report" when i + 1 < args.Length: r3ReportPath = args[++i]; break;
+            }
+        }
+
+        if (sizeDecimalMB <= 0 || sizeDecimalMB > 20_000)
+        {
+            throw new ArgumentException("Invalid --size-mb for storage-baseline (1..20000).");
+        }
+
+        targetDir = Path.GetFullPath(targetDir);
+        Directory.CreateDirectory(targetDir);
+        long totalBytes = sizeDecimalMB * 1_000_000L;
+        int bufferSize = Math.Clamp(bufferKiB * 1024, 4096, 16 * 1024 * 1024);
+        byte[] writeBuf = new byte[bufferSize];
+        byte[] readBuf = new byte[bufferSize];
+
+        var repResults = new JsonArray();
+        R3DiagnosticReport? lastR3Report = null;
+
+        for (int rep = 1; rep <= repetitions; rep++)
+        {
+            string testFile = Path.Combine(targetDir, $"glide-storage-baseline-{Guid.NewGuid():N}.bin");
+            try
+            {
+                using var diagSink = new BoundedTransferDiagnosticSink();
+                using IDesktopTransferAttemptDiagnostics attemptDiag = diagSink.BeginAttempt(DesktopTransferDirection.Receive, totalBytes);
+                attemptDiag.SetAttemptMetadata(new DesktopAttemptMetadata(
+                    PairingMode: "benchmark-harness",
+                    StagingLocation: targetDir,
+                    DestinationLocation: targetDir,
+                    CommitStrategy: "StorageBaselineDirect",
+                    DatasetId: $"storage-{sizeDecimalMB}mb-incompressible",
+                    ContentProfile: "incompressible-prng",
+                    ItemCount: 1,
+                    TransportName: "local-storage"));
+
+                string expectedSha;
+                long writeStart = Stopwatch.GetTimestamp();
+                long writeEnd;
+                long fsyncStart;
+                long fsyncEnd;
+                using (var hasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256))
+                await using (var writeStream = new FileStream(
+                    testFile,
+                    FileMode.Create,
+                    FileAccess.Write,
+                    FileShare.None,
+                    bufferSize: bufferSize,
+                    FileOptions.SequentialScan))
+                {
+                    ulong prngState = 0x9E3779B97F4A7C15UL ^ (ulong)rep;
+                    long remaining = totalBytes;
+                    while (remaining > 0)
+                    {
+                        int count = (int)Math.Min(writeBuf.Length, remaining);
+                        FillSplitMix64(writeBuf.AsSpan(0, count), ref prngState);
+                        await writeStream.WriteAsync(writeBuf.AsMemory(0, count));
+                        hasher.AppendData(writeBuf, 0, count);
+                        remaining -= count;
+                    }
+                    writeEnd = Stopwatch.GetTimestamp();
+                    fsyncStart = Stopwatch.GetTimestamp();
+                    writeStream.Flush(flushToDisk: true);
+                    fsyncEnd = Stopwatch.GetTimestamp();
+                    expectedSha = Convert.ToHexStringLower(hasher.GetHashAndReset());
+                }
+
+                double writeMs = Stopwatch.GetElapsedTime(writeStart, writeEnd).TotalMilliseconds;
+                double fsyncMs = Stopwatch.GetElapsedTime(fsyncStart, fsyncEnd).TotalMilliseconds;
+                double writePlusFsyncMs = Stopwatch.GetElapsedTime(writeStart, fsyncEnd).TotalMilliseconds;
+
+                // Sequential read + SHA-256
+                attemptDiag.OnPhaseChanged(DesktopTransferPhase.Verifying);
+                long readStart = Stopwatch.GetTimestamp();
+                long totalRead = 0;
+                await using (var readStream = new FileStream(
+                    testFile,
+                    FileMode.Open,
+                    FileAccess.Read,
+                    FileShare.Read,
+                    bufferSize: bufferSize,
+                    FileOptions.SequentialScan))
+                {
+                    int r;
+                    while ((r = await readStream.ReadAsync(readBuf)) > 0)
+                    {
+                        totalRead += r;
+                    }
+                }
+                long readEnd = Stopwatch.GetTimestamp();
+
+                long shaStart = Stopwatch.GetTimestamp();
+                string actualSha;
+                using (var shaHasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256))
+                await using (var shaStream = new FileStream(
+                    testFile,
+                    FileMode.Open,
+                    FileAccess.Read,
+                    FileShare.Read,
+                    bufferSize: bufferSize,
+                    FileOptions.SequentialScan))
+                {
+                    int r;
+                    while ((r = await shaStream.ReadAsync(readBuf)) > 0)
+                    {
+                        shaHasher.AppendData(readBuf, 0, r);
+                    }
+                    actualSha = Convert.ToHexStringLower(shaHasher.GetHashAndReset());
+                }
+                long shaEnd = Stopwatch.GetTimestamp();
+
+                double readMs = Stopwatch.GetElapsedTime(readStart, readEnd).TotalMilliseconds;
+                double shaMs = Stopwatch.GetElapsedTime(shaStart, shaEnd).TotalMilliseconds;
+                bool verified = totalRead == totalBytes && string.Equals(actualSha, expectedSha, StringComparison.Ordinal);
+
+                double seqWriteMBps = writeMs > 0.1 ? (totalBytes / (writeMs / 1000.0)) / 1_000_000.0 : 0.0;
+                double writeFsyncMBps = writePlusFsyncMs > 0.1 ? (totalBytes / (writePlusFsyncMs / 1000.0)) / 1_000_000.0 : 0.0;
+                double seqReadMBps = readMs > 0.1 ? (totalBytes / (readMs / 1000.0)) / 1_000_000.0 : 0.0;
+                double streamShaMBps = shaMs > 0.1 ? (totalBytes / (shaMs / 1000.0)) / 1_000_000.0 : 0.0;
+
+                attemptDiag.AddStagingWrite(totalBytes, writeEnd - writeStart);
+                attemptDiag.AddCommit(fsyncEnd - fsyncStart);
+                attemptDiag.AddVerificationRead(totalBytes, shaEnd - shaStart);
+                attemptDiag.OnItemVerified(totalBytes);
+                var transferRes = verified
+                    ? DesktopTransferResult.Completed("Storage baseline verified.", 1, totalBytes)
+                    : DesktopTransferResult.Failed("Storage baseline verification mismatch.");
+                attemptDiag.Complete(transferRes);
+
+                lastR3Report = attemptDiag.BuildR3Report(transferRes, new DesktopR3ReportOptions(
+                    BenchmarkPath: "storage-baseline",
+                    BenchmarkMode: "current",
+                    RunType: rep == 1 ? "cold" : "warm",
+                    RepetitionIndex: rep,
+                    RepetitionTotal: repetitions,
+                    UiState: "headless-driver",
+                    DatasetSha256Override: expectedSha,
+                    Sha256VerifiedOverride: verified,
+                    QuarantineCleanAfterTerminalOverride: true));
+                lastR3Report = lastR3Report with
+                {
+                    Throughput = lastR3Report.Throughput with
+                    {
+                        AveragePayloadRateMBps = Math.Round(writeFsyncMBps, 2),
+                        AcceptanceToVerifiedRateMBps = Math.Round(streamShaMBps, 2)
+                    },
+                    PhaseDurationsMs = lastR3Report.PhaseDurationsMs with
+                    {
+                        SavingMs = Math.Round(fsyncMs, 2),
+                        VerificationMs = Math.Round(shaMs, 2)
+                    }
+                };
+
+                repResults.Add(new JsonObject
+                {
+                    ["repetitionIndex"] = rep,
+                    ["sizeBytes"] = totalBytes,
+                    ["bufferKiB"] = bufferKiB,
+                    ["writeDurationMs"] = Math.Round(writeMs, 2),
+                    ["fsyncFlushMs"] = Math.Round(fsyncMs, 2),
+                    ["writePlusFsyncMs"] = Math.Round(writePlusFsyncMs, 2),
+                    ["readDurationMs"] = Math.Round(readMs, 2),
+                    ["sha256DurationMs"] = Math.Round(shaMs, 2),
+                    ["sequentialWriteMBps"] = Math.Round(seqWriteMBps, 2),
+                    ["writePlusFsyncMBps"] = Math.Round(writeFsyncMBps, 2),
+                    ["sequentialReadMBps"] = Math.Round(seqReadMBps, 2),
+                    ["streamingSha256MBps"] = Math.Round(streamShaMBps, 2),
+                    ["sha256"] = expectedSha,
+                    ["verified"] = verified
+                });
+            }
+            finally
+            {
+                try { if (File.Exists(testFile)) File.Delete(testFile); } catch { }
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(r3ReportPath) && lastR3Report != null)
+        {
+            await BoundedTransferDiagnosticSink.WriteR3ReportFileAsync(r3ReportPath, lastR3Report);
+        }
+
+        var report = new JsonObject
+        {
+            ["event"] = "storage_baseline",
+            ["timestampUtc"] = DateTimeOffset.UtcNow.ToString("O"),
+            ["targetDir"] = BoundedTransferDiagnosticSink.SanitizePathForDiagnostics(targetDir),
+            ["sizeDecimalMB"] = sizeDecimalMB,
+            ["totalBytes"] = totalBytes,
+            ["repetitions"] = repetitions,
+            ["results"] = repResults
+        };
+
+        string formatted = report.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+        if (!string.IsNullOrWhiteSpace(outputJson))
+        {
+            string fullOut = Path.GetFullPath(outputJson);
+            Directory.CreateDirectory(Path.GetDirectoryName(fullOut)!);
+            await File.WriteAllTextAsync(fullOut, formatted);
+        }
+
+        Console.WriteLine(report.ToJsonString());
+        return 0;
+    }
+
     private static async Task<int> RunBenchmarkAsync(string[] args)
     {
         long sizeDecimalMB = 256;
@@ -1737,8 +2094,15 @@ public static class Program
         string selectedPath = "all";
         string selectedRun = "both";
         string stageName = "unspecified";
+        string? customBenchRoot = null;
+        string? corpusPath = null;
+        string dataset = "single";
+        bool incompressible = true;
+        int repetitions = 1;
+        int? timeoutSecondsOverride = null;
         string? outputJson = null;
         string? outputLog = null;
+        string? r3ReportPath = null;
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -1749,20 +2113,29 @@ public static class Program
                 case "--path" when i + 1 < args.Length: selectedPath = args[++i].ToLowerInvariant(); break;
                 case "--run" when i + 1 < args.Length: selectedRun = args[++i].ToLowerInvariant(); break;
                 case "--stage" when i + 1 < args.Length: stageName = args[++i]; break;
+                case "--bench-root" when i + 1 < args.Length: customBenchRoot = args[++i]; break;
+                case "--corpus-path" when i + 1 < args.Length: corpusPath = args[++i]; break;
+                case "--dataset" when i + 1 < args.Length: dataset = args[++i].ToLowerInvariant(); break;
+                case "--incompressible": incompressible = true; break;
+                case "--repetitions" when i + 1 < args.Length: repetitions = Math.Clamp(int.Parse(args[++i]), 1, 50); break;
+                case "--timeout-seconds" when i + 1 < args.Length: timeoutSecondsOverride = Math.Max(10, int.Parse(args[++i])); break;
                 case "--output-json" when i + 1 < args.Length: outputJson = args[++i]; break;
                 case "--output-log" when i + 1 < args.Length: outputLog = args[++i]; break;
+                case "--r3-report" when i + 1 < args.Length: r3ReportPath = args[++i]; break;
             }
         }
+        _ = incompressible;
 
         if (sizeDecimalMB <= 0 || sizeDecimalMB > 20_000 ||
             selectedPath is not ("all" or "1" or "2" or "3" or "4") ||
-            selectedRun is not ("both" or "cold" or "warm"))
+            selectedRun is not ("both" or "cold" or "warm") ||
+            dataset is not ("single" or "mixed" or "small-1000"))
         {
-            throw new ArgumentException("Invalid benchmark size, path, or run selection.");
+            throw new ArgumentException("Invalid benchmark size, path, dataset, or run selection.");
         }
 
-        long totalBytes = sizeDecimalMB * 1_000_000L;
-        string benchRoot = Path.Combine(Path.GetTempPath(), "glide-bench-" + Guid.NewGuid().ToString("N"));
+        string benchBase = string.IsNullOrWhiteSpace(customBenchRoot) ? Path.GetTempPath() : Path.GetFullPath(customBenchRoot);
+        string benchRoot = Path.Combine(benchBase, "glide-bench-" + Guid.NewGuid().ToString("N"));
         string sourceDir = Path.Combine(benchRoot, "src");
         string stagingDir = Path.Combine(benchRoot, "staging");
         string destDir = Path.Combine(benchRoot, "dest");
@@ -1770,16 +2143,122 @@ public static class Program
         Directory.CreateDirectory(stagingDir);
         Directory.CreateDirectory(destDir);
 
-        string sourceFile = Path.Combine(sourceDir, $"benchmark-{sizeDecimalMB}mb.bin");
-        byte[] patternBuf = new byte[256 * 1024];
-        WritePatternFile(sourceFile, totalBytes, 42, patternBuf);
+        var sourceFiles = new List<DesktopTransferFile>();
+        var expectedHashes = new Dictionary<string, (long Size, string Sha256)>(StringComparer.Ordinal);
+        long totalBytes = 0;
+        string datasetId;
+        string contentProfile;
+        string primaryDatasetSha256 = "unavailable";
+        string manifestSha256 = "unavailable";
 
-        string expectedSha256;
-        using (var srcStream = File.OpenRead(sourceFile))
+        byte[] patternBuf = new byte[1024 * 1024];
+
+        if (!string.IsNullOrWhiteSpace(corpusPath))
         {
-            expectedSha256 = Convert.ToHexStringLower(SHA256.HashData(srcStream));
+            string fullCorpus = Path.GetFullPath(corpusPath);
+            if (File.Exists(fullCorpus))
+            {
+                var fi = new FileInfo(fullCorpus);
+                string rel = fi.Name;
+                using var fs = File.OpenRead(fullCorpus);
+                string sha = Convert.ToHexStringLower(SHA256.HashData(fs));
+                sourceFiles.Add(new DesktopTransferFile(fullCorpus, rel));
+                expectedHashes[rel] = (fi.Length, sha);
+                totalBytes = fi.Length;
+                datasetId = $"corpus-{fi.Name}";
+                contentProfile = "incompressible-prng";
+                primaryDatasetSha256 = sha;
+            }
+            else if (Directory.Exists(fullCorpus))
+            {
+                var manifestSb = new StringBuilder();
+                foreach (string f in Directory.GetFiles(fullCorpus, "*", SearchOption.AllDirectories).OrderBy(x => x, StringComparer.Ordinal))
+                {
+                    if (Path.GetFileName(f) == "corpus-manifest.json") continue;
+                    var fi = new FileInfo(f);
+                    string rel = Path.GetRelativePath(fullCorpus, f).Replace('\\', '/');
+                    using var fs = File.OpenRead(f);
+                    string sha = Convert.ToHexStringLower(SHA256.HashData(fs));
+                    sourceFiles.Add(new DesktopTransferFile(f, rel));
+                    expectedHashes[rel] = (fi.Length, sha);
+                    totalBytes += fi.Length;
+                    manifestSb.Append(rel).Append(':').Append(fi.Length).Append(':').Append(sha).Append('\n');
+                }
+                manifestSha256 = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(manifestSb.ToString())));
+                datasetId = $"corpus-dir-{sourceFiles.Count}-items";
+                contentProfile = dataset == "single" ? "mixed-corpus" : dataset;
+            }
+            else
+            {
+                throw new FileNotFoundException($"--corpus-path not found: {fullCorpus}");
+            }
+        }
+        else if (dataset == "mixed")
+        {
+            File.WriteAllBytes(Path.Combine(sourceDir, "00-empty.bin"), []);
+            for (int n = 1; n <= 32; n++)
+            {
+                string p = Path.Combine(sourceDir, $"{n:D2}-small-{n:D2}.bin");
+                WriteIncompressibleFile(p, 1024 + (n * 37L), (ulong)n, patternBuf);
+            }
+            WriteIncompressibleFile(Path.Combine(sourceDir, "90-medium-10mb.bin"), 10_000_000L, 90, patternBuf);
+            WriteIncompressibleFile(Path.Combine(sourceDir, "99-large-100mb.bin"), 100_000_000L, 99, patternBuf);
+            File.WriteAllText(Path.Combine(sourceDir, "Unicode_🚀_测试_файл.txt"), "Unicode content: 🌟✨", Encoding.UTF8);
+            File.WriteAllText(Path.Combine(sourceDir, "Document With Multiple Spaces In Name.txt"), "Space content", Encoding.UTF8);
+            string nested = Path.Combine(sourceDir, "folder_a", "subfolder_b");
+            Directory.CreateDirectory(nested);
+            File.WriteAllText(Path.Combine(nested, "nested_file.txt"), "Nested content", Encoding.UTF8);
+            string nested2 = Path.Combine(sourceDir, "folder_c");
+            Directory.CreateDirectory(nested2);
+            File.WriteAllText(Path.Combine(nested2, "nested_file.txt"), "Duplicate basename", Encoding.UTF8);
+
+            var manifestSb = new StringBuilder();
+            foreach (string f in Directory.GetFiles(sourceDir, "*", SearchOption.AllDirectories).OrderBy(x => x, StringComparer.Ordinal))
+            {
+                var fi = new FileInfo(f);
+                string rel = Path.GetRelativePath(sourceDir, f).Replace('\\', '/');
+                using var fs = File.OpenRead(f);
+                string sha = Convert.ToHexStringLower(SHA256.HashData(fs));
+                sourceFiles.Add(new DesktopTransferFile(f, rel));
+                expectedHashes[rel] = (fi.Length, sha);
+                totalBytes += fi.Length;
+                manifestSb.Append(rel).Append(':').Append(fi.Length).Append(':').Append(sha).Append('\n');
+            }
+            manifestSha256 = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(manifestSb.ToString())));
+            datasetId = "mixed-folder";
+            contentProfile = "mixed-corpus";
+        }
+        else if (dataset == "small-1000")
+        {
+            var manifestSb = new StringBuilder();
+            for (int n = 1; n <= 1000; n++)
+            {
+                string rel = $"item-{n:D4}.bin";
+                string p = Path.Combine(sourceDir, rel);
+                long sz = 4096 + ((n % 60) * 1024L);
+                string sha = WriteIncompressibleFile(p, sz, (ulong)(1000 + n), patternBuf);
+                sourceFiles.Add(new DesktopTransferFile(p, rel));
+                expectedHashes[rel] = (sz, sha);
+                totalBytes += sz;
+                manifestSb.Append(rel).Append(':').Append(sz).Append(':').Append(sha).Append('\n');
+            }
+            manifestSha256 = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(manifestSb.ToString())));
+            datasetId = "small-1000";
+            contentProfile = "small-files";
+        }
+        else
+        {
+            totalBytes = sizeDecimalMB * 1_000_000L;
+            string sourceFile = Path.Combine(sourceDir, $"benchmark-{sizeDecimalMB}mb.bin");
+            primaryDatasetSha256 = WriteIncompressibleFile(sourceFile, totalBytes, 42UL, patternBuf);
+            string rel = Path.GetFileName(sourceFile);
+            sourceFiles.Add(new DesktopTransferFile(sourceFile, rel));
+            expectedHashes[rel] = (totalBytes, primaryDatasetSha256);
+            datasetId = $"single-{sizeDecimalMB}mb-incompressible";
+            contentProfile = "incompressible-prng";
         }
 
+        int effectiveTimeoutSeconds = timeoutSecondsOverride ?? Math.Max(180, (int)(totalBytes / 2_000_000L) + (sourceFiles.Count / 2) + 180);
         string diagLogFile = outputLog ?? Path.Combine(benchRoot, "diagnostics.jsonl");
         await using var diagSink = new BoundedTransferDiagnosticSink(diagLogFile);
 
@@ -1789,87 +2268,133 @@ public static class Program
             : DesktopTransferIoOptions.Default;
 
         var resultsArray = new JsonArray();
+        R3DiagnosticReport? lastR3Report = null;
+        string? r3Dir = !string.IsNullOrWhiteSpace(r3ReportPath) ? Path.GetDirectoryName(Path.GetFullPath(r3ReportPath)) : null;
+        string? r3Stem = !string.IsNullOrWhiteSpace(r3ReportPath) ? Path.GetFileNameWithoutExtension(r3ReportPath) : null;
+
+        async Task RecordAttemptReportAsync(string pathName, string runType, int rep, R3DiagnosticReport? report)
+        {
+            if (report == null) return;
+            lastR3Report = report;
+            if (!string.IsNullOrWhiteSpace(r3ReportPath) && !string.IsNullOrWhiteSpace(r3Dir) && !string.IsNullOrWhiteSpace(r3Stem))
+            {
+                string perRepPath = Path.Combine(r3Dir, $"{r3Stem}-{pathName}-{runType}-rep{rep}.json");
+                await BoundedTransferDiagnosticSink.WriteR3ReportFileAsync(perRepPath, report);
+            }
+        }
 
         try
         {
-            // Path 1: Independent raw TLS 1.3 socket baseline (cold + warm)
-            if (selectedPath is "all" or "1")
+            var runTypes = selectedRun switch
             {
-                if (selectedRun is "both" or "cold") resultsArray.Add(await RunPath1RawTlsBaselineAsync(totalBytes, "cold"));
-                if (selectedRun is "both" or "warm") resultsArray.Add(await RunPath1RawTlsBaselineAsync(totalBytes, "warm"));
+                "both" => new[] { "cold", "warm" },
+                _ => new[] { selectedRun }
+            };
+
+            for (int rep = 1; rep <= repetitions; rep++)
+            {
+                foreach (string runType in runTypes)
+                {
+                    if (selectedPath is "all" or "1")
+                    {
+                        var (p1Json, p1R3) = await RunPath1RawTlsBaselineAsync(
+                            totalBytes,
+                            runType,
+                            rep,
+                            repetitions,
+                            effectiveTimeoutSeconds,
+                            datasetId,
+                            contentProfile,
+                            primaryDatasetSha256,
+                            manifestSha256);
+                        resultsArray.Add(p1Json);
+                        await RecordAttemptReportAsync("1_RawTlsBaseline", runType, rep, p1R3);
+                    }
+
+                    if (selectedPath is "all" or "2")
+                    {
+                        var (p2Json, p2R3) = await RunGlideBenchmarkPathAsync(
+                            pathName: "2_GlideTlsAndFramingNoStorage",
+                            runType: runType,
+                            repetitionIndex: rep,
+                            repetitionTotal: repetitions,
+                            timeoutSeconds: effectiveTimeoutSeconds,
+                            sourceFiles: sourceFiles,
+                            expectedHashes: expectedHashes,
+                            totalBytes: totalBytes,
+                            datasetId: datasetId,
+                            contentProfile: contentProfile,
+                            datasetSha256: primaryDatasetSha256,
+                            manifestSha256: manifestSha256,
+                            stagingDir: stagingDir,
+                            destDir: destDir,
+                            diagSink: diagSink,
+                            ioOptions: baseOptions with { DiscardStorageForBenchmark = true },
+                            mode: mode,
+                            useUiRuntime: false,
+                            useLegacyBlockingUi: false);
+                        resultsArray.Add(p2Json);
+                        await RecordAttemptReportAsync("2_GlideTlsAndFramingNoStorage", runType, rep, p2R3);
+                    }
+
+                    if (selectedPath is "all" or "3")
+                    {
+                        var (p3Json, p3R3) = await RunGlideBenchmarkPathAsync(
+                            pathName: "3_GlideCompleteBackend",
+                            runType: runType,
+                            repetitionIndex: rep,
+                            repetitionTotal: repetitions,
+                            timeoutSeconds: effectiveTimeoutSeconds,
+                            sourceFiles: sourceFiles,
+                            expectedHashes: expectedHashes,
+                            totalBytes: totalBytes,
+                            datasetId: datasetId,
+                            contentProfile: contentProfile,
+                            datasetSha256: primaryDatasetSha256,
+                            manifestSha256: manifestSha256,
+                            stagingDir: stagingDir,
+                            destDir: destDir,
+                            diagSink: diagSink,
+                            ioOptions: baseOptions with { DiscardStorageForBenchmark = false },
+                            mode: mode,
+                            useUiRuntime: false,
+                            useLegacyBlockingUi: false);
+                        resultsArray.Add(p3Json);
+                        await RecordAttemptReportAsync("3_GlideCompleteBackend", runType, rep, p3R3);
+                    }
+
+                    if (selectedPath is "all" or "4")
+                    {
+                        var (p4Json, p4R3) = await RunGlideBenchmarkPathAsync(
+                            pathName: "4_GlideUiRuntimeCallbacks",
+                            runType: runType,
+                            repetitionIndex: rep,
+                            repetitionTotal: repetitions,
+                            timeoutSeconds: effectiveTimeoutSeconds,
+                            sourceFiles: sourceFiles,
+                            expectedHashes: expectedHashes,
+                            totalBytes: totalBytes,
+                            datasetId: datasetId,
+                            contentProfile: contentProfile,
+                            datasetSha256: primaryDatasetSha256,
+                            manifestSha256: manifestSha256,
+                            stagingDir: stagingDir,
+                            destDir: destDir,
+                            diagSink: diagSink,
+                            ioOptions: baseOptions with { DiscardStorageForBenchmark = false },
+                            mode: mode,
+                            useUiRuntime: true,
+                            useLegacyBlockingUi: isLegacy);
+                        resultsArray.Add(p4Json);
+                        await RecordAttemptReportAsync("4_GlideUiRuntimeCallbacks", runType, rep, p4R3);
+                    }
+                }
             }
 
-            // Path 2: Glide TLS + framing without file storage (cold + warm)
-            if (selectedPath is "all" or "2" && selectedRun is "both" or "cold") resultsArray.Add(await RunGlideBenchmarkPathAsync(
-                pathName: "2_GlideTlsAndFramingNoStorage",
-                runType: "cold",
-                sourceFile: sourceFile,
-                expectedSha256: expectedSha256,
-                stagingDir: stagingDir,
-                destDir: destDir,
-                diagSink: diagSink,
-                ioOptions: baseOptions with { DiscardStorageForBenchmark = true },
-                useUiRuntime: false,
-                useLegacyBlockingUi: false));
-            if (selectedPath is "all" or "2" && selectedRun is "both" or "warm") resultsArray.Add(await RunGlideBenchmarkPathAsync(
-                pathName: "2_GlideTlsAndFramingNoStorage",
-                runType: "warm",
-                sourceFile: sourceFile,
-                expectedSha256: expectedSha256,
-                stagingDir: stagingDir,
-                destDir: destDir,
-                diagSink: diagSink,
-                ioOptions: baseOptions with { DiscardStorageForBenchmark = true },
-                useUiRuntime: false,
-                useLegacyBlockingUi: false));
-
-            // Path 3: Glide complete backend with staging, hashing, verification, and commit (cold + warm)
-            if (selectedPath is "all" or "3" && selectedRun is "both" or "cold") resultsArray.Add(await RunGlideBenchmarkPathAsync(
-                pathName: "3_GlideCompleteBackend",
-                runType: "cold",
-                sourceFile: sourceFile,
-                expectedSha256: expectedSha256,
-                stagingDir: stagingDir,
-                destDir: destDir,
-                diagSink: diagSink,
-                ioOptions: baseOptions with { DiscardStorageForBenchmark = false },
-                useUiRuntime: false,
-                useLegacyBlockingUi: false));
-            if (selectedPath is "all" or "3" && selectedRun is "both" or "warm") resultsArray.Add(await RunGlideBenchmarkPathAsync(
-                pathName: "3_GlideCompleteBackend",
-                runType: "warm",
-                sourceFile: sourceFile,
-                expectedSha256: expectedSha256,
-                stagingDir: stagingDir,
-                destDir: destDir,
-                diagSink: diagSink,
-                ioOptions: baseOptions with { DiscardStorageForBenchmark = false },
-                useUiRuntime: false,
-                useLegacyBlockingUi: false));
-
-            // Path 4: Desktop runtime with simulated WPF dispatcher callbacks (cold + warm).
-            if (selectedPath is "all" or "4" && selectedRun is "both" or "cold") resultsArray.Add(await RunGlideBenchmarkPathAsync(
-                pathName: "4_GlideUiRuntimeCallbacks",
-                runType: "cold",
-                sourceFile: sourceFile,
-                expectedSha256: expectedSha256,
-                stagingDir: stagingDir,
-                destDir: destDir,
-                diagSink: diagSink,
-                ioOptions: baseOptions with { DiscardStorageForBenchmark = false },
-                useUiRuntime: true,
-                useLegacyBlockingUi: isLegacy));
-            if (selectedPath is "all" or "4" && selectedRun is "both" or "warm") resultsArray.Add(await RunGlideBenchmarkPathAsync(
-                pathName: "4_GlideUiRuntimeCallbacks",
-                runType: "warm",
-                sourceFile: sourceFile,
-                expectedSha256: expectedSha256,
-                stagingDir: stagingDir,
-                destDir: destDir,
-                diagSink: diagSink,
-                ioOptions: baseOptions with { DiscardStorageForBenchmark = false },
-                useUiRuntime: true,
-                useLegacyBlockingUi: isLegacy));
+            if (!string.IsNullOrWhiteSpace(r3ReportPath) && lastR3Report != null)
+            {
+                await BoundedTransferDiagnosticSink.WriteR3ReportFileAsync(r3ReportPath, lastR3Report);
+            }
 
             var summaryReport = new JsonObject
             {
@@ -1878,11 +2403,18 @@ public static class Program
                 ["buildCommit"] = BoundedTransferDiagnosticSink.ResolveBuildCommit(),
                 ["stage"] = stageName,
                 ["mode"] = mode,
+                ["dataset"] = dataset,
+                ["datasetId"] = datasetId,
+                ["incompressible"] = true,
                 ["selectedPath"] = selectedPath,
                 ["selectedRun"] = selectedRun,
+                ["repetitions"] = repetitions,
+                ["timeoutSeconds"] = effectiveTimeoutSeconds,
                 ["sizeDecimalMB"] = sizeDecimalMB,
                 ["totalBytes"] = totalBytes,
-                ["expectedSha256"] = expectedSha256,
+                ["itemCount"] = sourceFiles.Count,
+                ["expectedSha256"] = primaryDatasetSha256,
+                ["manifestSha256"] = manifestSha256,
                 ["results"] = resultsArray
             };
 
@@ -1901,13 +2433,25 @@ public static class Program
         {
             try
             {
-                Directory.Delete(benchRoot, recursive: true);
+                if (Directory.Exists(benchRoot))
+                {
+                    Directory.Delete(benchRoot, recursive: true);
+                }
             }
             catch { }
         }
     }
 
-    private static async Task<JsonObject> RunPath1RawTlsBaselineAsync(long totalBytes, string runType)
+    private static async Task<(JsonObject Summary, R3DiagnosticReport R3Report)> RunPath1RawTlsBaselineAsync(
+        long totalBytes,
+        string runType,
+        int repetitionIndex,
+        int repetitionTotal,
+        int timeoutSeconds,
+        string datasetId,
+        string contentProfile,
+        string datasetSha256,
+        string manifestSha256)
     {
         GC.Collect();
         GC.WaitForPendingFinalizers();
@@ -1917,7 +2461,64 @@ public static class Program
         TimeSpan gcPauseBefore = GC.GetTotalPauseDuration();
         long startTick = Stopwatch.GetTimestamp();
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(120));
+        using var diagSink = new BoundedTransferDiagnosticSink();
+        using IDesktopTransferAttemptDiagnostics attemptDiag = diagSink.BeginAttempt(DesktopTransferDirection.Send, totalBytes);
+        attemptDiag.SetAttemptMetadata(new DesktopAttemptMetadata(
+            PairingMode: "benchmark-harness",
+            LocalAddress: "127.0.0.1",
+            PeerAddress: "127.0.0.1",
+            ItemCount: 1,
+            DatasetId: datasetId,
+            ContentProfile: contentProfile,
+            DatasetSha256: datasetSha256,
+            ManifestSha256: manifestSha256,
+            TransportName: "loopback"));
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
+
+        // 1a. Raw unencrypted TCP loopback baseline
+        using var tcpListener = new TcpListener(IPAddress.Loopback, 0);
+        tcpListener.Start();
+        int tcpPort = ((IPEndPoint)tcpListener.LocalEndpoint).Port;
+        Task<long> rawTcpReceiver = Task.Run(async () =>
+        {
+            using TcpClient srv = await tcpListener.AcceptTcpClientAsync(cts.Token).ConfigureAwait(false);
+            using NetworkStream ns = srv.GetStream();
+            byte[] buf = new byte[256 * 1024];
+            long recvd = 0;
+            while (recvd < totalBytes)
+            {
+                int r = await ns.ReadAsync(buf, cts.Token).ConfigureAwait(false);
+                if (r <= 0) break;
+                recvd += r;
+            }
+            return recvd;
+        }, cts.Token);
+
+        double rawTcpRateMBps = 0.0;
+        using (var tcpClient = new TcpClient())
+        {
+            await tcpClient.ConnectAsync(IPAddress.Loopback, tcpPort, cts.Token).ConfigureAwait(false);
+            using NetworkStream ns = tcpClient.GetStream();
+            byte[] sendBuf = new byte[256 * 1024];
+            ulong sState = 0x123456789ABCDEF0UL;
+            FillSplitMix64(sendBuf, ref sState);
+            long tcpStart = Stopwatch.GetTimestamp();
+            long rem = totalBytes;
+            while (rem > 0)
+            {
+                int toWrite = (int)Math.Min(sendBuf.Length, rem);
+                await ns.WriteAsync(sendBuf.AsMemory(0, toWrite), cts.Token).ConfigureAwait(false);
+                rem -= toWrite;
+            }
+            await ns.FlushAsync(cts.Token).ConfigureAwait(false);
+            long tcpRecvd = await rawTcpReceiver.ConfigureAwait(false);
+            double tcpMs = Stopwatch.GetElapsedTime(tcpStart, Stopwatch.GetTimestamp()).TotalMilliseconds;
+            rawTcpRateMBps = tcpMs > 0.1 ? (tcpRecvd / (tcpMs / 1000.0)) / 1_000_000.0 : 0.0;
+        }
+        tcpListener.Stop();
+
+        // 1b. TLS 1.3 socket baseline with 1s / 5s / steady-quarter / 4.5-5 GB tracking
         using var listener = new TlsSocketListener(0);
         int port = listener.BoundPort;
         string spki = listener.LocalSpkiSha256;
@@ -1937,54 +2538,183 @@ public static class Program
         }, cts.Token);
 
         var client = new TlsSocketClient();
+        long connectStartTick = Stopwatch.GetTimestamp();
         await using TlsSocketConnection clientConn = await client.ConnectAsync("127.0.0.1", port, spki, cts.Token).ConfigureAwait(false);
         long payloadStartTick = Stopwatch.GetTimestamp();
+        attemptDiag.RecordConnectionDurationTicks(payloadStartTick - connectStartTick);
+        attemptDiag.OnPhaseChanged(DesktopTransferPhase.Transferring);
 
-        byte[] sendBuf = new byte[256 * 1024];
-        Array.Fill(sendBuf, (byte)0x5A);
+        var points = new List<(double ElapsedSec, long Bytes)> { (0.0, 0L) };
+        long lastSampleTick = payloadStartTick;
+        long slice45Tick = 0;
+        long slice45Bytes = 0;
+        long slice50Tick = 0;
+        long slice50Bytes = 0;
+
+        byte[] tlsBuf = new byte[256 * 1024];
+        ulong tState = 0xCAFEBABE12345678UL;
+        FillSplitMix64(tlsBuf, ref tState);
         long remaining = totalBytes;
+        long sent = 0;
         while (remaining > 0)
         {
-            int toWrite = (int)Math.Min(sendBuf.Length, remaining);
-            await clientConn.TransportStream.WriteAsync(sendBuf.AsMemory(0, toWrite), cts.Token).ConfigureAwait(false);
+            int toWrite = (int)Math.Min(tlsBuf.Length, remaining);
+            long wStart = Stopwatch.GetTimestamp();
+            await clientConn.TransportStream.WriteAsync(tlsBuf.AsMemory(0, toWrite), cts.Token).ConfigureAwait(false);
+            long wEnd = Stopwatch.GetTimestamp();
+            attemptDiag.AddTlsWrite(toWrite, wEnd - wStart);
+            sent += toWrite;
             remaining -= toWrite;
+
+            if (totalBytes >= 5_000_000_000L)
+            {
+                if (slice45Tick == 0 && sent >= 4_500_000_000L)
+                {
+                    slice45Tick = wEnd;
+                    slice45Bytes = sent;
+                }
+                if (slice50Tick == 0 && sent >= 5_000_000_000L)
+                {
+                    slice50Tick = wEnd;
+                    slice50Bytes = sent;
+                }
+            }
+
+            if (Stopwatch.GetElapsedTime(lastSampleTick, wEnd).TotalSeconds >= 1.0 && points.Count < 10_800)
+            {
+                lastSampleTick = wEnd;
+                points.Add((Stopwatch.GetElapsedTime(payloadStartTick, wEnd).TotalSeconds, sent));
+            }
         }
         await clientConn.TransportStream.FlushAsync(cts.Token).ConfigureAwait(false);
 
         long totalReceived = await receiverTask.ConfigureAwait(false);
         long endTick = Stopwatch.GetTimestamp();
+        points.Add((Stopwatch.GetElapsedTime(payloadStartTick, endTick).TotalSeconds, totalReceived));
+
+        var transferResult = totalReceived == totalBytes
+            ? DesktopTransferResult.Completed("Raw TLS baseline complete.", 1, totalReceived)
+            : DesktopTransferResult.Failed("Raw TLS baseline byte count mismatch.");
+        attemptDiag.OnItemVerified(totalReceived);
+        attemptDiag.Complete(transferResult);
 
         double prepMs = Stopwatch.GetElapsedTime(startTick, payloadStartTick).TotalMilliseconds;
         double payloadMs = Stopwatch.GetElapsedTime(payloadStartTick, endTick).TotalMilliseconds;
-        double rateMBps = (totalReceived / (payloadMs / 1000.0)) / 1_000_000.0;
+        double rateMBps = payloadMs > 0.1 ? (totalReceived / (payloadMs / 1000.0)) / 1_000_000.0 : 0.0;
         double allocMB = (GC.GetTotalAllocatedBytes(precise: false) - allocBefore) / 1_000_000.0;
         double gcPauseMs = (GC.GetTotalPauseDuration() - gcPauseBefore).TotalMilliseconds;
 
-        return new JsonObject
+        var oneSecRates = new List<double>();
+        for (int i = 1; i < points.Count; i++)
+        {
+            double dt = points[i].ElapsedSec - points[i - 1].ElapsedSec;
+            long db = Math.Max(0L, points[i].Bytes - points[i - 1].Bytes);
+            if (dt >= 0.25) oneSecRates.Add(Math.Round((db / dt) / 1_000_000.0, 2));
+        }
+        IReadOnlyList<R3FiveSecondRateWindow> fiveSecWindows = BoundedTransferDiagnosticSink.ComputeFiveSecondRateWindows(points);
+        var (q1, q4, qRatio) = BoundedTransferDiagnosticSink.ComputeSteadyQuarterRates(points, totalBytes);
+
+        JsonObject? sliceObj = null;
+        if (totalBytes >= 5_000_000_000L && slice45Tick > 0 && slice50Tick > slice45Tick)
+        {
+            double sliceMs = Stopwatch.GetElapsedTime(slice45Tick, slice50Tick).TotalMilliseconds;
+            double sliceRate = sliceMs > 0.1 ? ((slice50Bytes - slice45Bytes) / (sliceMs / 1000.0)) / 1_000_000.0 : 0.0;
+            sliceObj = new JsonObject
+            {
+                ["startBytes"] = slice45Bytes,
+                ["endBytes"] = slice50Bytes,
+                ["durationMs"] = Math.Round(sliceMs, 2),
+                ["rateMBps"] = Math.Round(sliceRate, 2),
+                ["ratioToFirstQuarter"] = q1.IsAvailable && q1.Value > 0.1 ? Math.Round(sliceRate / q1.Value, 3) : null
+            };
+        }
+
+        R3DiagnosticReport r3Report = attemptDiag.BuildR3Report(transferResult, new DesktopR3ReportOptions(
+            BenchmarkPath: "1_RawTlsBaseline",
+            BenchmarkMode: "current",
+            RunType: runType,
+            RepetitionIndex: repetitionIndex,
+            RepetitionTotal: repetitionTotal,
+            UiState: "headless-driver",
+            DatasetSha256Override: datasetSha256,
+            ManifestSha256Override: manifestSha256,
+            Sha256VerifiedOverride: totalReceived == totalBytes,
+            QuarantineCleanAfterTerminalOverride: true));
+
+        r3Report = r3Report with
+        {
+            Throughput = r3Report.Throughput with
+            {
+                AveragePayloadRateMBps = Math.Round(rateMBps, 2),
+                AcceptanceToVerifiedRateMBps = Math.Round(rateMBps, 2),
+                OneSecondRatesMBps = oneSecRates,
+                FiveSecondRateWindowsMBps = fiveSecWindows,
+                FirstSteadyQuarterRateMBps = q1,
+                FinalSteadyQuarterRateMBps = q4,
+                FinalToFirstQuarterRatio = qRatio
+            }
+        };
+
+        var oneSecJson = new JsonArray();
+        foreach (double r in oneSecRates) oneSecJson.Add(r);
+        var fiveSecJson = new JsonArray();
+        foreach (var w in fiveSecWindows)
+        {
+            fiveSecJson.Add(new JsonObject
+            {
+                ["windowIndex"] = w.WindowIndex,
+                ["startElapsedSec"] = w.StartElapsedSec,
+                ["endElapsedSec"] = w.EndElapsedSec,
+                ["bytes"] = w.Bytes,
+                ["rateMBps"] = w.RateMBps
+            });
+        }
+
+        var summary = new JsonObject
         {
             ["path"] = "1_RawTlsBaseline",
             ["runType"] = runType,
+            ["repetitionIndex"] = repetitionIndex,
+            ["repetitionTotal"] = repetitionTotal,
             ["sizeBytes"] = totalReceived,
             ["preparationMs"] = Math.Round(prepMs, 2),
             ["payloadTransferMs"] = Math.Round(payloadMs, 2),
             ["acceptanceToVerifiedMs"] = Math.Round(payloadMs, 2),
+            ["rawTcpRateMBps"] = Math.Round(rawTcpRateMBps, 2),
             ["payloadRateMBps"] = Math.Round(rateMBps, 2),
             ["acceptanceToVerifiedRateMBps"] = Math.Round(rateMBps, 2),
+            ["oneSecondRatesMBps"] = oneSecJson,
+            ["fiveSecondRateWindowsMBps"] = fiveSecJson,
+            ["firstQuarterPayloadRateMBps"] = q1.IsAvailable ? q1.Value : null,
+            ["finalQuarterPayloadRateMBps"] = q4.IsAvailable ? q4.Value : null,
+            ["finalToFirstQuarterRatio"] = qRatio.IsAvailable ? qRatio.Value : null,
+            ["slice4_5to5_0GB"] = sliceObj,
             ["totalAllocatedMB"] = Math.Round(allocMB, 2),
             ["gcPauseMs"] = Math.Round(gcPauseMs, 2),
             ["sha256Verified"] = totalReceived == totalBytes
         };
+
+        return (summary, r3Report);
     }
 
-    private static async Task<JsonObject> RunGlideBenchmarkPathAsync(
+    private static async Task<(JsonObject Summary, R3DiagnosticReport? R3Report)> RunGlideBenchmarkPathAsync(
         string pathName,
         string runType,
-        string sourceFile,
-        string expectedSha256,
+        int repetitionIndex,
+        int repetitionTotal,
+        int timeoutSeconds,
+        IReadOnlyList<DesktopTransferFile> sourceFiles,
+        IReadOnlyDictionary<string, (long Size, string Sha256)> expectedHashes,
+        long totalBytes,
+        string datasetId,
+        string contentProfile,
+        string datasetSha256,
+        string manifestSha256,
         string stagingDir,
         string destDir,
         BoundedTransferDiagnosticSink diagSink,
         DesktopTransferIoOptions ioOptions,
+        string mode,
         bool useUiRuntime,
         bool useLegacyBlockingUi)
     {
@@ -2001,13 +2731,11 @@ public static class Program
         GC.WaitForPendingFinalizers();
         GC.Collect();
 
-        var fileInfo = new FileInfo(sourceFile);
-        long totalBytes = fileInfo.Length;
         long heapBefore = GC.GetTotalMemory(forceFullCollection: false);
         long allocBefore = GC.GetTotalAllocatedBytes(precise: false);
         TimeSpan gcPauseBefore = GC.GetTotalPauseDuration();
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(180));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
         using var listener = new TlsSocketListener(0);
         var authority = new LanInvitationAuthority();
         LanInvitation invitation = CreateInvitation(listener, "127.0.0.1", authority, "Bench-Receiver");
@@ -2033,7 +2761,7 @@ public static class Program
         var sendReq = new DesktopSendRequest(
             Host: "127.0.0.1",
             Port: listener.BoundPort,
-            Files: [new DesktopTransferFile(sourceFile)],
+            Files: sourceFiles,
             Invitation: invitation,
             LocalDeviceName: "Bench-Sender");
 
@@ -2078,16 +2806,38 @@ public static class Program
         }
         else
         {
-            string committedFile = Path.Combine(destDir, Path.GetFileName(sourceFile));
-            if (File.Exists(committedFile))
+            int verifiedFileCount = 0;
+            bool allMatch = sendResult.Success && recvResult.Success && recvResult.VerifiedCount == expectedHashes.Count;
+            if (allMatch)
             {
-                var committedInfo = new FileInfo(committedFile);
-                using var fs = File.OpenRead(committedFile);
-                string actualSha = Convert.ToHexStringLower(SHA256.HashData(fs));
-                shaVerified = committedInfo.Length == totalBytes &&
-                              string.Equals(actualSha, expectedSha256, StringComparison.OrdinalIgnoreCase);
+                foreach ((string rel, (long expSize, string expSha)) in expectedHashes)
+                {
+                    string committedFile = Path.Combine(destDir, rel.Replace('/', Path.DirectorySeparatorChar));
+                    if (!File.Exists(committedFile))
+                    {
+                        allMatch = false;
+                        break;
+                    }
+                    var committedInfo = new FileInfo(committedFile);
+                    if (committedInfo.Length != expSize)
+                    {
+                        allMatch = false;
+                        break;
+                    }
+                    using var fs = File.OpenRead(committedFile);
+                    string actualSha = Convert.ToHexStringLower(SHA256.HashData(fs));
+                    if (!string.Equals(actualSha, expSha, StringComparison.OrdinalIgnoreCase))
+                    {
+                        allMatch = false;
+                        break;
+                    }
+                    verifiedFileCount++;
+                }
             }
+            shaVerified = allMatch && verifiedFileCount == expectedHashes.Count;
         }
+
+        bool quarantineClean = IsQuarantineEmpty(stagingDir);
 
         DesktopTransferDiagnosticSample? sendDiag = senderEngine.LastDiagnosticSample;
         DesktopTransferDiagnosticSample? recvDiag = receiverEngine.LastDiagnosticSample;
@@ -2096,18 +2846,79 @@ public static class Program
         double acceptToVerifiedMs = Math.Max(sendDiag?.AcceptanceToVerifiedMs ?? 0, recvDiag?.AcceptanceToVerifiedMs ?? 0);
         double payloadRateMBps = payloadMs > 0.1 ? (totalBytes / (payloadMs / 1000.0)) / 1_000_000.0 : 0.0;
         double acceptToVerifiedRateMBps = acceptToVerifiedMs > 0.1 ? (totalBytes / (acceptToVerifiedMs / 1000.0)) / 1_000_000.0 : 0.0;
+
+        IReadOnlyList<double> oneSecRates = senderInteraction.ComputeOneSecondRatesMBps();
+        IReadOnlyList<R3FiveSecondRateWindow> fiveSecWindows = BoundedTransferDiagnosticSink.ComputeFiveSecondRateWindows(senderInteraction.ProgressPoints);
         double? firstQ = senderInteraction.FirstQuarterMBps;
         double? finalQ = senderInteraction.FinalQuarterMBps;
         double? qRatio = firstQ > 0.1 && finalQ.HasValue
             ? Math.Round(finalQ.Value / firstQ.Value, 3)
             : null;
+        JsonObject? sliceObj = senderInteraction.BuildSlice4_5To5_0GbJson();
 
-        return new JsonObject
+        R3DiagnosticReport? baseR3 = receiverEngine.LastR3DiagnosticReport ?? senderEngine.LastR3DiagnosticReport;
+        if (baseR3 != null)
+        {
+            baseR3 = baseR3 with
+            {
+                Dataset = baseR3.Dataset with
+                {
+                    DatasetId = datasetId,
+                    ContentProfile = contentProfile,
+                    ItemCount = sourceFiles.Count,
+                    DeclaredTotalBytes = totalBytes,
+                    DatasetSha256 = MetricValue<string>.Available(datasetSha256),
+                    ManifestSha256 = MetricValue<string>.Available(manifestSha256)
+                },
+                TestConfiguration = baseR3.TestConfiguration with
+                {
+                    BenchmarkPath = MetricValue<string>.Available(pathName),
+                    BenchmarkMode = mode,
+                    RunType = runType,
+                    RepetitionIndex = repetitionIndex,
+                    RepetitionTotal = repetitionTotal,
+                    UiState = useUiRuntime ? "simulated-wpf-dispatcher" : "headless-driver"
+                },
+                Outcome = baseR3.Outcome with
+                {
+                    Sha256Verified = shaVerified,
+                    QuarantineCleanAfterTerminal = MetricValue<bool>.Available(quarantineClean)
+                },
+                Throughput = baseR3.Throughput with
+                {
+                    OneSecondRatesMBps = oneSecRates.Count > 0 ? oneSecRates : baseR3.Throughput.OneSecondRatesMBps,
+                    FiveSecondRateWindowsMBps = fiveSecWindows.Count > 0 ? fiveSecWindows : baseR3.Throughput.FiveSecondRateWindowsMBps,
+                    FirstSteadyQuarterRateMBps = firstQ.HasValue ? MetricValue<double>.Available(firstQ.Value) : baseR3.Throughput.FirstSteadyQuarterRateMBps,
+                    FinalSteadyQuarterRateMBps = finalQ.HasValue ? MetricValue<double>.Available(finalQ.Value) : baseR3.Throughput.FinalSteadyQuarterRateMBps,
+                    FinalToFirstQuarterRatio = qRatio.HasValue ? MetricValue<double>.Available(qRatio.Value) : baseR3.Throughput.FinalToFirstQuarterRatio
+                }
+            };
+        }
+
+        var oneSecJson = new JsonArray();
+        foreach (double r in oneSecRates) oneSecJson.Add(r);
+        var fiveSecJson = new JsonArray();
+        foreach (var w in fiveSecWindows)
+        {
+            fiveSecJson.Add(new JsonObject
+            {
+                ["windowIndex"] = w.WindowIndex,
+                ["startElapsedSec"] = w.StartElapsedSec,
+                ["endElapsedSec"] = w.EndElapsedSec,
+                ["bytes"] = w.Bytes,
+                ["rateMBps"] = w.RateMBps
+            });
+        }
+
+        var summary = new JsonObject
         {
             ["path"] = pathName,
             ["runType"] = runType,
+            ["repetitionIndex"] = repetitionIndex,
+            ["repetitionTotal"] = repetitionTotal,
             ["success"] = sendResult.Success && recvResult.Success && shaVerified,
             ["sizeBytes"] = totalBytes,
+            ["itemCount"] = sourceFiles.Count,
             ["preparationMs"] = sendDiag?.PreparationMs ?? 0,
             ["payloadTransferMs"] = Math.Round(payloadMs, 2),
             ["verificationMs"] = recvDiag?.VerificationMs ?? 0,
@@ -2115,9 +2926,12 @@ public static class Program
             ["acceptanceToVerifiedMs"] = Math.Round(acceptToVerifiedMs, 2),
             ["payloadRateMBps"] = Math.Round(payloadRateMBps, 2),
             ["acceptanceToVerifiedRateMBps"] = Math.Round(acceptToVerifiedRateMBps, 2),
+            ["oneSecondRatesMBps"] = oneSecJson,
+            ["fiveSecondRateWindowsMBps"] = fiveSecJson,
             ["firstQuarterPayloadRateMBps"] = firstQ,
             ["finalQuarterPayloadRateMBps"] = finalQ,
             ["finalToFirstQuarterRatio"] = qRatio,
+            ["slice4_5to5_0GB"] = sliceObj,
             ["senderSourceReadMs"] = sendDiag?.SourceReadMs ?? 0,
             ["senderHashMs"] = sendDiag?.HashComputeMs ?? 0,
             ["senderTlsWriteMs"] = sendDiag?.TlsWriteMs ?? 0,
@@ -2134,8 +2948,11 @@ public static class Program
             ["gen0"] = (sendDiag?.Gen0Collections ?? 0) + (recvDiag?.Gen0Collections ?? 0),
             ["gen1"] = (sendDiag?.Gen1Collections ?? 0) + (recvDiag?.Gen1Collections ?? 0),
             ["gen2"] = (sendDiag?.Gen2Collections ?? 0) + (recvDiag?.Gen2Collections ?? 0),
+            ["quarantineClean"] = quarantineClean,
             ["sha256Verified"] = shaVerified
         };
+
+        return (summary, baseR3);
     }
 
     #endregion

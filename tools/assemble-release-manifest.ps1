@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Assembles the authoritative release candidate manifest and catalog for Glide.
 .DESCRIPTION
@@ -13,7 +13,8 @@ param(
     [string]$Version = '1.0.0',
     [string]$ArtifactsDir = '',
     [switch]$AllowDirty,
-    [switch]$AllowMissing
+    [switch]$AllowMissing,
+    [switch]$IncludeApple
 )
 
 $ErrorActionPreference = 'Stop'
@@ -268,8 +269,18 @@ Assert-BuildManifestIdentity $androidManifest $androidManifestPath 'Android'
 $androidToolchain = if ($androidManifest.ContainsKey('toolchain')) {
     $androidManifest['toolchain']
 } else {
-    $javaVer = try { (java -version 2>&1 | Select-Object -First 1).ToString().Trim() } catch { "OpenJDK 26" }
-    "$javaVer, Gradle 9.4.1, AGP 9.4.1, compileSdk 37, minSdk 26"
+    $javaVer = try { (java -version 2>&1 | Select-Object -First 1).ToString().Trim() } catch { "OpenJDK" }
+    $wrapperPath = Join-Path $repoRoot 'android\gradle\wrapper\gradle-wrapper.properties'
+    $gradleVer = if (Test-Path $wrapperPath) {
+        [regex]::Match((Get-Content $wrapperPath -Raw), 'gradle-([0-9.]+)-').Groups[1].Value
+    } else { '' }
+    if (-not $gradleVer) { $gradleVer = '9.9.1' }
+    $catalogPath = Join-Path $repoRoot 'android\gradle\libs.versions.toml'
+    $agpVer = if (Test-Path $catalogPath) {
+        [regex]::Match((Get-Content $catalogPath -Raw), '(?m)^\s*agp\s*=\s*"([^"]+)"').Groups[1].Value
+    } else { '' }
+    if (-not $agpVer) { $agpVer = '9.5.1' }
+    "$javaVer, Gradle $gradleVer, AGP $agpVer, compileSdk 37, minSdk 26"
 }
 $androidSigning = if ($androidManifest.ContainsKey('signing_status')) {
     $androidManifest['signing_status']
@@ -282,14 +293,28 @@ $androidInstallability = if ($androidManifest.ContainsKey('installability')) {
     'development_installable_debug'
 }
 
-$androidApkPath = if (Test-Path (Join-Path $repoRoot 'build\distributions\android\app-debug.apk')) {
+$manifestApk = if ($androidManifest.ContainsKey('apk_artifact')) {
+    Join-Path 'build\distributions\android' $androidManifest['apk_artifact']
+} else { '' }
+$androidApkPath = if ($manifestApk -and (Test-Path (Join-Path $repoRoot $manifestApk))) {
+    $manifestApk
+} elseif (Test-Path (Join-Path $repoRoot 'build\distributions\android\app-debug.apk')) {
     'build\distributions\android\app-debug.apk'
+} elseif (Test-Path (Join-Path $repoRoot 'android\app\build\outputs\apk\release\app-release.apk')) {
+    'android\app\build\outputs\apk\release\app-release.apk'
 } else {
     'android\app\build\outputs\apk\debug\app-debug.apk'
 }
 
-$androidAabPath = if (Test-Path (Join-Path $repoRoot 'build\distributions\android\app-debug.aab')) {
+$manifestAab = if ($androidManifest.ContainsKey('aab_artifact')) {
+    Join-Path 'build\distributions\android' $androidManifest['aab_artifact']
+} else { '' }
+$androidAabPath = if ($manifestAab -and (Test-Path (Join-Path $repoRoot $manifestAab))) {
+    $manifestAab
+} elseif (Test-Path (Join-Path $repoRoot 'build\distributions\android\app-debug.aab')) {
     'build\distributions\android\app-debug.aab'
+} elseif (Test-Path (Join-Path $repoRoot 'android\app\build\outputs\bundle\release\app-release.aab')) {
+    'android\app\build\outputs\bundle\release\app-release.aab'
 } else {
     'android\app\build\outputs\bundle\debug\app-debug.aab'
 }
@@ -342,11 +367,18 @@ if ($linuxDir) {
     Assert-BuildManifestIdentity $linuxManifest $linuxManifestPath 'Linux'
 }
 $linuxToolchain = if ($linuxManifest.ContainsKey('dotnet_sdk') -and $linuxManifest.ContainsKey('rpm_version')) {
-    ".NET $($linuxManifest['dotnet_sdk']), dpkg-deb 1.22.6, $($linuxManifest['rpm_version']), Ubuntu 24.04 WSL2"
+    $osDesc = if ($linuxManifest.ContainsKey('build_os')) { $linuxManifest['build_os'] } else { 'Linux' }
+    $archDesc = if ($linuxManifest.ContainsKey('build_arch')) { " ($($linuxManifest['build_arch']))" } else { '' }
+    ".NET $($linuxManifest['dotnet_sdk']), dpkg-deb, $($linuxManifest['rpm_version']), $osDesc$archDesc"
 } else {
-    '.NET 10.0.401, dpkg-deb 1.22.6, rpmbuild 4.18.2, Ubuntu 24.04 WSL2'
+    '.NET 10, dpkg-deb, rpmbuild, Linux'
 }
-$linuxPkgVer = if ($linuxManifest.ContainsKey('package_version')) { $linuxManifest['package_version'] } else { '1.0.0' }
+$linuxBuildJob = if ($linuxManifest.ContainsKey('build_os')) {
+    "local-linux-host ($($linuxManifest['build_os']))"
+} else {
+    'local-linux-host'
+}
+$linuxPkgVer = if ($linuxManifest.ContainsKey('package_version')) { $linuxManifest['package_version'] } else { $Version }
 $linuxSigning = if ($linuxManifest.ContainsKey('signing_status')) { $linuxManifest['signing_status'] } else { 'unsigned_development' }
 
 $debPath = if ($linuxDeb) { $linuxDeb.FullName } else { Join-Path $repoRoot "build\distributions\linux\glide_${linuxPkgVer}_amd64.deb" }
@@ -359,7 +391,7 @@ Register-Artifact `
     -Toolchain $linuxToolchain `
     -SigningStatus $linuxSigning `
     -Installability 'development_installable_unsigned' `
-    -BuildJob 'local-wsl2-ubuntu-24.04' `
+    -BuildJob $linuxBuildJob `
     -IsRunnable $true
 
 $rpmPath = if ($linuxRpm) { $linuxRpm.FullName } else { Join-Path $repoRoot "build\distributions\linux\glide-$linuxPkgVer-1.x86_64.rpm" }
@@ -372,7 +404,7 @@ Register-Artifact `
     -Toolchain $linuxToolchain `
     -SigningStatus $linuxSigning `
     -Installability 'development_installable_unsigned' `
-    -BuildJob 'local-wsl2-ubuntu-24.04' `
+    -BuildJob $linuxBuildJob `
     -IsRunnable $true
 
 $tarPath = if ($linuxTar) { $linuxTar.FullName } else { Join-Path $repoRoot "build\distributions\linux\glide-$linuxPkgVer-linux-x64.tar.gz" }
@@ -385,10 +417,11 @@ Register-Artifact `
     -Toolchain $linuxToolchain `
     -SigningStatus $linuxSigning `
     -Installability 'portable_executable' `
-    -BuildJob 'local-wsl2-ubuntu-24.04' `
+    -BuildJob $linuxBuildJob `
     -IsRunnable $true
 
-# --- D. Apple Platform Packages (macOS, iOS Simulator, iOS Device Archive) ---
+# --- D. Apple Platform Packages (macOS, iOS Simulator, iOS Device Archive) — gated behind -IncludeApple ---
+if ($IncludeApple) {
 $appleMacDir = $null
 $appleIosDir = $null
 $appleCandidateDirs = @(
@@ -424,7 +457,7 @@ Register-Artifact `
     -Toolchain $macToolchain `
     -SigningStatus $macSigning `
     -Installability $macInstallability `
-    -BuildJob 'github-actions-apple-runner' `
+    -BuildJob 'local-apple-host' `
     -IsRunnable $true
 
 $iosSimZip = if ($appleIosDir) { Get-ChildItem -Path $appleIosDir -Filter "Glide-iOS-simulator-unsigned.zip" -ErrorAction SilentlyContinue | Select-Object -First 1 } else { $null }
@@ -446,7 +479,7 @@ Register-Artifact `
     -Toolchain $iosToolchain `
     -SigningStatus $iosSigning `
     -Installability 'simulator_installable' `
-    -BuildJob 'github-actions-apple-runner' `
+    -BuildJob 'local-apple-host' `
     -IsRunnable $true
 
 $devPath = if ($iosDevZip) { $iosDevZip.FullName } else { Join-Path $repoRoot "build\distributions\apple\ios\Glide-iOS-device-unsigned-archive.zip" }
@@ -459,10 +492,12 @@ Register-Artifact `
     -Toolchain $iosToolchain `
     -SigningStatus 'unsigned_development' `
     -Installability 'build_only_requires_distribution_signing' `
-    -BuildJob 'github-actions-apple-runner' `
+    -BuildJob 'local-apple-host' `
     -IsRunnable $true
+}
 
 # --- E. Test Evidence Archives (Strictly separated from runnable packages) ---
+if ($IncludeApple) {
 $appleEvidence = Get-ChildItem -Path (Join-Path $repoRoot 'build\test-evidence\apple-backend') -Filter "apple-backend-test-evidence.zip" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
 if (-not $appleEvidence) {
     $appleEvidence = Get-ChildItem -Path (Join-Path $repoRoot 'build\distributions') -Filter "apple-backend-test-evidence.zip" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -477,8 +512,9 @@ if ($appleEvidence) {
         -Toolchain 'Xcode 26.6 (17F113), Apple Swift 6.3.3, macOS 26.6.2 (Darwin 25.6.0)' `
         -SigningStatus 'development_signed / simulator_unsigned (App Group: group.dev.glide.shared)' `
         -Installability 'test_evidence_archive' `
-        -BuildJob 'github-actions/run-37060072390' `
+        -BuildJob 'local-apple-host' `
         -IsRunnable $false
+}
 }
 
 $linuxCiX64 = Get-ChildItem -Path (Join-Path $repoRoot 'build\distributions') -Filter "linux-packages-linux-x64-*.zip" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -488,11 +524,11 @@ if ($linuxCiX64) {
         -Architecture 'linux-x64' `
         -ArtifactType 'ci_distribution_bundle' `
         -FilePath $linuxCiX64.FullName `
-        -PackageVersion '1.0.0' `
-        -Toolchain '.NET 10.0.100, dpkg-deb, rpmbuild, Ubuntu 24.04 runner' `
+        -PackageVersion $Version `
+        -Toolchain '.NET 10, dpkg-deb, rpmbuild, Ubuntu runner' `
         -SigningStatus 'unsigned_development' `
         -Installability 'test_evidence_archive' `
-        -BuildJob 'github-actions/run-37060072410' `
+        -BuildJob 'local-linux-bundle' `
         -IsRunnable $false
 }
 
@@ -503,15 +539,16 @@ if ($linuxCiArm64) {
         -Architecture 'linux-arm64' `
         -ArtifactType 'ci_distribution_bundle' `
         -FilePath $linuxCiArm64.FullName `
-        -PackageVersion '1.0.0' `
-        -Toolchain '.NET 10.0.100, dpkg-deb, rpmbuild, Ubuntu 24.04 ARM runner' `
+        -PackageVersion $Version `
+        -Toolchain '.NET 10, dpkg-deb, rpmbuild, Ubuntu ARM runner' `
         -SigningStatus 'unsigned_development' `
         -Installability 'test_evidence_archive' `
-        -BuildJob 'github-actions/run-37060072410' `
+        -BuildJob 'local-linux-bundle' `
         -IsRunnable $false
 }
 
 # 3. Assemble Release Manifest JSON
+$platformsCovered = if ($IncludeApple) { @('Windows', 'Android', 'Linux', 'macOS', 'iOS', 'iPadOS') } else { @('Windows', 'Android', 'Linux') }
 $manifest = [PSCustomObject]@{
     ReleaseCandidate = [PSCustomObject]@{
         Commit                     = $Commit
@@ -519,7 +556,7 @@ $manifest = [PSCustomObject]@{
         TimestampUtc               = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
         TotalRunnableArtifactCount = $runnableArtifacts.Count
         TotalEvidenceArchiveCount  = $testEvidenceArtifacts.Count
-        PlatformsCovered           = @('Windows', 'Android', 'Linux', 'macOS', 'iOS', 'iPadOS')
+        PlatformsCovered           = $platformsCovered
     }
     RunnableArtifacts     = $runnableArtifacts.ToArray()
     TestEvidenceArtifacts = $testEvidenceArtifacts.ToArray()
@@ -539,6 +576,11 @@ Write-Host "`nRelease manifest written: $manifestPath" -ForegroundColor Cyan
 $catalogPath = Join-Path $distDir 'RELEASE_CATALOG.md'
 $timestampString = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss')
 $bt = [char]96
+$platformsLine = if ($IncludeApple) {
+    'Windows 11, Android 8.0+ (API 26+), Linux (Ubuntu / Fedora), macOS (macOS 13+), iOS/iPadOS 16+'
+} else {
+    'Windows 11, Android 8.0+ (API 26+), Linux (Ubuntu / Fedora)'
+}
 
 $sb = [System.Text.StringBuilder]::new()
 [void]$sb.AppendLine("# Glide Release Candidate Catalog")
@@ -546,7 +588,7 @@ $sb = [System.Text.StringBuilder]::new()
 [void]$sb.AppendLine("**Commit:** $bt$Commit$bt  ")
 [void]$sb.AppendLine("**Version:** $bt$Version$bt  ")
 [void]$sb.AppendLine("**Assembly Date:** $bt$timestampString UTC$bt  ")
-[void]$sb.AppendLine("**Platforms Covered:** Windows 11, Android 13+, Linux (Ubuntu 24.04 / Fedora 44), macOS (macOS 13+), iOS/iPadOS 16+")
+[void]$sb.AppendLine("**Platforms Covered:** $platformsLine")
 [void]$sb.AppendLine()
 [void]$sb.AppendLine("---")
 [void]$sb.AppendLine()
@@ -582,7 +624,8 @@ foreach ($art in $testEvidenceArtifacts) {
 [void]$sb.AppendLine()
 [void]$sb.AppendLine("| Platform | Installed UI | Physical transfer |")
 [void]$sb.AppendLine("|---|:---:|:---:|")
-foreach ($platform in @('Windows', 'Android', 'Linux', 'macOS', 'iOS/iPadOS')) {
+$gatePlatforms = if ($IncludeApple) { @('Windows', 'Android', 'Linux', 'macOS', 'iOS/iPadOS') } else { @('Windows', 'Android', 'Linux') }
+foreach ($platform in $gatePlatforms) {
     [void]$sb.AppendLine("| **$platform** | **NOT VERIFIED BY THIS MANIFEST** | **NOT VERIFIED BY THIS MANIFEST** |")
 }
 [void]$sb.AppendLine()

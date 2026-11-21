@@ -41,7 +41,7 @@ class RoomHistoryStore(
             startedAtMs = record.startedAtMs,
             endedAtMs = record.endedAtMs,
             outcome = record.outcome,
-            failureCode = null
+            failureCode = record.failureCode
         )
         sessionDao.insert(entity)
     }
@@ -57,7 +57,7 @@ class RoomHistoryStore(
             actualBytes = record.actualBytes,
             digest = record.digest?.value,
             outcome = record.outcome,
-            failureCode = null,
+            failureCode = record.failureCode,
             relativePath = record.relativePath
         )
         itemDao.insert(entity)
@@ -67,11 +67,19 @@ class RoomHistoryStore(
         sessionId: SessionId,
         outcome: String,
         endedAtMs: Long
+    ) = updateSessionOutcome(sessionId, outcome, endedAtMs, null)
+
+    override suspend fun updateSessionOutcome(
+        sessionId: SessionId,
+        outcome: String,
+        endedAtMs: Long,
+        failureCode: String?
     ) = withContext(ioDispatcher) {
         sessionDao.updateOutcome(
             sessionId = sessionId.value,
             outcome = outcome,
-            endedAtMs = endedAtMs
+            endedAtMs = endedAtMs,
+            failureCode = failureCode
         )
     }
 
@@ -84,7 +92,8 @@ class RoomHistoryStore(
             peerLabel = entity.peerLabel,
             startedAtMs = entity.startedAtMs,
             endedAtMs = entity.endedAtMs,
-            outcome = entity.outcome
+            outcome = entity.outcome,
+            failureCode = entity.failureCode
         )
     }
 
@@ -93,12 +102,21 @@ class RoomHistoryStore(
         outcome: String,
         actualBytes: Long?,
         digest: Sha256Digest?
+    ) = updateItemOutcome(itemId, outcome, actualBytes, digest, null)
+
+    override suspend fun updateItemOutcome(
+        itemId: ItemId,
+        outcome: String,
+        actualBytes: Long?,
+        digest: Sha256Digest?,
+        failureCode: String?
     ) = withContext(ioDispatcher) {
         itemDao.updateOutcome(
             itemId = itemId.value,
             outcome = outcome,
             actualBytes = actualBytes,
-            digest = digest?.value
+            digest = digest?.value,
+            failureCode = failureCode
         )
     }
 
@@ -115,7 +133,8 @@ class RoomHistoryStore(
                 actualBytes = entity.actualBytes,
                 digest = entity.digest?.let { Sha256Digest(it) },
                 outcome = entity.outcome,
-                relativePath = entity.relativePath
+                relativePath = entity.relativePath,
+                failureCode = entity.failureCode
             )
         }
     }

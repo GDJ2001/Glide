@@ -59,6 +59,15 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
     public DesktopTimeoutPolicy TimeoutPolicy => _timeoutPolicy;
     public DesktopTransferDiagnosticSample? LastDiagnosticSample { get; private set; }
     public IReadOnlyList<DesktopTransferDiagnosticSample> LastDiagnosticSamples { get; private set; } = [];
+    public R3DiagnosticReport? LastR3DiagnosticReport { get; private set; }
+
+    private sealed class DesktopAttemptTimingContext
+    {
+        public long DiscoveryTicks { get; set; }
+        public long ConnectionTicks { get; set; }
+        public long PreAuthTicks { get; set; }
+        public string? PairingMode { get; set; }
+    }
 
     private sealed record PreparedSendItem(
         ItemId ItemId,
@@ -152,11 +161,13 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
             var client = new TlsSocketClient();
             TlsSocketConnection? connectedSocket = null;
             Exception? lastConnectException = null;
+            var timingContext = new DesktopAttemptTimingContext { PairingMode = "qr-v1" };
 
             IReadOnlyList<LanEndpoint> endpointsToTry = !string.IsNullOrWhiteSpace(request.Host)
                 ? new[] { new LanEndpoint(request.Host, request.Port > 0 ? request.Port : invitation.Endpoints.FirstOrDefault()?.Port ?? 42424) }
                 : invitation.Endpoints;
 
+            long connectStart = Stopwatch.GetTimestamp();
             foreach (LanEndpoint endpoint in endpointsToTry)
             {
                 string host = endpoint.Address;
@@ -182,6 +193,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                     lastConnectException = ex;
                 }
             }
+            timingContext.ConnectionTicks = Stopwatch.GetTimestamp() - connectStart;
 
             if (connectedSocket == null)
             {
@@ -195,7 +207,8 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                 request,
                 totalBytes,
                 interaction,
-                cancellationToken);
+                cancellationToken,
+                timingContext: timingContext);
         }
         catch (OperationCanceledException)
             when (cancellationToken.IsCancellationRequested)
@@ -292,6 +305,8 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
             var client = new TlsSocketClient();
             TlsSocketConnection? connectedSocket = null;
             Exception? lastConnectException = null;
+            var timingContext = new DesktopAttemptTimingContext { PairingMode = "qr-v1" };
+            long connectStart = Stopwatch.GetTimestamp();
 
             foreach (LanEndpoint endpoint in invitation.Endpoints)
             {
@@ -318,6 +333,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                     lastConnectException = ex;
                 }
             }
+            timingContext.ConnectionTicks = Stopwatch.GetTimestamp() - connectStart;
 
             if (connectedSocket == null)
             {
@@ -331,7 +347,8 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                 request,
                 interaction,
                 cancellationToken,
-                localEndpointHostsTls: false);
+                localEndpointHostsTls: false,
+                timingContext: timingContext);
         }
         catch (OperationCanceledException)
             when (cancellationToken.IsCancellationRequested)
@@ -542,6 +559,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                 $"Connecting to {enrolledPeer.DisplayName} ({endpoint.Address}:{endpoint.Port})...");
 
             TlsSocketConnection? connectedSocket = null;
+            long connectStart = Stopwatch.GetTimestamp();
             try
             {
                 connectedSocket = await client.ConnectAsync(
@@ -562,10 +580,12 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                 // Candidate unreachable within connect/TLS budget; try next candidate.
                 continue;
             }
+            long connectTicks = Stopwatch.GetTimestamp() - connectStart;
 
             await using TlsSocketConnection connection = connectedSocket;
             SessionId sessionId = NewSessionId();
             Profile2Message.SessionOpenAck ack;
+            long preAuthStart = Stopwatch.GetTimestamp();
 
             try
             {
@@ -720,6 +740,13 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
             }
 
             bool peerAuthenticated = false;
+            long preAuthTicks = Stopwatch.GetTimestamp() - preAuthStart;
+            var trustedTimingContext = new DesktopAttemptTimingContext
+            {
+                ConnectionTicks = connectTicks,
+                PreAuthTicks = preAuthTicks,
+                PairingMode = "trusted-profile2"
+            };
             try
             {
                 DesktopTransferResult result = await RunSenderSessionAsync(
@@ -744,7 +771,8 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                                 endpoint.Address,
                                 endpoint.Port),
                             userApproved: true);
-                    });
+                    },
+                    timingContext: trustedTimingContext);
 
                 return result;
             }
@@ -752,6 +780,13 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
             {
                 interaction.OnStatus(DesktopTransferDirection.Send, "Transfer cancelled.");
                 return DesktopTransferResult.CancelledByUser("Transfer cancelled.");
+            }
+            catch (OperationCanceledException) when (resolutionBudgetCts.IsCancellationRequested)
+            {
+                interaction.OnStatus(DesktopTransferDirection.Send, TrustedEndpointResolver.DeviceUnavailableMessage);
+                return DesktopTransferResult.Failed(
+                    TrustedEndpointResolver.DeviceUnavailableMessage,
+                    TransferErrorCategory.Network);
             }
             catch (Exception ex) when (!peerAuthenticated)
             {
@@ -1018,7 +1053,8 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                 interaction,
                 cancellationToken,
                 localEndpointHostsTls: true,
-                preEstablishedTrustedSessionId: new SessionId(open.SessionId));
+                preEstablishedTrustedSessionId: new SessionId(open.SessionId),
+                timingContext: new DesktopAttemptTimingContext { PairingMode = "trusted-profile2" });
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -1047,7 +1083,22 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
     {
         LastDiagnosticSample = diag.Complete(result);
         LastDiagnosticSamples = diag.GetRecordedSamples();
+        LastR3DiagnosticReport = diag.BuildR3Report(result);
         return result;
+    }
+
+    private static (string? LocalIp, string? PeerIp) TryGetSocketAddresses(TlsSocketConnection connection)
+    {
+        try
+        {
+            string? localIp = (connection.TcpClient.Client.LocalEndPoint as System.Net.IPEndPoint)?.Address.ToString();
+            string? peerIp = (connection.TcpClient.Client.RemoteEndPoint as System.Net.IPEndPoint)?.Address.ToString();
+            return (localIp, peerIp);
+        }
+        catch
+        {
+            return (null, null);
+        }
     }
 
     private async Task<DesktopTransferResult> RunSenderSessionAsync(
@@ -1060,10 +1111,26 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
         SessionId? preEstablishedTrustedSessionId = null,
         string? trustedPeerFallbackName = null,
         CancellationToken? preOfferAuthToken = null,
-        Action? onPeerCryptographicallyAuthenticated = null)
+        Action? onPeerCryptographicallyAuthenticated = null,
+        DesktopAttemptTimingContext? timingContext = null)
     {
         await using IDesktopTransferAttemptDiagnostics diag =
             _diagnostics.BeginAttempt(DesktopTransferDirection.Send, totalBytes);
+        if (timingContext != null)
+        {
+            if (timingContext.DiscoveryTicks > 0) diag.RecordDiscoveryDurationTicks(timingContext.DiscoveryTicks);
+            if (timingContext.ConnectionTicks > 0) diag.RecordConnectionDurationTicks(timingContext.ConnectionTicks);
+            if (timingContext.PreAuthTicks > 0) diag.RecordAuthenticationDurationTicks(timingContext.PreAuthTicks);
+        }
+        (string? localIp, string? peerIp) = TryGetSocketAddresses(connection);
+        string pairingMode = timingContext?.PairingMode
+            ?? (preEstablishedTrustedSessionId != null ? "trusted-profile2" : "qr-v1");
+        diag.SetAttemptMetadata(new DesktopAttemptMetadata(
+            PairingMode: pairingMode,
+            LocalAddress: localIp,
+            PeerAddress: peerIp,
+            ItemCount: request.Files.Count,
+            IoOptions: _ioOptions));
         try
         {
             return await RunSenderSessionCoreAsync(
@@ -1104,6 +1171,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
         CancellationToken? preOfferAuthToken = null,
         Action? onPeerCryptographicallyAuthenticated = null)
     {
+        long authStart = Stopwatch.GetTimestamp();
         CancellationToken authToken = preOfferAuthToken ?? cancellationToken;
         await using var channel =
             new LanRecordChannel(
@@ -1318,6 +1386,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
         }
 
         onPeerCryptographicallyAuthenticated?.Invoke();
+        diag.RecordAuthenticationDurationTicks(Stopwatch.GetTimestamp() - authStart);
 
         var preparedItems =
             new List<PreparedSendItem>(request.Files.Count);
@@ -1687,6 +1756,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
             }
         }
 
+        long finalAckStart = Stopwatch.GetTimestamp();
         await channel.WriteEnvelopeAsync(
             sequence.Create(
                 MessageTypes.BatchEnd,
@@ -1717,6 +1787,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
         }
         catch (Exception ackError) when (!cancellationToken.IsCancellationRequested && IsUncertainAckFailure(ackError))
         {
+            diag.RecordFinalAcknowledgementDurationTicks(Stopwatch.GetTimestamp() - finalAckStart);
             string uncertainBatchMessage =
                 $"Confirmation uncertain: the connection closed while waiting for final batch acknowledgment " +
                 $"after {verifiedCount} item(s) were verified ({verifiedBytes} bytes). " +
@@ -1730,6 +1801,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                     verifiedCount,
                     verifiedBytes));
         }
+        diag.RecordFinalAcknowledgementDurationTicks(Stopwatch.GetTimestamp() - finalAckStart);
 
         if (terminal.Type == MessageTypes.Error)
         {
@@ -1803,10 +1875,28 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
         IDesktopTransferInteraction interaction,
         CancellationToken cancellationToken,
         bool localEndpointHostsTls = true,
-        SessionId? preEstablishedTrustedSessionId = null)
+        SessionId? preEstablishedTrustedSessionId = null,
+        DesktopAttemptTimingContext? timingContext = null)
     {
         await using IDesktopTransferAttemptDiagnostics diag =
             _diagnostics.BeginAttempt(DesktopTransferDirection.Receive, 0);
+        if (timingContext != null)
+        {
+            if (timingContext.DiscoveryTicks > 0) diag.RecordDiscoveryDurationTicks(timingContext.DiscoveryTicks);
+            if (timingContext.ConnectionTicks > 0) diag.RecordConnectionDurationTicks(timingContext.ConnectionTicks);
+            if (timingContext.PreAuthTicks > 0) diag.RecordAuthenticationDurationTicks(timingContext.PreAuthTicks);
+        }
+        (string? localIp, string? peerIp) = TryGetSocketAddresses(connection);
+        string pairingMode = timingContext?.PairingMode
+            ?? (preEstablishedTrustedSessionId != null ? "trusted-profile2" : "qr-v1");
+        diag.SetAttemptMetadata(new DesktopAttemptMetadata(
+            PairingMode: pairingMode,
+            StagingLocation: request.StagingStore.StagingRoot,
+            DestinationLocation: request.StagingStore.DestinationRoot,
+            LocalAddress: localIp,
+            PeerAddress: peerIp,
+            CommitStrategy: _ioOptions.DiscardStorageForBenchmark ? "DiscardBenchmark" : null,
+            IoOptions: _ioOptions));
         try
         {
             return await RunReceiverSessionCoreAsync(
@@ -1839,6 +1929,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
         bool localEndpointHostsTls = true,
         SessionId? preEstablishedTrustedSessionId = null)
     {
+        long authStart = Stopwatch.GetTimestamp();
         await using var channel =
             new LanRecordChannel(
                 connection.TransportStream,
@@ -2084,6 +2175,8 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                         : $"Peer identity cryptographically verified: {authenticated.FingerprintHex[..12]}...");
             }
 
+            diag.RecordAuthenticationDurationTicks(Stopwatch.GetTimestamp() - authStart);
+
             Envelope offerBegin =
                 await sequence.ReadExpectedAsync(
                     channel,
@@ -2107,6 +2200,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                         .ToString()));
 
             diag.SetDeclaredTotalBytes(totalBytes);
+            diag.SetAttemptMetadata(new DesktopAttemptMetadata(ItemCount: itemCount));
 
             var items =
                 new List<DesktopOfferItem>(
@@ -2754,6 +2848,13 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                         failedMessage, TransferErrorCategory.Security));
             }
 
+            if (!discardStorage)
+            {
+                diag.SetAttemptMetadata(new DesktopAttemptMetadata(
+                    CommitStrategy: request.StagingStore.LastCommitStrategy.ToString()));
+            }
+
+            long finalAckStart = Stopwatch.GetTimestamp();
             await channel.WriteEnvelopeAsync(
                 sequence.Create(
                     MessageTypes.BatchResult,
@@ -2768,6 +2869,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                             verifiedBytes.ToString()
                     }),
                 cancellationToken);
+            diag.RecordFinalAcknowledgementDurationTicks(Stopwatch.GetTimestamp() - finalAckStart);
 
             if (failedCount > 0)
             {

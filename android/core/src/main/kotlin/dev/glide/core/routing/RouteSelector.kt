@@ -120,8 +120,8 @@ object RouteSelector {
                 }
             }
             TransportType.LAN_NSD_TLS -> {
-                if (context.apiLevel < 29) {
-                    return "LAN transport requires Android API 29+ (current: ${context.apiLevel})"
+                if (context.apiLevel < 26) {
+                    return "LAN transport requires Android API 26+ (current: ${context.apiLevel})"
                 }
             }
             else -> return "Transport ${route.transportType} is unsupported"

@@ -42,7 +42,9 @@ fun GlideAppNavDisplay(
     persistentTrustManager: dev.glide.core.identity.PersistentTrustManager? = null,
     initialRoute: GlideRoute = GlideRoute.Home,
     incomingRoute: GlideRoute? = null,
+    incomingRouteNonce: Long = 0L,
     initialUiState: dev.glide.app.ui.transfer.TransferUiState? = null,
+    initialAutoSaveStatus: dev.glide.app.ui.transfer.ExportUiStatus? = null,
     initialPairingState: dev.glide.app.ui.pairing.PairingUiState? = null,
     initialDiscoveryState: dev.glide.app.ui.discovery.DiscoveryUiState? = null,
     initialReceiveState: dev.glide.app.ui.discovery.ReceiveReadinessUiState? = null,
@@ -75,7 +77,7 @@ fun GlideAppNavDisplay(
         }
     }
 
-    androidx.compose.runtime.LaunchedEffect(incomingRoute) {
+    androidx.compose.runtime.LaunchedEffect(incomingRoute, incomingRouteNonce) {
         if (incomingRoute != null && incomingRoute != backStack.last()) {
             backStack.add(incomingRoute)
         }
@@ -391,7 +393,7 @@ fun GlideAppNavDisplay(
                         if (transferRuntime != null) {
                             dev.glide.app.service.TransferService.startNearbyReceiver(
                                 context = context,
-                                localDeviceName = "Glide Device"
+                                localDeviceName = receiveSettings.deviceName
                             )
                         } else {
                             viewModel.startAdvertising("Glide Device")
@@ -431,7 +433,7 @@ fun GlideAppNavDisplay(
                         showQrSheet = true
                         dev.glide.app.service.TransferService.startLanReceiver(
                             context = context,
-                            localDeviceName = "Glide Device"
+                            localDeviceName = receiveSettings.deviceName
                         )
                     } else {
                         qrViewModel.showLiveReceiverError(
@@ -444,7 +446,7 @@ fun GlideAppNavDisplay(
                     viewModel.stopAdvertising()
                     if (transferRuntime == null || initialReceiveState != null) {
                         qrViewModel.startReceiving(
-                            deviceName = "Glide Device",
+                            deviceName = receiveSettings.deviceName,
                             endpoints = listOf(dev.glide.core.pairing.LanEndpoint("192.168.1.42", 8443)),
                             spkiSha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
                         )
@@ -454,13 +456,8 @@ fun GlideAppNavDisplay(
                         showQrSheet = true
                         dev.glide.app.service.TransferService.startLanReceiver(
                             context = context,
-                            localDeviceName = "Glide Device"
+                            localDeviceName = receiveSettings.deviceName
                         )
-                        if (transferRuntime.isServiceAttached()) {
-                            transferRuntime.dispatch(
-                                dev.glide.app.service.TransferRuntimeCommand.StartLanReceiver("Glide Device")
-                            )
-                        }
                     } else {
                         lanPermissionLauncher.launch(lanPermissions.toTypedArray())
                     }
@@ -598,8 +595,17 @@ fun GlideAppNavDisplay(
                     androidx.lifecycle.viewmodel.compose.viewModel<dev.glide.app.ui.transfer.TransferViewModel>()
                 }
                 androidx.compose.runtime.LaunchedEffect(initialUiState) {
-                    if (initialUiState != null) {
+                    if (initialUiState != null &&
+                        viewModel.uiState.value is dev.glide.app.ui.transfer.TransferUiState.Idle
+                    ) {
                         viewModel.setUiStateForTesting(initialUiState)
+                    }
+                }
+                androidx.compose.runtime.LaunchedEffect(initialAutoSaveStatus) {
+                    if (initialAutoSaveStatus != null &&
+                        viewModel.exportStatus.value is dev.glide.app.ui.transfer.ExportUiStatus.Idle
+                    ) {
+                        transferRuntime?.setAutoSaveStatusForTesting(initialAutoSaveStatus)
                     }
                 }
                 androidx.compose.runtime.LaunchedEffect(initialPairingState) {

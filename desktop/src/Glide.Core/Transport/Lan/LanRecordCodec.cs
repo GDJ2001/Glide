@@ -66,6 +66,33 @@ public static class LanRecordCodec
         DataHeaderAndUuidSize + chunkLength;
 
     /// <summary>
+    /// Encodes only the 21-byte DATA record header (5-byte record header + 16-byte network-order UUID)
+    /// into a destination span so callers can write header + payload without intermediate 64 KiB copies.
+    /// </summary>
+    public static int EncodeDataHeaderToSpan(BulkRef bulkRef, int chunkLength, Span<byte> destination)
+    {
+        if (chunkLength < 1 || chunkLength > MaxDataChunkSize)
+        {
+            throw new ArgumentException(
+                $"DATA chunk length {chunkLength} out of bounds (1..{MaxDataChunkSize})",
+                nameof(chunkLength));
+        }
+
+        if (destination.Length < DataHeaderAndUuidSize)
+        {
+            throw new ArgumentException(
+                $"Destination span length {destination.Length} is smaller than required DATA header length {DataHeaderAndUuidSize}",
+                nameof(destination));
+        }
+
+        int payloadLength = LanUuidCodec.UuidByteLength + chunkLength;
+        destination[0] = (byte)LanRecordKind.Data;
+        BinaryPrimitives.WriteUInt32BigEndian(destination.Slice(1, 4), (uint)payloadLength);
+        LanUuidCodec.WriteBulkRefNetworkBytes(bulkRef, destination.Slice(HeaderSize, LanUuidCodec.UuidByteLength));
+        return DataHeaderAndUuidSize;
+    }
+
+    /// <summary>
     /// Encodes a DATA record (5-byte header + 16-byte network-order UUID + chunk) directly into a destination span
     /// without intermediate byte[] allocations.
     /// </summary>

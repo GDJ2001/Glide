@@ -1,17 +1,15 @@
 name: Linux development packages
 
 on:
-  push:
-    branches:
-      - fix/native-completion-hardening
-      - 'codex/**'
   workflow_dispatch:
+  # Disabled automatic push triggers per R1.
 
 permissions:
   contents: read
 
 jobs:
   package:
+    if: false # Disabled per R1 — manual/local verification only
     strategy:
       fail-fast: false
       matrix:

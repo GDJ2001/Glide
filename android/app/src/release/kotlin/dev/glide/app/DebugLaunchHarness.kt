@@ -2,6 +2,7 @@ package dev.glide.app
 
 import android.app.Activity
 import android.content.Intent
+import dev.glide.app.navigation.GlideRoute
 import dev.glide.app.service.TransferRuntime
 
 /**
@@ -15,4 +16,11 @@ object DebugLaunchHarness {
         intent: Intent?,
         transferRuntime: TransferRuntime
     ): LaunchOverrides = LaunchOverrides()
+
+    @Suppress("UNUSED_PARAMETER")
+    fun onNewIntent(
+        activity: Activity,
+        intent: Intent?,
+        transferRuntime: TransferRuntime
+    ): GlideRoute? = null
 }

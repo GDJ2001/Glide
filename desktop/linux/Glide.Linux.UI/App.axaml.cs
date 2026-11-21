@@ -3,11 +3,14 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Glide.Linux.UI.ViewModels;
 using Glide.Linux.UI.Views;
+using Glide.Linux.UI.Services;
 
 namespace Glide.Linux.UI;
 
 public partial class App : Application
 {
+    internal static LinuxSingleInstance? PrimaryInstance { get; set; }
+
     public override void Initialize()
     {
         AvaloniaXamlLoader.Load(this);
@@ -23,39 +26,50 @@ public partial class App : Application
                 DataContext = viewModel
             };
 
-            if (desktop.Args is { Length: > 0 })
+            void ApplyLaunchArguments(string[] launchArgs)
             {
                 var paths = new List<string>();
-                for (int i = 0; i < desktop.Args.Length; i++)
+                for (int i = 0; i < launchArgs.Length; i++)
                 {
-                    string arg = desktop.Args[i];
-                    if (arg == "--tab" && i + 1 < desktop.Args.Length)
+                    string arg = launchArgs[i];
+                    if (arg == "--tab" && i + 1 < launchArgs.Length)
                     {
-                        viewModel.SwitchTabCommand.Execute(desktop.Args[++i]);
+                        viewModel.SwitchTabCommand.Execute(launchArgs[++i]);
                     }
-                    else if (arg == "--theme" && i + 1 < desktop.Args.Length)
+                    else if (arg == "--theme" && i + 1 < launchArgs.Length)
                     {
-                        viewModel.SetThemeCommand.Execute(desktop.Args[++i]);
+                        viewModel.SetThemeCommand.Execute(launchArgs[++i]);
                     }
-                    else if (arg == "--width" && i + 1 < desktop.Args.Length && double.TryParse(desktop.Args[i + 1], out double w))
+                    else if (arg == "--width" && i + 1 < launchArgs.Length && double.TryParse(launchArgs[i + 1], out double w))
                     {
                         mainWindow.Width = w;
                         i++;
                     }
-                    else if (arg == "--height" && i + 1 < desktop.Args.Length && double.TryParse(desktop.Args[i + 1], out double h))
+                    else if (arg == "--height" && i + 1 < launchArgs.Length && double.TryParse(launchArgs[i + 1], out double h))
                     {
                         mainWindow.Height = h;
                         i++;
                     }
-                    else if (arg == "--pair" && i + 1 < desktop.Args.Length)
+                    else if (arg == "--pair" && i + 1 < launchArgs.Length)
                     {
-                        viewModel.InvitationInput = desktop.Args[++i];
+                        string link = launchArgs[++i];
+                        if (link.StartsWith("glide://pair/v2#", StringComparison.OrdinalIgnoreCase))
+                        {
+                            viewModel.PairLink = link;
+                            viewModel.SwitchTabCommand.Execute("Pair");
+                            viewModel.ShowPairLinkCommand.Execute(null);
+                        }
+                        else
+                        {
+                            viewModel.InvitationInput = link;
+                            viewModel.SwitchTabCommand.Execute("Receive");
+                        }
                     }
                     else if (arg == "--listen")
                     {
                         _ = viewModel.StartReceivingOnLaunchAsync();
                     }
-                    else if (!arg.StartsWith("--"))
+                    else if (arg != "--send" && !arg.StartsWith("--", StringComparison.Ordinal))
                     {
                         paths.Add(arg);
                     }
@@ -64,22 +78,25 @@ public partial class App : Application
                 if (paths.Count > 0)
                 {
                     viewModel.StagePaths(paths);
+                    viewModel.SwitchTabCommand.Execute("Send");
                 }
+            }
 
-                if (desktop.Args.Contains("--send"))
-                {
-                    _ = Task.Run(async () =>
+            if (desktop.Args is { Length: > 0 })
+                ApplyLaunchArguments(desktop.Args);
+
+            if (PrimaryInstance is { } instance)
+            {
+                Action<string[]> onActivated = args =>
+                    Avalonia.Threading.Dispatcher.UIThread.Post(() =>
                     {
-                        await Task.Delay(1000);
-                        await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
-                        {
-                            if (viewModel.SendFilesCommand.CanExecute(null))
-                            {
-                                await viewModel.SendFilesCommand.ExecuteAsync(null);
-                            }
-                        });
+                        if (mainWindow.WindowState == Avalonia.Controls.WindowState.Minimized)
+                            mainWindow.WindowState = Avalonia.Controls.WindowState.Normal;
+                        mainWindow.Activate();
+                        ApplyLaunchArguments(args);
                     });
-                }
+                instance.ActivatedWithArguments += onActivated;
+                desktop.Exit += (_, _) => instance.ActivatedWithArguments -= onActivated;
             }
 
             desktop.MainWindow = mainWindow;

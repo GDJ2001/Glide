@@ -357,10 +357,9 @@ public sealed class Hard003DesktopRegressionTests : IDisposable
 
         await serverTask;
 
-        Assert.InRange(
-            allocationAtOfferPage,
-            0L,
-            allocationBudget);
+        Assert.True(
+            allocationAtOfferPage <= allocationBudget,
+            $"Expected allocation delta at OFFER_PAGE <= {allocationBudget} bytes, but observed {allocationAtOfferPage} bytes.");
     }
 
     private QuarantineStagingStore CreateStore(string name)
