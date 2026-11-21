@@ -2,6 +2,7 @@ import Foundation
 import SwiftUI
 import Combine
 import Network
+import UIKit
 import GlideCoreKit
 
 public enum IosSendMethod: String, CaseIterable, Sendable {
@@ -55,6 +56,7 @@ public final class IosTransferViewModel: ObservableObject {
     @Published public var trustedPeers: [PersistentTrustedPeer] = []
     @Published public var selectedTrustedPeer: PersistentTrustedPeer?
     @Published public var selectedPeerEndpoint: String = ""
+    @Published public private(set) var availablePeers: [BonjourPeer] = []
 
     @Published public var invitationInput: String = ""
     @Published public var pairLinkInput: String = ""
@@ -74,6 +76,7 @@ public final class IosTransferViewModel: ObservableObject {
     @Published public var transferStatusText: String = "Ready"
     @Published public var transferredBytesText: String = ""
     @Published public var currentFileName: String = ""
+    @Published public var lastTransferResult: TransferFeedback?
 
     // SAS Mutual Authentication
     @Published public var isSasConfirmationVisible: Bool = false
@@ -85,6 +88,7 @@ public final class IosTransferViewModel: ObservableObject {
     @Published public var isIncomingOfferVisible: Bool = false
     @Published public var incomingOfferPeer: String = ""
     @Published public var incomingOfferSummary: String = ""
+    @Published public var incomingOfferTotalBytes: Int64 = 0
     private var offerContinuation: CheckedContinuation<Bool, Never>?
 
     // Scanner
@@ -92,7 +96,6 @@ public final class IosTransferViewModel: ObservableObject {
 
     // Settings
     @Published public var deviceName: String = "iPhone"
-    @Published public var saveToPhotos: Bool = true
 
     // History
     @Published public var historyItems: [IosHistoryItem] = []
@@ -101,17 +104,102 @@ public final class IosTransferViewModel: ObservableObject {
     private let listener = GlideNetworkListener()
     private let lifecycle = IosLifecycleCoordinator()
     private let authority = LanInvitationAuthority()
+    private var receivePresenceId = ""
+    private var isForeground = true
+    private lazy var peerBrowser = GlidePeerBrowser { [weak self] peers in
+        Task { @MainActor in self?.availablePeers = peers }
+    }
+
+    public var receiveDirectory: URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+    }
 
     public init() {
         refreshTrustedPeers()
+        peerBrowser.start()
         generateLocalInvitation()
         importSharedFiles()
+    }
+
+    public func appDidBecomeActive() {
+        isForeground = true
+        lifecycle.endBackgroundTask()
+        peerBrowser.start()
+        if !listener.isListening { generateLocalInvitation() }
+        importSharedFiles()
+    }
+
+    public func appDidEnterBackground() {
+        isForeground = false
+        peerBrowser.stop()
+        if isTransferActive {
+            _ = lifecycle.beginBackgroundTask(onExpiration: { [weak self] in
+                Task { @MainActor in
+                    self?.transferStatusText = "iOS paused the transfer. Reopen Glide to check the result."
+                }
+            })
+        } else {
+            authority.revokeActive()
+            currentInvitationUri = ""
+            receivePresenceId = ""
+            listener.stop()
+            isListening = false
+        }
+    }
+
+    private func finishTransfer() {
+        isTransferActive = false
+        setTransferAwake(false)
+        lifecycle.endBackgroundTask()
+        if isForeground { generateLocalInvitation() }
+        else {
+            authority.revokeActive()
+            currentInvitationUri = ""
+            receivePresenceId = ""
+            listener.stop()
+            isListening = false
+        }
+    }
+
+    private func setTransferAwake(_ awake: Bool) {
+        lifecycle.setIdleTimerDisabled(awake)
+        UIApplication.shared.isIdleTimerDisabled = awake
+    }
+
+    private func recordFailure(_ error: Error, peerName: String) {
+        let kind: TransferResultKind
+        let message: String
+        switch error {
+        case TransferError.offerRejected, TransferError.recipientRejected:
+            kind = .declined
+            message = "The receiver declined this transfer."
+        case TransferError.cancelled, is CancellationError:
+            kind = .cancelled
+            message = "The transfer was cancelled."
+        case TransferError.identityChanged, TransferError.untrustedPeer:
+            kind = .failed
+            message = "Device identity changed. Pair again before sending."
+        case TransferError.busy:
+            kind = .failed
+            message = "This device is busy. Try again."
+        case TransferError.peerDisconnected, NetworkClientError.connectionTimedOut:
+            kind = .failed
+            message = "Could not reach this device. Keep Glide open on both devices."
+        default:
+            kind = .failed
+            message = "The transfer stopped. Try again."
+        }
+        transferStatusText = message
+        lastTransferResult = TransferFeedback(
+            kind: kind, peerName: peerName, message: message,
+            technicalDetails: String(describing: error))
     }
 
     public func refreshTrustedPeers() {
         engine.trustStore.load()
         trustedPeers = engine.trustStore.allPeers().sorted { $0.lastSeenAtUnixMs > $1.lastSeenAtUnixMs }
-        if selectedTrustedPeer == nil {
+        if selectedTrustedPeer == nil ||
+            !trustedPeers.contains(where: { $0.fingerprintHex == selectedTrustedPeer?.fingerprintHex }) {
             selectedTrustedPeer = trustedPeers.first
         }
     }
@@ -287,6 +375,7 @@ public final class IosTransferViewModel: ObservableObject {
     }
 
     public func generateLocalInvitation() {
+        guard isForeground || isTransferActive else { return }
         do {
             let identity = try KeychainIdentityManager.shared.getOrCreateTlsIdentity()
             if !listener.isListening {
@@ -299,13 +388,19 @@ public final class IosTransferViewModel: ObservableObject {
                             self.listeningPort = port
                             self.isListening = true
                             do {
-                                let (_, uri) = try AppleInvitationManager.publish(
+                                let (invitation, uri) = try AppleInvitationManager.publish(
                                     listener: self.listener,
                                     authority: self.authority,
                                     deviceName: self.deviceName,
                                     platform: "ios"
                                 )
                                 self.currentInvitationUri = uri
+                                self.receivePresenceId = invitation.presence
+                                self.listener.updateAdvertisement(
+                                    name: self.deviceName,
+                                    presenceTokenHex: invitation.presence,
+                                    deviceType: BonjourService.deviceTypePhone,
+                                    isPairReady: false)
                                 self.transferStatusText = "Ready to receive"
                             } catch {
                                 self.transferStatusText = "Could not publish invitation: \(error.localizedDescription)"
@@ -325,13 +420,19 @@ public final class IosTransferViewModel: ObservableObject {
                     }
                 )
             } else {
-                let (_, uri) = try AppleInvitationManager.publish(
+                let (invitation, uri) = try AppleInvitationManager.publish(
                     listener: listener,
                     authority: authority,
                     deviceName: deviceName,
                     platform: "ios"
                 )
                 currentInvitationUri = uri
+                receivePresenceId = invitation.presence
+                listener.updateAdvertisement(
+                    name: deviceName,
+                    presenceTokenHex: invitation.presence,
+                    deviceType: BonjourService.deviceTypePhone,
+                    isPairReady: false)
                 transferStatusText = "Ready to receive"
             }
         } catch {
@@ -342,14 +443,15 @@ public final class IosTransferViewModel: ObservableObject {
 
     private func handleIncomingConnection(_ connection: NWConnection) {
         guard !isTransferActive else {
-            connection.cancel()
+            Task { await GlideTransferEngine.rejectBusyConnection(connection) }
             return
         }
         isTransferActive = true
+        lastTransferResult = nil
         transferProgress = 0.0
         transferStatusText = "Receiving from connected peer..."
-        lifecycle.setIdleTimerDisabled(true)
-        let docsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        setTransferAwake(true)
+        let docsDir = receiveDirectory
 
         Task {
             do {
@@ -370,6 +472,7 @@ public final class IosTransferViewModel: ObservableObject {
                                                           totalBytes: totalBytes)
                 }
                 let count: Int
+                try FileManager.default.createDirectory(at: docsDir, withIntermediateDirectories: true)
                 switch kind {
                 case .profile1LanRecord:
                     count = try await engine.receiveInboundChannel(
@@ -387,26 +490,36 @@ public final class IosTransferViewModel: ObservableObject {
                         channel: channel, open: open,
                         destinationDirectory: docsDir, localDeviceName: deviceName,
                         localPlatform: "ios",
+                        currentPresenceId: receivePresenceId,
                         onConsent: consent, onProgress: progress)
                 case .invalid:
                     throw ApplePairSessionError.invalidMessage
                 }
-                transferStatusText = "Received \(count) file(s)!"
+                if count == 0 {
+                    lastTransferResult = TransferFeedback(kind: .declined,
+                        peerName: incomingOfferPeer, message: "You declined this transfer.")
+                    transferStatusText = "Transfer declined"
+                } else {
+                    lastTransferResult = TransferFeedback(kind: .complete,
+                        peerName: incomingOfferPeer, fileCount: count,
+                        totalBytes: incomingOfferTotalBytes,
+                        message: "\(count) file(s) verified and saved.")
+                    transferStatusText = "Received \(count) file(s)!"
+                }
+                guard count > 0 else { finishTransfer(); return }
                 historyItems.insert(IosHistoryItem(
                     id: UUID().uuidString,
                     timestamp: Date(),
                     direction: "Received",
                     peerName: "Peer Device",
                     fileCount: count,
-                    totalBytes: 0,
+                    totalBytes: incomingOfferTotalBytes,
                     status: "Completed"
                 ), at: 0)
             } catch {
-                transferStatusText = "Receive failed: \(error.localizedDescription)"
+                recordFailure(error, peerName: incomingOfferPeer)
             }
-            isTransferActive = false
-            lifecycle.setIdleTimerDisabled(false)
-            generateLocalInvitation()
+            finishTransfer()
         }
     }
 
@@ -432,9 +545,10 @@ public final class IosTransferViewModel: ObservableObject {
         }
 
         isTransferActive = true
+        lastTransferResult = nil
         transferProgress = 0.0
         transferStatusText = "Connecting..."
-        lifecycle.setIdleTimerDisabled(true)
+        setTransferAwake(true)
 
         Task {
             do {
@@ -451,6 +565,9 @@ public final class IosTransferViewModel: ObservableObject {
                 }
 
                 transferStatusText = "Successfully sent \(sent) file(s)!"
+                lastTransferResult = TransferFeedback(kind: .complete,
+                    peerName: invitation.name, fileCount: sent,
+                    totalBytes: stagedSize, message: "Files verified by the receiver.")
                 historyItems.insert(IosHistoryItem(
                     id: UUID().uuidString,
                     timestamp: Date(),
@@ -464,44 +581,40 @@ public final class IosTransferViewModel: ObservableObject {
                 apply(await stagedFiles.remove(stagedUrls))
             } catch {
                 // Preserve stagedUrls on failure
-                transferStatusText = "Transfer failed: \(error.localizedDescription)"
-                historyItems.insert(IosHistoryItem(
-                    id: UUID().uuidString,
-                    timestamp: Date(),
-                    direction: "Sent",
-                    peerName: invitation.name,
-                    fileCount: stagedUrls.count,
-                    totalBytes: stagedSize,
-                    status: "Failed"
-                ), at: 0)
+                recordFailure(error, peerName: invitation.name)
             }
 
-            isTransferActive = false
-            lifecycle.setIdleTimerDisabled(false)
+            finishTransfer()
         }
     }
 
     public func sendToPairedDevice() {
         guard !isTransferActive, !isStagingFiles, !stagedUrls.isEmpty, let peer = selectedTrustedPeer else { return }
-        let parts = selectedPeerEndpoint.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: ":")
-        let host = parts.first.map(String.init) ?? ""
-        let port = parts.count > 1 ? (Int(parts[1]) ?? Int(NetworkTransportConfig.defaultPort)) : Int(NetworkTransportConfig.defaultPort)
-        guard !host.isEmpty else {
-            transferStatusText = "Couldn’t reach this device — check the local network"
-            return
-        }
 
         isTransferActive = true
+        lastTransferResult = nil
         transferProgress = 0.0
-        transferStatusText = "Verifying \(peer.displayName)…"
-        lifecycle.setIdleTimerDisabled(true)
+        transferStatusText = "Finding \(peer.displayName)…"
+        selectedTab = "activity"
+        setTransferAwake(true)
+        let previouslyDiscovered = availablePeers
+        peerBrowser.start()
 
         Task {
             do {
+                try await Task.sleep(nanoseconds: 1_000_000_000)
+                if availablePeers.isEmpty && previouslyDiscovered.isEmpty {
+                    try await Task.sleep(nanoseconds: 2_000_000_000)
+                }
+                let candidates = TrustedEndpointResolver.candidates(
+                    for: peer, discovered: availablePeers + previouslyDiscovered,
+                    manualAddress: selectedPeerEndpoint)
+                guard !candidates.isEmpty else { throw TransferError.peerDisconnected }
+                transferStatusText = "Connecting and verifying \(peer.displayName)…"
                 let sent = try await engine.sendFilesToTrustedPeer(
                     fileUrls: stagedUrls,
                     peerFingerprintHex: peer.fingerprintHex,
-                    endpoints: [LanEndpoint(address: host, port: port)],
+                    candidates: candidates,
                     localDeviceName: deviceName,
                     localPlatform: "ios"
                 ) { [weak self] progress, bytesDone, totalBytes, filename in
@@ -513,6 +626,9 @@ public final class IosTransferViewModel: ObservableObject {
                 }
 
                 transferStatusText = "Successfully sent \(sent) file(s) to \(peer.displayName)!"
+                lastTransferResult = TransferFeedback(kind: .complete,
+                    peerName: peer.displayName, fileCount: sent,
+                    totalBytes: stagedSize, message: "Files verified by the receiver.")
                 historyItems.insert(IosHistoryItem(
                     id: UUID().uuidString,
                     timestamp: Date(),
@@ -524,16 +640,11 @@ public final class IosTransferViewModel: ObservableObject {
                 ), at: 0)
 
                 apply(await stagedFiles.remove(stagedUrls))
-            } catch TransferError.identityChanged, TransferError.untrustedPeer {
-                transferStatusText = "Identity changed — pair again"
-            } catch TransferError.busy {
-                transferStatusText = "This device is busy — try again"
             } catch {
-                transferStatusText = "Couldn’t reach this device — check the local network"
+                recordFailure(error, peerName: peer.displayName)
             }
 
-            isTransferActive = false
-            lifecycle.setIdleTimerDisabled(false)
+            finishTransfer()
         }
     }
 
@@ -548,12 +659,18 @@ public final class IosTransferViewModel: ObservableObject {
             return
         }
 
-        let docsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let docsDir = receiveDirectory
+        do { try FileManager.default.createDirectory(at: docsDir, withIntermediateDirectories: true) }
+        catch {
+            transferStatusText = "Could not open the Glide receive folder."
+            return
+        }
 
         isTransferActive = true
+        lastTransferResult = nil
         transferProgress = 0.0
         transferStatusText = "Connecting to sender..."
-        lifecycle.setIdleTimerDisabled(true)
+        setTransferAwake(true)
 
         Task {
             do {
@@ -572,27 +689,38 @@ public final class IosTransferViewModel: ObservableObject {
                     }
                 }
 
-                transferStatusText = "Received \(received) file(s)!"
+                if received == 0 {
+                    lastTransferResult = TransferFeedback(kind: .declined,
+                        peerName: incomingOfferPeer, message: "You declined this transfer.")
+                    transferStatusText = "Transfer declined"
+                } else {
+                    lastTransferResult = TransferFeedback(kind: .complete,
+                        peerName: incomingOfferPeer, fileCount: received,
+                        totalBytes: incomingOfferTotalBytes,
+                        message: "\(received) file(s) verified and saved.")
+                    transferStatusText = "Received \(received) file(s)!"
+                }
+                guard received > 0 else { finishTransfer(); return }
                 historyItems.insert(IosHistoryItem(
                     id: UUID().uuidString,
                     timestamp: Date(),
                     direction: "Received",
                     peerName: "Invitation Sender",
                     fileCount: received,
-                    totalBytes: 0,
+                    totalBytes: incomingOfferTotalBytes,
                     status: "Completed"
                 ), at: 0)
             } catch {
-                transferStatusText = "Receive failed: \(error.localizedDescription)"
+                recordFailure(error, peerName: incomingOfferPeer)
             }
 
-            isTransferActive = false
-            lifecycle.setIdleTimerDisabled(false)
+            finishTransfer()
         }
     }
 
     private func requestOfferConsent(peer: String, count: Int, totalBytes: Int64) async -> Bool {
         incomingOfferPeer = peer
+        incomingOfferTotalBytes = totalBytes
         incomingOfferSummary = "\(count) file(s), \(ByteCountFormatter.string(fromByteCount: totalBytes, countStyle: .file))"
         isIncomingOfferVisible = true
 
@@ -603,6 +731,7 @@ public final class IosTransferViewModel: ObservableObject {
 
     public func resolveOffer(accept: Bool) {
         isIncomingOfferVisible = false
+        if accept { selectedTab = "activity" }
         offerContinuation?.resume(returning: accept)
         offerContinuation = nil
     }

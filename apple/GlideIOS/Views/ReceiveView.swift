@@ -49,7 +49,7 @@ public struct ReceiveView: View {
                             Circle()
                                 .fill(viewModel.isListening ? Color.green : Color.gray)
                                 .frame(width: 10, height: 10)
-                            Text("Ready to Receive Nearby")
+                            Text(viewModel.isListening ? "Ready to receive" : "Receiving unavailable")
                                 .font(.headline)
                             Spacer()
                             Button("Copy receive link") {
@@ -61,7 +61,9 @@ public struct ReceiveView: View {
                             .disabled(viewModel.currentInvitationUri.isEmpty)
                         }
 
-                        Text("Devices on the same local Wi-Fi network can discover and send files to this device.")
+                        Text(viewModel.isListening
+                             ? "Paired devices can send while Glide is open. Approve each file offer."
+                             : "Keep Glide open on the local network to receive files.")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
 
@@ -119,85 +121,6 @@ public struct ReceiveView: View {
                 .padding()
             }
             .navigationTitle("Glide Receive")
-            .sheet(isPresented: $viewModel.isIncomingOfferVisible) {
-                VStack(spacing: 20) {
-                    Image(systemName: "tray.and.arrow.down.fill")
-                        .font(.system(size: 48))
-                        .foregroundColor(.blue)
-
-                    Text("Incoming Transfer")
-                        .font(.title2)
-                        .fontWeight(.bold)
-
-                    Text("\(viewModel.incomingOfferPeer) wants to send you files:")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-
-                    Text(viewModel.incomingOfferSummary)
-                        .font(.headline)
-                        .padding()
-                        .frame(maxWidth: .infinity)
-                        .background(Color(uiColor: .secondarySystemBackground))
-                        .cornerRadius(8)
-
-                    HStack(spacing: 16) {
-                        Button("Decline") {
-                            viewModel.resolveOffer(accept: false)
-                        }
-                        .buttonStyle(.bordered)
-                        .foregroundColor(.red)
-                        .frame(maxWidth: .infinity)
-
-                        Button("Accept") {
-                            viewModel.resolveOffer(accept: true)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .frame(maxWidth: .infinity)
-                    }
-                }
-                .padding(28)
-                .presentationDetents([.medium])
-            }
-            .sheet(isPresented: $viewModel.isSasConfirmationVisible) {
-                VStack(spacing: 20) {
-                    Image(systemName: "lock.shield.fill")
-                        .font(.system(size: 48))
-                        .foregroundColor(.green)
-
-                    Text("Verify Security Code")
-                        .font(.title2)
-                        .fontWeight(.bold)
-
-                    Text("Compare the 6-digit code below with the code on \(viewModel.sasPeerName):")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-
-                    Text(viewModel.sasCode)
-                        .font(.system(size: 40, weight: .bold, design: .monospaced))
-                        .foregroundColor(.blue)
-                        .padding()
-                        .background(Color(uiColor: .secondarySystemBackground))
-                        .cornerRadius(12)
-
-                    HStack(spacing: 16) {
-                        Button("Decline") {
-                            viewModel.resolveSas(accept: false)
-                        }
-                        .buttonStyle(.bordered)
-                        .foregroundColor(.red)
-                        .frame(maxWidth: .infinity)
-
-                        Button("Match & Confirm") {
-                            viewModel.resolveSas(accept: true)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .frame(maxWidth: .infinity)
-                    }
-                }
-                .padding(28)
-                .presentationDetents([.medium])
-            }
         }
     }
 }

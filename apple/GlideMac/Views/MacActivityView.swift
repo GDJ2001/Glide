@@ -50,6 +50,26 @@ public struct MacActivityView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color(NSColor.controlBackgroundColor))
                     .cornerRadius(8)
+                } else if let result = viewModel.lastTransferResult {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(result.kind.title).font(.headline)
+                        Text(result.peerName).font(.subheadline)
+                        Text(result.message).font(.subheadline)
+                        if result.kind == .complete {
+                            Text("\(result.fileCount) file(s) verified · " +
+                                 ByteCountFormatter.string(fromByteCount: result.totalBytes, countStyle: .file))
+                                .font(.caption).foregroundColor(.secondary)
+                        }
+                        if let technical = result.technicalDetails {
+                            DisclosureGroup("Technical details") {
+                                Text(technical).font(.caption).textSelection(.enabled)
+                            }
+                        }
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(NSColor.controlBackgroundColor))
+                    .cornerRadius(8)
                 }
 
                 VStack(alignment: .leading, spacing: 16) {

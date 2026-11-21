@@ -51,8 +51,11 @@ public struct SettingsView: View {
                     }
                 }
 
-                Section(header: Text("Transfer Preferences")) {
-                    Toggle("Export Images to Photos Library", isOn: $viewModel.saveToPhotos)
+                Section(header: Text("Received files")) {
+                    LabeledContent("Save to", value: "On My iPhone / Glide")
+                    Text("Verified files are saved automatically.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
 
                 Section(header: Text("Network")) {

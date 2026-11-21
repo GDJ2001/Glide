@@ -1,4 +1,7 @@
 import Foundation
+#if os(iOS)
+import UIKit
+#endif
 
 /// Abstraction for iOS system background task execution.
 public protocol IBackgroundTaskProvider: Sendable {
@@ -97,16 +100,40 @@ public final class IosLifecycleCoordinator: @unchecked Sendable {
     private final class DefaultBackgroundTaskProvider: IBackgroundTaskProvider, @unchecked Sendable {
         private let lock = NSLock()
         private var counter = 1000
+        #if os(iOS)
+        private var tasks: [Int: UIBackgroundTaskIdentifier] = [:]
+        #endif
 
         func beginBackgroundTask(withName name: String, expirationHandler: @escaping @Sendable () -> Void) -> Int {
+            #if os(iOS)
+            return MainActor.assumeIsolated {
+                let systemTask = UIApplication.shared.beginBackgroundTask(
+                    withName: name, expirationHandler: expirationHandler)
+                lock.lock()
+                defer { lock.unlock() }
+                counter += 1
+                tasks[counter] = systemTask
+                return counter
+            }
+            #else
             lock.lock()
             defer { lock.unlock() }
             counter += 1
             return counter
+            #endif
         }
 
         func endBackgroundTask(_ identifier: Int) {
-            // Completed
+            #if os(iOS)
+            lock.lock()
+            let systemTask = tasks.removeValue(forKey: identifier)
+            lock.unlock()
+            if let systemTask {
+                Task { @MainActor in
+                    UIApplication.shared.endBackgroundTask(systemTask)
+                }
+            }
+            #endif
         }
     }
 }

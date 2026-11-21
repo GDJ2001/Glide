@@ -122,8 +122,10 @@ public struct SendView: View {
                                         Text(peer.displayName).tag(Optional(peer))
                                     }
                                 }
-                                TextField("Local address (e.g. 192.168.1.20:42424)", text: $viewModel.selectedPeerEndpoint)
-                                    .textFieldStyle(.roundedBorder)
+                                DisclosureGroup("Use local address") {
+                                    TextField("Local address:port", text: $viewModel.selectedPeerEndpoint)
+                                        .textFieldStyle(.roundedBorder)
+                                }
 
                                 Button {
                                     viewModel.sendToPairedDevice()

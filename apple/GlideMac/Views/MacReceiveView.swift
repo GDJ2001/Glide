@@ -113,42 +113,6 @@ public struct MacReceiveView: View {
             }
             .padding(24)
         }
-        .sheet(isPresented: $viewModel.isIncomingOfferVisible) {
-            VStack(spacing: 16) {
-                Text("Incoming transfer request").font(.headline)
-                Text("\(viewModel.incomingOfferPeer) wants to send files:")
-                Text(viewModel.incomingOfferSummary)
-                    .padding()
-                    .background(Color(NSColor.controlBackgroundColor))
-                    .cornerRadius(6)
-                HStack {
-                    Button("Decline") { viewModel.resolveOffer(accept: false) }
-                    Spacer()
-                    Button("Accept") { viewModel.resolveOffer(accept: true) }
-                        .buttonStyle(.borderedProminent)
-                }
-            }
-            .padding(24)
-            .frame(width: 360)
-        }
-        .sheet(isPresented: $viewModel.isSasConfirmationVisible) {
-            VStack(spacing: 16) {
-                Text("Verify security code").font(.headline)
-                Text("Confirm that this 6-digit code matches the screen on \(viewModel.sasPeerName):")
-                    .multilineTextAlignment(.center)
-                Text(viewModel.sasCode)
-                    .font(.system(size: 36, weight: .bold, design: .monospaced))
-                    .foregroundColor(.blue)
-                HStack {
-                    Button("Decline") { viewModel.resolveSas(accept: false) }
-                    Spacer()
-                    Button("Match and confirm") { viewModel.resolveSas(accept: true) }
-                        .buttonStyle(.borderedProminent)
-                }
-            }
-            .padding(24)
-            .frame(width: 360)
-        }
     }
 
     @State private var showLargeQr = false

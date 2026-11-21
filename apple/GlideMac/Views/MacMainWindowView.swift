@@ -62,5 +62,17 @@ public struct MacMainWindowView: View {
             }
         }
         .frame(minWidth: 700, minHeight: 480)
+        .alert("Incoming transfer", isPresented: $viewModel.isIncomingOfferVisible) {
+            Button("Decline", role: .cancel) { viewModel.resolveOffer(accept: false) }
+            Button("Accept") { viewModel.resolveOffer(accept: true) }
+        } message: {
+            Text("\(viewModel.incomingOfferPeer) · \(viewModel.incomingOfferSummary)")
+        }
+        .alert("Verify security code", isPresented: $viewModel.isSasConfirmationVisible) {
+            Button("Decline", role: .cancel) { viewModel.resolveSas(accept: false) }
+            Button("Match and confirm") { viewModel.resolveSas(accept: true) }
+        } message: {
+            Text("Compare \(viewModel.sasCode) with \(viewModel.sasPeerName).")
+        }
     }
 }

@@ -39,7 +39,6 @@ public final class GlideNetworkClient: Sendable {
             let hasResumed = ManagedAtomicBool(false)
 
             connection.stateUpdateHandler = { state in
-                print("DEBUG: [ClientConnection] state=\(state)")
                 switch state {
                 case .ready:
                     if hasResumed.compareAndSwap(expected: false, new: true) {

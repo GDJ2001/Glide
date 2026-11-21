@@ -60,6 +60,41 @@ public struct ActivityView: View {
                     }
                 }
             }
+            .safeAreaInset(edge: .top) {
+                if viewModel.isTransferActive {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(viewModel.transferStatusText).font(.headline)
+                        if !viewModel.currentFileName.isEmpty {
+                            Text(viewModel.currentFileName).lineLimit(1).font(.caption)
+                        }
+                        ProgressView(value: viewModel.transferProgress)
+                        Text(viewModel.transferredBytesText)
+                            .font(.caption).foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding()
+                    .background(.regularMaterial)
+                } else if let result = viewModel.lastTransferResult {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(result.kind.title).font(.headline)
+                        Text(result.peerName).font(.subheadline)
+                        Text(result.message).font(.subheadline)
+                        if result.kind == .complete {
+                            Text("\(result.fileCount) file(s) verified · " +
+                                 ByteCountFormatter.string(fromByteCount: result.totalBytes, countStyle: .file))
+                                .font(.caption).foregroundColor(.secondary)
+                        }
+                        if let technical = result.technicalDetails {
+                            DisclosureGroup("Technical details") {
+                                Text(technical).font(.caption).textSelection(.enabled)
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding()
+                    .background(.regularMaterial)
+                }
+            }
             .navigationTitle("Activity")
             .toolbar {
                 if !viewModel.historyItems.isEmpty {

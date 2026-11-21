@@ -9,7 +9,8 @@ struct GlideIOSApp: App {
         WindowGroup {
             MainTabView(viewModel: viewModel)
                 .onChange(of: scenePhase) { phase in
-                    if phase == .active { viewModel.importSharedFiles() }
+                    if phase == .active { viewModel.appDidBecomeActive() }
+                    if phase == .background { viewModel.appDidEnterBackground() }
                 }
         }
     }

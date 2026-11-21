@@ -18,6 +18,10 @@
 	<string>1</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Glide requires camera access to scan pairing QR codes displayed on nearby devices.</string>
 	<key>NSLocalNetworkUsageDescription</key>
@@ -29,10 +33,6 @@
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_glide._tcp</string>
-	</array>
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>fetch</string>
 	</array>
 	<key>UILaunchScreen</key>
 	<dict/>

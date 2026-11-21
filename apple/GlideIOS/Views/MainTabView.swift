@@ -39,5 +39,17 @@ public struct MainTabView: View {
                 }
                 .tag("settings")
         }
+        .alert("Incoming transfer", isPresented: $viewModel.isIncomingOfferVisible) {
+            Button("Decline", role: .cancel) { viewModel.resolveOffer(accept: false) }
+            Button("Accept") { viewModel.resolveOffer(accept: true) }
+        } message: {
+            Text("\(viewModel.incomingOfferPeer) · \(viewModel.incomingOfferSummary)")
+        }
+        .alert("Verify security code", isPresented: $viewModel.isSasConfirmationVisible) {
+            Button("Decline", role: .cancel) { viewModel.resolveSas(accept: false) }
+            Button("Match & Confirm") { viewModel.resolveSas(accept: true) }
+        } message: {
+            Text("Compare \(viewModel.sasCode) with \(viewModel.sasPeerName).")
+        }
     }
 }

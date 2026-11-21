@@ -1,5 +1,9 @@
 import Foundation
 
+public enum PersistentTrustStoreError: Error {
+    case unreadableTrustFile
+}
+
 public struct PersistentTrustedPeer: Codable, Equatable, Hashable, Sendable {
     public let fingerprintHex: String
     public let publicKeyDerHex: String
@@ -18,7 +22,9 @@ public struct PersistentTrustedPeer: Codable, Equatable, Hashable, Sendable {
         guard cleanFp.count == 64, cleanFp.utf8.allSatisfy({ ($0 >= 48 && $0 <= 57) || ($0 >= 97 && $0 <= 102) }) else {
             throw LanProtocolError.malformedMessage("Fingerprint must be 64 lowercase hex characters.")
         }
-        guard !publicKeyDerHex.isEmpty, publicKeyDerHex.count % 2 == 0 else {
+        guard !publicKeyDerHex.isEmpty, publicKeyDerHex.count % 2 == 0,
+              publicKeyDerHex.utf8.allSatisfy({ ($0 >= 48 && $0 <= 57) ||
+                  ($0 >= 65 && $0 <= 70) || ($0 >= 97 && $0 <= 102) }) else {
             throw LanProtocolError.malformedMessage("Public key must be even-length hex string.")
         }
         guard !displayName.isEmpty && displayName.count <= 64 else {
@@ -37,6 +43,7 @@ public final class PersistentTrustStore: @unchecked Sendable {
     private let lock = NSLock()
     private let fileUrl: URL
     private var peers: [String: PersistentTrustedPeer] = [:]
+    private var loadFailed = false
 
     public init(storageDirectory: URL? = nil) {
         let dir = storageDirectory ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Glide", isDirectory: true)
@@ -52,24 +59,45 @@ public final class PersistentTrustStore: @unchecked Sendable {
         do {
             let data = try Data(contentsOf: fileUrl)
             let decoded = try JSONDecoder().decode([PersistentTrustedPeer].self, from: data)
-            peers = Dictionary(uniqueKeysWithValues: decoded.map { ($0.fingerprintHex, $0) })
+            var loaded: [String: PersistentTrustedPeer] = [:]
+            for peer in decoded {
+                let validated = try PersistentTrustedPeer(
+                    fingerprintHex: peer.fingerprintHex,
+                    publicKeyDerHex: peer.publicKeyDerHex,
+                    displayName: peer.displayName,
+                    enrolledAtUnixMs: peer.enrolledAtUnixMs,
+                    lastSeenAtUnixMs: peer.lastSeenAtUnixMs)
+                guard loaded[validated.fingerprintHex] == nil else {
+                    throw PersistentTrustStoreError.unreadableTrustFile
+                }
+                loaded[validated.fingerprintHex] = validated
+            }
+            peers = loaded
+            loadFailed = false
         } catch {
-            peers = [:]
+            // Preserve in-memory trust and the original file for recovery.
+            loadFailed = true
         }
     }
 
     public func save() throws {
         lock.lock()
         defer { lock.unlock() }
+        try saveLocked()
+    }
+
+    private func saveLocked() throws {
+        guard !loadFailed else { throw PersistentTrustStoreError.unreadableTrustFile }
         let peerList = Array(peers.values)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .prettyPrinted]
         let data = try encoder.encode(peerList)
 
         let dir = fileUrl.deletingLastPathComponent()
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true,
+                                                attributes: [.posixPermissions: 0o700])
         try data.write(to: fileUrl, options: [.atomic])
-        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileUrl.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileUrl.path)
     }
 
     public func enrollPeer(
@@ -83,18 +111,27 @@ public final class PersistentTrustStore: @unchecked Sendable {
             displayName: displayName
         )
         lock.lock()
+        defer { lock.unlock() }
+        guard !loadFailed else { throw PersistentTrustStoreError.unreadableTrustFile }
+        let previous = peers[peer.fingerprintHex]
         peers[peer.fingerprintHex] = peer
-        lock.unlock()
-        try save()
+        do { try saveLocked() } catch {
+            peers[peer.fingerprintHex] = previous
+            throw error
+        }
     }
 
     public func revokePeer(fingerprintHex: String) throws {
         let key = fingerprintHex.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         lock.lock()
-        let removed = peers.removeValue(forKey: key) != nil
-        lock.unlock()
-        if removed {
-            try save()
+        defer { lock.unlock() }
+        guard !loadFailed else { throw PersistentTrustStoreError.unreadableTrustFile }
+        let removed = peers.removeValue(forKey: key)
+        if let removed {
+            do { try saveLocked() } catch {
+                peers[key] = removed
+                throw error
+            }
         }
     }
 
@@ -120,8 +157,13 @@ public final class PersistentTrustStore: @unchecked Sendable {
 
     public func clearAll() throws {
         lock.lock()
+        defer { lock.unlock() }
+        guard !loadFailed else { throw PersistentTrustStoreError.unreadableTrustFile }
+        let previous = peers
         peers.removeAll()
-        lock.unlock()
-        try save()
+        do { try saveLocked() } catch {
+            peers = previous
+            throw error
+        }
     }
 }

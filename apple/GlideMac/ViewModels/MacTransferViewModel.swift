@@ -49,7 +49,6 @@ public struct MacHistoryItem: Identifiable, Sendable {
         return formatter.string(from: timestamp)
     }
 }
-
 @MainActor
 public final class MacTransferViewModel: ObservableObject {
     @Published public var selectedSidebarTab: String = "send" {
@@ -96,7 +95,7 @@ public final class MacTransferViewModel: ObservableObject {
     private var pairStartPending = false
     private var pairSessionActive = false
     private var pairTask: Task<Void, Never>?
-    private lazy var pairBrowser = MacPairBrowser { [weak self] peers in
+    private lazy var pairBrowser = GlidePeerBrowser { [weak self] peers in
         Task { @MainActor in
             guard let self else { return }
             self.availablePeers = peers
@@ -116,6 +115,7 @@ public final class MacTransferViewModel: ObservableObject {
     @Published public var transferStatusText: String = "Ready"
     @Published public var transferredBytesText: String = ""
     @Published public var currentFileName: String = ""
+    @Published public var lastTransferResult: TransferFeedback?
 
     // SAS Mutual Authentication
     @Published public var isSasConfirmationVisible: Bool = false
@@ -127,11 +127,16 @@ public final class MacTransferViewModel: ObservableObject {
     @Published public var isIncomingOfferVisible: Bool = false
     @Published public var incomingOfferPeer: String = ""
     @Published public var incomingOfferSummary: String = ""
+    @Published public var incomingOfferTotalBytes: Int64 = 0
     private var offerContinuation: CheckedContinuation<Bool, Never>?
 
     // Settings
     @Published public var deviceName: String = Host.current().localizedName ?? "Mac"
-    @Published public var downloadDirectory: URL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]
+    @Published public private(set) var downloadDirectory: URL = FileManager.default
+        .urls(for: .downloadsDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("Glide", isDirectory: true)
+    private var scopedDownloadDirectory: URL?
+    private let downloadBookmarkKey = "glide.mac.downloadFolderBookmark"
 
     // History
     @Published public var historyItems: [MacHistoryItem] = []
@@ -141,9 +146,74 @@ public final class MacTransferViewModel: ObservableObject {
     private let authority = LanInvitationAuthority()
 
     public init() {
+        restoreDownloadDirectory()
         refreshTrustedPeers()
         generateLocalInvitation()
         pairBrowser.start()
+    }
+
+    public func chooseDownloadDirectory(_ url: URL) {
+        do {
+            let bookmark = try url.bookmarkData(options: [.withSecurityScope],
+                                                includingResourceValuesForKeys: nil,
+                                                relativeTo: nil)
+            guard url.startAccessingSecurityScopedResource() else {
+                throw CocoaError(.fileReadNoPermission)
+            }
+            scopedDownloadDirectory?.stopAccessingSecurityScopedResource()
+            scopedDownloadDirectory = url
+            downloadDirectory = url
+            UserDefaults.standard.set(bookmark, forKey: downloadBookmarkKey)
+        } catch {
+            transferStatusText = "Could not use this receive folder. Choose another folder."
+        }
+    }
+
+    private func restoreDownloadDirectory() {
+        guard let data = UserDefaults.standard.data(forKey: downloadBookmarkKey) else { return }
+        var stale = false
+        guard let url = try? URL(resolvingBookmarkData: data,
+                                 options: [.withSecurityScope],
+                                 relativeTo: nil, bookmarkDataIsStale: &stale),
+              url.startAccessingSecurityScopedResource() else { return }
+        scopedDownloadDirectory = url
+        downloadDirectory = url
+        if stale {
+            if let refreshed = try? url.bookmarkData(
+                options: [.withSecurityScope],
+                includingResourceValuesForKeys: nil, relativeTo: nil) {
+                UserDefaults.standard.set(refreshed, forKey: downloadBookmarkKey)
+            }
+        }
+    }
+
+    private func recordFailure(_ error: Error, peerName: String) {
+        let kind: TransferResultKind
+        let message: String
+        switch error {
+        case TransferError.offerRejected, TransferError.recipientRejected:
+            kind = .declined
+            message = "The receiver declined this transfer."
+        case TransferError.cancelled, is CancellationError:
+            kind = .cancelled
+            message = "The transfer was cancelled."
+        case TransferError.identityChanged, TransferError.untrustedPeer:
+            kind = .failed
+            message = "Device identity changed. Pair again before sending."
+        case TransferError.busy:
+            kind = .failed
+            message = "This device is busy. Try again."
+        case TransferError.peerDisconnected, NetworkClientError.connectionTimedOut:
+            kind = .failed
+            message = "Could not reach this device. Keep Glide open on both devices."
+        default:
+            kind = .failed
+            message = "The transfer stopped. Try again."
+        }
+        transferStatusText = message
+        lastTransferResult = TransferFeedback(
+            kind: kind, peerName: peerName, message: message,
+            technicalDetails: String(describing: error))
     }
 
     public var pairingExpiryText: String {
@@ -154,7 +224,8 @@ public final class MacTransferViewModel: ObservableObject {
     public func refreshTrustedPeers() {
         engine.trustStore.load()
         trustedPeers = engine.trustStore.allPeers().sorted { $0.lastSeenAtUnixMs > $1.lastSeenAtUnixMs }
-        if selectedTrustedPeer == nil {
+        if selectedTrustedPeer == nil ||
+            !trustedPeers.contains(where: { $0.fingerprintHex == selectedTrustedPeer?.fingerprintHex }) {
             selectedTrustedPeer = trustedPeers.first
         }
     }
@@ -555,10 +626,11 @@ public final class MacTransferViewModel: ObservableObject {
 
     private func handleIncomingConnection(_ connection: NWConnection) {
         guard !isTransferActive && !pairSessionActive else {
-            connection.cancel()
+            Task { await GlideTransferEngine.rejectBusyConnection(connection) }
             return
         }
         pairSessionActive = true
+        lastTransferResult = nil
         transferProgress = 0.0
 
         Task {
@@ -603,10 +675,18 @@ public final class MacTransferViewModel: ObservableObject {
                         channel: channel, open: open,
                         destinationDirectory: downloadDirectory,
                         localDeviceName: deviceName,
+                        currentPresenceId: activePairWindow?.presenceId ?? receivePresenceId,
                         onConsent: { [weak self] peer, count, totalBytes in
                             guard let self else { return false }
                             return await self.requestOfferConsent(peer: peer, count: count,
                                                                   totalBytes: totalBytes)
+                        },
+                        onProgress: { [weak self] progress, bytesDone, totalBytes, filename in
+                            Task { @MainActor in
+                                self?.transferProgress = progress
+                                self?.currentFileName = filename
+                                self?.transferredBytesText = "\(ByteCountFormatter.string(fromByteCount: bytesDone, countStyle: .file)) / \(ByteCountFormatter.string(fromByteCount: totalBytes, countStyle: .file))"
+                            }
                         })
                     recordReceived(count: count)
                     return
@@ -640,24 +720,34 @@ public final class MacTransferViewModel: ObservableObject {
                     failPairing(message: error.localizedDescription,
                                 diagnostic: "Pairing did not complete.", action: "Try again")
                 } else {
-                    transferStatusText = "Receive failed: \(error.localizedDescription)"
+                    recordFailure(error, peerName: incomingOfferPeer)
                 }
             }
         }
     }
 
     private func recordReceived(count: Int) {
-                transferStatusText = "Received \(count) file(s)!"
-                historyItems.insert(MacHistoryItem(
+        if count == 0 {
+            transferStatusText = "Transfer declined"
+            lastTransferResult = TransferFeedback(kind: .declined,
+                peerName: incomingOfferPeer, message: "You declined this transfer.")
+            return
+        }
+        transferStatusText = "Received \(count) file(s)!"
+        lastTransferResult = TransferFeedback(kind: .complete,
+            peerName: incomingOfferPeer, fileCount: count,
+            totalBytes: incomingOfferTotalBytes,
+            message: "\(count) file(s) verified and saved.")
+        historyItems.insert(MacHistoryItem(
                     id: UUID().uuidString,
                     timestamp: Date(),
                     direction: "Received",
                     peerName: "Peer Device",
                     fileCount: count,
-                    totalBytes: 0,
+                    totalBytes: incomingOfferTotalBytes,
                     status: "Completed",
                     destinationUrl: downloadDirectory
-                ), at: 0)
+        ), at: 0)
     }
 
     public func sendStagedFiles() {
@@ -682,6 +772,7 @@ public final class MacTransferViewModel: ObservableObject {
         }
 
         isTransferActive = true
+        lastTransferResult = nil
         transferProgress = 0.0
         transferStatusText = "Connecting..."
         updateDockBadge(text: "↑")
@@ -701,6 +792,9 @@ public final class MacTransferViewModel: ObservableObject {
                 }
 
                 transferStatusText = "Sent \(sent) file(s) successfully!"
+                lastTransferResult = TransferFeedback(kind: .complete,
+                    peerName: invitation.name, fileCount: sent,
+                    totalBytes: stagedSize, message: "Files verified by the receiver.")
                 historyItems.insert(MacHistoryItem(
                     id: UUID().uuidString,
                     timestamp: Date(),
@@ -715,17 +809,7 @@ public final class MacTransferViewModel: ObservableObject {
                 clearStaged()
             } catch {
                 // Preserve stagedUrls on failure
-                transferStatusText = "Send failed: \(error.localizedDescription)"
-                historyItems.insert(MacHistoryItem(
-                    id: UUID().uuidString,
-                    timestamp: Date(),
-                    direction: "Sent",
-                    peerName: invitation.name,
-                    fileCount: stagedUrls.count,
-                    totalBytes: stagedSize,
-                    status: "Failed",
-                    destinationUrl: nil
-                ), at: 0)
+                recordFailure(error, peerName: invitation.name)
             }
 
             isTransferActive = false
@@ -734,31 +818,32 @@ public final class MacTransferViewModel: ObservableObject {
     }
 
     public func sendToPairedDevice() {
-        guard !stagedUrls.isEmpty, let peer = selectedTrustedPeer else { return }
-        let selectedAddress = selectedPeerEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
-        let discoveredAddress = availablePeers.first {
-            $0.supportsTrustedReconnect && $0.name == peer.displayName
-        }?.endpoint ?? ""
-        let parts = (selectedAddress.isEmpty ? discoveredAddress : selectedAddress)
-            .split(separator: ":")
-        let host = parts.first.map(String.init) ?? ""
-        let port = parts.count > 1 ? (Int(parts[1]) ?? Int(NetworkTransportConfig.defaultPort)) : Int(NetworkTransportConfig.defaultPort)
-        guard !host.isEmpty else {
-            transferStatusText = "Couldn’t reach this device — check the local network"
-            return
-        }
+        guard !isTransferActive, !stagedUrls.isEmpty, let peer = selectedTrustedPeer else { return }
 
         isTransferActive = true
+        lastTransferResult = nil
         transferProgress = 0.0
-        transferStatusText = "Verifying \(peer.displayName)…"
+        transferStatusText = "Finding \(peer.displayName)…"
+        selectedSidebarTab = "activity"
         updateDockBadge(text: "↑")
+        let previouslyDiscovered = availablePeers
+        pairBrowser.start()
 
         Task {
             do {
+                try await Task.sleep(nanoseconds: 1_000_000_000)
+                if availablePeers.isEmpty && previouslyDiscovered.isEmpty {
+                    try await Task.sleep(nanoseconds: 2_000_000_000)
+                }
+                let candidates = TrustedEndpointResolver.candidates(
+                    for: peer, discovered: availablePeers + previouslyDiscovered,
+                    manualAddress: selectedPeerEndpoint)
+                guard !candidates.isEmpty else { throw TransferError.peerDisconnected }
+                transferStatusText = "Connecting and verifying \(peer.displayName)…"
                 let sent = try await engine.sendFilesToTrustedPeer(
                     fileUrls: stagedUrls,
                     peerFingerprintHex: peer.fingerprintHex,
-                    endpoints: [LanEndpoint(address: host, port: port)],
+                    candidates: candidates,
                     localDeviceName: deviceName
                 ) { [weak self] progress, bytesDone, totalBytes, filename in
                     Task { @MainActor in
@@ -769,6 +854,9 @@ public final class MacTransferViewModel: ObservableObject {
                 }
 
                 transferStatusText = "Sent \(sent) file(s) to \(peer.displayName)!"
+                lastTransferResult = TransferFeedback(kind: .complete,
+                    peerName: peer.displayName, fileCount: sent,
+                    totalBytes: stagedSize, message: "Files verified by the receiver.")
                 historyItems.insert(MacHistoryItem(
                     id: UUID().uuidString,
                     timestamp: Date(),
@@ -781,13 +869,8 @@ public final class MacTransferViewModel: ObservableObject {
                 ), at: 0)
 
                 clearStaged()
-            } catch TransferError.identityChanged, TransferError.untrustedPeer {
-                // Preserve stagedUrls on failure
-                transferStatusText = "Identity changed — pair again"
-            } catch TransferError.busy {
-                transferStatusText = "This device is busy — try again"
             } catch {
-                transferStatusText = "Couldn’t reach this device — check the local network"
+                recordFailure(error, peerName: peer.displayName)
             }
 
             isTransferActive = false
@@ -807,6 +890,7 @@ public final class MacTransferViewModel: ObservableObject {
         }
 
         isTransferActive = true
+        lastTransferResult = nil
         transferProgress = 0.0
         transferStatusText = "Receiving from invitation..."
         updateDockBadge(text: "↓")
@@ -828,19 +912,14 @@ public final class MacTransferViewModel: ObservableObject {
                     }
                 }
 
-                transferStatusText = "Received \(received) file(s)!"
-                historyItems.insert(MacHistoryItem(
-                    id: UUID().uuidString,
-                    timestamp: Date(),
-                    direction: "Received",
-                    peerName: "Invitation Sender",
-                    fileCount: received,
-                    totalBytes: 0,
-                    status: "Completed",
-                    destinationUrl: downloadDirectory
-                ), at: 0)
+                recordReceived(count: received)
+                guard received > 0 else {
+                    isTransferActive = false
+                    updateDockBadge(text: nil)
+                    return
+                }
             } catch {
-                transferStatusText = "Receive failed: \(error.localizedDescription)"
+                recordFailure(error, peerName: incomingOfferPeer)
             }
 
             isTransferActive = false
@@ -850,6 +929,7 @@ public final class MacTransferViewModel: ObservableObject {
 
     private func requestOfferConsent(peer: String, count: Int, totalBytes: Int64) async -> Bool {
         incomingOfferPeer = peer
+        incomingOfferTotalBytes = totalBytes
         incomingOfferSummary = "\(count) file(s), \(ByteCountFormatter.string(fromByteCount: totalBytes, countStyle: .file))"
         isIncomingOfferVisible = true
 
@@ -860,6 +940,7 @@ public final class MacTransferViewModel: ObservableObject {
 
     public func resolveOffer(accept: Bool) {
         isIncomingOfferVisible = false
+        if accept { selectedSidebarTab = "activity" }
         offerContinuation?.resume(returning: accept)
         offerContinuation = nil
     }
@@ -900,65 +981,3 @@ public final class MacTransferViewModel: ObservableObject {
         #endif
     }
 }
-
-#if os(macOS)
-/// Resolves Bonjour services to actual local host:port routing hints. TXT data
-/// never authenticates a peer; the Profile 2 exchange verifies its identity.
-private final class MacPairBrowser: NSObject, NetServiceBrowserDelegate, NetServiceDelegate {
-    private let browser = NetServiceBrowser()
-    private var services = Set<NetService>()
-    private var peers: [NetService: BonjourPeer] = [:]
-    private let onChange: ([BonjourPeer]) -> Void
-
-    init(onChange: @escaping ([BonjourPeer]) -> Void) {
-        self.onChange = onChange
-        super.init()
-        browser.delegate = self
-    }
-
-    func start() {
-        stop()
-        browser.searchForServices(ofType: "_glide._tcp.", inDomain: "local.")
-    }
-
-    func stop() {
-        browser.stop()
-        for service in services { service.stop() }
-        services.removeAll()
-        peers.removeAll()
-        onChange([])
-    }
-
-    func netServiceBrowser(_ browser: NetServiceBrowser, didFind service: NetService,
-                           moreComing: Bool) {
-        services.insert(service)
-        service.delegate = self
-        service.resolve(withTimeout: 4)
-    }
-
-    func netServiceBrowser(_ browser: NetServiceBrowser, didRemove service: NetService,
-                           moreComing: Bool) {
-        services.remove(service)
-        peers.removeValue(forKey: service)
-        onChange(Array(peers.values))
-    }
-
-    func netServiceDidResolveAddress(_ service: NetService) {
-        guard let rawHost = service.hostName, service.port > 0,
-              let txt = service.txtRecordData() else { return }
-        let host = rawHost.trimmingCharacters(in: CharacterSet(charactersIn: "."))
-        let values = NetService.dictionary(fromTXTRecord: txt).compactMapValues {
-            String(data: $0, encoding: .utf8)
-        }
-        guard let peer = try? BonjourService.parseTxtRecord(
-            values, endpoint: "\(host):\(service.port)") else { return }
-        peers[service] = peer
-        onChange(Array(peers.values))
-    }
-
-    func netService(_ service: NetService, didNotResolve errorDict: [String: NSNumber]) {
-        peers.removeValue(forKey: service)
-        onChange(Array(peers.values))
-    }
-}
-#endif

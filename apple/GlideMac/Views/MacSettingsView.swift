@@ -148,7 +148,7 @@ public struct MacSettingsView: View {
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
         if panel.runModal() == .OK, let url = panel.url {
-            viewModel.downloadDirectory = url
+            viewModel.chooseDownloadDirectory(url)
         }
         #endif
     }

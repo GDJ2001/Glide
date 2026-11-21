@@ -120,28 +120,30 @@ public struct MacSendView: View {
                         .disabled(viewModel.stagedUrls.isEmpty || viewModel.invitationInput.isEmpty || viewModel.isTransferActive)
                     }
                 } else {
-                    HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 8) {
                         if viewModel.trustedPeers.isEmpty {
                             Text("No paired devices saved yet.")
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
-                            Spacer()
                         } else {
-                            Picker("Paired device", selection: $viewModel.selectedTrustedPeer) {
-                                ForEach(viewModel.trustedPeers, id: \.fingerprintHex) { peer in
-                                    Text(peer.displayName).tag(Optional(peer))
+                            HStack(spacing: 12) {
+                                Picker("Paired device", selection: $viewModel.selectedTrustedPeer) {
+                                    ForEach(viewModel.trustedPeers, id: \.fingerprintHex) { peer in
+                                        Text(peer.displayName).tag(Optional(peer))
+                                    }
                                 }
+                                .frame(width: 220)
+                                Spacer()
+                                Button("Send Files") {
+                                    viewModel.sendToPairedDevice()
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .disabled(viewModel.stagedUrls.isEmpty || viewModel.selectedTrustedPeer == nil || viewModel.isTransferActive)
                             }
-                            .frame(width: 220)
-
-                            TextField("Local address (e.g. 192.168.1.20:42424)", text: $viewModel.selectedPeerEndpoint)
-                                .textFieldStyle(.roundedBorder)
-
-                            Button("Send Files") {
-                                viewModel.sendToPairedDevice()
+                            DisclosureGroup("Use local address") {
+                                TextField("Local address:port", text: $viewModel.selectedPeerEndpoint)
+                                    .textFieldStyle(.roundedBorder)
                             }
-                            .buttonStyle(.borderedProminent)
-                            .disabled(viewModel.stagedUrls.isEmpty || viewModel.selectedTrustedPeer == nil || viewModel.isTransferActive)
                         }
                     }
                 }

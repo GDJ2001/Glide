@@ -16,6 +16,15 @@ echo "Commit: ${COMMIT_SHA}"
 echo "Run ID: ${RUN_ID}"
 echo "Evidence Directory: ${EVIDENCE_DIR}"
 
+[[ "$(uname -s)" == Darwin ]] || { echo "ERROR: Apple builds require a macOS host with Xcode." >&2; exit 2; }
+for required_tool in xcodebuild xcrun swift plutil; do
+    command -v "$required_tool" >/dev/null || { echo "ERROR: Missing required tool: $required_tool" >&2; exit 2; }
+done
+[[ "$(xcodebuild -version)" == *"Xcode 26.6"* ]] || {
+    echo "ERROR: This build gate requires Xcode 26.6." >&2
+    exit 2
+}
+
 export NSUnbufferedIO=YES
 security unlock-keychain -p "" ~/Library/Keychains/login.keychain-db 2>/dev/null || true
 security set-keychain-settings -lut 7200 ~/Library/Keychains/login.keychain-db 2>/dev/null || true
@@ -120,11 +129,13 @@ if [ -n "$IOS_RUNTIME" ]; then
     # Boot simulators
     if [ -n "$IPHONE_UDID" ]; then
         echo "Booting iPhone simulator ($IPHONE_UDID)..."
-        xcrun simctl boot "$IPHONE_UDID" || true
+        xcrun simctl boot "$IPHONE_UDID"
+        xcrun simctl bootstatus "$IPHONE_UDID" -b
     fi
     if [ -n "$IPAD_UDID" ]; then
         echo "Booting iPad simulator ($IPAD_UDID)..."
-        xcrun simctl boot "$IPAD_UDID" || true
+        xcrun simctl boot "$IPAD_UDID"
+        xcrun simctl bootstatus "$IPAD_UDID" -b
     fi
 
     # Detect package scheme
@@ -168,8 +179,14 @@ if [ -n "$IOS_RUNTIME" ]; then
         echo "iPadOS Simulator tests PASSED."
     fi
 else
-    echo "WARNING: No iOS Simulator runtimes found; running in standalone macOS mode."
+    echo "ERROR: No available iOS Simulator runtime. Install the iOS platform in Xcode." >&2
+    exit 2
 fi
+
+[[ -n "$IPHONE_UDID" && -n "$IPAD_UDID" ]] || {
+    echo "ERROR: The iPhone and iPad test simulators are both required." >&2
+    exit 2
+}
 
 # 6. Build Native Applications to verify compiler compatibility
 echo "--- Compiling Native macOS and iOS Applications ---"
@@ -206,9 +223,9 @@ MAC_APP="${REPO_ROOT}/build/apple-compile/Build/Products/Release/GlideMac.app"
 if [ -n "$IPHONE_UDID" ] && [ -d "$IOS_APP" ]; then
     echo "--- Exercising iPhone Simulator Launch ---"
     xcrun simctl install "$IPHONE_UDID" "$IOS_APP"
-    xcrun simctl launch "$IPHONE_UDID" dev.glide.ios || true
+    xcrun simctl launch "$IPHONE_UDID" dev.glide.ios
     sleep 2
-    xcrun simctl terminate "$IPHONE_UDID" dev.glide.ios || true
+    xcrun simctl terminate "$IPHONE_UDID" dev.glide.ios
     IPHONE_LAUNCH_RESULT="PASSED"
     echo "iPhone Simulator launch PASSED."
 fi
@@ -216,9 +233,9 @@ fi
 if [ -n "$IPAD_UDID" ] && [ -d "$IOS_APP" ]; then
     echo "--- Exercising iPad Simulator Launch ---"
     xcrun simctl install "$IPAD_UDID" "$IOS_APP"
-    xcrun simctl launch "$IPAD_UDID" dev.glide.ios || true
+    xcrun simctl launch "$IPAD_UDID" dev.glide.ios
     sleep 2
-    xcrun simctl terminate "$IPAD_UDID" dev.glide.ios || true
+    xcrun simctl terminate "$IPAD_UDID" dev.glide.ios
     IPAD_LAUNCH_RESULT="PASSED"
     echo "iPad Simulator launch PASSED."
 fi
@@ -237,8 +254,15 @@ if [ -d "$MAC_APP" ]; then
         else
             echo "macOS Application exited prematurely"
             MACOS_LAUNCH_RESULT="FAILED"
+            exit 1
         fi
+    else
+        echo "ERROR: The macOS application executable is missing." >&2
+        exit 1
     fi
+else
+    echo "ERROR: The macOS application bundle is missing." >&2
+    exit 1
 fi
 
 # 8. Produce Development Packages
