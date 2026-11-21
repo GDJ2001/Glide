@@ -34,7 +34,9 @@ public sealed class LinuxSavedDeviceRow(DesktopTrustedPeer peer)
     public string DisplayName => Peer.DisplayName;
     public string LastSeenText => "Last verified " +
         DateTimeOffset.FromUnixTimeMilliseconds(Peer.LastSeenAtUnixMs).ToLocalTime().ToString("g");
+    public string IdentityLabel => $"Identity {Peer.FingerprintHex[..Math.Min(8, Peer.FingerprintHex.Length)]}";
     public string ConnectAutomationName => $"Connect to {DisplayName}, identity {Peer.FingerprintHex[..Math.Min(8, Peer.FingerprintHex.Length)]}";
+    public string RemoveAutomationName => $"Remove {DisplayName}, identity {Peer.FingerprintHex[..Math.Min(8, Peer.FingerprintHex.Length)]}";
 }
 
 public enum SendMethod
