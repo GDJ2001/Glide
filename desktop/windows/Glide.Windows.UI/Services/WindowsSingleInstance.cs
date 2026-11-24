@@ -45,8 +45,14 @@ public sealed class WindowsSingleInstance : IAsyncDisposable
         _listenTask ??= ListenAsync(activationHandler, _stop.Token);
     }
 
-    public static async Task<bool> ForwardActivationAsync(
+    public static Task<bool> ForwardActivationAsync(
         IReadOnlyList<string> arguments,
+        CancellationToken cancellationToken = default) =>
+        ForwardActivationAsync(arguments, connectTimeoutMs: 1_000, cancellationToken);
+
+    internal static async Task<bool> ForwardActivationAsync(
+        IReadOnlyList<string> arguments,
+        int connectTimeoutMs,
         CancellationToken cancellationToken = default)
     {
         byte[] payload = JsonSerializer.SerializeToUtf8Bytes(arguments);
@@ -59,10 +65,18 @@ public sealed class WindowsSingleInstance : IAsyncDisposable
         {
             using var client = new NamedPipeClientStream(
                 ".", PipeName, PipeDirection.Out, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
-            await client.ConnectAsync(1_000, cancellationToken).ConfigureAwait(false);
+            await client.ConnectAsync(connectTimeoutMs, cancellationToken).ConfigureAwait(false);
             await WriteMessageAsync(client, payload, cancellationToken).ConfigureAwait(false);
             await client.FlushAsync(cancellationToken).ConfigureAwait(false);
             return true;
+        }
+        catch (TimeoutException)
+        {
+            return false;
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
         }
         catch (IOException)
         {

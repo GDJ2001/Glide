@@ -189,6 +189,19 @@ public partial class App : Application
 
     private static void RunSelfUninstall(bool silent)
     {
+        if (PackageIdentityHelper.HasPackageIdentity)
+        {
+            if (!silent)
+            {
+                MessageBox.Show(
+                    "Glide was installed via the Microsoft Store.\n\nTo uninstall Glide, open Windows Settings > Apps > Installed apps, or right-click Glide in the Start Menu and select 'Uninstall'.",
+                    "Glide",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
+            return;
+        }
+
         string uninstallerPath = Path.Combine(AppContext.BaseDirectory, "Uninstall.exe");
         if (!File.Exists(uninstallerPath))
         {
