@@ -68,7 +68,9 @@ fun ReceiveReadinessScreen(
     onShowQrCode: (() -> Unit)? = null,
     onScanPcQr: (() -> Unit)? = null,
     onStartHotspot: (() -> Unit)? = null,
-    hotspotStatus: String? = null
+    hotspotStatus: String? = null,
+        showManualHotspotFallback: Boolean = false,
+    onDismissManualHotspotFallback: () -> Unit = {}
 ) {
     val scrollState = rememberScrollState()
     val context = LocalContext.current
@@ -112,7 +114,14 @@ fun ReceiveReadinessScreen(
         }
 
         onShowQrCode?.let {
-            ManualHotspotAction(host = true, onReady = it, onStartHost = onStartHotspot, status = hotspotStatus)
+            ManualHotspotAction(
+                host = true,
+                onReady = it,
+                onStartHost = onStartHotspot,
+                status = hotspotStatus,
+                externalOpen = showManualHotspotFallback,
+                onExternalDismiss = onDismissManualHotspotFallback
+            )
         }
 
         when (uiState) {

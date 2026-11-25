@@ -47,9 +47,15 @@ public partial class MainViewModel
             else if (_trustManager?.GetTrustedPeer(entry.Batch.PeerFingerprintHex) is { } peer)
             {
                 CurrentTab = "Activity";
-                _mdnsService.QueryPeers();
-                await Task.Delay(450);
-                var candidates = TrustedEndpointResolver.ResolveCandidates(peer, _mdnsService.Snapshot.Peers);
+                _mdnsService.Start(enableBrowsing: true);
+                IReadOnlyList<TrustedEndpointCandidate> candidates = Array.Empty<TrustedEndpointCandidate>();
+                for (int attempt = 0; attempt < 6; attempt++)
+                {
+                    _mdnsService.QueryPeers();
+                    await Task.Delay(450);
+                    candidates = TrustedEndpointResolver.ResolveCandidates(peer, _mdnsService.Snapshot.Peers);
+                    if (candidates.Any(c => !c.IsSavedEndpoint)) break;
+                }
                 var result = await _transferRuntime.ResumeTrustedAsync(new DesktopResumeRequest(entry.Batch,
                     ResumeLocalRequest(), candidates), this);
                 StatusMessage = result.Message;

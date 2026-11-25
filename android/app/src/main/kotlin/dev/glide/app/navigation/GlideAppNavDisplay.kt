@@ -177,12 +177,37 @@ fun GlideAppNavDisplay(
                 }
                 val recentSessions by historyStore.observeSessions(limit = 5)
                     .collectAsStateWithLifecycle(initialValue = emptyList())
-                val activeSessionId = if (transferRuntime != null) {
-                    val isSessionActive by transferRuntime.isSessionActive.collectAsStateWithLifecycle()
-                    val currentActiveSessionId by transferRuntime.activeSessionId.collectAsStateWithLifecycle()
-                    currentActiveSessionId.takeIf { isSessionActive }
+                val homeSettingsStore = androidx.compose.runtime.remember(customSettingsStore, context) {
+                    customSettingsStore ?: dev.glide.app.di.DatabaseModule.provideSettingsStore(context)
+                }
+                val homeSettings by homeSettingsStore.settingsFlow
+                    .collectAsStateWithLifecycle(initialValue = dev.glide.core.ports.GlideSettings())
+                val isSessionActive = if (transferRuntime != null) {
+                    val active by transferRuntime.isSessionActive.collectAsStateWithLifecycle()
+                    active
+                } else {
+                    false
+                }
+                val currentActiveSessionId = if (transferRuntime != null) {
+                    val sid by transferRuntime.activeSessionId.collectAsStateWithLifecycle()
+                    sid
                 } else {
                     null
+                }
+                val activeSessionId = currentActiveSessionId.takeIf { isSessionActive }
+                var retainedEntries by androidx.compose.runtime.remember {
+                    androidx.compose.runtime.mutableStateOf<List<dev.glide.app.ui.history.RetainedResumeEntryUi>>(emptyList())
+                }
+                val homeScope = androidx.compose.runtime.rememberCoroutineScope()
+                if (transferRuntime != null) {
+                    val homeTrust by transferRuntime.trustState.collectAsStateWithLifecycle()
+                    androidx.compose.runtime.LaunchedEffect(isSessionActive, homeTrust.trustedPeers) {
+                        if (!isSessionActive) {
+                            retainedEntries = transferRuntime.listRetainedTransfers().map {
+                                dev.glide.app.ui.history.RetainedResumeEntryUi(it.sessionId, it.label)
+                            }
+                        }
+                    }
                 }
                 HomeScreen(
                     onNavigateToSend = {
@@ -197,6 +222,25 @@ fun GlideAppNavDisplay(
                     activeSessionId = activeSessionId,
                     onNavigateToTransfer = { sid ->
                         backStack.add(GlideRoute.Transfer(sid))
+                    },
+                    retainedEntries = retainedEntries,
+                    onResumeRetained = { originalSessionId ->
+                        dev.glide.app.service.TransferService.startRetainedResume(
+                            context,
+                            originalSessionId,
+                            homeSettings.deviceName
+                        )
+                        backStack.add(GlideRoute.Transfer(resumingBatch = true))
+                    },
+                    onDiscardRetained = { originalSessionId ->
+                        if (transferRuntime != null) {
+                            homeScope.launch {
+                                transferRuntime.discardRetainedTransfer(originalSessionId)
+                                retainedEntries = transferRuntime.listRetainedTransfers().map {
+                                    dev.glide.app.ui.history.RetainedResumeEntryUi(it.sessionId, it.label)
+                                }
+                            }
+                        }
                     },
                     pairedDevices = pairedDevices,
                     onPairDevice = {
@@ -230,20 +274,37 @@ fun GlideAppNavDisplay(
             entry<GlideRoute.Selection> { route ->
                 val context = androidx.compose.ui.platform.LocalContext.current
                 val proceedWithBatch: (dev.glide.core.domain.BatchId) -> Unit = { batchId ->
-                    val sourceHandles = dev.glide.app.ui.selection.SelectedTransferStore
-                        .getSourceMap(batchId).values.map { it.value }
-                    backStack.add(nextRouteForPreparedSend(
-                        batchId = batchId,
-                        pairedPeerFingerprintHex = route.pairedPeerFingerprintHex,
-                        sourceHandles = sourceHandles,
-                        startTrustedSender = { selectedBatch, fingerprint ->
-                            dev.glide.app.service.TransferService.startTrustedSender(
-                                context = context,
-                                selectionId = selectedBatch,
-                                peerFingerprintHex = fingerprint
+                    val pendingInvite = route.pendingLanInvitation?.let { encoded ->
+                        runCatching { dev.glide.core.pairing.InvitationCodec.decode(encoded) }.getOrNull()
+                    }
+                    if (pendingInvite != null && transferRuntime != null) {
+                        dev.glide.app.service.TransferService.startLanSenderPairing(
+                            context = context,
+                            invitation = pendingInvite,
+                            selectionId = batchId
+                        )
+                        backStack.add(
+                            GlideRoute.Transfer(
+                                sessionId = "send-lan-${pendingInvite.invitationId}",
+                                batchId = batchId.value
                             )
-                        }
-                    ))
+                        )
+                    } else {
+                        val sourceHandles = dev.glide.app.ui.selection.SelectedTransferStore
+                            .getSourceMap(batchId).values.map { it.value }
+                        backStack.add(nextRouteForPreparedSend(
+                            batchId = batchId,
+                            pairedPeerFingerprintHex = route.pairedPeerFingerprintHex,
+                            sourceHandles = sourceHandles,
+                            startTrustedSender = { selectedBatch, fingerprint ->
+                                dev.glide.app.service.TransferService.startTrustedSender(
+                                    context = context,
+                                    selectionId = selectedBatch,
+                                    peerFingerprintHex = fingerprint
+                                )
+                            }
+                        ))
+                    }
                 }
                 SelectionScreen(
                     initialUris = route.initialUris.map { android.net.Uri.parse(it) },
@@ -465,6 +526,9 @@ fun GlideAppNavDisplay(
                 val hotspotScope = androidx.compose.runtime.rememberCoroutineScope()
                 var hotspotStatus by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
                 var startingHotspot by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+                var showManualHotspotFallback by androidx.compose.runtime.saveable.rememberSaveable {
+                    androidx.compose.runtime.mutableStateOf(false)
+                }
                 val hotspotPermissions = androidx.compose.runtime.remember {
                     listOf(if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
                         android.Manifest.permission.NEARBY_WIFI_DEVICES
@@ -478,15 +542,18 @@ fun GlideAppNavDisplay(
                             try {
                                 val host = dev.glide.transport.lan.network.AndroidHotspotConnections.createHost(context)
                                 if (host == null) {
-                                    hotspotStatus = "Glide couldn’t start a hotspot. Use Android hotspot settings."
+                                    hotspotStatus = "Glide couldn’t start a hotspot automatically. Use Android hotspot settings below."
+                                    showManualHotspotFallback = true
                                 } else {
                                     hotspotStatus = null
+                                    showManualHotspotFallback = false
                                     transferRuntime.dispatch(dev.glide.app.service.TransferRuntimeCommand.StopLanReceiver)
                                     startLanReceiverAtPointOfUse()
                                 }
                             } catch (error: Exception) {
                                 if (error is kotlinx.coroutines.CancellationException) throw error
-                                hotspotStatus = "Glide couldn’t start a hotspot. Use Android hotspot settings."
+                                hotspotStatus = "Glide couldn’t start a hotspot automatically. Use Android hotspot settings below."
+                                showManualHotspotFallback = true
                             } finally {
                                 startingHotspot = false
                             }
@@ -604,6 +671,8 @@ fun GlideAppNavDisplay(
                         }
                     },
                     hotspotStatus = hotspotStatus,
+                    showManualHotspotFallback = showManualHotspotFallback,
+                    onDismissManualHotspotFallback = { showManualHotspotFallback = false },
                     onScanPcQr = {
                         viewModel.stopAdvertising()
                         backStack.add(
@@ -754,13 +823,22 @@ fun GlideAppNavDisplay(
                     }
                 }
 
+                val historySettingsStore = androidx.compose.runtime.remember(customSettingsStore, context) {
+                    customSettingsStore ?: dev.glide.app.di.DatabaseModule.provideSettingsStore(context)
+                }
+                val historySettings by historySettingsStore.settingsFlow
+                    .collectAsStateWithLifecycle(initialValue = dev.glide.core.ports.GlideSettings())
                 dev.glide.app.ui.history.HistoryScreen(
                     viewModel = viewModel,
                     initialSessionId = route.initialSessionId,
                     resumePanel = {
                         if (transferRuntime != null)
                             dev.glide.app.ui.history.RetainedTransfersPanel(transferRuntime) { original ->
-                                dev.glide.app.service.TransferService.startRetainedResume(context, original, "Glide Device")
+                                dev.glide.app.service.TransferService.startRetainedResume(
+                                    context,
+                                    original,
+                                    historySettings.deviceName
+                                )
                                 backStack.add(GlideRoute.Transfer(resumingBatch = true))
                             }
                     },
@@ -857,7 +935,8 @@ fun GlideAppNavDisplay(
                 val viewModel = androidx.lifecycle.viewmodel.compose.viewModel<dev.glide.app.ui.pairing.QrPairingViewModel>()
                 val scannerState by viewModel.scannerState.collectAsStateWithLifecycle()
                 val context = androidx.compose.ui.platform.LocalContext.current
-                val pairOnlyViewModel = if (route.purpose == QrScanPurpose.PAIR_ONLY && persistentTrustManager != null) {
+                val pairOnlyViewModel = if ((route.purpose == QrScanPurpose.PAIR_ONLY ||
+                        route.purpose == QrScanPurpose.UNIVERSAL) && persistentTrustManager != null) {
                     val factory = androidx.compose.runtime.remember(context, persistentTrustManager) {
                         dev.glide.app.ui.pairing.PairOnlyViewModel.factory(context, persistentTrustManager)
                     }
@@ -951,7 +1030,15 @@ fun GlideAppNavDisplay(
                                 }
                             }
                             is dev.glide.app.ui.pairing.QrPairingEvent.ConnectConfirmed -> {
-                                if (lanPermissions.isEmpty() || hasLanPermissions()) {
+                                val resolvedBatchId = route.batchId
+                                    ?: dev.glide.app.ui.selection.SelectedTransferStore.getActive()?.batch?.id?.value
+                                if (route.purpose == QrScanPurpose.UNIVERSAL && resolvedBatchId == null) {
+                                    backStack.add(
+                                        GlideRoute.Selection(
+                                            pendingLanInvitation = dev.glide.core.pairing.InvitationCodec.encode(event.invitation)
+                                        )
+                                    )
+                                } else if (lanPermissions.isEmpty() || hasLanPermissions()) {
                                     if (route.purpose == QrScanPurpose.RECEIVE_FROM_SENDER) {
                                         startLanReceiver(event.invitation)
                                     } else {
@@ -967,19 +1054,26 @@ fun GlideAppNavDisplay(
                     }
                 }
 
-                var hotspotInvitation by androidx.compose.runtime.remember {
-                    androidx.compose.runtime.mutableStateOf<dev.glide.core.pairing.HotspotInvitation?>(null)
+                var hotspotInvitationUri by androidx.compose.runtime.saveable.rememberSaveable {
+                    androidx.compose.runtime.mutableStateOf<String?>(null)
+                }
+                val hotspotInvitation = androidx.compose.runtime.remember(hotspotInvitationUri) {
+                    hotspotInvitationUri?.let {
+                        runCatching { dev.glide.core.pairing.HotspotInvitationCodec.decode(it) }.getOrNull()
+                    }
                 }
                 val handleInvitationText: (String) -> Unit = { rawText ->
                     val value = rawText.trim()
                     if (route.purpose != QrScanPurpose.PAIR_ONLY &&
                         value.startsWith(dev.glide.core.pairing.HotspotInvitationCodec.PREFIX)) {
                         if (hotspotInvitation == null) {
-                            hotspotInvitation = runCatching {
+                            val decoded = runCatching {
                                 dev.glide.core.pairing.HotspotInvitationCodec.decode(value)
                             }.getOrNull()
-                            if (hotspotInvitation == null) {
+                            if (decoded == null) {
                                 viewModel.onConnectionBlocked("This hotspot code is invalid or has expired.")
+                            } else {
+                                hotspotInvitationUri = value
                             }
                         }
                     } else viewModel.onQrCodeScanned(rawText)
@@ -988,11 +1082,11 @@ fun GlideAppNavDisplay(
                     dev.glide.app.ui.pairing.HotspotJoinDialog(
                         invitation = hotspot,
                         onReady = {
-                            hotspotInvitation = null
+                            hotspotInvitationUri = null
                             viewModel.onQrCodeScanned(dev.glide.core.pairing.InvitationCodec.encode(hotspot.pairing))
                         },
                         onDismiss = {
-                            hotspotInvitation = null
+                            hotspotInvitationUri = null
                             dev.glide.transport.lan.network.AndroidHotspotConnections.close()
                             viewModel.retryScan()
                         }
@@ -1029,6 +1123,7 @@ fun GlideAppNavDisplay(
                     scanPurposeLabel = when (route.purpose) {
                         QrScanPurpose.RECEIVE_FROM_SENDER -> "Scan PC QR to receive"
                         QrScanPurpose.PAIR_ONLY -> "Scan pair-only QR"
+                        QrScanPurpose.UNIVERSAL -> "Scan Glide QR code"
                         else -> "Scan receiving device QR"
                     }
                 )

@@ -321,6 +321,9 @@ fun DiscoveryScreen(
                         onOpenSettings = { openConnectivitySettings(context, uiState.reason) }
                     )
                 }
+                item {
+                    ManualHotspotAction(host = false, onReady = onScanQrClicked)
+                }
             }
         }
     }

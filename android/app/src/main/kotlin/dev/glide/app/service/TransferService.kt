@@ -22,6 +22,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 import dagger.hilt.android.AndroidEntryPoint
@@ -366,47 +367,71 @@ class TransferService : Service() {
             .setContentTitle("Glide transfer")
             .setContentText("Connecting")
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setPublicVersion(transferNotificationManager.buildPublicNotification(this))
             .setOngoing(true)
             .build()
 
     private fun postCompletion(state: TransferUiState.Completed) {
-        val manager = getSystemService(NotificationManager::class.java) ?: return
+        val appCtx = applicationContext
+        val manager = appCtx.getSystemService(NotificationManager::class.java) ?: return
         if (!manager.areNotificationsEnabled()) return
-        val content = transferNotificationManager.resolveNotificationContent(state, notificationSettings)
-        val intent = Intent(this, dev.glide.app.MainActivity::class.java).apply {
-            action = dev.glide.app.notification.TransferNotificationManager.ACTION_VIEW_TRANSFER
-            data = android.net.Uri.fromParts("glide-transfer", state.sessionId, null)
-            putExtra(EXTRA_SESSION_ID, state.sessionId)
-        }
-        val open = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
-        val notification = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setSmallIcon(dev.glide.app.R.drawable.ic_notification)
-            .setContentTitle("Transfer complete")
-            .setContentText(
-                if (notificationSettings.notificationDetails && content.text.isNotBlank()) {
-                    "${content.text} · Transfer has been completed successfully"
-                } else "Transfer has been completed successfully"
+        val fallbackSettings = notificationSettings
+        val notifMgr = transferNotificationManager
+        completionNotificationScope.launch {
+            val settings = runCatching {
+                dev.glide.app.di.DatabaseModule.provideSettingsStore(appCtx).settingsFlow.first()
+            }.getOrDefault(fallbackSettings)
+            val content = notifMgr.resolveNotificationContent(state, settings)
+            val intent = Intent(appCtx, dev.glide.app.MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                data = android.net.Uri.fromParts("glide-history", state.sessionId, null)
+                putExtra(EXTRA_OPEN_HISTORY_SESSION_ID, state.sessionId)
+            }
+            val open = PendingIntent.getActivity(
+                appCtx,
+                state.sessionId.hashCode(),
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
-            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
-            .setAutoCancel(true)
-            .setOnlyAlertOnce(true)
-            .setContentIntent(open)
-            .build()
-        manager.notify(state.sessionId, 2000, notification)
+            val notification = NotificationCompat.Builder(appCtx, COMPLETION_NOTIFICATION_CHANNEL_ID)
+                .setSmallIcon(dev.glide.app.R.drawable.ic_notification)
+                .setContentTitle("Transfer complete")
+                .setContentText(
+                    if (settings.notificationDetails && content.text.isNotBlank()) {
+                        "${content.text} · Transfer has been completed successfully"
+                    } else "Transfer has been completed successfully"
+                )
+                .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+                .setPublicVersion(notifMgr.buildPublicCompletionNotification(appCtx))
+                .setAutoCancel(true)
+                .setOnlyAlertOnce(true)
+                .setContentIntent(open)
+                .build()
+            runCatching { manager.notify(state.sessionId, 2000, notification) }
+        }
     }
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
+            val activeChannel = NotificationChannel(
                 NOTIFICATION_CHANNEL_ID,
-                "File Transfer",
+                "Active File Transfers",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
                 description = "Shows active nearby file transfer status and progress"
                 setShowBadge(false)
             }
+            val completionChannel = NotificationChannel(
+                COMPLETION_NOTIFICATION_CHANNEL_ID,
+                "Transfer Completions",
+                NotificationManager.IMPORTANCE_DEFAULT
+            ).apply {
+                description = "Shows dismissible completion records after a transfer finishes"
+                setShowBadge(true)
+            }
             val manager = getSystemService(NotificationManager::class.java)
-            manager?.createNotificationChannel(channel)
+            manager?.createNotificationChannel(activeChannel)
+            manager?.createNotificationChannel(completionChannel)
         }
     }
 
@@ -535,6 +560,7 @@ class TransferService : Service() {
         const val ACTION_REJECT = "dev.glide.app.action.REJECT_OFFER"
 
         const val EXTRA_SESSION_ID = "dev.glide.app.extra.SESSION_ID"
+        const val EXTRA_OPEN_HISTORY_SESSION_ID = "dev.glide.app.extra.OPEN_HISTORY_SESSION_ID"
         const val EXTRA_PEER_ID = "dev.glide.app.extra.PEER_ID"
         const val EXTRA_PEER_NAME = "dev.glide.app.extra.PEER_NAME"
         const val EXTRA_SELECTION_ID = "dev.glide.app.extra.SELECTION_ID"
@@ -545,7 +571,9 @@ class TransferService : Service() {
         const val EXTRA_IS_LAN = "dev.glide.app.extra.IS_LAN"
 
         const val NOTIFICATION_CHANNEL_ID = "glide_transfer_channel"
+        const val COMPLETION_NOTIFICATION_CHANNEL_ID = "glide_transfer_complete"
         const val NOTIFICATION_ID = 1001
+        private val completionNotificationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
         fun startService(
             context: Context,

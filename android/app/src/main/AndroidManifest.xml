@@ -81,6 +81,14 @@
             <action android:name="android.intent.action.SEND" />
             <data android:mimeType="application/vnd.android.package-archive" />
         </intent>
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="application/zip" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="*/*" />
+        </intent>
     </queries>
 
     <application

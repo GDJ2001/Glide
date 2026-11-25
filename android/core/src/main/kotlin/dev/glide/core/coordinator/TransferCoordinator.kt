@@ -1253,7 +1253,7 @@ class TransferCoordinator(
     }
 
     private fun ResumeBatchManifest.asTransferBatch(): TransferBatch = TransferBatch(batchId, items.map {
-        TransferItem(it.id, it.name, "application/octet-stream", it.sizeBytes,
+        TransferItem(it.id, it.name, dev.glide.core.resume.resumeMimeTypeForName(it.name), it.sizeBytes,
             digest = it.digest, relativePath = it.relativePath)
     })
 
@@ -1309,8 +1309,27 @@ class TransferCoordinator(
             sendHandshakeControl(MessageTypes.BATCH_RESULT, ProtocolCodec.encodeBody(
                 BatchResultBody(manifest.batchId, "completed", manifest.items.size, total.toString())))
         }
+        try {
+            if (sessionHistoryRecorded) {
+                historyStore?.updateSessionOutcome(sessionId, SessionPhase.Completed.name, clock(), null)
+            }
+            if (manifest.sessionId != sessionId || !sessionHistoryRecorded) {
+                historyStore?.updateSessionOutcome(manifest.sessionId, SessionPhase.Completed.name, clock(), null)
+            }
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            // History persistence must not fail a verified resumed batch completion.
+        }
         mutex.withLock {
             if (!_state.value.isTerminal) _state.value = _state.value.copy(phase = SessionPhase.Completed)
+        }
+        kotlinx.coroutines.delay(100)
+        try {
+            transport.disconnect(peerId)
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            throw error
+        } catch (_: Exception) {
         }
     }
 

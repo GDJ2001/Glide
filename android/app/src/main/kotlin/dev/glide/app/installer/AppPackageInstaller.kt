@@ -11,6 +11,7 @@ import androidx.core.content.pm.PackageInfoCompat
 import dev.glide.app.util.FileOpener
 import dev.glide.core.domain.AppTransferMetadata
 import dev.glide.core.domain.ProtocolLimits
+import dev.glide.data.source.AppSigningDigest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -20,27 +21,85 @@ import java.io.InputStream
 import java.security.MessageDigest
 import java.util.zip.ZipFile
 
+internal enum class AppVersionState {
+    NewApp,
+    UpdateAvailable,
+    AlreadyLatest,
+    OlderVersion,
+    SignatureConflict,
+    IncompatibleAbi
+}
+
 internal object AppPackageInstaller {
     const val APK = "application/vnd.android.package-archive"
     const val SPLITS = "application/vnd.android.apks"
     private val splitName = Regex("[A-Za-z0-9_.-]{1,120}\\.apk")
     private val apkInspectionDispatcher = Dispatchers.IO.limitedParallelism(2)
 
-    data class Inspection(val badge: String, val installLabel: String?)
+    data class OfferComparison(
+        val state: AppVersionState,
+        val badge: String,
+        val isWarning: Boolean = false
+    )
+
+    data class Inspection(
+        val badge: String,
+        val installLabel: String?,
+        val isWarning: Boolean = false
+    )
 
     fun supports(mime: String, name: String): Boolean =
         mime == APK || mime == SPLITS || name.endsWith(".apk", true) || name.endsWith(".apks", true)
 
-    suspend fun compareOffer(context: Context, app: AppTransferMetadata): String? = withContext(Dispatchers.IO) {
-        if (app.nativeAbis.isNotEmpty() && app.nativeAbis.none { it in Build.SUPPORTED_ABIS }) {
-            return@withContext "Incompatible CPU ABI"
+    fun isSplitBundle(mime: String, name: String): Boolean =
+        mime == SPLITS || name.endsWith(".apks", true)
+
+    internal fun evaluateOfferComparison(
+        offeredVersionName: String,
+        offeredVersionCode: Long,
+        offeredSignerHex: String,
+        offeredAbis: List<String>,
+        supportedAbis: Array<String>,
+        installedVersionName: String?,
+        installedVersionCode: Long?,
+        installedCompatibleSigners: Set<String>
+    ): OfferComparison {
+        if (offeredAbis.isNotEmpty() && offeredAbis.none { it in supportedAbis }) {
+            return OfferComparison(AppVersionState.IncompatibleAbi, "Incompatible CPU ABI", isWarning = true)
         }
-        val installed = installedPackage(context, app.packageName) ?: return@withContext null
-        if (app.signingCertSha256Hex !in signerDigests(installed, includeHistory = true)) {
-            // A rotated incoming signer can only be assessed after inspecting the archive.
-            return@withContext null
+        if (installedVersionCode == null) {
+            return OfferComparison(AppVersionState.NewApp, "New app · v$offeredVersionName")
         }
-        comparison(app.versionName, app.versionCode, installed)
+        if (offeredSignerHex !in installedCompatibleSigners) {
+            return OfferComparison(
+                AppVersionState.SignatureConflict,
+                "Signature conflict — uninstall existing app first",
+                isWarning = true
+            )
+        }
+        val installedLabel = installedVersionName ?: installedVersionCode.toString()
+        return when {
+            offeredVersionCode > installedVersionCode ->
+                OfferComparison(AppVersionState.UpdateAvailable, "Update available (v$installedLabel → v$offeredVersionName)")
+            offeredVersionCode == installedVersionCode ->
+                OfferComparison(AppVersionState.AlreadyLatest, "Already on latest version")
+            else ->
+                OfferComparison(AppVersionState.OlderVersion, "Older version than installed", isWarning = true)
+        }
+    }
+
+    suspend fun compareOffer(context: Context, app: AppTransferMetadata): OfferComparison = withContext(Dispatchers.IO) {
+        val installed = installedPackage(context, app.packageName)
+        evaluateOfferComparison(
+            offeredVersionName = app.versionName,
+            offeredVersionCode = app.versionCode,
+            offeredSignerHex = app.signingCertSha256Hex,
+            offeredAbis = app.nativeAbis,
+            supportedAbis = Build.SUPPORTED_ABIS,
+            installedVersionName = installed?.versionName,
+            installedVersionCode = installed?.let { PackageInfoCompat.getLongVersionCode(it) },
+            installedCompatibleSigners = installed?.let { AppSigningDigest.allCompatibleDigests(it) }.orEmpty()
+        )
     }
 
     suspend fun inspectVerified(context: Context, key: String, name: String): Inspection =
@@ -133,7 +192,9 @@ internal object AppPackageInstaller {
         try {
             installer.openSession(id).use { session ->
                 stage(session)
-                val status = Intent(context, InstallStatusReceiver::class.java).setPackage(context.packageName)
+                val status = Intent(context, InstallStatusReceiver::class.java)
+                    .setPackage(context.packageName)
+                    .putExtra(PackageInstaller.EXTRA_PACKAGE_NAME, packageName)
                 val mutable = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
                 val callback = PendingIntent.getBroadcast(context, id, status, mutable or PendingIntent.FLAG_UPDATE_CURRENT)
                 session.commit(callback.intentSender)
@@ -192,24 +253,31 @@ internal object AppPackageInstaller {
 
     private fun inspectBase(context: Context, app: PackageInfo): Inspection {
         if (app.packageName == context.packageName) {
-            return Inspection("Use your original install source to update Glide.", null)
+            return Inspection("Use your original install source to update Glide.", null, isWarning = true)
         }
-        val incomingSigners = signerDigests(app, includeHistory = false)
-        require(incomingSigners.isNotEmpty()) { "This package has no recognized signature." }
+        val incomingCanonical = AppSigningDigest.signingCertSha256Hex(app)
+            ?: return Inspection("This package has no recognized signature.", null, isWarning = true)
+        val incomingCompatible = AppSigningDigest.allCompatibleDigests(app)
         val incoming = PackageInfoCompat.getLongVersionCode(app)
         val version = app.versionName ?: incoming.toString()
         val installed = installedPackage(context, app.packageName)
-            ?: return Inspection("New app · $version", "Install")
-        val currentSigners = signerDigests(installed, includeHistory = false)
-        val compatible = currentSigners == incomingSigners ||
-            (currentSigners.size == 1 && incomingSigners.size == 1 &&
-                signerDigests(app, includeHistory = true).containsAll(currentSigners))
+            ?: return Inspection("New app · v$version", "Install")
+        val installedCompatible = AppSigningDigest.allCompatibleDigests(installed)
+        val compatible = incomingCanonical in installedCompatible ||
+            installedCompatible.any { it in incomingCompatible }
         if (!compatible) {
-            return Inspection("Signature conflict with the installed app.", null)
+            return Inspection("Signature conflict — uninstall existing app first", null, isWarning = true)
         }
         val current = PackageInfoCompat.getLongVersionCode(installed)
-        val label = if (incoming > current) "Update" else null
-        return Inspection(comparison(version, incoming, installed), label)
+        val currentVer = installed.versionName ?: current.toString()
+        return when {
+            incoming > current ->
+                Inspection("Update available (v$currentVer → v$version)", "Update")
+            incoming == current ->
+                Inspection("Already on latest version", "Reinstall")
+            else ->
+                Inspection("Older version than installed", null, isWarning = true)
+        }
     }
 
     @Suppress("DEPRECATION")
@@ -223,27 +291,4 @@ internal object AppPackageInstaller {
     private fun signingFlags(): Int = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
         PackageManager.GET_SIGNING_CERTIFICATES
     } else PackageManager.GET_SIGNATURES
-
-    @Suppress("DEPRECATION")
-    private fun signerDigests(info: PackageInfo, includeHistory: Boolean): Set<String> {
-        val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            info.signingInfo?.let { details ->
-                if (includeHistory && !details.hasMultipleSigners()) details.signingCertificateHistory
-                else details.apkContentsSigners
-            }
-        } else info.signatures
-        return signatures.orEmpty().map { signature ->
-            MessageDigest.getInstance("SHA-256").digest(signature.toByteArray())
-                .joinToString("") { "%02x".format(it) }
-        }.toSet()
-    }
-
-    private fun comparison(versionName: String, versionCode: Long, installed: PackageInfo): String {
-        val current = PackageInfoCompat.getLongVersionCode(installed)
-        return when {
-            versionCode > current -> "Update available · ${installed.versionName ?: current} → $versionName"
-            versionCode < current -> "Older version · $versionName"
-            else -> "Already on latest version ($versionName)"
-        }
-    }
 }

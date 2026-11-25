@@ -74,6 +74,10 @@ object ShareIngressHandler {
         isSessionActive: Boolean,
         activeSessionId: String?
     ): IngressOutcome {
+        val historySessionId = intent?.getStringExtra(TransferService.EXTRA_OPEN_HISTORY_SESSION_ID)
+        if (!isRecreating && historySessionId != null) {
+            return IngressOutcome.Route(GlideRoute.History(initialSessionId = historySessionId))
+        }
         val sessionIdExtra = intent?.getStringExtra(TransferService.EXTRA_SESSION_ID)
         if (!isRecreating && sessionIdExtra == null) {
             GlideEntryPoint.routeFor(intent?.action)?.let { route ->
@@ -124,12 +128,16 @@ object ShareIngressHandler {
         lastHandledFingerprint: String? = null
     ): Pair<IngressOutcome, String?> {
         if (intent == null) return IngressOutcome.NoOp to lastHandledFingerprint
+        val fingerprint = computeIntentFingerprint(intent)
+        val historySessionId = intent.getStringExtra(TransferService.EXTRA_OPEN_HISTORY_SESSION_ID)
+        if (historySessionId != null) {
+            return IngressOutcome.Route(GlideRoute.History(initialSessionId = historySessionId)) to fingerprint
+        }
         GlideEntryPoint.routeFor(intent.action)?.let { route ->
             val outcome = if (isSessionActive) IngressOutcome.ActiveSessionBusy(activeSessionId = activeSessionId)
                 else IngressOutcome.Route(route)
             return outcome to lastHandledFingerprint
         }
-        val fingerprint = computeIntentFingerprint(intent)
         val sessionIdExtra = intent.getStringExtra(TransferService.EXTRA_SESSION_ID)
         val shareResult = ShareIngressParser.parse(intent)
         return handleNewOutcome(

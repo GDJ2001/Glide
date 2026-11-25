@@ -86,7 +86,7 @@ public static partial class Program
         Console.WriteLine("  glide trust list");
         Console.WriteLine("  glide trust revoke <fingerprint>");
         Console.WriteLine("      Inspect or revoke enrolled peer identities. Enrollment itself requires verified identity proof.\n");
-        Console.WriteLine("  glide resume list | discard <session-id> | run <session-id> [--connect <address:port>]");
+        Console.WriteLine("  glide resume list | discard <session-id> | run <session-id> [--connect <address:port>] [--destination <path>]");
         Console.WriteLine("Examples:");
         Console.WriteLine("  glide receive");
         Console.WriteLine("  glide daemon --accept-paired-offers --trusted-peer <64-lowercase-hex> --max-offer-bytes 1073741824");

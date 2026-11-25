@@ -61,6 +61,20 @@ class ResumeBatchManifestTest {
         assertEquals(2, manifest.recordVerifiedItem(1, second.id, second.sizeBytes, second.digest))
     }
 
+    @Test
+    fun infersMimeTypesForResumedItemsWithoutChangingManifestDigest() {
+        val manifest = Json.decodeFromString<Fixture>(fixture("resume_batch_manifest_v1.json").readText()).manifest
+        assertEquals("application/vnd.android.package-archive", resumeMimeTypeForName("Glide_v1.0.apk"))
+        assertEquals("application/vnd.android.apks", resumeMimeTypeForName("App_v2.0.apks"))
+        assertEquals("image/jpeg", resumeMimeTypeForName("photo.JPG"))
+        assertEquals("video/mp4", resumeMimeTypeForName("clip.mp4"))
+        assertEquals("application/octet-stream", resumeMimeTypeForName("README"))
+        val digestBefore = manifest.digest().value
+        assertEquals(fixture("resume_batch_manifest_v1.json").let {
+            Json.decodeFromString<Fixture>(it.readText()).sha256
+        }, digestBefore)
+    }
+
     private fun fixture(name: String): File =
         generateSequence(File(".").canonicalFile) { it.parentFile }
             .map { File(it, "assets/protocol/fixtures/$name") }

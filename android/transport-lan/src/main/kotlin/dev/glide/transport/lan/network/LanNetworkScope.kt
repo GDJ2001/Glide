@@ -155,16 +155,7 @@ open class LanNetworkScope(
             val interfaces = java.net.NetworkInterface.getNetworkInterfaces() ?: return emptyList<InetAddress>() to emptyList()
             for (ni in interfaces) {
                 if (!ni.isUp || ni.isLoopback) continue
-                val name = ni.name.lowercase()
-                val isEligibleLocalLink =
-                    name.startsWith("wlan") ||
-                    name.startsWith("eth") ||
-                    name.startsWith("rndis") ||
-                    name.startsWith("usb") ||
-                    name.startsWith("ncm") ||
-                    name.startsWith("ap") ||
-                    name.startsWith("swlan") ||
-                    name.startsWith("p2p")
+                val isEligibleLocalLink = isLocalHotspotInterfaceName(ni.name.orEmpty())
                 for (ia in ni.interfaceAddresses) {
                     val addr = ia.address ?: continue
                     if (!isEligibleLocalLink && addr.hostAddress !in AndroidHotspotConnections.host?.addresses.orEmpty()) continue
@@ -178,6 +169,37 @@ open class LanNetworkScope(
             }
         } catch (_: Exception) {}
         return addrs to prefixes
+    }
+
+    private fun hasActiveSoftApOrP2pIpv4(): Boolean = try {
+        val hostAddrs = AndroidHotspotConnections.host?.addresses.orEmpty()
+        val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
+        var found = false
+        if (interfaces != null) {
+            for (ni in interfaces) {
+                if (!ni.isUp || ni.isLoopback) continue
+                val lower = ni.name.orEmpty().lowercase()
+                val isSoftApOrP2p = lower.startsWith("ap") ||
+                    lower.startsWith("softap") ||
+                    lower.startsWith("sap") ||
+                    lower.startsWith("swlan") ||
+                    lower.startsWith("p2p")
+                for (ia in ni.interfaceAddresses) {
+                    val addr = ia.address ?: continue
+                    if (addr.isLoopbackAddress) continue
+                    if ((isSoftApOrP2p && (addr.isSiteLocalAddress || addr.isLinkLocalAddress)) ||
+                        addr.hostAddress in hostAddrs
+                    ) {
+                        found = true
+                        break
+                    }
+                }
+                if (found) break
+            }
+        }
+        found
+    } catch (_: Exception) {
+        false
     }
 
     @Synchronized
@@ -203,13 +225,25 @@ open class LanNetworkScope(
     ) {
         if (_networkState.value is LanNetworkState.Closed) return
 
+        val preferred = AndroidHotspotConnections.preferredNetwork
+        val isLocalHotspotBypass = (preferred != null && preferred == network) || hasActiveSoftApOrP2pIpv4()
+
         val defaultNetwork = connectivityManager?.activeNetwork
         val defaultCapabilities = defaultNetwork?.let { connectivityManager.getNetworkCapabilities(it) }
-        if (defaultCapabilities != null &&
-            defaultCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) {
-            invalidateAndCloseSockets("Active VPN detected on default network")
-            _networkState.value = LanNetworkState.VpnActive("Active VPN detected; LAN sharing fails closed per security policy")
-            return
+        val hasVpn = (defaultCapabilities?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true) ||
+            (capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true) ||
+            (capabilities != null && !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN))
+        if (hasVpn) {
+            if (!isLocalHotspotBypass) {
+                invalidateAndCloseSockets("Active VPN detected on network")
+                _networkState.value = LanNetworkState.VpnActive("Active VPN detected; LAN sharing fails closed per security policy")
+                return
+            }
+            if (preferred == null || preferred != network) {
+                // Keep manual system SoftAP/P2P isolated from cellular/VPN addresses.
+                evaluateLocalInterfacesFallback()
+                return
+            }
         }
 
         if (capabilities == null || linkProperties == null) {
@@ -217,17 +251,6 @@ open class LanNetworkScope(
             return
         }
 
-        // VPN Fail-Closed Policy (Section 11, Section 13):
-        // If VPN transport is present or NOT_VPN capability is missing, fail-closed!
-        val hasVpnTransport = capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
-        val lacksNotVpnCapability = !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
-        if (hasVpnTransport || lacksNotVpnCapability) {
-            invalidateAndCloseSockets("Active VPN detected on network")
-            _networkState.value = LanNetworkState.VpnActive("Active VPN detected; LAN sharing fails closed per security policy")
-            return
-        }
-
-        val preferred = AndroidHotspotConnections.preferredNetwork
         if (preferred != null && preferred != network) return
 
         val (extraAddrs, extraSubnets) = collectLocalInterfaceSubnets()
@@ -434,4 +457,19 @@ open class LanNetworkScope(
 
         coroutineScope.cancel()
     }
+}
+
+private val EXCLUDED_INTERFACE_PREFIXES = listOf(
+    "rmnet", "ccmni", "tun", "ppp", "clat", "dummy", "lo"
+)
+
+private val LOCAL_HOTSPOT_INTERFACE_PREFIXES = listOf(
+    "ap", "softap", "sap", "swlan", "wlan", "p2p", "wifi", "eth", "rndis", "usb", "ncm"
+)
+
+fun isLocalHotspotInterfaceName(rawName: String): Boolean {
+    val name = rawName.trim().lowercase()
+    if (name.isEmpty()) return false
+    if (EXCLUDED_INTERFACE_PREFIXES.any { name.startsWith(it) }) return false
+    return LOCAL_HOTSPOT_INTERFACE_PREFIXES.any { name.startsWith(it) }
 }

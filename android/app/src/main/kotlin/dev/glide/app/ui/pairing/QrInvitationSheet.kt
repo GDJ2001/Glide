@@ -234,6 +234,55 @@ fun QrInvitationSheet(
                         }
                     }
 
+                    if (!uiState.hotspotSsid.isNullOrBlank()) {
+                        Card(
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = "Hotspot Wi-Fi credentials",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                androidx.compose.foundation.text.selection.SelectionContainer {
+                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text(
+                                            text = "Network: ${uiState.hotspotSsid}",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontFamily = FontFamily.Monospace
+                                        )
+                                        if (!uiState.hotspotPassphrase.isNullOrBlank()) {
+                                            Text(
+                                                text = "Password: ${uiState.hotspotPassphrase}",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontFamily = FontFamily.Monospace
+                                            )
+                                        }
+                                    }
+                                }
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    androidx.compose.material3.TextButton(onClick = {
+                                        copyInvitationToClipboard(context, uiState.hotspotSsid)
+                                        copyNotice = "Network name copied"
+                                    }) { Text("Copy network") }
+                                    if (!uiState.hotspotPassphrase.isNullOrBlank()) {
+                                        androidx.compose.material3.TextButton(onClick = {
+                                            copyInvitationToClipboard(context, uiState.hotspotPassphrase)
+                                            copyNotice = "Password copied"
+                                        }) { Text("Copy password") }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // Copy Notice / Security Feedback
                     if (copyNotice != null) {
                         Card(
@@ -276,7 +325,10 @@ fun QrInvitationSheet(
 
                         Button(
                             onClick = {
-                                copyInvitationToClipboard(context, InvitationCodec.encode(uiState.invitation))
+                                copyInvitationToClipboard(
+                                    context,
+                                    uiState.hotspotQr ?: InvitationCodec.encode(uiState.invitation)
+                                )
                                 copyNotice = "Invitation copied"
                             },
                             shape = PrimaryButtonShape,

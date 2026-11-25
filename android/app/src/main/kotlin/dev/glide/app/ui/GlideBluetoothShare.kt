@@ -1,7 +1,5 @@
 package dev.glide.app.ui
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -12,9 +10,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import dev.glide.app.util.prepareBluetoothShare
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
-import dev.glide.app.util.prepareBluetoothShare
 
 @Composable
 internal fun GlideBluetoothShare() {
@@ -29,32 +27,29 @@ internal fun GlideBluetoothShare() {
             scope.launch {
                 try {
                     val intent = prepareBluetoothShare(context)
-                    if (intent == null) error = "This phone can’t send a Glide APK over Bluetooth."
-                    else context.startActivity(intent)
+                    if (intent == null) {
+                        error = "No Bluetooth file sharing handler is available on this device."
+                    } else {
+                        runCatching { context.startActivity(intent) }.onFailure {
+                            error = "Could not open Bluetooth sharing on this device."
+                        }
+                    }
                 } catch (failure: Exception) {
                     if (failure is CancellationException) throw failure
-                    error = "Glide couldn’t prepare a standalone APK on this phone."
+                    error = "Glide couldn’t prepare a standalone APK on this device. Install the standalone Glide APK build to share via Bluetooth."
                 } finally {
                     preparing = false
                 }
             }
         }
-    ) { Text(if (preparing) "Preparing Glide…" else "Share Glide via Bluetooth") }
+    ) { Text(if (preparing) "Preparing Glide…" else "Share Glide APK via Bluetooth") }
 
     error?.let { message ->
         AlertDialog(
             onDismissRequest = { error = null },
             title = { Text("Bluetooth sharing unavailable") },
             text = { Text(message) },
-            confirmButton = {
-                TextButton(onClick = {
-                    error = null
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(
-                        "https://github.com/GDJ2001/Glide/releases/latest"
-                    )))
-                }) { Text("Open download page") }
-            },
-            dismissButton = { TextButton(onClick = { error = null }) { Text("Close") } }
+            confirmButton = { TextButton(onClick = { error = null }) { Text("Close") } }
         )
     }
 }

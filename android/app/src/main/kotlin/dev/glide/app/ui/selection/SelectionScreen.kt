@@ -1,9 +1,12 @@
 package dev.glide.app.ui.selection
 
 import android.net.Uri
+import android.util.LruCache
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -19,6 +22,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Android
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -26,6 +31,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -39,10 +45,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -51,17 +60,23 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.glide.core.domain.SourceHandle
 import dev.glide.core.domain.TransferBatch
 import dev.glide.data.source.InstalledAppsRepository
+import dev.glide.data.source.LocalMediaEntry
+import dev.glide.data.source.LocalMediaKind
+import dev.glide.data.source.LocalMediaRepository
 import dev.glide.designsystem.PrimaryButtonShape
 import dev.glide.designsystem.glideHoverHand
 import dev.glide.designsystem.isolateBidi
-import java.io.File
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+private val appIconCache = LruCache<String, ImageBitmap>(128)
 
 private enum class SelectionCategory(val label: String) {
     Apps("Apps"), Photos("Photos"), Videos("Videos"), Audio("Audio"),
@@ -84,23 +99,32 @@ fun SelectionScreen(
     val batch = state as? SelectionUiState.BatchReady
     val busy = state is SelectionUiState.Validating ||
         state is SelectionUiState.StagingSource || state is SelectionUiState.Hashing
-    var category by rememberSaveable { mutableStateOf(SelectionCategory.Documents) }
-    var pendingApps by rememberSaveable { mutableStateOf(arrayListOf<String>()) }
+    var category by rememberSaveable { mutableStateOf(SelectionCategory.Apps) }
     var showSystemApps by rememberSaveable { mutableStateOf(false) }
     var appSearch by rememberSaveable { mutableStateOf("") }
     val repository = remember(context.applicationContext) { InstalledAppsRepository(context) }
+    val mediaRepository = remember(context.applicationContext) { LocalMediaRepository(context) }
     var apps by remember { mutableStateOf<List<InstalledAppsRepository.App>?>(null) }
+    var recentMedia by remember { mutableStateOf<List<LocalMediaEntry>>(emptyList()) }
     var catalogError by remember { mutableStateOf(false) }
 
     LaunchedEffect(category) {
-        if (category == SelectionCategory.Apps) {
-            catalogError = false
-            try {
-                apps = repository.list()
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
-                catalogError = true
+        when (category) {
+            SelectionCategory.Apps -> {
+                if (apps == null) {
+                    catalogError = false
+                    try {
+                        apps = repository.list()
+                    } catch (e: Exception) {
+                        if (e is CancellationException) throw e
+                        catalogError = true
+                    }
+                }
             }
+            SelectionCategory.Photos -> recentMedia = mediaRepository.listRecent(LocalMediaKind.PHOTO)
+            SelectionCategory.Videos -> recentMedia = mediaRepository.listRecent(LocalMediaKind.VIDEO)
+            SelectionCategory.Audio -> recentMedia = mediaRepository.listRecent(LocalMediaKind.AUDIO)
+            SelectionCategory.Documents, SelectionCategory.Folders -> recentMedia = emptyList()
         }
     }
     LaunchedEffect(initialState) {
@@ -163,23 +187,14 @@ fun SelectionScreen(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
+                    Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         FilterChip(selected = !showSystemApps, onClick = { showSystemApps = false },
                             label = { Text("User apps") })
                         FilterChip(selected = showSystemApps, onClick = { showSystemApps = true },
                             label = { Text("System apps") })
                     }
-                    Text("Only app packages are shared.", style = MaterialTheme.typography.bodySmall)
-                    val selected = apps.orEmpty().filter {
-                        it.packageName in pendingApps && it.packageName !in stagedPackages
-                    }
-                    Button(
-                        enabled = selected.isNotEmpty(),
-                        onClick = {
-                            viewModel.addInstalledApps(selected, repository)
-                            pendingApps = arrayListOf()
-                        }
-                    ) { Text("Add selected apps") }
+                    Text("Tap any app to add or remove it from the batch.", style = MaterialTheme.typography.bodySmall)
                 }
 
                 val visibleApps = apps.orEmpty().filter { app ->
@@ -197,25 +212,39 @@ fun SelectionScreen(
                     }
                 }
                 items(visibleApps, key = { "app:${it.packageName}" }) { app ->
-                    val alreadyAdded = app.packageName in stagedPackages
-                    val checked = alreadyAdded || app.packageName in pendingApps
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(
-                            checked = checked,
-                            enabled = !alreadyAdded,
-                            onCheckedChange = { selected ->
-                                pendingApps = ArrayList(pendingApps.filterNot { it == app.packageName })
-                                if (selected) pendingApps = ArrayList(pendingApps + app.packageName)
-                            },
-                            modifier = Modifier.semantics { contentDescription = app.label }
-                        )
+                    val checked = app.packageName in stagedPackages
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .glideHoverHand()
+                            .clickable(role = Role.Checkbox) {
+                                viewModel.toggleInstalledApp(app, repository)
+                            }
+                            .padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        AppIconThumb(packageName = app.packageName)
                         Column(Modifier.weight(1f)) {
-                            Text(app.label.isolateBidi(), maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text(
-                                if (alreadyAdded) "Added" else if (app.split) "${app.versionName} · Split APKs" else app.versionName,
-                                style = MaterialTheme.typography.bodySmall
+                                text = app.label.isolateBidi(),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            val sizeLabel = if (app.sizeBytes > 0L) " · ${formatFileSize(app.sizeBytes)}" else ""
+                            val kindLabel = if (app.split) " · Split APKs" else ""
+                            Text(
+                                text = "v${app.versionName}$sizeLabel$kindLabel",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
+                        Checkbox(
+                            checked = checked,
+                            onCheckedChange = { viewModel.toggleInstalledApp(app, repository) },
+                            modifier = Modifier.semantics { contentDescription = app.label }
+                        )
                     }
                 }
             } else if (!busy) {
@@ -235,7 +264,48 @@ fun SelectionScreen(
                                 SelectionCategory.Apps -> Unit
                             }
                         }
-                    ) { Text(if (category == SelectionCategory.Folders) "Add folder" else "Add ${category.label.lowercase()}") }
+                    ) {
+                        Text(
+                            when (category) {
+                                SelectionCategory.Folders -> "Browse folder"
+                                SelectionCategory.Photos, SelectionCategory.Videos, SelectionCategory.Audio ->
+                                    "Browse ${category.label.lowercase()} with system picker"
+                                else -> "Add ${category.label.lowercase()}"
+                            }
+                        )
+                    }
+                }
+                if (recentMedia.isNotEmpty()) {
+                    val selectedUris = batch?.items.orEmpty().map { it.handle.value }.toSet()
+                    items(recentMedia, key = { "media:${it.uri}" }) { media ->
+                        val isSelected = media.uri.toString() in selectedUris
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .glideHoverHand()
+                                .clickable(role = Role.Checkbox) {
+                                    viewModel.toggleMediaEntry(media.uri, media.displayName, media.sizeBytes, media.mimeType, context)
+                                }
+                                .padding(vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(media.displayName.isolateBidi(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(
+                                    "${formatFileSize(media.sizeBytes)} · ${media.mimeType}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Checkbox(
+                                checked = isSelected,
+                                onCheckedChange = {
+                                    viewModel.toggleMediaEntry(media.uri, media.displayName, media.sizeBytes, media.mimeType, context)
+                                }
+                            )
+                        }
+                    }
                 }
             }
 
@@ -410,5 +480,34 @@ private fun FileItemRow(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun AppIconThumb(packageName: String) {
+    val context = LocalContext.current
+    val bitmap by produceState<ImageBitmap?>(appIconCache.get(packageName), packageName) {
+        if (value != null) return@produceState
+        val loaded = withContext(Dispatchers.IO) {
+            runCatching {
+                val drawable = context.packageManager.getApplicationIcon(packageName)
+                drawable.toBitmap(width = 72, height = 72).asImageBitmap()
+            }.getOrNull()
+        }
+        if (loaded != null) {
+            appIconCache.put(packageName, loaded)
+            value = loaded
+        }
+    }
+    val img = bitmap
+    if (img != null) {
+        Image(bitmap = img, contentDescription = null, modifier = Modifier.size(36.dp))
+    } else {
+        Icon(
+            imageVector = Icons.Default.Android,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(36.dp)
+        )
     }
 }

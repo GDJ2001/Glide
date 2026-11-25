@@ -460,22 +460,24 @@ fun HistoryItemCard(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        OutlinedButton(
-                            onClick = onOpenFile,
-                            shape = RoundedCornerShape(10.dp),
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 6.dp),
-                            modifier = Modifier
-                                .widthIn(min = 88.dp)
-                                .heightIn(min = 48.dp)
-                                .glideHoverHand()
-                                .semantics {
-                                    role = Role.Button
-                                    contentDescription = "Open ${item.displayName.isolateBidi()}"
-                                }
-                        ) {
-                            Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(15.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Open", style = MaterialTheme.typography.labelMedium, maxLines = 1, softWrap = false)
+                        if (!dev.glide.app.installer.AppPackageInstaller.isSplitBundle(item.mimeType, item.displayName)) {
+                            OutlinedButton(
+                                onClick = onOpenFile,
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                                modifier = Modifier
+                                    .widthIn(min = 88.dp)
+                                    .heightIn(min = 48.dp)
+                                    .glideHoverHand()
+                                    .semantics {
+                                        role = Role.Button
+                                        contentDescription = "Open ${item.displayName.isolateBidi()}"
+                                    }
+                            ) {
+                                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(15.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Open", style = MaterialTheme.typography.labelMedium, maxLines = 1, softWrap = false)
+                            }
                         }
 
                         OutlinedButton(

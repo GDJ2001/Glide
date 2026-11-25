@@ -324,22 +324,24 @@ private fun CompletedResultCard(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        OutlinedButton(
-                                            onClick = { onOpenItem(item) },
-                                            shape = RoundedCornerShape(10.dp),
-                                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 6.dp),
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .heightIn(min = 40.dp)
-                                                .glideHoverHand()
-                                                .semantics {
-                                                    role = Role.Button
-                                                    contentDescription = "Open ${item.displayName.isolateBidi()}"
-                                                }
-                                        ) {
-                                            Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(14.dp))
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text("Open", style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+                                        if (!dev.glide.app.installer.AppPackageInstaller.isSplitBundle(item.mimeType, item.displayName)) {
+                                            OutlinedButton(
+                                                onClick = { onOpenItem(item) },
+                                                shape = RoundedCornerShape(10.dp),
+                                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .heightIn(min = 40.dp)
+                                                    .glideHoverHand()
+                                                    .semantics {
+                                                        role = Role.Button
+                                                        contentDescription = "Open ${item.displayName.isolateBidi()}"
+                                                    }
+                                            ) {
+                                                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(14.dp))
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("Open", style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+                                            }
                                         }
 
                                         OutlinedButton(
@@ -522,7 +524,11 @@ private fun CompletedResultCard(
                             Text(text = "Share file", style = MaterialTheme.typography.labelLarge)
                         }
 
-                        OutlinedButton(
+                        val singleItem = state.verifiedItems.singleOrNull()
+                        val hideSingleOpen = singleItem?.let {
+                            dev.glide.app.installer.AppPackageInstaller.isSplitBundle(it.mimeType, it.displayName)
+                        } ?: state.itemName.endsWith(".apks", ignoreCase = true)
+                        if (!hideSingleOpen) OutlinedButton(
                             onClick = onOpenFile,
                             shape = PrimaryButtonShape,
                             modifier = Modifier

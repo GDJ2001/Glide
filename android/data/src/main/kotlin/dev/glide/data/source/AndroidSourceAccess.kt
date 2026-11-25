@@ -20,7 +20,8 @@ import java.io.InputStream
 class AndroidSourceAccess(
     private val resolverWrapper: ContentResolverWrapper,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
-    val stager: BoundedSourceStager? = null
+    val stager: BoundedSourceStager? = null,
+    private val installedAppsRepository: InstalledAppsRepository? = null
 ) : SourceAccess {
 
     override suspend fun validateSource(handle: SourceHandle): SourceMetadata {
@@ -33,6 +34,38 @@ class AndroidSourceAccess(
     ): SourceMetadata = withContext(ioDispatcher) {
         val uriString = handle.value
         val scheme = uriString.substringBefore("://", "")
+
+        if (scheme == "glide-app" || scheme == "glide-app-bundle") {
+            val repo = installedAppsRepository ?: throw SourceAccessException(
+                TransferFailure.SourceUnavailable("Installed app access is unavailable")
+            )
+            val packageName = uriString.substringAfter("://").trim()
+            try {
+                if (scheme == "glide-app") {
+                    val info = repo.inspectSingleApk(packageName)
+                    return@withContext SourceMetadata(
+                        name = info.displayName,
+                        mimeType = info.mimeType,
+                        sizeBytes = info.sizeBytes
+                    )
+                } else {
+                    val bundle = repo.prepareSplitBundle(packageName)
+                    return@withContext SourceMetadata(
+                        name = bundle.name,
+                        mimeType = bundle.mimeType,
+                        sizeBytes = bundle.sizeBytes
+                    )
+                }
+            } catch (e: SourceAccessException) {
+                throw e
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                throw SourceAccessException(
+                    TransferFailure.SourceUnavailable("Installed app is unavailable: ${e.message ?: packageName}"),
+                    cause = e
+                )
+            }
+        }
 
         if (scheme.isEmpty() || (scheme != "content" && scheme != "file")) {
             throw SourceAccessException(
@@ -132,6 +165,28 @@ class AndroidSourceAccess(
         }
 
         val uriString = handle.value
+        if (uriString.startsWith("glide-app://") || uriString.startsWith("glide-app-bundle://")) {
+            val repo = installedAppsRepository ?: throw SourceAccessException(
+                TransferFailure.SourceUnavailable("Installed app access is unavailable")
+            )
+            val packageName = uriString.substringAfter("://").trim()
+            try {
+                val file = if (uriString.startsWith("glide-app://")) {
+                    repo.inspectSingleApk(packageName).files.single()
+                } else {
+                    repo.prepareSplitBundle(packageName).file
+                }
+                return@withContext file.inputStream()
+            } catch (e: SourceAccessException) {
+                throw e
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                throw SourceAccessException(
+                    TransferFailure.SourceUnavailable("Error opening installed app stream: ${e.message}"),
+                    cause = e
+                )
+            }
+        }
         try {
             resolverWrapper.openInputStream(uriString)
                 ?: throw SourceAccessException(

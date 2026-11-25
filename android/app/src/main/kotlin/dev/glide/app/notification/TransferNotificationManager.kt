@@ -254,6 +254,17 @@ class TransferNotificationManager(
             .build()
     }
 
+    fun buildPublicCompletionNotification(context: Context): Notification {
+        return NotificationCompat.Builder(context, TransferService.COMPLETION_NOTIFICATION_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle("Glide transfer")
+            .setContentText("Transfer complete")
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .build()
+    }
+
     /**
      * Builds the private notification honoring [GlideSettings.notificationDetails].
      */

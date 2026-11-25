@@ -11,7 +11,8 @@ sealed interface GlideRoute : NavKey {
     @Serializable
     data class Selection(
         val initialUris: List<String> = emptyList(),
-        val pairedPeerFingerprintHex: String? = null
+        val pairedPeerFingerprintHex: String? = null,
+        val pendingLanInvitation: String? = null
     ) : GlideRoute
 
     @Serializable
@@ -46,5 +47,6 @@ sealed interface GlideRoute : NavKey {
 enum class QrScanPurpose {
     SEND_TO_RECEIVER,
     RECEIVE_FROM_SENDER,
-    PAIR_ONLY
+    PAIR_ONLY,
+    UNIVERSAL
 }

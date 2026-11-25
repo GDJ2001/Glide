@@ -26,6 +26,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.glide.app.service.TransferRuntime
 import kotlinx.coroutines.launch
 
+data class RetainedResumeEntryUi(
+    val sessionId: String,
+    val label: String
+)
+
 @Composable
 internal fun RetainedTransfersPanel(runtime: TransferRuntime, onResume: (String) -> Unit) {
     var entries by remember { mutableStateOf(emptyList<TransferRuntime.RetainedTransfer>()) }
@@ -37,21 +42,43 @@ internal fun RetainedTransfersPanel(runtime: TransferRuntime, onResume: (String)
     }
     if (entries.isEmpty()) return
 
-    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+    RetainedTransfersCard(
+        entries = entries.map { RetainedResumeEntryUi(it.sessionId, it.label) },
+        enabled = !active,
+        onResume = onResume,
+        onDiscard = { sessionId ->
+            scope.launch {
+                runtime.discardRetainedTransfer(sessionId)
+                entries = runtime.listRetainedTransfers()
+            }
+        },
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+    )
+}
+
+@Composable
+fun RetainedTransfersCard(
+    entries: List<RetainedResumeEntryUi>,
+    enabled: Boolean,
+    onResume: (String) -> Unit,
+    onDiscard: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (entries.isEmpty()) return
+
+    Card(modifier = modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("Resumable transfers", style = MaterialTheme.typography.titleMedium)
             LazyColumn(Modifier.heightIn(max = 200.dp)) {
                 items(entries, key = { it.sessionId }) { entry ->
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Text(entry.label, Modifier.weight(1f))
-                        OutlinedButton(onClick = { onResume(entry.sessionId) }, enabled = !active) { Text("Resume") }
-                        OutlinedButton(onClick = {
-                            scope.launch {
-                                runtime.discardRetainedTransfer(entry.sessionId)
-                                entries = runtime.listRetainedTransfers()
-                            }
-                        }, enabled = !active) { Text("Discard") }
+                        OutlinedButton(onClick = { onResume(entry.sessionId) }, enabled = enabled) { Text("Resume") }
+                        OutlinedButton(onClick = { onDiscard(entry.sessionId) }, enabled = enabled) { Text("Discard") }
                     }
                 }
             }

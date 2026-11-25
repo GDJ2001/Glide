@@ -70,6 +70,9 @@ fun HomeScreen(
     onNavigateToHistory: () -> Unit = {},
     activeSessionId: String? = null,
     onNavigateToTransfer: (String) -> Unit = {},
+    retainedEntries: List<dev.glide.app.ui.history.RetainedResumeEntryUi> = emptyList(),
+    onResumeRetained: (String) -> Unit = {},
+    onDiscardRetained: (String) -> Unit = {},
     pairedDevices: List<TrustedPeerRecord> = emptyList(),
     onPairDevice: () -> Unit = {},
     onSelectPairedDevice: (TrustedPeerRecord) -> Unit = {},
@@ -184,6 +187,15 @@ fun HomeScreen(
                     }
                 }
             }
+        }
+
+        if (retainedEntries.isNotEmpty()) {
+            dev.glide.app.ui.history.RetainedTransfersCard(
+                entries = retainedEntries,
+                enabled = activeSessionId == null,
+                onResume = onResumeRetained,
+                onDiscard = onDiscardRetained
+            )
         }
 
         // Tabletop posture fold avoidance: ensure hinge is not occluding action buttons

@@ -42,6 +42,27 @@ class SelectionViewModel(
     private var priorBatch: SelectionUiState.BatchReady? = null
     private var cachedSourceAccess: SourceAccess? = customSourceAccess
 
+    fun toggleInstalledApp(app: InstalledAppsRepository.App, repository: InstalledAppsRepository) {
+        val existing = (_uiState.value as? SelectionUiState.BatchReady)?.items.orEmpty()
+        val alreadySelected = existing.firstOrNull { it.installedPackageName == app.packageName }
+        if (alreadySelected != null) {
+            removeFile(alreadySelected.id)
+            return
+        }
+        addInstalledApps(listOf(app), repository)
+    }
+
+    fun toggleMediaEntry(uri: Uri, displayName: String, sizeBytes: Long, mimeType: String, context: Context) {
+        val current = (_uiState.value as? SelectionUiState.BatchReady)?.items.orEmpty()
+        val handleStr = uri.toString()
+        val existing = current.firstOrNull { it.handle.value == handleStr }
+        if (existing != null) {
+            removeFile(existing.id)
+        } else {
+            onUrisSelected(listOf(uri), context)
+        }
+    }
+
     fun addInstalledApps(apps: List<InstalledAppsRepository.App>, repository: InstalledAppsRepository) {
         if (activeJob?.isActive == true) return
         priorBatch = _uiState.value as? SelectionUiState.BatchReady
@@ -59,15 +80,24 @@ class SelectionViewModel(
             requested.forEachIndexed { index, app ->
                 _uiState.value = SelectionUiState.Validating(index + 1, requested.size)
                 try {
-                    val exported = repository.export(app)
+                    val handle = SourceHandle(
+                        if (app.split) "glide-app-bundle://${app.packageName}" else "glide-app://${app.packageName}"
+                    )
+                    val (displayName, mimeType, sizeBytes, metadata) = if (app.split) {
+                        val exported = repository.prepareSplitBundle(app.packageName)
+                        QuadTuple(exported.name, exported.mimeType, exported.sizeBytes, exported.metadata)
+                    } else {
+                        val inspected = repository.inspectSingleApk(app.packageName)
+                        QuadTuple(inspected.displayName, inspected.mimeType, inspected.sizeBytes, inspected.metadata)
+                    }
                     added += SelectedFileItem(
                         id = ItemId(UUID.randomUUID().toString()),
-                        handle = SourceHandle(Uri.fromFile(exported.file).toString()),
-                        displayName = exported.name,
-                        sizeBytes = exported.sizeBytes,
-                        mimeType = exported.mimeType,
+                        handle = handle,
+                        displayName = displayName,
+                        sizeBytes = sizeBytes,
+                        mimeType = mimeType,
                         installedPackageName = app.packageName,
-                        appMetadata = exported.metadata
+                        appMetadata = metadata
                     )
                 } catch (failure: Exception) {
                     if (failure is CancellationException) throw failure
@@ -78,6 +108,8 @@ class SelectionViewModel(
             _uiState.value = SelectionUiState.BatchReady(selected + added, notice)
         }
     }
+
+    private data class QuadTuple<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
 
     /**
      * Obtains or creates the [SourceAccess] instance using the application context.
@@ -95,7 +127,8 @@ class SelectionViewModel(
                 val access = AndroidSourceAccess(
                     resolverWrapper = resolverWrapper,
                     ioDispatcher = Dispatchers.IO,
-                    stager = stager
+                    stager = stager,
+                    installedAppsRepository = InstalledAppsRepository(appContext)
                 )
                 cachedSourceAccess = access
                 access

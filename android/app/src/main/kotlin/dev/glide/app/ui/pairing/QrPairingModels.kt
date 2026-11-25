@@ -25,7 +25,10 @@ sealed interface QrReceiverUiState {
         val qrBitmap: Bitmap?,
         val secondsRemaining: Int,
         val localDeviceName: String,
-        val endpointsSummary: String
+        val endpointsSummary: String,
+        val hotspotQr: String? = null,
+        val hotspotSsid: String? = null,
+        val hotspotPassphrase: String? = null
     ) : QrReceiverUiState
 
     /**

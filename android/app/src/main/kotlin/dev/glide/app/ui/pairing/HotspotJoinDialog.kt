@@ -84,10 +84,8 @@ internal fun HotspotJoinDialog(
                     onReady()
                 } else if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
                     manual = true
-                } else if (ContextCompat.checkSelfPermission(context, wifiPermission) == PackageManager.PERMISSION_GRANTED) {
-                    tryJoin()
                 } else {
-                    permission.launch(wifiPermission)
+                    tryJoin()
                 }
             }) { Text(if (joining) "Connecting…" else if (manual) "Continue" else "Join") }
         },

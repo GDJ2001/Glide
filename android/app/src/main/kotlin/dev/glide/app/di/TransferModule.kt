@@ -51,12 +51,14 @@ object TransferModule {
     @Provides
     @Singleton
     fun provideSourceAccess(
+        @ApplicationContext context: Context,
         resolverWrapper: ContentResolverWrapper,
         stager: BoundedSourceStager
     ): SourceAccess {
         return AndroidSourceAccess(
             resolverWrapper = resolverWrapper,
-            stager = stager
+            stager = stager,
+            installedAppsRepository = dev.glide.data.source.InstalledAppsRepository(context)
         )
     }
 

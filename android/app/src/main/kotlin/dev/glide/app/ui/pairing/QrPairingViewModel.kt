@@ -124,6 +124,9 @@ class QrPairingViewModel(
         countdownJob?.cancel()
         externalInvitationRevoker = onRevoke
 
+        val decodedHotspot = hotspotQr?.let {
+            runCatching { dev.glide.core.pairing.HotspotInvitationCodec.decode(it) }.getOrNull()
+        }
         val uriString = hotspotQr ?: InvitationCodec.encode(invitation)
         val bitmap = try {
             qrBitmapGenerator?.invoke(uriString) ?: QrEncoder.encodeToBitmap(uriString, 512)
@@ -138,7 +141,10 @@ class QrPairingViewModel(
             localDeviceName = invitation.name,
             endpointsSummary = invitation.endpoints.joinToString(", ") {
                 "${it.address}:${it.port}"
-            }
+            },
+            hotspotQr = hotspotQr,
+            hotspotSsid = decodedHotspot?.ssid,
+            hotspotPassphrase = decodedHotspot?.passphrase
         )
         startCountdown(invitation.ttlSeconds)
     }

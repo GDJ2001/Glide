@@ -213,7 +213,9 @@ object DatabaseModule {
     ): dev.glide.data.maintenance.OrphanMaintenanceCleaner {
         val stagingSourcesDirs = listOf(
             java.io.File(context.cacheDir, "staging_sources"),
-            java.io.File(context.cacheDir, "staged_sources")
+            java.io.File(context.cacheDir, "staged_sources"),
+            java.io.File(context.cacheDir, "staged_apks"),
+            java.io.File(context.cacheDir, "shares")
         )
         return dev.glide.data.maintenance.OrphanMaintenanceCleaner(
             receivingDir = receiveStore.stagingDir,

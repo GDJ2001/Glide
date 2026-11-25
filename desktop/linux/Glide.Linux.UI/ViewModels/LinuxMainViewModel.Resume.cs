@@ -45,9 +45,15 @@ public sealed partial class LinuxMainViewModel
             else if (_trustManager?.GetTrustedPeer(entry.Batch.PeerFingerprintHex) is { } peer)
             {
                 ActivePage = LinuxPage.Activity;
-                _mdnsDiscovery.QueryPeers();
-                await Task.Delay(450, _lifetimeCts.Token);
-                var candidates = TrustedEndpointResolver.ResolveCandidates(peer, _mdnsDiscovery.Snapshot.Peers);
+                _mdnsDiscovery.Start(enableBrowsing: true);
+                IReadOnlyList<TrustedEndpointCandidate> candidates = Array.Empty<TrustedEndpointCandidate>();
+                for (int attempt = 0; attempt < 6; attempt++)
+                {
+                    _mdnsDiscovery.QueryPeers();
+                    await Task.Delay(450, _lifetimeCts.Token);
+                    candidates = TrustedEndpointResolver.ResolveCandidates(peer, _mdnsDiscovery.Snapshot.Peers);
+                    if (candidates.Any(c => !c.IsSavedEndpoint)) break;
+                }
                 var result = await _runtime.ResumeTrustedAsync(new DesktopResumeRequest(entry.Batch,
                     ResumeLocalRequest(), candidates), this, _lifetimeCts.Token);
                 StatusMessage = result.Message;

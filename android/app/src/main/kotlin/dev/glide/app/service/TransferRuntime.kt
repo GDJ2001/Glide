@@ -1694,8 +1694,8 @@ class TransferRuntime private constructor(
             sessionState = terminalSessionState,
             exportStatus = exportStatusSnapshot
         )
-        callback?.invoke()
         publishCompletion?.invoke()
+        callback?.invoke()
     }
 
     companion object {
