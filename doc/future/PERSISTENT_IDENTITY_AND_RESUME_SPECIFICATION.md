@@ -235,6 +235,21 @@ When and only when `resume-v1` is negotiated for the active authenticated sessio
 Both fields must be present or both absent. A zero-byte item cannot carry resume metadata. A peer
 must reject resume metadata if `resume-v1` was not negotiated.
 
+The batch-retention extension uses the existing envelope `extensions` object. A
+negotiated resumable offer can include `OFFER_PAGE.extensions.resumeDigests`,
+an array of lowercase SHA-256 hex strings in the exact order of that page's
+items. An empty file uses SHA-256 of the empty byte sequence and carries no
+chunk metadata. Pagination accounts for both these digests and app metadata
+within the existing 1,024-byte extension budget.
+
+After explicit approval and durable storage of the ordered manifest, the
+receiver can echo its canonical digest in
+`OFFER_DECISION.extensions.resumeManifestDigest`. The sender saves accepted
+batch authority only if that digest matches its authenticated offer.
+An older peer can omit the extension and finish an ordinary transfer. The
+receipt alone does not permit a new connection or bypass consent. Every
+committed prefix entry must match the original item ID, length, and digest.
+
 The sender derives these values from a bounded source preflight pass before the offer and persists
 the source handle/identity plus the same root in its durable sender journal. The receiver persists
 the root/chunk size together with only the chunk digests it actually retains from the authenticated

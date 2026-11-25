@@ -31,6 +31,7 @@ import dev.glide.core.protocol.MessageTypes
 import dev.glide.core.protocol.NegotiationConstants
 import dev.glide.core.protocol.ProtocolCodec
 import dev.glide.core.protocol.ResumeAcceptDto
+import dev.glide.core.protocol.ResumeOfferMetadata
 import dev.glide.core.protocol.ResumeRejectCodes
 import dev.glide.core.protocol.ResumeRejectDto
 import dev.glide.core.protocol.ResumeRequestDto
@@ -39,6 +40,7 @@ import dev.glide.core.protocol.ResumeStreamReadyDto
 import dev.glide.core.protocol.ResumeStreamStartDto
 import dev.glide.core.protocol.WireErrorCodes
 import dev.glide.core.resume.ResumeAuthorityLookup
+import dev.glide.core.resume.ResumeBatchManifest
 import dev.glide.core.resume.ResumeReconnectPlan
 import dev.glide.core.resume.ResumeReconnectState
 import dev.glide.core.resume.ResumeRequestAuthority
@@ -149,7 +151,9 @@ class TransferCoordinator(
             ItemId,
             String
         ) -> CommittedFileHandle)? = null,
-    val enableTrueResumeCapability: Boolean = false
+    val enableTrueResumeCapability: Boolean = false,
+    private val persistAcceptedResumeBatch: (suspend (ResumeBatchManifest, DeviceRole) -> Unit)? = null,
+    private val recordResumeBatchCommit: (suspend (SessionId, ItemId, Long, dev.glide.core.domain.Sha256Digest) -> Unit)? = null
 ) {
     private class ResumeJournalException(
         message: String
@@ -382,6 +386,7 @@ class TransferCoordinator(
      */
      fun acceptOffer() {
         launchTracked {
+            var manifestDigest: dev.glide.core.domain.Sha256Digest? = null
             val batch =
                 _state.value.batch
             if (batch != null) {
@@ -457,7 +462,9 @@ class TransferCoordinator(
                                 )
                             }
                         }
+                        manifestDigest = saveAcceptedResumeBatch(batch)
                     } catch (error: Exception) {
+                        if (error is kotlinx.coroutines.CancellationException) throw error
                         dispatch(
                             ReducerEvent.TransportFailure(
                                 TransferFailure
@@ -481,7 +488,8 @@ class TransferCoordinator(
             dispatch(
                 ReducerEvent.SubmitOfferDecision(
                     accepted = true,
-                    timestampMs = clock()
+                    timestampMs = clock(),
+                    resumeManifestDigest = manifestDigest
                 )
             )
         }
@@ -823,6 +831,14 @@ class TransferCoordinator(
                     ?: throw IllegalStateException(
                         "Source handle missing for resumable item ${item.id.value}"
                     )
+            if (item.sizeBytes == 0L) {
+                check(sourceAccess.validateSource(handle).sizeBytes == 0L) {
+                    "Empty source changed before resumable offer"
+                }
+                val digest = java.security.MessageDigest.getInstance("SHA-256").digest()
+                enriched += item.copy(digest = dev.glide.core.domain.Sha256Digest.fromByteArray(digest))
+                continue
+            }
             val snapshot =
                 preflight(handle)
             if (snapshot.totalBytes !=
@@ -835,6 +851,7 @@ class TransferCoordinator(
 
             val resumableItem =
                 item.copy(
+                    digest = dev.glide.core.domain.Sha256Digest(snapshot.wholeFileSha256Hex),
                     resumeChunkSize =
                         snapshot.chunkSize,
                     resumeChunkRootHashHex =
@@ -856,6 +873,30 @@ class TransferCoordinator(
         return batch.copy(
             items = enriched
         )
+    }
+
+    private suspend fun saveAcceptedResumeBatch(
+        batch: TransferBatch,
+        expectedDigest: dev.glide.core.domain.Sha256Digest? = null
+    ): dev.glide.core.domain.Sha256Digest? {
+        if (!isTrueResumeNegotiated()) return null
+        val manager = checkNotNull(persistentTrustManager)
+        val peerFingerprint = checkNotNull(authenticatedPeerFingerprintHex)
+        if (manager.trustedPeerByFingerprint(peerFingerprint) == null) {
+            throw TrustedSessionAuthenticationException("Resume peer is no longer trusted")
+        }
+        val local = dev.glide.core.domain.Sha256Digest(manager.localFingerprintHex())
+        val peer = dev.glide.core.domain.Sha256Digest(peerFingerprint)
+        val sender = if (role == DeviceRole.Sender) local else peer
+        val receiver = if (role == DeviceRole.Receiver) local else peer
+        val manifest = ResumeBatchManifest.fromAcceptedOffer(sessionId, sender, receiver, batch)
+        val digest = manifest?.digest()
+        if (expectedDigest != null && digest != expectedDigest) {
+            throw TrustedSessionAuthenticationException("Accepted resume manifest differs from the authenticated offer")
+        }
+        val persist = persistAcceptedResumeBatch ?: return null
+        if (manifest != null) persist(manifest, role)
+        return digest
     }
 
     private fun scheduleIdentityTimeoutIfNeeded() {
@@ -2354,6 +2395,14 @@ class TransferCoordinator(
                 if (currentStagingHandle == staging) {
                     currentStagingHandle = null
                 }
+                if (isTrueResumeNegotiated() && itemState.item.digest != null) {
+                    try {
+                        recordResumeBatchCommit?.invoke(sessionId, itemId, itemState.transferredBytes, digest)
+                    } catch (error: Exception) {
+                        if (error is kotlinx.coroutines.CancellationException) throw error
+                        // The receive store's durable verified commit is authoritative after a crash.
+                    }
+                }
                 historyStore?.updateItemOutcome(
                     itemId,
                     "Verified",
@@ -2593,7 +2642,8 @@ class TransferCoordinator(
                                 envelope.messageId,
                                 envelope.seq,
                                 now,
-                                dev.glide.core.protocol.AppOfferMetadata.decode(envelope.extensions, page)
+                                dev.glide.core.protocol.AppOfferMetadata.decode(envelope.extensions, page),
+                                ResumeOfferMetadata.decode(envelope.extensions, page)
                             )
                     )
                 }
@@ -2604,15 +2654,35 @@ class TransferCoordinator(
                     _state.value.batch?.let { recordInitialHistory(it) }
                 }
                 MessageTypes.OFFER_DECISION -> {
+                    requireIdentityReadyForOffer()
                     val decision = ProtocolCodec.decodeBody<dev.glide.core.protocol.OfferDecisionBody>(envelope)
+                    val acceptedDigest = ResumeOfferMetadata.decodeAcceptance(envelope.extensions)
+                    if (acceptedDigest != null && (!isTrueResumeNegotiated() || !decision.accepted)) {
+                        throw TrustedSessionAuthenticationException("Unexpected resume manifest acceptance")
+                    }
+                    val acceptedBatch = _state.value.batch
                     val canPrepare = role == DeviceRole.Sender &&
                         decision.accepted &&
                         _state.value.phase == SessionPhase.AwaitingConsent &&
-                        _state.value.batch != null &&
-                        _state.value.batch?.id == decision.batchId
+                        acceptedBatch != null &&
+                        acceptedBatch.id == decision.batchId
 
                     val bulkRef = if (canPrepare) {
-                        val firstItem = _state.value.batch?.items?.firstOrNull()
+                        try {
+                            if (acceptedDigest != null) {
+                                saveAcceptedResumeBatch(requireNotNull(acceptedBatch), acceptedDigest)
+                            }
+                        } catch (error: TrustedSessionAuthenticationException) {
+                            throw error
+                        } catch (error: kotlinx.coroutines.CancellationException) {
+                            throw error
+                        } catch (_: Exception) {
+                            dispatch(ReducerEvent.TransportFailure(
+                                TransferFailure.WriteFailure("Could not save the accepted transfer for resume"), now
+                            ))
+                            return
+                        }
+                        val firstItem = acceptedBatch.items.firstOrNull()
                         if (firstItem != null) prepareSourceItem(firstItem) else null
                     } else null
 
@@ -2688,6 +2758,8 @@ class TransferCoordinator(
                     // Unknown envelope types safely ignored
                 }
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: TrustedSessionAuthenticationException) {
             dispatch(
                 ReducerEvent.TransportFailure(

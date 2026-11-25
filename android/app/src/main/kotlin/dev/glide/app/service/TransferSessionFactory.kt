@@ -25,6 +25,7 @@ import dev.glide.data.store.ResumeReceiverRevalidationResult
 import dev.glide.data.store.ResumeSenderRevalidationResult
 import dev.glide.data.source.ResumeSourceVerifier
 import dev.glide.data.store.ResumableStagingStore
+import dev.glide.data.store.ResumableBatchStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
@@ -42,7 +43,8 @@ class TransferSessionFactory(
     val resumeSourceVerifier:
         ResumeSourceVerifier? = null,
     val resumableStagingStore:
-        ResumableStagingStore? = null
+        ResumableStagingStore? = null,
+    private val resumableBatchStore: ResumableBatchStore? = null
 ) {
     /**
      * Constructs a sender-role [TransferCoordinator] bound to an explicit [sessionId], batch, and source map.
@@ -147,12 +149,14 @@ class TransferSessionFactory(
                         }
                     },
             enableTrueResumeCapability =
-                persistentTrustManager != null &&
+                expectedPeerFingerprintHex != null &&
+                    persistentTrustManager != null &&
                     resumeSourceVerifier != null &&
                     resumableStagingStore != null,
             purgeResumeItemAuthority = resumableStagingStore?.let { store ->
                 { original, item -> store.purgeSession(original.value, item.value) }
-            }
+            },
+            persistAcceptedResumeBatch = resumableBatchStore?.let { it::saveAccepted }
         )
     }
 
@@ -266,8 +270,11 @@ class TransferSessionFactory(
                         }
                     },
             enableTrueResumeCapability =
-                persistentTrustManager != null &&
-                    resumableStagingStore != null
+                expectedPeerFingerprintHex != null &&
+                    persistentTrustManager != null &&
+                    resumableStagingStore != null,
+            persistAcceptedResumeBatch = resumableBatchStore?.let { it::saveAccepted },
+            recordResumeBatchCommit = resumableBatchStore?.let { it::recordVerifiedCommit }
         )
     }
 

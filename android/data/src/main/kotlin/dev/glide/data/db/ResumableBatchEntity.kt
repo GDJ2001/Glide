@@ -41,9 +41,15 @@ interface ResumableBatchDao {
     """)
     suspend fun updateProgress(sessionId: String, revision: Long, nowMs: Long, progressJson: String): Int
 
+    @Query("DELETE FROM resumable_batches WHERE original_session_id = :sessionId")
+    suspend fun purgeSession(sessionId: String): Int
+
     @Query("DELETE FROM resumable_batches WHERE peer_fingerprint = :peerFingerprint")
     suspend fun purgePeer(peerFingerprint: String): Int
 
     @Query("DELETE FROM resumable_batches WHERE expires_at_ms <= :nowMs")
     suspend fun purgeExpired(nowMs: Long): Int
+
+    @Query("DELETE FROM resumable_batches")
+    suspend fun purgeAll(): Int
 }

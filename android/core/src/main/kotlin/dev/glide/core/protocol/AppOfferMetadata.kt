@@ -37,8 +37,8 @@ internal object AppOfferMetadata {
     }
 
     fun decode(extensions: JsonObject?, page: OfferPageBody): Map<ItemId, AppTransferMetadata> {
-        if (extensions == null || extensions.toString().encodeToByteArray().size > MAX_BYTES) return emptyMap()
-        val entries = extensions[KEY] as? JsonObject ?: return emptyMap()
+        val entries = extensions?.get(KEY) as? JsonObject ?: return emptyMap()
+        if (JsonObject(mapOf(KEY to entries)).toString().encodeToByteArray().size > MAX_BYTES) return emptyMap()
         return page.items.mapNotNull { item ->
             val raw = entries[item.itemId.value] as? JsonObject ?: return@mapNotNull null
             runCatching {

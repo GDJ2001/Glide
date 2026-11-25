@@ -6,8 +6,6 @@ import dev.glide.core.domain.ProtocolLimits
 import dev.glide.core.domain.TransferBatch
 import dev.glide.core.domain.TransferFailure
 import dev.glide.core.domain.TransferItem
-import dev.glide.core.domain.AppTransferMetadata
-import dev.glide.core.domain.ItemId
 
 data class PagedOffer(
     val begin: OfferBeginBody,
@@ -34,7 +32,8 @@ object OfferPaginator {
         val pages = mutableListOf<OfferPageBody>()
         var currentPageItems = mutableListOf<OfferItemDto>()
         var currentPageEstimatedBytes = 256 // Base JSON envelope overhead
-        val currentApps = mutableMapOf<ItemId, AppTransferMetadata>()
+        val currentItems = mutableListOf<TransferItem>()
+        val includeResumeDigests = allowResumeMetadata && batch.items.all { it.digest != null }
 
         for (item in batch.items) {
             val carriesResumeMetadata =
@@ -63,14 +62,18 @@ object OfferPaginator {
             )
 
             val itemEstimatedBytes = ProtocolCodec.encodeBody(itemDto).toString().encodeToByteArray().size + 1
-            val appHint = item.appMetadata?.takeIf {
-                AppOfferMetadata.encode(mapOf(item.id to it)) != null
-            }
-            val appHintsOverflow = appHint != null &&
-                AppOfferMetadata.encode(currentApps + (item.id to appHint)) == null
+            fun extensionFits(items: List<TransferItem>): Boolean =
+                try {
+                    val extensions = ResumeOfferMetadata.encodePage(items, includeResumeDigests)
+                    extensions == null ||
+                        extensions.toString().encodeToByteArray().size <= ProtocolCodec.MAX_EXTENSIONS_BYTES
+                } catch (_: ProtocolViolationException) {
+                    false
+                }
 
             // If page is full by item count OR would exceed safe payload ceiling, start new page
-            if (currentPageItems.size >= maxItemsPerPage || appHintsOverflow ||
+            if (currentPageItems.size >= maxItemsPerPage ||
+                (currentItems.isNotEmpty() && !extensionFits(currentItems + item)) ||
                 (currentPageItems.isNotEmpty() && currentPageEstimatedBytes + itemEstimatedBytes > safePagePayloadCeilingBytes)
             ) {
                 pages.add(
@@ -82,11 +85,16 @@ object OfferPaginator {
                 )
                 currentPageItems = mutableListOf()
                 currentPageEstimatedBytes = 256
-                currentApps.clear()
+                currentItems.clear()
             }
 
+            if (currentItems.isEmpty() && !extensionFits(listOf(item))) {
+                throw ProtocolViolationException(
+                    TransferFailure.LimitExceeded("Item metadata exceeds the offer page budget")
+                )
+            }
             currentPageItems.add(itemDto)
-            if (appHint != null) currentApps[item.id] = appHint
+            currentItems.add(item)
             currentPageEstimatedBytes += itemEstimatedBytes
         }
 

@@ -42,7 +42,8 @@ sealed class ReducerEvent {
     data class SubmitOfferDecision(
         val accepted: Boolean,
         val rejectionCode: String? = null,
-        override val timestampMs: Long
+        override val timestampMs: Long,
+        val resumeManifestDigest: dev.glide.core.domain.Sha256Digest? = null
     ) : ReducerEvent()
 
     data class RequestCancel(
@@ -79,7 +80,8 @@ sealed class ReducerEvent {
         val messageId: MessageId,
         val seq: Long,
         override val timestampMs: Long,
-        val appMetadata: Map<dev.glide.core.domain.ItemId, dev.glide.core.domain.AppTransferMetadata> = emptyMap()
+        val appMetadata: Map<dev.glide.core.domain.ItemId, dev.glide.core.domain.AppTransferMetadata> = emptyMap(),
+        val resumeDigests: Map<dev.glide.core.domain.ItemId, dev.glide.core.domain.Sha256Digest> = emptyMap()
     ) : ReducerEvent()
 
     data class OfferEndReceived(

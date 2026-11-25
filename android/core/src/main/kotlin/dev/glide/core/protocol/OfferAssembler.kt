@@ -27,7 +27,8 @@ class OfferAssembler(
 
     fun addPage(
         page: OfferPageBody,
-        appMetadata: Map<dev.glide.core.domain.ItemId, dev.glide.core.domain.AppTransferMetadata> = emptyMap()
+        appMetadata: Map<dev.glide.core.domain.ItemId, dev.glide.core.domain.AppTransferMetadata> = emptyMap(),
+        resumeDigests: Map<dev.glide.core.domain.ItemId, dev.glide.core.domain.Sha256Digest> = emptyMap()
     ) {
         check(!isFinished) { "Cannot add page: offer assembly has already been completed" }
 
@@ -74,7 +75,8 @@ class OfferAssembler(
         for (itemDto in page.items) {
             val carriesResumeMetadata =
                 itemDto.rootHash != null ||
-                    itemDto.chunkSize != null
+                    itemDto.chunkSize != null ||
+                    itemDto.itemId in resumeDigests
             if (carriesResumeMetadata &&
                 !allowResumeMetadata
             ) {
@@ -131,6 +133,7 @@ class OfferAssembler(
                     mimeBytes +
                     itemDto.sizeBytes.length +
                     resumeMetadataBytes +
+                    (if (itemDto.itemId in resumeDigests) 67 else 0) +
                     32
             accumulatedMetadataBytes += itemMetadataEstimate
             if (accumulatedMetadataBytes > ProtocolLimits.MAX_OFFER_METADATA_BYTES) {
@@ -146,6 +149,7 @@ class OfferAssembler(
                 name = itemDto.name,
                 mimeType = itemDto.mime,
                 sizeBytes = sizeBytes,
+                digest = resumeDigests[itemDto.itemId],
                 relativePath = itemDto.relativePath,
                 resumeChunkSize =
                     itemDto.chunkSize,

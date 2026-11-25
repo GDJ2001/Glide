@@ -26,7 +26,7 @@ import dev.glide.core.protocol.NegotiationConstants
 import dev.glide.core.protocol.NegotiationValidator
 import dev.glide.core.protocol.OfferAssembler
 import dev.glide.core.protocol.OfferDecisionBody
-import dev.glide.core.protocol.AppOfferMetadata
+import dev.glide.core.protocol.ResumeOfferMetadata
 import dev.glide.core.protocol.OfferPaginator
 import dev.glide.core.protocol.ProtocolCodec
 import java.util.UUID
@@ -165,17 +165,15 @@ object TransferReducer {
         effects.add(ReducerEffect.SendControl(beginEnv))
         curState = curState.copy(nextOutboundSeq = seq1)
 
-        val appHints = event.batch.items.mapNotNull { item ->
-            item.appMetadata?.let { item.id to it }
-        }.toMap()
+        val itemsById = event.batch.items.associateBy { it.id }
+        val includeResumeDigests = resumeNegotiated && event.batch.items.all { it.digest != null }
         for (page in paged.pages) {
             val (pageEnv, seqN) = makeEnvelope(curState, MessageTypes.OFFER_PAGE, ProtocolCodec.encodeBody(page))
-            val pageApps = page.items.mapNotNull { item ->
-                appHints[item.itemId]?.takeIf {
-                    AppOfferMetadata.encode(mapOf(item.itemId to it)) != null
-                }?.let { item.itemId to it }
-            }.toMap()
-            effects.add(ReducerEffect.SendControl(pageEnv.copy(extensions = AppOfferMetadata.encode(pageApps))))
+            val extensions = ResumeOfferMetadata.encodePage(
+                page.items.map { itemsById.getValue(it.itemId) },
+                includeResumeDigests
+            )
+            effects.add(ReducerEffect.SendControl(pageEnv.copy(extensions = extensions)))
             curState = curState.copy(nextOutboundSeq = seqN)
         }
 
@@ -226,7 +224,7 @@ object TransferReducer {
             return ReducerResult(state, emptyList())
         }
         val assembler = state.offerAssembler ?: return ReducerResult(state, emptyList())
-        assembler.addPage(event.page, event.appMetadata)
+        assembler.addPage(event.page, event.appMetadata, event.resumeDigests)
         return ReducerResult(state.copy(lastActivityMonotonicMs = event.timestampMs), emptyList())
     }
 
@@ -256,7 +254,10 @@ object TransferReducer {
             accepted = event.accepted,
             code = if (event.accepted) null else (event.rejectionCode ?: "USER_REJECTED")
         )
-        val (env, nextSeq) = makeEnvelope(state, MessageTypes.OFFER_DECISION, ProtocolCodec.encodeBody(decision))
+        val (decisionEnvelope, nextSeq) = makeEnvelope(state, MessageTypes.OFFER_DECISION, ProtocolCodec.encodeBody(decision))
+        val env = if (event.accepted && event.resumeManifestDigest != null) {
+            decisionEnvelope.copy(extensions = ResumeOfferMetadata.encodeAcceptance(event.resumeManifestDigest))
+        } else decisionEnvelope
 
         return if (event.accepted) {
             val nextState = state.copy(
@@ -487,6 +488,12 @@ object TransferReducer {
         val curItem = state.itemStates[event.end.itemId] ?: return ReducerResult(state, emptyList())
         if (curItem.expectedDigest != null || curItem.phase == ItemPhase.Committing || curItem.phase.isTerminal) {
             return ReducerResult(state, emptyList())
+        }
+        val offeredDigest = curItem.item.digest
+        if (offeredDigest != null && offeredDigest != event.end.sha256) {
+            return handleTransportFailure(state, ReducerEvent.TransportFailure(
+                TransferFailure.IntegrityMismatch(offeredDigest, event.end.sha256), event.timestampMs
+            ))
         }
         val updatedItem = curItem.copy(expectedDigest = event.end.sha256)
         val nextState = state.copy(

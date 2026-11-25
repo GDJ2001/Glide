@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Glide.Core.Models;
 using Glide.Core.Pairing;
 using Glide.Core.Storage;
 using Xunit;
@@ -29,6 +30,47 @@ public sealed class ResumeBatchManifestTests
         var parsed = Assert.IsType<Profile2Message.SessionOpen>(Profile2WireCodec.Decode(wire));
         Assert.Equal("receiver", parsed.InitiatorRole);
         Assert.Equal(wire, Profile2WireCodec.Encode(parsed));
+    }
+
+    [Fact]
+    public async Task OnlyVerifiedPrefixSurvivesRestartAndRevocationRemovesIt()
+    {
+        var fixture = JsonSerializer.Deserialize<Fixture>(
+            File.ReadAllText(FixturePath("resume_batch_manifest_v1.json")),
+            new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        var manifest = fixture.Manifest;
+        var sessionId = new SessionId(manifest.SessionId);
+        string root = Path.Combine(Path.GetTempPath(), "glide-resume-test-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var writer = new DesktopResumeStore(root);
+            await writer.SaveAcceptedBatchAsync(manifest, DesktopResumeJournalRoles.Receiver);
+            var first = manifest.Items[0];
+            var second = manifest.Items[1];
+            await Assert.ThrowsAsync<InvalidDataException>(() => writer.RecordVerifiedBatchCommitAsync(
+                sessionId, new ItemId(second.Id), second.SizeBytes, second.Digest));
+            await Assert.ThrowsAsync<InvalidDataException>(() => writer.RecordVerifiedBatchCommitAsync(
+                sessionId, new ItemId(first.Id), first.SizeBytes + 1, first.Digest));
+            Assert.True(await writer.RecordVerifiedBatchCommitAsync(
+                sessionId, new ItemId(first.Id), first.SizeBytes, first.Digest));
+
+            var reopened = new DesktopResumeStore(root);
+            Assert.Null(await reopened.FindAcceptedBatchAsync(
+                sessionId, DesktopResumeJournalRoles.Receiver, manifest.ReceiverFingerprint, fixture.Sha256));
+            var batch = await reopened.FindAcceptedBatchAsync(
+                sessionId, DesktopResumeJournalRoles.Receiver, manifest.SenderFingerprint, fixture.Sha256);
+            Assert.NotNull(batch);
+            Assert.Equal(1, batch.VerifiedCount);
+            Assert.True(await reopened.RecordVerifiedBatchCommitAsync(
+                sessionId, new ItemId(first.Id), first.SizeBytes, first.Digest));
+            Assert.Equal(1, await reopened.PurgePeerAsync(manifest.SenderFingerprint));
+            Assert.Null(await reopened.FindAcceptedBatchAsync(
+                sessionId, DesktopResumeJournalRoles.Receiver, manifest.SenderFingerprint, fixture.Sha256));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
     }
 
     private static string FixturePath(string name)

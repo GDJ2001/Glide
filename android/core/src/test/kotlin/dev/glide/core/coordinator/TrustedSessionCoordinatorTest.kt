@@ -34,6 +34,7 @@ import dev.glide.core.protocol.Envelope
 import dev.glide.core.protocol.MessageTypes
 import dev.glide.core.protocol.ProtocolCodec
 import dev.glide.core.resume.ResumeAuthorityLookup
+import dev.glide.core.resume.ResumeBatchManifest
 import dev.glide.core.resume.ResumeReconnectPlan
 import dev.glide.core.resume.ResumeReconnectState
 import dev.glide.core.resume.ResumeRequestAuthority
@@ -57,6 +58,84 @@ import java.security.spec.ECGenParameterSpec
 import java.util.UUID
 
 class TrustedSessionCoordinatorTest {
+
+    @Test
+    fun authenticatedConsentPersistsSameOrderedBatchOnBothPeers() = runBlocking {
+        withTimeout(10_000) {
+            val session = SessionId(UUID.randomUUID().toString())
+            val senderId = PeerId("retained-sender")
+            val receiverId = PeerId("retained-receiver")
+            val senderTransport = TrustedControlTransport(senderId, session, "cd".repeat(32))
+            val receiverTransport = TrustedControlTransport(receiverId, session, "cd".repeat(32))
+            senderTransport.remote = receiverTransport
+            receiverTransport.remote = senderTransport
+            val senderIdentity = TestPersistentIdentityStore()
+            val receiverIdentity = TestPersistentIdentityStore()
+            fun record(identity: TestPersistentIdentityStore) = TrustedPeerRecord(
+                identity.getFingerprint(),
+                with(PeerIdentityVerifier) { identity.getOrCreatePublicKeyDer().toHex() },
+                "Glide", 1L, 1L
+            )
+            val senderTrust = newTrustManager(listOf(record(receiverIdentity)), senderIdentity)
+            val receiverTrust = newTrustManager(listOf(record(senderIdentity)), receiverIdentity)
+            val item = TransferItem(ItemId(UUID.randomUUID().toString()), "empty.txt", "text/plain", 0)
+            val batch = TransferBatch(BatchId(UUID.randomUUID().toString()), listOf(item))
+            val handle = SourceHandle("empty")
+            val source = FakeSourceAccess().apply {
+                registerSource(handle, dev.glide.core.ports.SourceMetadata(item.name, item.mimeType, 0), byteArrayOf())
+            }
+            val saved = mutableMapOf<DeviceRole, ResumeBatchManifest>()
+            val sender = TransferCoordinator(
+                sessionId = session,
+                role = DeviceRole.Sender,
+                peerId = receiverId,
+                transport = senderTransport,
+                sourceAccess = source,
+                receiveStore = FakeReceiveStore(),
+                scope = this,
+                senderBatch = batch,
+                sourceMap = mapOf(item.id to handle),
+                persistentTrustManager = senderTrust,
+                expectedPeerFingerprintHex = receiverIdentity.getFingerprint(),
+                resumeSourcePreflight = {
+                    error("An empty file has no resumable chunks")
+                },
+                persistSenderResumeAuthority = { _, _, _, _, _ -> },
+                persistAcceptedResumeBatch = { manifest, role -> saved[role] = manifest },
+                enableTrueResumeCapability = true
+            )
+            val receiver = TransferCoordinator(
+                sessionId = session,
+                role = DeviceRole.Receiver,
+                peerId = senderId,
+                transport = receiverTransport,
+                sourceAccess = FakeSourceAccess(),
+                receiveStore = FakeReceiveStore(),
+                scope = this,
+                persistentTrustManager = receiverTrust,
+                expectedPeerFingerprintHex = senderIdentity.getFingerprint(),
+                persistReceiverResumeAuthority = { _, _, _ -> },
+                recordReceiverResumeChunk = { _, _, _, _ -> true },
+                persistAcceptedResumeBatch = { manifest, role -> saved[role] = manifest },
+                enableTrueResumeCapability = true
+            )
+            try {
+                receiver.start()
+                sender.start()
+                while (receiver.state.value.phase != SessionPhase.AwaitingConsent) delay(10)
+                assertTrue(saved.isEmpty())
+                receiver.acceptOffer()
+                while (saved.size != 2) delay(10)
+                assertEquals(saved[DeviceRole.Sender], saved[DeviceRole.Receiver])
+                val manifest = saved.getValue(DeviceRole.Receiver)
+                assertEquals(item.id, manifest.items.single().id)
+                assertEquals(0, manifest.items.single().chunkSize)
+            } finally {
+                sender.stop()
+                receiver.stop()
+            }
+        }
+    }
 
     @Test
     fun identityV1_mutualProofCompletesBeforeOffer_andPreservesSequence() =

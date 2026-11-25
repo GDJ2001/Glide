@@ -90,7 +90,8 @@ object TransferModule {
         resumeSourceVerifier:
             ResumeSourceVerifier,
         resumableStagingStore:
-            ResumableStagingStore
+            ResumableStagingStore,
+        resumableBatchStore: dev.glide.data.store.ResumableBatchStore
     ): TransferSessionFactory {
         return TransferSessionFactory(
             sourceAccess = sourceAccess,
@@ -99,7 +100,8 @@ object TransferModule {
             resumeSourceVerifier =
                 resumeSourceVerifier,
             resumableStagingStore =
-                resumableStagingStore
+                resumableStagingStore,
+            resumableBatchStore = resumableBatchStore
         )
     }
 

@@ -46,6 +46,52 @@ public sealed class DesktopPairingCoordinatorTests
     }
 
     [Fact]
+    public async Task TrustedResumeWithoutRuntimeReturnsUnsupportedWithoutRoutingToSend()
+    {
+        string root = Path.Combine(Path.GetTempPath(), $"glide-resume-router-{Guid.NewGuid():N}");
+        using var identity = new InMemoryIdentityStore();
+        using var mdns = new MdnsDiscoveryService();
+        using var listener = new TlsSocketListener(port: 0);
+        using var coordinator = new DesktopPairingCoordinator(
+            new DesktopPersistentTrustManager(identity, new DesktopTrustStore(Path.Combine(root, "trust.json"))),
+            new DesktopInvitationManager(), mdns, () => "Receiver",
+            _ => Task.FromResult(listener), () => { }, () => false, addressPolicy: _ => true);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var server = Task.Run(async () =>
+        {
+            await using var connection = await listener.AcceptConnectionAsync(timeout.Token);
+            Assert.Equal(LanSessionDispatchKind.Profile2Gld2,
+                await LanSessionPreambleInspector.InspectAndPrepareAsync(connection, timeout.Token));
+            await DesktopProfile2Router.RouteAsync(connection, coordinator,
+                (_, _, _) => throw new InvalidOperationException("Resume cannot enter the ordinary send flow"), timeout.Token);
+        }, timeout.Token);
+        var client = new TlsSocketClient();
+        await using var sender = await client.ConnectAsync(
+            IPAddress.Loopback.ToString(), listener.BoundPort, expectedSpkiSha256: null, timeout.Token);
+        var open = new Profile2Message.SessionOpen(
+            SessionId: Guid.NewGuid().ToString(),
+            Purpose: Profile2Constants.PurposeTrustedResume,
+            AuthMethod: Profile2Constants.AuthMethodIdentityV1,
+            InitiatorNonce: InvitationCodec.ToUnpaddedBase64Url(new byte[32]),
+            InitiatorDeviceName: "Sender",
+            InitiatorPlatform: "windows",
+            InitiatorIdentityPublicKey: InvitationCodec.ToUnpaddedBase64Url(identity.GetOrCreatePublicKeyDer()),
+            ExpectedPeerIdentityFingerprint: identity.GetFingerprintHex(),
+            OriginalSessionId: Guid.NewGuid().ToString(),
+            ItemId: Guid.NewGuid().ToString(),
+            InitiatorRole: "sender",
+            ResumeManifestDigest: new string('a', 64));
+        await LanSessionPreambleInspector.WriteGld2PreambleAsync(sender.TransportStream, timeout.Token);
+        await Profile2WireCodec.WriteMessageAsync(sender.TransportStream, open, timeout.Token);
+        var ack = Assert.IsType<Profile2Message.SessionOpenAck>(
+            await Profile2WireCodec.ReadMessageAsync(sender.TransportStream, timeout.Token));
+        Assert.False(ack.Accepted);
+        Assert.Equal(Profile2Constants.ErrorUnsupportedVersion, ack.ErrorCode);
+        Assert.Equal(open.SessionId, ack.SessionId);
+        await server;
+    }
+
+    [Fact]
     public async Task StartReadyAsync_PublishesCodeLinkAndLocalEndpointsInDiagnostic()
     {
         string tempRoot = Path.Combine(Path.GetTempPath(), $"glide-pair-coord-{Guid.NewGuid():N}");

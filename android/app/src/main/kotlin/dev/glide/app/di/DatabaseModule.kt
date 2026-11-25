@@ -98,11 +98,23 @@ object DatabaseModule {
         db.resumableSessionDao()
 
     @Provides
+    fun provideResumableBatchDao(
+        db: GlideDatabase
+    ): dev.glide.data.db.ResumableBatchDao = db.resumableBatchDao()
+
+    @Provides
+    @Singleton
+    fun provideResumableBatchStore(
+        dao: dev.glide.data.db.ResumableBatchDao
+    ) = dev.glide.data.store.ResumableBatchStore(dao)
+
+    @Provides
     @Singleton
     fun provideResumableStagingStore(
         @ApplicationContext context: Context,
         resumableSessionDao:
-            dev.glide.data.db.ResumableSessionDao
+            dev.glide.data.db.ResumableSessionDao,
+        resumableBatchDao: dev.glide.data.db.ResumableBatchDao? = null
     ): dev.glide.data.store.ResumableStagingStore {
         val root =
             java.io.File(
@@ -113,7 +125,8 @@ object DatabaseModule {
             .ResumableStagingStore(
                 stagingBaseDir = root,
                 resumableSessionDao =
-                    resumableSessionDao
+                    resumableSessionDao,
+                resumableBatchDao = resumableBatchDao
             )
     }
 

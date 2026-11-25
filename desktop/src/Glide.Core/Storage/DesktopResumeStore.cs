@@ -291,7 +291,7 @@ public sealed class DesktopResumeSourceVerifier
 /// advances only for the exact next chunk, and each retained chunk is re-hashed after restart.
 /// Sender journals persist source authority but never trust path/offset alone.
 /// </summary>
-public sealed class DesktopResumeStore
+public sealed partial class DesktopResumeStore
 {
     public const long MaxTtlMilliseconds =
         24L * 60L * 60L * 1000L;
@@ -1303,7 +1303,7 @@ public sealed class DesktopResumeStore
                     journal);
             }
 
-            return journals.Count;
+            return journals.Count + (TryPurgeAcceptedBatchUnsafe(originalSessionId) ? 1 : 0);
         }
         finally
         {
@@ -1340,7 +1340,8 @@ public sealed class DesktopResumeStore
                     journal);
             }
 
-            return journals.Count;
+            return journals.Count + PurgeAcceptedBatchesUnsafe(
+                batch => batch.PeerFingerprintHex == peerFingerprintHex);
         }
         finally
         {
@@ -1374,7 +1375,7 @@ public sealed class DesktopResumeStore
                     journal);
             }
 
-            return expired.Count;
+            return expired.Count + PurgeAcceptedBatchesUnsafe(batch => batch.ExpiresAtUnixMs <= now);
         }
         finally
         {
@@ -1400,7 +1401,7 @@ public sealed class DesktopResumeStore
                     journal);
             }
 
-            return all.Count;
+            return all.Count + PurgeAcceptedBatchesUnsafe(_ => true);
         }
         finally
         {
@@ -1642,6 +1643,11 @@ public sealed class DesktopResumeStore
         Directory.CreateDirectory(
             _journalsRoot);
 
+        PersistJsonUnsafe(path, journal);
+    }
+
+    private void PersistJsonUnsafe<T>(string path, T record)
+    {
         string tempPath =
             path +
             ".tmp-" +
@@ -1652,7 +1658,7 @@ public sealed class DesktopResumeStore
         {
             string json =
                 JsonSerializer.Serialize(
-                    journal,
+                    record,
                     _json);
             using (
                 var stream =

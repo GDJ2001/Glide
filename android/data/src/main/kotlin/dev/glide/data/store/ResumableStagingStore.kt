@@ -2,6 +2,7 @@ package dev.glide.data.store
 
 import dev.glide.core.resume.ContentDigestTree
 import dev.glide.core.resume.ResumeToken
+import dev.glide.data.db.ResumableBatchDao
 import dev.glide.data.db.ResumableSessionDao
 import dev.glide.data.db.ResumableSessionEntity
 import kotlinx.coroutines.CoroutineDispatcher
@@ -30,7 +31,8 @@ import kotlin.math.min
 class ResumableStagingStore(
     private val stagingBaseDir: File,
     private val resumableSessionDao: ResumableSessionDao,
-    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val resumableBatchDao: ResumableBatchDao? = null
 ) {
 
     init {
@@ -1161,6 +1163,7 @@ class ResumableStagingStore(
     suspend fun purgeOriginalSession(
         originalSessionId: String
     ): Int = withContext(ioDispatcher) {
+        resumableBatchDao?.purgeSession(originalSessionId)
         val matching =
             resumableSessionDao
                 .getAllResumableSessions()
@@ -1177,6 +1180,7 @@ class ResumableStagingStore(
     suspend fun purgeForPeer(
         peerFingerprintHex: String
     ): Int = withContext(ioDispatcher) {
+        resumableBatchDao?.purgePeer(peerFingerprintHex)
         val matching =
             resumableSessionDao
                 .getAllResumableSessions()
@@ -1192,6 +1196,7 @@ class ResumableStagingStore(
 
     suspend fun purgeAll(): Int =
         withContext(ioDispatcher) {
+            resumableBatchDao?.purgeAll()
             val all =
                 resumableSessionDao
                     .getAllResumableSessions()
@@ -1205,6 +1210,7 @@ class ResumableStagingStore(
         currentMs: Long =
             System.currentTimeMillis()
     ): Int = withContext(ioDispatcher) {
+        resumableBatchDao?.purgeExpired(currentMs)
         val expired =
             resumableSessionDao
                 .getExpiredSessions(

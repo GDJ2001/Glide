@@ -72,10 +72,24 @@ public static class DesktopProfile2Router
             return;
         }
 
-        if (string.Equals(open.Purpose, Profile2Constants.PurposeTrustedResume, StringComparison.Ordinal)
-            && trustedResumeHandler != null)
+        if (string.Equals(open.Purpose, Profile2Constants.PurposeTrustedResume, StringComparison.Ordinal))
         {
-            await trustedResumeHandler(connection, open, cancellationToken).ConfigureAwait(false);
+            if (trustedResumeHandler != null)
+            {
+                await trustedResumeHandler(connection, open, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
+            await using (connection.ConfigureAwait(false))
+            {
+                using var deadline = pairing.TimeoutPolicy.CreateTimeoutTokenSource(effectiveDeadline, cancellationToken);
+                await Profile2WireCodec.WriteMessageAsync(
+                    connection.TransportStream,
+                    new Profile2Message.SessionOpenAck(open.SessionId, Accepted: false,
+                        ErrorCode: Profile2Constants.ErrorUnsupportedVersion,
+                        Message: "This build does not support resuming the accepted batch"),
+                    deadline.Token).ConfigureAwait(false);
+            }
             return;
         }
 

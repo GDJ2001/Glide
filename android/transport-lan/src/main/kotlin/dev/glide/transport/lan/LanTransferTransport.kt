@@ -295,6 +295,22 @@ class LanTransferTransport(
         val open = dev.glide.core.pairing.Profile2WireCodec.readMessage(input)
             as? dev.glide.core.pairing.Profile2Message.SessionOpen
             ?: run { socket.close(); return }
+        if (open.purpose == dev.glide.core.pairing.Profile2Constants.PURPOSE_TRUSTED_RESUME) {
+            try {
+                dev.glide.core.pairing.Profile2WireCodec.writeMessage(
+                    output,
+                    dev.glide.core.pairing.Profile2Message.SessionOpenAck(
+                        sessionId = open.sessionId,
+                        accepted = false,
+                        errorCode = dev.glide.core.pairing.Profile2Constants.ERROR_UNSUPPORTED_VERSION,
+                        message = "This build does not support resuming the accepted batch"
+                    )
+                )
+            } finally {
+                socket.close()
+            }
+            return
+        }
         val manager = trustedIdentity
         val key = runCatching {
             java.util.Base64.getUrlDecoder().decode(open.initiatorIdentityPublicKey)
