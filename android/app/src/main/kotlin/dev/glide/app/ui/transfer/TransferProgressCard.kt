@@ -20,9 +20,9 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.TabletAndroid
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -292,7 +292,7 @@ private fun ActiveTransferringCard(
                                 }
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Stop,
+                                imageVector = Icons.Default.Pause,
                                 contentDescription = "Stop transfer"
                             )
                         }
