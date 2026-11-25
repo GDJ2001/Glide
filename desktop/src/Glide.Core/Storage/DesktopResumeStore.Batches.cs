@@ -84,6 +84,26 @@ public sealed partial class DesktopResumeStore
         }
     }
 
+    public async Task<bool> HasActiveAcceptedBatchAsync(
+        SessionId sessionId, string role, CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var batch = ReadAcceptedBatchUnsafe(sessionId);
+            return batch is not null && batch.ExpiresAtUnixMs > _nowUnixMs() && batch.Role == role &&
+                batch.VerifiedCount < batch.Manifest.Items.Count;
+        }
+        catch (Exception error) when (error is IOException or JsonException or InvalidDataException)
+        {
+            return false;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     public async Task<DesktopAcceptedResumeBatch?> FindAcceptedBatchAsync(
         SessionId sessionId, string role, string peerFingerprintHex, string manifestDigest,
         CancellationToken cancellationToken = default)

@@ -63,7 +63,9 @@ public sealed record DesktopTransferProgress(
     string PeerName,
     string ItemName,
     long TransferredBytes,
-    long TotalBytes)
+    long TotalBytes,
+    int ItemIndex = 1,
+    int ItemCount = 1)
 {
     public double Fraction => TotalBytes <= 0 ? 1.0 : Math.Clamp((double)TransferredBytes / TotalBytes, 0.0, 1.0);
 }
@@ -83,7 +85,9 @@ public sealed record DesktopTransferResult(
     string Message,
     int VerifiedCount = 0,
     long VerifiedBytes = 0,
-    TransferErrorCategory ErrorCategory = TransferErrorCategory.None)
+    TransferErrorCategory ErrorCategory = TransferErrorCategory.None,
+    bool Paused = false,
+    string? ResumableSessionId = null)
 {
     public static DesktopTransferResult Completed(string message, int count, long bytes) =>
         new(true, false, false, message, count, bytes);
@@ -98,6 +102,11 @@ public sealed record DesktopTransferResult(
     public static DesktopTransferResult Failed(string message, TransferErrorCategory category = TransferErrorCategory.Unknown,
         int verifiedCount = 0, long verifiedBytes = 0) =>
         new(false, false, false, message, verifiedCount, verifiedBytes, category);
+
+    public static DesktopTransferResult PausedForResume(string message, string sessionId,
+        int verifiedCount = 0, long verifiedBytes = 0) =>
+        new(false, false, false, message, verifiedCount, verifiedBytes, TransferErrorCategory.None,
+            Paused: true, ResumableSessionId: sessionId);
 }
 
 public interface IDesktopTransferInteraction
@@ -121,6 +130,7 @@ public interface IDesktopTransferInteraction
     void OnItemStatus(DesktopTransferDirection direction, string itemName, string status);
     void OnHistory(DesktopHistoryEntry entry);
     void OnPhase(DesktopTransferDirection direction, DesktopTransferPhase phase) { }
+    void OnResumableBatchReady(DesktopTransferDirection direction, string originalSessionId) { }
 }
 
 /// <summary>
@@ -203,6 +213,7 @@ public abstract class DesktopTransferInteractionBase : IDesktopTransferInteracti
     public virtual void OnItemStatus(DesktopTransferDirection direction, string itemName, string status) { }
     public virtual void OnHistory(DesktopHistoryEntry entry) { }
     public virtual void OnPhase(DesktopTransferDirection direction, DesktopTransferPhase phase) { }
+    public virtual void OnResumableBatchReady(DesktopTransferDirection direction, string originalSessionId) { }
 }
 
 

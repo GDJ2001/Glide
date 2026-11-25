@@ -73,6 +73,22 @@ sealed interface TransferUiState {
         val itemIndex: Int = 1,
         val itemCount: Int = 1,
         val isStalled: Boolean = false,
+        val isResumable: Boolean = false,
+        val peerDeviceType: dev.glide.app.ui.discovery.DeviceType = dev.glide.app.ui.discovery.DeviceType.Phone
+    ) : TransferUiState
+
+    data class Paused(
+        override val sessionId: String,
+        override val role: DeviceRole,
+        val peerName: String,
+        val itemName: String,
+        val transferredBytes: Long,
+        val totalBytes: Long,
+        val progressFraction: Float,
+        val itemIndex: Int = 1,
+        val itemCount: Int = 1,
+        val resumableSessionId: String,
+        val statusMessage: String = "Transfer paused",
         val peerDeviceType: dev.glide.app.ui.discovery.DeviceType = dev.glide.app.ui.discovery.DeviceType.Phone
     ) : TransferUiState
 

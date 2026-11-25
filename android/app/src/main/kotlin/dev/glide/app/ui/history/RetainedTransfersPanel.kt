@@ -6,11 +6,17 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Card
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -77,8 +83,28 @@ fun RetainedTransfersCard(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(entry.label, Modifier.weight(1f))
-                        OutlinedButton(onClick = { onResume(entry.sessionId) }, enabled = enabled) { Text("Resume") }
-                        OutlinedButton(onClick = { onDiscard(entry.sessionId) }, enabled = enabled) { Text("Discard") }
+                        FilledTonalIconButton(
+                            onClick = { onResume(entry.sessionId) },
+                            enabled = enabled,
+                            colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            ),
+                            modifier = Modifier.size(38.dp)
+                        ) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = "Resume transfer")
+                        }
+                        FilledTonalIconButton(
+                            onClick = { onDiscard(entry.sessionId) },
+                            enabled = enabled,
+                            colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer,
+                                contentColor = MaterialTheme.colorScheme.onErrorContainer
+                            ),
+                            modifier = Modifier.size(38.dp)
+                        ) {
+                            Icon(Icons.Default.Close, contentDescription = "Discard resumable transfer")
+                        }
                     }
                 }
             }

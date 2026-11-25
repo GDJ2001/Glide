@@ -93,8 +93,16 @@ public sealed partial class DesktopTransferEngine
             }
             return DesktopTransferResult.Failed(failure, TransferErrorCategory.Network);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (Exception error) when (cancellationToken.IsCancellationRequested &&
+            error is OperationCanceledException or IOException or EndOfStreamException or System.Net.Sockets.SocketException or ObjectDisposedException)
         {
+            if (DesktopStopForResumeContext.IsRequested &&
+                await HasUnfinishedAcceptedBatchAsync(request.Local.ResumeStore,
+                    new SessionId(request.Batch.Manifest.SessionId), request.Batch.Role).ConfigureAwait(false))
+            {
+                return DesktopTransferResult.PausedForResume(
+                    "Transfer paused.", request.Batch.Manifest.SessionId);
+            }
             return DesktopTransferResult.CancelledByUser("Resume cancelled.");
         }
         catch (Exception error)
@@ -149,8 +157,15 @@ public sealed partial class DesktopTransferEngine
             return await RunResumeBatchAsync(connection, open, null, request, peer!,
                 interaction, localEndpointHostsTls: true, cancellationToken).ConfigureAwait(false);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (Exception error) when (cancellationToken.IsCancellationRequested &&
+            error is OperationCanceledException or IOException or EndOfStreamException or System.Net.Sockets.SocketException or ObjectDisposedException)
         {
+            if (DesktopStopForResumeContext.IsRequested && open.OriginalSessionId != null &&
+                await HasUnfinishedAcceptedBatchAsync(request.ResumeStore,
+                    new SessionId(open.OriginalSessionId), role).ConfigureAwait(false))
+            {
+                return DesktopTransferResult.PausedForResume("Transfer paused.", open.OriginalSessionId);
+            }
             return DesktopTransferResult.CancelledByUser("Resume cancelled.");
         }
         catch (Exception error)
@@ -231,6 +246,7 @@ public sealed partial class DesktopTransferEngine
         var trust = RequireResumeTrust(local);
         var accepted = knownBatch ?? await RequireAcceptedBatchAsync(local, original, role, peer,
             open.ResumeManifestDigest!, token).ConfigureAwait(false);
+        interaction.OnResumableBatchReady(ResumeDirection(role), original.Value);
         await using var cancelCleanup = new DesktopResumeCancellation(store, original, token);
         string binding = (localEndpointHostsTls ? connection.LocalSpkiSha256 : connection.RemoteSpkiSha256)
             ?? throw new ProtocolViolationException(WireErrorCodes.AuthenticationFailed, "Missing TLS resume binding.");
@@ -250,13 +266,6 @@ public sealed partial class DesktopTransferEngine
             bool available = remaining.Length == 0 ||
                 local.StagingStore.HasSufficientFreeSpaceForBatch(remainingBytes, remaining.Max(item => item.SizeBytes));
             bool consent = available;
-            if (available && localEndpointHostsTls && remaining.Length != 0)
-            {
-                interaction.OnPhase(DesktopTransferDirection.Receive, DesktopTransferPhase.AwaitingConsent);
-                using var approval = _timeoutPolicy.CreateTimeoutTokenSource(_timeoutPolicy.HumanApprovalTimeout, token);
-                consent = await interaction.ConfirmOfferAsync(new DesktopOffer(manifest.BatchId, peer.DisplayName,
-                    remaining, remainingBytes, peer.FingerprintHex), approval.Token).ConfigureAwait(false);
-            }
             RequireResumePeer(trust, peer);
             var decision = sequence.Create(MessageTypes.OfferDecision, session,
                 new JsonObject { ["batchId"] = manifest.BatchId, ["accepted"] = consent });
@@ -287,16 +296,22 @@ public sealed partial class DesktopTransferEngine
 
         long total = manifest.Items.Sum(item => item.SizeBytes);
         long transferred = manifest.Items.Take(prefix).Sum(item => item.SizeBytes);
+        int verifiedCount = prefix;
+        long verifiedBytes = transferred;
         using IDisposable? lease = sender ? null : local.StagingStore.AcquireSessionLease(session);
         try
         {
+            int remainingIndex = 0;
             foreach (var item in manifest.Items.Skip(prefix))
             {
+                int itemIndex = prefix + remainingIndex + 1;
+                remainingIndex++;
                 RequireResumePeer(trust, peer);
                 interaction.OnPhase(ResumeDirection(role), DesktopTransferPhase.Transferring);
                 interaction.OnItemStatus(ResumeDirection(role), item.Name, "Resuming");
                 void Progress(long itemOffset) => interaction.OnProgress(new DesktopTransferProgress(
-                    ResumeDirection(role), peer.DisplayName, item.Name, transferred + itemOffset, total));
+                    ResumeDirection(role), peer.DisplayName, item.Name, transferred + itemOffset, total,
+                    itemIndex, manifest.Items.Count));
                 if (sender)
                     await SendResumedItemAsync(channel, sequence, session, original, item,
                         store, trust, peer, binding, caps, Progress, token).ConfigureAwait(false);
@@ -304,6 +319,8 @@ public sealed partial class DesktopTransferEngine
                     await ReceiveResumedItemAsync(channel, sequence, session, original, item,
                         local, trust, peer, binding, caps, interaction, Progress, token).ConfigureAwait(false);
                 transferred += item.SizeBytes;
+                verifiedCount++;
+                verifiedBytes += item.SizeBytes;
             }
             if (sender)
             {
@@ -327,6 +344,22 @@ public sealed partial class DesktopTransferEngine
                 }), token).ConfigureAwait(false);
             }
             return DesktopTransferResult.Completed("Transfer complete.", manifest.Items.Count, total);
+        }
+        catch (Exception error) when (token.IsCancellationRequested && DesktopStopForResumeContext.IsRequested &&
+            error is OperationCanceledException or IOException or EndOfStreamException or System.Net.Sockets.SocketException or ObjectDisposedException)
+        {
+            if (await HasUnfinishedAcceptedBatchAsync(store, original, role).ConfigureAwait(false))
+                return DesktopTransferResult.PausedForResume(
+                    "Transfer paused.", original.Value, verifiedCount, verifiedBytes);
+            throw;
+        }
+        catch (Exception error) when (error is IOException or EndOfStreamException or System.Net.Sockets.SocketException
+            or TimeoutException or ObjectDisposedException || (error is OperationCanceledException && !token.IsCancellationRequested))
+        {
+            if (await HasUnfinishedAcceptedBatchAsync(store, original, role).ConfigureAwait(false))
+                return DesktopTransferResult.PausedForResume(
+                    "Transfer paused. Resume when ready.", original.Value, verifiedCount, verifiedBytes);
+            throw;
         }
         finally
         {

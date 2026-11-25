@@ -732,6 +732,30 @@ public sealed class LinuxRenderedUiTests
             vm.DismissActiveModalCommand.Execute(null);
             Assert.False(vm.IsReceiveQrExpanded);
 
+            Guid pauseRun = Guid.NewGuid();
+            vm.Transfer.ApplySnapshot(new DesktopTransferSnapshot(
+                DesktopTransferPhase.Transferring, DesktopTransferDirection.Send, "Phone", "Sending...",
+                RunId: pauseRun, IsResumable: true, ResumableSessionId: "linux-pause-test"));
+            vm.SwitchTabCommand.Execute("Activity");
+            window.UpdateLayout();
+            var activityPage = window.GetVisualDescendants().OfType<ActivityPage>().Single();
+            var stopResumeBtn = activityPage.GetVisualDescendants().OfType<Button>()
+                .Single(b => b.Name == "ActivityStopResumeButton");
+            var cancelBtn = activityPage.GetVisualDescendants().OfType<Button>()
+                .Single(b => b.Name == "ActivityCancelButton");
+            Assert.True(stopResumeBtn.IsVisible);
+            Assert.True(cancelBtn.IsVisible);
+            Assert.Equal("Stop transfer", AutomationProperties.GetName(stopResumeBtn));
+
+            vm.Transfer.ApplySnapshot(new DesktopTransferSnapshot(
+                DesktopTransferPhase.Paused, DesktopTransferDirection.Send, "Phone", "Transfer paused.",
+                DesktopTransferResult.PausedForResume("Transfer paused.", "linux-pause-test", 1, 10),
+                RunId: pauseRun, IsResumable: true, ResumableSessionId: "linux-pause-test"));
+            window.UpdateLayout();
+            Assert.True(stopResumeBtn.IsVisible);
+            Assert.True(cancelBtn.IsVisible);
+            Assert.Equal("Resume transfer", AutomationProperties.GetName(stopResumeBtn));
+
             window.Close();
         }, CancellationToken.None);
     }

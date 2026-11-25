@@ -88,4 +88,39 @@ public sealed class DesktopTransferPresentationTests
         Assert.Equal("Verifying files…", state.PhaseText);
         Assert.Equal("", state.RateText);
     }
+
+    [Fact]
+    public void PausedState_StaysVisibleInTransferCardAndFormatsMultiFileItem()
+    {
+        var state = new DesktopTransferPresentation();
+        Guid run = Guid.NewGuid();
+        state.ApplySnapshot(new(DesktopTransferPhase.Transferring,
+            DesktopTransferDirection.Send, "Ubuntu VM", "Sending", RunId: run, IsResumable: true, ResumableSessionId: "sess-1"));
+        state.ApplyEvent(new TransferEvent.ProgressUpdated(
+            new DesktopTransferProgress(DesktopTransferDirection.Send, "Ubuntu VM", "clip2.bin", 512, 1024, ItemIndex: 2, ItemCount: 3),
+            512, "4.0 MB/s", "512 B / 1.0 KB"));
+
+        Assert.True(state.IsActive);
+        Assert.True(state.IsActiveOrPaused);
+        Assert.True(state.CanStop);
+        Assert.True(state.ShowStopResumeButton);
+        Assert.Equal("Stop transfer", state.StopResumeTooltip);
+        Assert.Equal("File 2 of 3 · clip2.bin", state.CurrentFile);
+
+        state.ApplySnapshot(new(DesktopTransferPhase.Paused,
+            DesktopTransferDirection.Send, "Ubuntu VM", "Transfer paused.",
+            DesktopTransferResult.PausedForResume("Transfer paused.", "sess-1", verifiedCount: 1, verifiedBytes: 256),
+            RunId: run, IsResumable: true, ResumableSessionId: "sess-1"));
+
+        Assert.False(state.IsActive);
+        Assert.True(state.IsPaused);
+        Assert.True(state.IsActiveOrPaused);
+        Assert.True(state.HasTransfer);
+        Assert.False(state.HasResult);
+        Assert.True(state.CanResume);
+        Assert.True(state.ShowStopResumeButton);
+        Assert.Equal("Resume transfer", state.StopResumeTooltip);
+        Assert.Equal("Paused · 1 of 3 files verified", state.PhaseText);
+        Assert.Equal("", state.RateText);
+    }
 }

@@ -119,11 +119,112 @@ public sealed class DesktopPairingCoordinatorTests
             }
             Assert.True(resumed.Success, $"{resumed.Message} / {inbound.Message}");
             Assert.True(inbound.Success, inbound.Message);
-            Assert.Equal(senderInitiates ? 1 : 0, approvals);
+            Assert.Equal(0, approvals);
             Assert.Equal(bytes, File.ReadAllBytes(Path.Combine(received, "b.bin")));
             Assert.Equal(0, new FileInfo(Path.Combine(received, "c.txt")).Length);
             Assert.Single(Directory.GetFiles(received, "a*"));
             Assert.Empty(await senderJournal.ListAcceptedBatchesAsync(timeout.Token));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task StopActiveTransferForResume_PausesMultiFileBatch_PreservesVerifiedPrefix_AndCompletesOnResume()
+    {
+        string root = Path.Combine(Path.GetTempPath(), $"glide-stop-resume-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            using var senderIdentity = new InMemoryIdentityStore();
+            using var receiverIdentity = new InMemoryIdentityStore();
+            var senderTrust = new DesktopPersistentTrustManager(senderIdentity, new DesktopTrustStore(Path.Combine(root, "s.json")));
+            var receiverTrust = new DesktopPersistentTrustManager(receiverIdentity, new DesktopTrustStore(Path.Combine(root, "r.json")));
+            senderTrust.Initialize();
+            receiverTrust.Initialize();
+            void Enroll(DesktopPersistentTrustManager local, DesktopPersistentTrustManager peer, string name) =>
+                local.EnrollVerifiedPeer(new VerifiedDesktopPeerIdentity(peer.LocalFingerprintHex(),
+                    Convert.ToHexStringLower(peer.LocalPublicKeyDer()), name, "windows"), userApproved: true);
+            Enroll(senderTrust, receiverTrust, "Receiver");
+            Enroll(receiverTrust, senderTrust, "Sender");
+            var senderJournal = new DesktopResumeStore(Path.Combine(root, "sr"));
+            var receiverJournal = new DesktopResumeStore(Path.Combine(root, "rr"));
+            string received = Path.Combine(root, "dst-r");
+            var senderLocal = new DesktopReceiveRequest(
+                new QuarantineStagingStore(Path.Combine(root, "stg-s"), Path.Combine(root, "dst-s")),
+                TrustManager: senderTrust, ResumeStore: senderJournal);
+            var receiverLocal = new DesktopReceiveRequest(
+                new QuarantineStagingStore(Path.Combine(root, "stg-r"), received),
+                TrustManager: receiverTrust, ResumeStore: receiverJournal);
+            string a = Path.Combine(root, "a.txt");
+            string b = Path.Combine(root, "b.bin");
+            File.WriteAllText(a, "First");
+            byte[] bytes = RandomNumberGenerator.GetBytes(3 * 1024 * 1024 + 123);
+            File.WriteAllBytes(b, bytes);
+            var senderEngine = new DesktopTransferEngine(ioOptions: new DesktopTransferIoOptions { EnableBoundedPipeline = false });
+            var receiverEngine = new DesktopTransferEngine(ioOptions: new DesktopTransferIoOptions { EnableBoundedPipeline = false });
+            await using var senderRuntime = new DesktopTransferRuntime(senderEngine);
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+            using var initial = new TlsSocketListener(0);
+
+            var incoming = Task.Run(async () =>
+            {
+                await using var conn = await initial.AcceptConnectionAsync(timeout.Token);
+                await LanSessionPreambleInspector.InspectAndPrepareAsync(conn, timeout.Token);
+                var open = Assert.IsType<Profile2Message.SessionOpen>(
+                    await Profile2WireCodec.ReadMessageAsync(conn.TransportStream, timeout.Token));
+                return await receiverEngine.ReceiveTrustedAsync(conn, open, receiverLocal, new ResumeInteraction(),
+                    cancellationToken: timeout.Token);
+            }, timeout.Token);
+
+            int stopped = 0;
+            var sendTask = senderRuntime.SendAsync(new DesktopSendRequest("127.0.0.1", initial.BoundPort,
+                [new(a), new(b)], TrustManager: senderTrust,
+                ExpectedPeerFingerprintHex: receiverTrust.LocalFingerprintHex(), ResumeStore: senderJournal,
+                CandidateEndpoints: [new("127.0.0.1", initial.BoundPort)]),
+                new ResumeInteraction(progress =>
+                {
+                    if (progress.ItemName == "b.bin" && progress.TransferredBytes >= 1024 * 1024 &&
+                        Interlocked.Exchange(ref stopped, 1) == 0)
+                    {
+                        senderRuntime.StopActiveTransferForResume();
+                    }
+                }),
+                timeout.Token);
+
+            var stoppedResult = await sendTask;
+            var receiverInterrupted = await incoming;
+            Assert.True(stoppedResult.Paused, stoppedResult.Message);
+            Assert.False(stoppedResult.Cancelled);
+            Assert.Equal(DesktopTransferPhase.Paused, senderRuntime.Snapshot.Phase);
+            Assert.True(receiverInterrupted.Paused, receiverInterrupted.Message);
+            Assert.True(File.Exists(Path.Combine(received, "a.txt")));
+
+            var senderBatch = Assert.Single(await senderJournal.ListAcceptedBatchesAsync(timeout.Token));
+            Assert.Single(await receiverJournal.ListAcceptedBatchesAsync(timeout.Token));
+
+            using var reconnect = new TlsSocketListener(0);
+            int approvals = 0;
+            var resumeIncoming = Task.Run(async () =>
+            {
+                await using var conn = await reconnect.AcceptConnectionAsync(timeout.Token);
+                await LanSessionPreambleInspector.InspectAndPrepareAsync(conn, timeout.Token);
+                var open = Assert.IsType<Profile2Message.SessionOpen>(
+                    await Profile2WireCodec.ReadMessageAsync(conn.TransportStream, timeout.Token));
+                return await receiverEngine.ReceiveTrustedResumeAsync(conn, open, receiverLocal,
+                    new ResumeInteraction(approval: () => approvals++), cancellationToken: timeout.Token);
+            }, timeout.Token);
+
+            var resumed = await senderEngine.ResumeTrustedAsync(
+                new DesktopResumeRequest(senderBatch, senderLocal, [new(new("127.0.0.1", reconnect.BoundPort), false, true)]),
+                new ResumeInteraction(approval: () => approvals++), timeout.Token);
+            var inbound = await resumeIncoming;
+            Assert.True(resumed.Success, resumed.Message);
+            Assert.True(inbound.Success, inbound.Message);
+            Assert.Equal(0, approvals);
+            Assert.Equal(bytes, File.ReadAllBytes(Path.Combine(received, "b.bin")));
         }
         finally
         {

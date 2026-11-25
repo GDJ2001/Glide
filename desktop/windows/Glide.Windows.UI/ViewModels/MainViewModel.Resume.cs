@@ -13,6 +13,7 @@ namespace Glide.Windows.UI.ViewModels;
 public partial class MainViewModel
 {
     private readonly DesktopResumeStore _resumeStore = new();
+    private bool _isStartingResume;
     public ObservableCollection<DesktopResumeEntry> ResumeEntries { get; } = new();
     public RelayCommand ResumeInterruptedTransferCommand { get; }
     public RelayCommand DiscardInterruptedTransferCommand { get; }
@@ -29,8 +30,17 @@ public partial class MainViewModel
             var entries = await Task.Run(() => DesktopResumeEntry.LoadAsync(_resumeStore, _trustManager));
             RunOnUi(() =>
             {
+                string? activePausedSession = Transfer.IsPaused ? Transfer.PausedSessionId : null;
                 ResumeEntries.Clear();
-                foreach (var entry in entries) ResumeEntries.Add(entry);
+                foreach (var entry in entries)
+                {
+                    if (activePausedSession != null &&
+                        string.Equals(entry.Batch.Manifest.SessionId, activePausedSession, StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+                    ResumeEntries.Add(entry);
+                }
                 OnPropertyChanged(nameof(HasResumeEntries));
             });
         }
@@ -44,27 +54,84 @@ public partial class MainViewModel
         {
             if (discard)
                 await _resumeStore.PurgeOriginalSessionAsync(new SessionId(entry.Batch.Manifest.SessionId));
-            else if (_trustManager?.GetTrustedPeer(entry.Batch.PeerFingerprintHex) is { } peer)
-            {
-                CurrentTab = "Activity";
-                _mdnsService.Start(enableBrowsing: true);
-                IReadOnlyList<TrustedEndpointCandidate> candidates = Array.Empty<TrustedEndpointCandidate>();
-                for (int attempt = 0; attempt < 6; attempt++)
-                {
-                    _mdnsService.QueryPeers();
-                    await Task.Delay(450);
-                    candidates = TrustedEndpointResolver.ResolveCandidates(peer, _mdnsService.Snapshot.Peers);
-                    if (candidates.Any(c => !c.IsSavedEndpoint)) break;
-                }
-                var result = await _transferRuntime.ResumeTrustedAsync(new DesktopResumeRequest(entry.Batch,
-                    ResumeLocalRequest(), candidates), this);
-                StatusMessage = result.Message;
-            }
+            else
+                await ResumeAcceptedBatchAsync(entry.Batch);
             await RefreshResumeEntriesAsync();
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException)
         {
             StatusMessage = "Could not open the retained transfer.";
+        }
+    }
+
+    private async Task ResumeBatchBySessionIdAsync(string sessionId)
+    {
+        if (_isStartingResume || _transferRuntime.IsBusy) return;
+        try
+        {
+            var batches = await Task.Run(() => _resumeStore.ListAcceptedBatchesAsync());
+            var match = batches.FirstOrDefault(batch =>
+                string.Equals(batch.Manifest.SessionId, sessionId, StringComparison.Ordinal));
+            if (match == null)
+            {
+                _transferRuntime.ClearPausedState("The paused transfer is no longer available.");
+                await RefreshResumeEntriesAsync();
+                return;
+            }
+            await ResumeAcceptedBatchAsync(match);
+            await RefreshResumeEntriesAsync();
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            StatusMessage = "Could not resume the transfer.";
+        }
+    }
+
+    private async Task ResumeAcceptedBatchAsync(DesktopAcceptedResumeBatch batch)
+    {
+        if (_isStartingResume || _transferRuntime.IsBusy) return;
+        if (_trustManager?.GetTrustedPeer(batch.PeerFingerprintHex) is not { } peer)
+        {
+            StatusMessage = "The paired device is no longer trusted.";
+            return;
+        }
+        _isStartingResume = true;
+        try
+        {
+            CurrentTab = "Activity";
+            StatusMessage = $"Reconnecting to {peer.DisplayName}…";
+            _mdnsService.Start(enableBrowsing: true);
+            IReadOnlyList<TrustedEndpointCandidate> candidates = Array.Empty<TrustedEndpointCandidate>();
+            for (int attempt = 0; attempt < 6; attempt++)
+            {
+                _mdnsService.QueryPeers();
+                await Task.Delay(450);
+                candidates = TrustedEndpointResolver.ResolveCandidates(peer, _mdnsService.Snapshot.Peers);
+                if (candidates.Any(c => !c.IsSavedEndpoint)) break;
+            }
+            var result = await _transferRuntime.ResumeTrustedAsync(new DesktopResumeRequest(batch,
+                ResumeLocalRequest(), candidates), this);
+            StatusMessage = result.Message;
+        }
+        finally
+        {
+            _isStartingResume = false;
+        }
+    }
+
+    private async Task CancelPausedTransferAsync(string sessionId)
+    {
+        try
+        {
+            if (IdentifierValidation.IsValidUuidV4(sessionId))
+                await _resumeStore.PurgeOriginalSessionAsync(new SessionId(sessionId));
+            _transferRuntime.ClearPausedState();
+            StatusMessage = "Transfer cancelled.";
+            await RefreshResumeEntriesAsync();
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            StatusMessage = "Could not cancel the paused transfer.";
         }
     }
 

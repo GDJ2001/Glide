@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Glide.Transport.Sockets;
 using Glide.Desktop.Diagnostics;
 using Glide.Desktop.Services;
@@ -7,6 +8,25 @@ using Glide.Core.Storage;
 using Glide.Core.Pairing;
 
 namespace Glide.Desktop;
+
+internal static class DesktopStopForResumeContext
+{
+    private static readonly AsyncLocal<StrongBox<bool>?> CurrentFlag = new();
+
+    public static bool IsRequested => CurrentFlag.Value?.Value == true;
+
+    public static IDisposable Enter(StrongBox<bool> flag)
+    {
+        var previous = CurrentFlag.Value;
+        CurrentFlag.Value = flag;
+        return new Scope(previous);
+    }
+
+    private sealed class Scope(StrongBox<bool>? previous) : IDisposable
+    {
+        public void Dispose() => CurrentFlag.Value = previous;
+    }
+}
 
 public sealed record DesktopCancellationTiming(
     long RequestedTimestamp,
@@ -25,6 +45,7 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
     private readonly SemaphoreSlim _activeBatch = new(1, 1);
     private readonly object _gate = new();
     private CancellationTokenSource? _activeCancellation;
+    private StrongBox<bool>? _activeStopForResume;
     private Task? _activeTransferTask;
     private DesktopTransferSnapshot _snapshot = DesktopTransferSnapshot.Idle;
     private long _activeCancelRequestedTimestamp;
@@ -63,10 +84,56 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
                 return false;
             }
 
+            if (_activeStopForResume != null)
+            {
+                _activeStopForResume.Value = false;
+            }
             Volatile.Write(ref _activeCancelRequestedTimestamp, Stopwatch.GetTimestamp());
             _activeCancellation.Cancel();
             return true;
         }
+    }
+
+    public bool StopActiveTransferForResume()
+    {
+        lock (_gate)
+        {
+            if (_activeCancellation == null || _activeCancellation.IsCancellationRequested)
+            {
+                return false;
+            }
+
+            if (_activeStopForResume != null)
+            {
+                _activeStopForResume.Value = true;
+            }
+            _activeCancellation.Cancel();
+            return true;
+        }
+    }
+
+    public bool ClearPausedState(string message = "Transfer cancelled.")
+    {
+        DesktopTransferSnapshot current;
+        lock (_gate)
+        {
+            if (_snapshot.Phase != DesktopTransferPhase.Paused)
+            {
+                return false;
+            }
+            current = _snapshot;
+        }
+
+        DesktopTransferResult result = DesktopTransferResult.CancelledByUser(message);
+        SetSnapshot(new DesktopTransferSnapshot(
+            DesktopTransferPhase.Cancelled,
+            current.Direction,
+            current.PeerName,
+            message,
+            result,
+            current.RunId));
+        NotifyEvent(new TransferEvent.Failed(result.ErrorCategory, message));
+        return true;
     }
 
     public Task<DesktopTransferResult> SendAsync(
@@ -186,9 +253,11 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
 
         using var linkedCancellation =
             CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var stopFlag = new StrongBox<bool>(false);
         lock (_gate)
         {
             _activeCancellation = linkedCancellation;
+            _activeStopForResume = stopFlag;
             Volatile.Write(ref _activeCancelRequestedTimestamp, 0);
             Volatile.Write(ref _activeCancelUiUpdatedTimestamp, 0);
         }
@@ -204,7 +273,11 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
         try
         {
             Task<DesktopTransferResult> operationTask = Task.Run(
-                () => operation(observer, linkedCancellation.Token),
+                async () =>
+                {
+                    using var _ = DesktopStopForResumeContext.Enter(stopFlag);
+                    return await operation(observer, linkedCancellation.Token).ConfigureAwait(false);
+                },
                 CancellationToken.None);
             lock (_gate)
             {
@@ -215,17 +288,29 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
             DesktopTransferPhase phase = result switch
             {
                 { Success: true } => DesktopTransferPhase.Completed,
+                { Paused: true } => DesktopTransferPhase.Paused,
                 { Cancelled: true } => DesktopTransferPhase.Cancelled,
                 { Rejected: true, ErrorCategory: TransferErrorCategory.UserRejected } => DesktopTransferPhase.Cancelled,
                 _ => DesktopTransferPhase.Failed
             };
-            SetSnapshot(new DesktopTransferSnapshot(phase, direction, observer.PeerName, result.Message, result, runId));
+            SetSnapshot(new DesktopTransferSnapshot(
+                phase,
+                direction,
+                observer.PeerName,
+                result.Message,
+                result,
+                runId,
+                IsResumable: observer.IsResumable || result.Paused,
+                ResumableSessionId: result.ResumableSessionId ?? observer.ResumableSessionId));
             if (phase == DesktopTransferPhase.Cancelled && Volatile.Read(ref _activeCancelRequestedTimestamp) > 0)
             {
                 Volatile.Write(ref _activeCancelUiUpdatedTimestamp, Stopwatch.GetTimestamp());
             }
-            NotifyEvent(result.Success ? new TransferEvent.Completed(result) :
-                new TransferEvent.Failed(result.ErrorCategory, result.Message));
+            if (!result.Paused)
+            {
+                NotifyEvent(result.Success ? new TransferEvent.Completed(result) :
+                    new TransferEvent.Failed(result.ErrorCategory, result.Message));
+            }
             return result;
         }
         catch (OperationCanceledException) when (linkedCancellation.IsCancellationRequested)
@@ -260,6 +345,7 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
             lock (_gate)
             {
                 _activeCancellation = null;
+                _activeStopForResume = null;
                 _activeTransferTask = null;
             }
             _activeBatch.Release();
@@ -320,8 +406,11 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
         private long _lastProgressBytes;
         private DesktopTransferPhase _lastPhase = DesktopTransferPhase.Preparing;
         private int _completed;
+        private bool _rateSeeded;
         private const long ProgressIntervalMilliseconds = 200; // <= 5 Hz max
         public string PeerName { get; private set; }
+        public bool IsResumable { get; private set; }
+        public string? ResumableSessionId { get; private set; }
 
         public RuntimeInteraction(DesktopTransferRuntime owner, IDesktopTransferInteraction inner,
             DesktopTransferDirection direction, string peerName, Guid runId)
@@ -335,6 +424,19 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
         }
 
         public void MarkCompleted() => Interlocked.Exchange(ref _completed, 1);
+
+        public override void OnResumableBatchReady(DesktopTransferDirection direction, string originalSessionId)
+        {
+            if (Volatile.Read(ref _completed) != 0) return;
+            IsResumable = true;
+            ResumableSessionId = originalSessionId;
+            _inner.OnResumableBatchReady(direction, originalSessionId);
+            DesktopTransferSnapshot current = _owner.Snapshot;
+            if (current.RunId == _runId)
+            {
+                _owner.SetSnapshot(current with { IsResumable = true, ResumableSessionId = originalSessionId });
+            }
+        }
 
         public override async Task<bool> ConfirmRecipientAsync(string peerName, CancellationToken cancellationToken)
         {
@@ -371,6 +473,11 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
         public override void OnProgress(DesktopTransferProgress progress)
         {
             if (Volatile.Read(ref _completed) != 0) return;
+            if (!_rateSeeded)
+            {
+                _rate.Reset(progress.TransferredBytes);
+                _rateSeeded = true;
+            }
             _lastProgressBytes = progress.TransferredBytes;
             // File streaming must not wait for a UI dispatch on every 64 KiB record.
             // Always publish the first update, item changes, and the final byte.
@@ -414,7 +521,14 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
                 DesktopTransferPhase.WaitingForConfirmation => "Waiting for receiver confirmation…",
                 _ => "Connecting…"
             };
-            _owner.SetSnapshot(new DesktopTransferSnapshot(phase, direction, PeerName, message, RunId: _runId));
+            _owner.SetSnapshot(new DesktopTransferSnapshot(
+                phase,
+                direction,
+                PeerName,
+                message,
+                RunId: _runId,
+                IsResumable: IsResumable,
+                ResumableSessionId: ResumableSessionId));
         }
     }
 
@@ -469,13 +583,15 @@ public sealed record DesktopTransferSnapshot(
     string PeerName,
     string Message,
     DesktopTransferResult? Result = null,
-    Guid RunId = default)
+    Guid RunId = default,
+    bool IsResumable = false,
+    string? ResumableSessionId = null)
 {
     public static DesktopTransferSnapshot Idle { get; } =
         new(DesktopTransferPhase.Idle, null, string.Empty, "Ready");
 
     public bool IsActive => Phase is DesktopTransferPhase.Preparing or
         DesktopTransferPhase.AwaitingConsent or DesktopTransferPhase.Transferring or
-        DesktopTransferPhase.Paused or DesktopTransferPhase.Verifying or DesktopTransferPhase.Saving or
+        DesktopTransferPhase.Verifying or DesktopTransferPhase.Saving or
         DesktopTransferPhase.WaitingForConfirmation;
 }

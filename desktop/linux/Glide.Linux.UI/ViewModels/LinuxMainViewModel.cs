@@ -83,6 +83,7 @@ public sealed partial class LinuxMainViewModel : ViewModelBase, IDesktopTransfer
     private string _currentTransferFile = "";
     private CancellationTokenSource? _activeTransferCts;
     private readonly DesktopTransferRateCalculator _rateCalculator = new();
+    private Guid _rateCalculatorRunId;
     private DesktopTransferProgress? _coalescedProgress;
     private TransferEvent.ProgressUpdated? _coalescedProgressEvent;
 
@@ -253,7 +254,7 @@ public sealed partial class LinuxMainViewModel : ViewModelBase, IDesktopTransfer
     public bool IsReceiveActive => _activePage == LinuxPage.Receive;
     public bool IsPairActive => _activePage == LinuxPage.Pair;
     public bool IsActivityActive => _activePage == LinuxPage.Activity;
-    public bool IsTransferBannerVisible => Transfer.IsActive && !IsActivityActive;
+    public bool IsTransferBannerVisible => Transfer.IsActiveOrPaused && !IsActivityActive;
     public bool IsSettingsActive => _activePage == LinuxPage.Settings;
 
     public SendMethod SelectedSendMethod
@@ -586,6 +587,7 @@ public sealed partial class LinuxMainViewModel : ViewModelBase, IDesktopTransfer
     public AsyncRelayCommand SendFilesCommand { get; }
     public AsyncRelayCommand ReceiveFromInvitationCommand { get; }
     public AsyncRelayCommand ToggleListenerCommand { get; }
+    public RelayCommand ToggleStopResumeTransferCommand { get; }
     public RelayCommand CancelTransferCommand { get; }
     public AsyncRelayCommand RetryTransferCommand { get; }
     public RelayCommand OpenTransferFolderCommand { get; }
@@ -691,7 +693,7 @@ public sealed partial class LinuxMainViewModel : ViewModelBase, IDesktopTransfer
         _pairing = new DesktopPairingCoordinator(
             _trustManager, _invitationManager, _mdnsDiscovery, () => DeviceName,
             EnsurePairListenerAsync, ReleasePairListener,
-            () => IsTransferActive || _runtime.IsBusy);
+            () => IsTransferActive || _runtime.IsBusy || Transfer.IsPaused);
         _pairing.Changed += snapshot => OnUi(() =>
         {
             if (snapshot.Phase is DesktopPairingPhase.Idle or DesktopPairingPhase.Success or DesktopPairingPhase.Failed)
@@ -781,6 +783,18 @@ public sealed partial class LinuxMainViewModel : ViewModelBase, IDesktopTransfer
                 (SelectedSendMethod == SendMethod.SavedDevice ? SelectedTrustedPeer != null : !string.IsNullOrWhiteSpace(InvitationInput)));
         ReceiveFromInvitationCommand = new AsyncRelayCommand(ExecuteReceiveFromInvitationAsync, () => !string.IsNullOrWhiteSpace(InvitationInput) && !IsTransferActive);
         ToggleListenerCommand = new AsyncRelayCommand(ExecuteToggleListenerAsync);
+        ToggleStopResumeTransferCommand = new RelayCommand(() =>
+        {
+            if (Transfer.IsPaused && !string.IsNullOrWhiteSpace(Transfer.PausedSessionId))
+            {
+                _ = ResumeBatchBySessionIdAsync(Transfer.PausedSessionId);
+                return;
+            }
+            if (Transfer.CanStop)
+            {
+                _runtime.StopActiveTransferForResume();
+            }
+        });
         CancelTransferCommand = new RelayCommand(ExecuteCancelTransfer);
         RetryTransferCommand = new AsyncRelayCommand(async () =>
         {
@@ -875,6 +889,8 @@ public sealed partial class LinuxMainViewModel : ViewModelBase, IDesktopTransfer
                 ActivePage = LinuxPage.Activity;
             OnPropertyChanged(nameof(IsTransferBannerVisible));
             OnPropertyChanged(nameof(CanStartReceivingRecovery));
+            if (snapshot.Phase is DesktopTransferPhase.Paused or DesktopTransferPhase.Completed or DesktopTransferPhase.Cancelled or DesktopTransferPhase.Failed)
+                _ = RefreshResumeEntriesAsync();
         });
         _runtime.EventOccurred += OnRuntimeEventOccurred;
         _listenerSupervisor.ListenerError += _ => OnUi(() =>
@@ -1174,7 +1190,8 @@ public sealed partial class LinuxMainViewModel : ViewModelBase, IDesktopTransfer
                 Invitation: invitation,
                 LocalDeviceName: DeviceName,
                 TrustManager: _trustManager,
-                ExpectedPeerFingerprintHex: SelectedTrustedPeer?.FingerprintHex);
+                ExpectedPeerFingerprintHex: SelectedTrustedPeer?.FingerprintHex,
+                ResumeStore: _resumeStore);
 
             var result = await _runtime.SendAsync(sendRequest, this, _activeTransferCts.Token);
             if (result.Success)
@@ -1235,7 +1252,8 @@ public sealed partial class LinuxMainViewModel : ViewModelBase, IDesktopTransfer
                 StagingStore: stagingStore,
                 LocalDeviceName: DeviceName,
                 Invitation: invitation,
-                TrustManager: _trustManager);
+                TrustManager: _trustManager,
+                ResumeStore: _resumeStore);
 
             var result = await _runtime.ReceiveFromInvitationAsync(receiveRequest, this, _activeTransferCts.Token);
             if (result.Success)
@@ -1304,7 +1322,8 @@ public sealed partial class LinuxMainViewModel : ViewModelBase, IDesktopTransfer
             Invitation: invitation,
             LocalDeviceName: DeviceName,
             TrustManager: _trustManager,
-            HostedInvitationAuthority: _invitationManager.Authority);
+            HostedInvitationAuthority: _invitationManager.Authority,
+            ResumeStore: _resumeStore);
         OnPropertyChanged(nameof(IsQuickShareActive));
         OnPropertyChanged(nameof(IsAnyModalVisible));
         StatusMessage = "Scan this one-time QR in Glide on the receiving device. You will confirm the recipient.";
@@ -1520,7 +1539,7 @@ public sealed partial class LinuxMainViewModel : ViewModelBase, IDesktopTransfer
                     IsTransferActive = true;
                     TransferTitle = "Sending selected files…";
                 });
-                result = await _runtime.SendHostedAsync(connection, hosted, this, cancellationToken);
+                result = await _runtime.SendHostedAsync(connection, hosted with { ResumeStore = _resumeStore }, this, cancellationToken);
             }
             else
             {
@@ -1528,7 +1547,8 @@ public sealed partial class LinuxMainViewModel : ViewModelBase, IDesktopTransfer
                     StagingStore: new QuarantineStagingStore(destinationRoot: DownloadDirectory),
                     InvitationAuthority: _invitationManager.Authority,
                     LocalDeviceName: DeviceName,
-                    TrustManager: _trustManager);
+                    TrustManager: _trustManager,
+                    ResumeStore: _resumeStore);
                 await Dispatcher.UIThread.InvokeAsync(() =>
                 {
                     IsTransferActive = true;
@@ -1633,6 +1653,11 @@ public sealed partial class LinuxMainViewModel : ViewModelBase, IDesktopTransfer
 
     private void ExecuteCancelTransfer()
     {
+        if (Transfer.IsPaused && !string.IsNullOrWhiteSpace(Transfer.PausedSessionId))
+        {
+            _ = CancelPausedTransferAsync(Transfer.PausedSessionId);
+            return;
+        }
         _activeTransferCts?.Cancel();
         _runtime.CancelActiveTransfer();
     }
@@ -1736,6 +1761,11 @@ public sealed partial class LinuxMainViewModel : ViewModelBase, IDesktopTransfer
         {
             var latest = Interlocked.Exchange(ref _coalescedProgress, null);
             if (latest == null) return;
+            if (_rateCalculatorRunId != _runtime.Snapshot.RunId)
+            {
+                _rateCalculatorRunId = _runtime.Snapshot.RunId;
+                _rateCalculator.Reset(latest.TransferredBytes);
+            }
             TransferProgressFraction = latest.Fraction;
             var (_, rateText, transferredText) = _rateCalculator.Update(latest.TransferredBytes, latest.TotalBytes);
             TransferredBytesText = transferredText;

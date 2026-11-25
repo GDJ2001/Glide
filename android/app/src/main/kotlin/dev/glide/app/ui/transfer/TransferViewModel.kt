@@ -394,6 +394,11 @@ class TransferViewModel(
         return runtime.dispatch(TransferRuntimeCommand.RejectOffer(sid, reason))
     }
 
+    fun pauseTransfer(reason: String = "USER_PAUSED"): Boolean {
+        val sid = uiState.value.sessionId.takeIf { it.isNotEmpty() } ?: return false
+        return runtime.dispatch(TransferRuntimeCommand.Pause(sid, reason))
+    }
+
     fun cancelTransfer(reason: String = "USER_CANCELLED"): Boolean {
         val sid = uiState.value.sessionId.takeIf { it.isNotEmpty() } ?: return false
         return runtime.dispatch(TransferRuntimeCommand.Cancel(sid, reason))

@@ -15,13 +15,26 @@ public sealed class DesktopTransferPresentation : INotifyPropertyChanged
     private string _bytes = "";
     private string _rate = "";
     private string? _receivedFolder;
+    private int _itemIndex = 1;
+    private int _itemCount = 1;
+    private int _verifiedCount;
     public event PropertyChangedEventHandler? PropertyChanged;
     public ObservableCollection<DesktopTransferSessionResult> PreviousResults { get; } = [];
     public bool HasPreviousResults => PreviousResults.Count > 0;
     public bool IsActive => _snapshot.IsActive;
-    public bool HasResult => _snapshot.Result is not null;
-    public bool HasTransfer => IsActive || HasResult;
+    public bool IsPaused => _snapshot.Phase == DesktopTransferPhase.Paused;
+    public bool IsActiveOrPaused => IsActive || IsPaused;
+    public bool HasResult => _snapshot.Result is not null && !IsPaused;
+    public bool HasTransfer => IsActiveOrPaused || HasResult;
     public bool IsEmpty => !HasTransfer;
+    public bool IsResumable => _snapshot.IsResumable || IsPaused;
+    public string? PausedSessionId => _snapshot.ResumableSessionId;
+    public bool CanStop => _snapshot.Phase == DesktopTransferPhase.Transferring && _snapshot.IsResumable;
+    public bool CanResume => IsPaused && !string.IsNullOrEmpty(PausedSessionId);
+    public bool ShowStopResumeButton => CanStop || CanResume;
+    public string StopResumeTooltip => IsPaused ? "Resume transfer" : "Stop transfer";
+    public int ItemIndex => _itemIndex;
+    public int ItemCount => _itemCount;
     public string PeerName => _snapshot.PeerName;
     public string DirectionText => _snapshot.Direction == DesktopTransferDirection.Receive ? "Receiving" : "Sending";
     public string Title => HasResult ? ResultTitle(_snapshot.Result!) : $"{DirectionText} · {PeerName}";
@@ -30,13 +43,18 @@ public sealed class DesktopTransferPresentation : INotifyPropertyChanged
         DesktopTransferPhase.Preparing => "Connecting…",
         DesktopTransferPhase.AwaitingConsent => "Waiting for approval…",
         DesktopTransferPhase.Transferring => "Transferring…",
+        DesktopTransferPhase.Paused => _itemCount > 1 && _verifiedCount > 0
+            ? $"Paused · {_verifiedCount} of {_itemCount} files verified"
+            : "Paused",
         DesktopTransferPhase.Verifying => "Verifying files…",
         DesktopTransferPhase.Saving => "Saving files…",
         DesktopTransferPhase.WaitingForConfirmation => "Waiting for receiver confirmation…",
         _ => ""
     };
     public bool IsIndeterminate => IsActive && _snapshot.Phase is DesktopTransferPhase.Preparing or DesktopTransferPhase.AwaitingConsent or DesktopTransferPhase.Verifying or DesktopTransferPhase.Saving or DesktopTransferPhase.WaitingForConfirmation;
-    public string CurrentFile => _currentFile;
+    public string CurrentFile => _itemCount > 1 && !string.IsNullOrWhiteSpace(_currentFile)
+        ? $"File {_itemIndex} of {_itemCount} · {_currentFile}"
+        : _currentFile;
     public double Progress => _progress;
     public string BytesText => _bytes;
     public string RateText => _rate;
@@ -79,7 +97,7 @@ public sealed class DesktopTransferPresentation : INotifyPropertyChanged
     {
         if (snapshot.RunId != _runId)
         {
-            if (_snapshot.Result is { Success: false } oldResult)
+            if (_snapshot.Result is { Success: false, Paused: false } oldResult)
             {
                 PreviousResults.Insert(0, new(ResultTitle(oldResult), _snapshot.PeerName, ResultSummary));
                 // Bounded session memory; this is not persistent verified history.
@@ -89,10 +107,17 @@ public sealed class DesktopTransferPresentation : INotifyPropertyChanged
             _navigated = false;
             _currentFile = _bytes = _rate = "";
             _progress = 0;
+            _itemIndex = 1;
+            _itemCount = 1;
+            _verifiedCount = 0;
             _receivedFolder = null;
         }
         _snapshot = snapshot;
-        if (snapshot.Phase is DesktopTransferPhase.Verifying or DesktopTransferPhase.Saving or DesktopTransferPhase.WaitingForConfirmation)
+        if (snapshot.Phase == DesktopTransferPhase.Paused && snapshot.Result is { } pausedResult)
+        {
+            _verifiedCount = pausedResult.VerifiedCount;
+        }
+        if (snapshot.Phase is DesktopTransferPhase.Paused or DesktopTransferPhase.Verifying or DesktopTransferPhase.Saving or DesktopTransferPhase.WaitingForConfirmation)
             _rate = "";
         if (IsSuccess) _progress = 100;
         bool navigate = !_navigated && (snapshot.Phase == DesktopTransferPhase.Transferring ||
@@ -109,6 +134,8 @@ public sealed class DesktopTransferPresentation : INotifyPropertyChanged
             case TransferEvent.ProgressUpdated p:
                 if (!IsActive) return;
                 _currentFile = p.Progress.ItemName;
+                _itemIndex = Math.Max(1, p.Progress.ItemIndex);
+                _itemCount = Math.Max(1, p.Progress.ItemCount);
                 _progress = p.Progress.Fraction * 100;
                 _bytes = p.TransferredBytesText;
                 _rate = _snapshot.Phase == DesktopTransferPhase.Transferring ? p.RateText : "";

@@ -134,10 +134,47 @@ public sealed class DesktopTransferRuntimeTests
         Assert.True((await active).Success);
     }
 
+    [Fact]
+    public async Task Runtime_StopActiveTransferForResume_EntersPausedWithoutFailureEvent_AndClearsCleanly()
+    {
+        var executor = new BlockingExecutor(pauseOnStop: true);
+        await using var runtime = new DesktopTransferRuntime(executor);
+        var events = new List<TransferEvent>();
+        runtime.EventOccurred += (_, ev) => events.Add(ev);
+
+        Task<DesktopTransferResult> active = runtime.SendAsync(Request(), new TestInteraction());
+        await executor.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        executor.Interaction!.OnPhase(DesktopTransferDirection.Send, DesktopTransferPhase.Transferring);
+        executor.Interaction.OnResumableBatchReady(DesktopTransferDirection.Send, "sess-123");
+
+        Assert.True(runtime.StopActiveTransferForResume());
+        DesktopTransferResult result = await active.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.True(result.Paused);
+        Assert.False(result.Cancelled);
+        Assert.Equal("sess-123", result.ResumableSessionId);
+        Assert.Equal(DesktopTransferPhase.Paused, runtime.Snapshot.Phase);
+        Assert.True(runtime.Snapshot.IsResumable);
+        Assert.DoesNotContain(events, ev => ev is TransferEvent.Failed);
+
+        runtime.ClearPausedState("Transfer cancelled.");
+        Assert.Equal(DesktopTransferPhase.Cancelled, runtime.Snapshot.Phase);
+    }
+
+    [Fact]
+    public void RateCalculator_SeededWithResumedOffset_DoesNotSpikeInitialSpeed()
+    {
+        var calculator = new Glide.Desktop.Services.DesktopTransferRateCalculator();
+        calculator.Reset(1_900_000_000L);
+        var (bps, rateText, _) = calculator.Update(1_900_000_000L, 5_000_000_000L);
+        Assert.Equal(0, bps);
+        Assert.Equal("0 B/s", rateText);
+    }
+
     private static DesktopSendRequest Request() =>
         new("unused", 1, []);
 
-    private sealed class BlockingExecutor : IDesktopTransferExecutor
+    private sealed class BlockingExecutor(bool pauseOnStop = false) : IDesktopTransferExecutor
     {
         private readonly TaskCompletionSource<DesktopTransferResult> _completion = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -146,14 +183,21 @@ public sealed class DesktopTransferRuntimeTests
             TaskCreationOptions.RunContinuationsAsynchronously);
         public IDesktopTransferInteraction? Interaction { get; private set; }
 
-        public Task<DesktopTransferResult> SendAsync(
+        public async Task<DesktopTransferResult> SendAsync(
             DesktopSendRequest request,
             IDesktopTransferInteraction interaction,
             CancellationToken cancellationToken = default)
         {
             Interaction = interaction;
             Started.TrySetResult(true);
-            return _completion.Task.WaitAsync(cancellationToken);
+            try
+            {
+                return await _completion.Task.WaitAsync(cancellationToken);
+            }
+            catch (OperationCanceledException) when (pauseOnStop)
+            {
+                return DesktopTransferResult.PausedForResume("Transfer paused.", "sess-123", 1, 256);
+            }
         }
 
         public Task<DesktopTransferResult> ReceiveAsync(

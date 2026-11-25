@@ -317,6 +317,62 @@ class TransferRuntimeTest {
         }
 
     @Test
+    fun pauseRetainedBatch_entersPausedState_andCancelFromPaused_clearsToCancelled() = runTest(dispatcher) {
+        var terminalCallbacks = 0
+        val runtime = TransferRuntime.forTesting()
+        runtime.attachServiceScope(backgroundScope) { terminalCallbacks++ }
+
+        val coordinator = TransferCoordinator(
+            sessionId = SessionId(UUID.randomUUID().toString()),
+            role = DeviceRole.Sender,
+            peerId = PeerId("peer-runtime"),
+            localDisplayName = "Runtime Sender",
+            transport = TestTransport(),
+            sourceAccess = TestSourceAccess(),
+            receiveStore = TestReceiveStore(),
+            scope = kotlinx.coroutines.CoroutineScope(dispatcher),
+            ioDispatcher = dispatcher,
+            persistAcceptedResumeBatch = { _, _ -> },
+            enableTrueResumeCapability = true
+        )
+        // Simulate an active resumable batch ready for pause/cancel
+        assertTrue(runtime.attachCoordinatorForTesting(coordinator, "Ubuntu VM"))
+        testScheduler.runCurrent()
+
+        val activeId = runtime.activeSessionId.value!!
+        // Without an accepted resume manifest, pause returns false (fail-closed)
+        assertFalse(runtime.dispatch(TransferRuntimeCommand.Pause(activeId)))
+
+        // Transition into Paused directly as produced by an interrupted resumable batch and verify Cancel
+        val pausedState = TransferUiState.Paused(
+            sessionId = activeId,
+            role = DeviceRole.Sender,
+            peerName = "Ubuntu VM",
+            itemName = "clip2.bin",
+            transferredBytes = 512L,
+            totalBytes = 1024L,
+            progressFraction = 0.5f,
+            itemIndex = 2,
+            itemCount = 3,
+            resumableSessionId = "orig-batch-1"
+        )
+        runtime.setTransferStateForTesting(pausedState)
+        assertFalse(runtime.isSessionActive.value)
+        assertNull(runtime.activeSessionId.value)
+
+        // Detach active coordinator manually as terminal cleanup would have done
+        runtime.detachServiceScope()?.join()
+        runtime.attachServiceScope(backgroundScope) { terminalCallbacks++ }
+        runtime.setTransferStateForTesting(pausedState)
+
+        assertTrue(runtime.dispatch(TransferRuntimeCommand.Cancel(activeId, "USER_CANCELLED")))
+        assertTrue(runtime.transferState.value is TransferUiState.Cancelled)
+        assertFalse(runtime.isSessionActive.value)
+
+        runtime.detachServiceScope()
+    }
+
+    @Test
     fun receiveAvailability_beforeHard006_remainsFailClosed() = runTest(dispatcher) {
         val runtime = TransferRuntime.forTesting()
         runtime.attachServiceScope(backgroundScope)

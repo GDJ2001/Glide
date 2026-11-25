@@ -1290,8 +1290,7 @@ public sealed partial class DesktopTransferEngine : IDesktopTransferExecutor
                 : new JsonArray(
                     ProtocolCapabilities.FolderV1,
                     ProtocolCapabilities.IdentityV1);
-        var resumeStore = preEstablishedTrustedSessionId != null && trustManager != null
-            ? request.ResumeStore : null;
+        var resumeStore = trustManager != null ? request.ResumeStore : null;
         if (resumeStore != null)
             optionalCapabilities.Add(ProtocolCapabilities.ResumeV1);
 
@@ -1361,6 +1360,7 @@ public sealed partial class DesktopTransferEngine : IDesktopTransferExecutor
             }
         }
 
+        string? authenticatedPeerFingerprint = null;
         if (negotiatedCapabilities.Contains(
                 ProtocolCapabilities.IdentityV1))
         {
@@ -1387,6 +1387,7 @@ public sealed partial class DesktopTransferEngine : IDesktopTransferExecutor
                             hostedInvitationAuthority != null,
                         cancellationToken: authToken,
                         machineAuthTimeout: _timeoutPolicy.MachineAuthTimeout);
+            authenticatedPeerFingerprint = authenticated.FingerprintHex;
 
             interaction.OnStatus(
                 DesktopTransferDirection.Send,
@@ -1397,6 +1398,13 @@ public sealed partial class DesktopTransferEngine : IDesktopTransferExecutor
 
         onPeerCryptographicallyAuthenticated?.Invoke();
         diag.RecordAuthenticationDurationTicks(Stopwatch.GetTimestamp() - authStart);
+
+        string? enrolledPeerFingerprint = authenticatedPeerFingerprint ?? request.ExpectedPeerFingerprintHex;
+        if (resumeStore != null &&
+            (enrolledPeerFingerprint == null || trustManager?.GetTrustedPeer(enrolledPeerFingerprint) == null))
+        {
+            resumeStore = null;
+        }
 
         var preparedItems =
             new List<PreparedSendItem>(request.Files.Count);
@@ -1435,7 +1443,7 @@ public sealed partial class DesktopTransferEngine : IDesktopTransferExecutor
             BuildOfferPages(preparedItems, resumeStore != null);
         var manifest = resumeStore != null
             ? new ResumeBatchManifest(sessionId.Value, batchId.Value, trustManager!.LocalFingerprintHex(),
-                request.ExpectedPeerFingerprintHex!, preparedItems.Select(item => new ResumeBatchManifest.Item(
+                enrolledPeerFingerprint!, preparedItems.Select(item => new ResumeBatchManifest.Item(
                     item.ItemId.Value, item.File.Name, item.File.TransferRelativePath, item.DeclaredSize,
                     item.ResumeSnapshot?.ChunkSize ?? 0, item.ResumeSnapshot?.ChunkRootHashHex,
                     item.ResumeDigest!)).ToArray())
@@ -1524,6 +1532,7 @@ public sealed partial class DesktopTransferEngine : IDesktopTransferExecutor
                         trusted.FingerprintHex, item.ResumeSnapshot, cancellationToken).ConfigureAwait(false);
             await resumeStore!.SaveAcceptedBatchAsync(manifest, DesktopResumeJournalRoles.Sender,
                 cancellationToken).ConfigureAwait(false);
+            interaction.OnResumableBatchReady(DesktopTransferDirection.Send, sessionId.Value);
         }
         else
         {
@@ -1556,9 +1565,15 @@ public sealed partial class DesktopTransferEngine : IDesktopTransferExecutor
         int verifiedCount = 0;
         long verifiedBytes = 0;
         int failedCount = 0;
+        int totalItemCount = preparedItems.Count;
+        Envelope? terminal = null;
 
+        try
+        {
+        int itemIndex = 0;
         foreach (PreparedSendItem prepared in preparedItems)
         {
+            itemIndex++;
             cancellationToken.ThrowIfCancellationRequested();
             interaction.OnPhase(DesktopTransferDirection.Send, DesktopTransferPhase.Transferring);
             diag.OnPhaseChanged(DesktopTransferPhase.Transferring);
@@ -1629,7 +1644,9 @@ public sealed partial class DesktopTransferEngine : IDesktopTransferExecutor
                     totalBytes,
                     interaction,
                     diag,
-                    cancellationToken).ConfigureAwait(false);
+                    cancellationToken,
+                    itemIndex,
+                    totalItemCount).ConfigureAwait(false);
             }
             else
             {
@@ -1678,7 +1695,9 @@ public sealed partial class DesktopTransferEngine : IDesktopTransferExecutor
                             peerName,
                             file.Name,
                             cumulativeTransferred,
-                            totalBytes));
+                            totalBytes,
+                            itemIndex,
+                            totalItemCount));
                 }
             }
 
@@ -1756,6 +1775,16 @@ public sealed partial class DesktopTransferEngine : IDesktopTransferExecutor
             }
             catch (Exception ackError) when (!cancellationToken.IsCancellationRequested && IsUncertainAckFailure(ackError))
             {
+                if (await HasUnfinishedAcceptedBatchAsync(resumeStore, sessionId, DesktopResumeJournalRoles.Sender).ConfigureAwait(false))
+                {
+                    return CompleteAttempt(
+                        diag,
+                        DesktopTransferResult.PausedForResume(
+                            "Transfer paused. Resume when ready.",
+                            sessionId.Value,
+                            verifiedCount,
+                            verifiedBytes));
+                }
                 string uncertainMessage =
                     $"Confirmation uncertain for '{file.Name}': the connection closed after all bytes and digest were sent, " +
                     "while waiting for final receiver confirmation. The receiving device may have already verified and saved the file; " +
@@ -1837,7 +1866,6 @@ public sealed partial class DesktopTransferEngine : IDesktopTransferExecutor
         diag.OnPhaseChanged(DesktopTransferPhase.WaitingForConfirmation);
         TimeSpan batchFinalizationDeadline =
             _timeoutPolicy.CalculateFinalizationDeadline(totalBytes);
-        Envelope terminal;
         try
         {
             terminal =
@@ -1850,6 +1878,16 @@ public sealed partial class DesktopTransferEngine : IDesktopTransferExecutor
         }
         catch (Exception ackError) when (!cancellationToken.IsCancellationRequested && IsUncertainAckFailure(ackError))
         {
+            if (await HasUnfinishedAcceptedBatchAsync(resumeStore, sessionId, DesktopResumeJournalRoles.Sender).ConfigureAwait(false))
+            {
+                return CompleteAttempt(
+                    diag,
+                    DesktopTransferResult.PausedForResume(
+                        "Transfer paused. Resume when ready.",
+                        sessionId.Value,
+                        verifiedCount,
+                        verifiedBytes));
+            }
             diag.RecordFinalAcknowledgementDurationTicks(Stopwatch.GetTimestamp() - finalAckStart);
             string uncertainBatchMessage =
                 $"Confirmation uncertain: the connection closed while waiting for final batch acknowledgment " +
@@ -1865,8 +1903,39 @@ public sealed partial class DesktopTransferEngine : IDesktopTransferExecutor
                     verifiedBytes));
         }
         diag.RecordFinalAcknowledgementDurationTicks(Stopwatch.GetTimestamp() - finalAckStart);
+        }
+        catch (Exception error) when (cancellationToken.IsCancellationRequested && DesktopStopForResumeContext.IsRequested &&
+            error is OperationCanceledException or IOException or EndOfStreamException or System.Net.Sockets.SocketException or ObjectDisposedException)
+        {
+            if (await HasUnfinishedAcceptedBatchAsync(resumeStore, sessionId, DesktopResumeJournalRoles.Sender).ConfigureAwait(false))
+            {
+                return CompleteAttempt(
+                    diag,
+                    DesktopTransferResult.PausedForResume(
+                        "Transfer paused.",
+                        sessionId.Value,
+                        verifiedCount,
+                        verifiedBytes));
+            }
+            throw;
+        }
+        catch (Exception error) when (error is IOException or EndOfStreamException or System.Net.Sockets.SocketException
+            or TimeoutException or ObjectDisposedException || (error is OperationCanceledException && !cancellationToken.IsCancellationRequested))
+        {
+            if (await HasUnfinishedAcceptedBatchAsync(resumeStore, sessionId, DesktopResumeJournalRoles.Sender).ConfigureAwait(false))
+            {
+                return CompleteAttempt(
+                    diag,
+                    DesktopTransferResult.PausedForResume(
+                        "Transfer paused. Resume when ready.",
+                        sessionId.Value,
+                        verifiedCount,
+                        verifiedBytes));
+            }
+            throw;
+        }
 
-        if (terminal.Type == MessageTypes.Error)
+        if (terminal!.Type == MessageTypes.Error)
         {
             string detail =
                 terminal.Body["detail"]?.ToString()
@@ -2138,7 +2207,7 @@ public sealed partial class DesktopTransferEngine : IDesktopTransferExecutor
 
             trustManager?.Initialize();
 
-            var resumeStore = preEstablishedTrustedSessionId != null && trustManager != null &&
+            var resumeStore = trustManager != null &&
                 !_ioOptions.DiscardStorageForBenchmark ? request.ResumeStore : null;
             HashSet<string> negotiatedCapabilities =
                 NegotiateHelloCapabilities(
@@ -2498,6 +2567,7 @@ public sealed partial class DesktopTransferEngine : IDesktopTransferExecutor
                 await resumeStore.SaveAcceptedBatchAsync(manifest, DesktopResumeJournalRoles.Receiver,
                     cancellationToken).ConfigureAwait(false);
                 offerResponse = offerResponse with { Extensions = new JsonObject { ["resumeManifestDigest"] = manifestDigest } };
+                interaction.OnResumableBatchReady(DesktopTransferDirection.Receive, sessionId.Value);
             }
             await channel.WriteEnvelopeAsync(offerResponse, cancellationToken).ConfigureAwait(false);
 
@@ -2521,9 +2591,14 @@ public sealed partial class DesktopTransferEngine : IDesktopTransferExecutor
             int verifiedCount = 0;
             long verifiedBytes = 0;
             int failedCount = 0;
+            int totalItemCount = items.Count;
 
+            try
+            {
+            int itemIndex = 0;
             foreach (DesktopOfferItem item in items)
             {
+                itemIndex++;
                 cancellationToken.ThrowIfCancellationRequested();
                 interaction.OnPhase(DesktopTransferDirection.Receive, DesktopTransferPhase.Transferring);
                 diag.OnPhaseChanged(DesktopTransferPhase.Transferring);
@@ -2603,7 +2678,9 @@ public sealed partial class DesktopTransferEngine : IDesktopTransferExecutor
                             itemTimeoutCts,
                             interaction,
                             diag,
-                            cancellationToken).ConfigureAwait(false);
+                            cancellationToken,
+                            itemIndex,
+                            totalItemCount).ConfigureAwait(false);
                     }
                     else
                     {
@@ -2669,7 +2746,9 @@ public sealed partial class DesktopTransferEngine : IDesktopTransferExecutor
                                             peerName,
                                             item.Name,
                                             cumulativeTransferred,
-                                            totalBytes));
+                                            totalBytes,
+                                            itemIndex,
+                                            totalItemCount));
                                 }
                             }
                             else if (record is
@@ -2720,7 +2799,9 @@ public sealed partial class DesktopTransferEngine : IDesktopTransferExecutor
                                         peerName,
                                         item.Name,
                                         cumulativeTransferred,
-                                        totalBytes));
+                                        totalBytes,
+                                        itemIndex,
+                                        totalItemCount));
                             }
                             else if (record is
                                 LanRecord.StreamEnd streamEnd)
@@ -2941,6 +3022,45 @@ public sealed partial class DesktopTransferEngine : IDesktopTransferExecutor
                 batchEnd,
                 "batchId",
                 batchId);
+            }
+            catch (Exception error) when (cancellationToken.IsCancellationRequested && DesktopStopForResumeContext.IsRequested &&
+                error is OperationCanceledException or IOException or EndOfStreamException or System.Net.Sockets.SocketException or ObjectDisposedException)
+            {
+                if (await HasUnfinishedAcceptedBatchAsync(resumeStore, sessionId, DesktopResumeJournalRoles.Receiver).ConfigureAwait(false))
+                {
+                    if (!discardStorage)
+                    {
+                        request.StagingStore.PurgeSession(sessionId);
+                    }
+                    return CompleteAttempt(
+                        diag,
+                        DesktopTransferResult.PausedForResume(
+                            "Transfer paused.",
+                            sessionId.Value,
+                            verifiedCount,
+                            verifiedBytes));
+                }
+                throw;
+            }
+            catch (Exception error) when (error is IOException or EndOfStreamException or System.Net.Sockets.SocketException
+                or TimeoutException or ObjectDisposedException || (error is OperationCanceledException && !cancellationToken.IsCancellationRequested))
+            {
+                if (await HasUnfinishedAcceptedBatchAsync(resumeStore, sessionId, DesktopResumeJournalRoles.Receiver).ConfigureAwait(false))
+                {
+                    if (!discardStorage)
+                    {
+                        request.StagingStore.PurgeSession(sessionId);
+                    }
+                    return CompleteAttempt(
+                        diag,
+                        DesktopTransferResult.PausedForResume(
+                            "Transfer paused. Resume when ready.",
+                            sessionId.Value,
+                            verifiedCount,
+                            verifiedBytes));
+                }
+                throw;
+            }
 
             if (verifiedCount == 0 &&
                 failedCount > 0)
@@ -3324,7 +3444,9 @@ public sealed partial class DesktopTransferEngine : IDesktopTransferExecutor
         long totalBytes,
         IDesktopTransferInteraction interaction,
         IDesktopTransferAttemptDiagnostics diag,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int itemIndex = 1,
+        int itemCount = 1)
     {
         int queueCapacity = Math.Clamp(_ioOptions.QueueBufferCount, 1, 64);
         int chunkBytes = Math.Clamp(_ioOptions.ChunkBufferBytes, 4096, Math.Min(StreamBufferBytes, _bufferPool.BufferBytes));
@@ -3431,7 +3553,9 @@ public sealed partial class DesktopTransferEngine : IDesktopTransferExecutor
                             peerName,
                             prepared.File.Name,
                             cumulative,
-                            totalBytes));
+                            totalBytes,
+                            itemIndex,
+                            itemCount));
                 }
             }
 
@@ -3478,7 +3602,9 @@ public sealed partial class DesktopTransferEngine : IDesktopTransferExecutor
         CancellationTokenSource itemTimeoutCts,
         IDesktopTransferInteraction interaction,
         IDesktopTransferAttemptDiagnostics diag,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int itemIndex = 1,
+        int itemCount = 1)
     {
         int queueCapacity = Math.Clamp(_ioOptions.QueueBufferCount, 1, 64);
 
@@ -3532,7 +3658,9 @@ public sealed partial class DesktopTransferEngine : IDesktopTransferExecutor
                                 peerName,
                                 item.Name,
                                 cumulative,
-                                totalBytes));
+                                totalBytes,
+                                itemIndex,
+                                itemCount));
                     }
                 }
             }

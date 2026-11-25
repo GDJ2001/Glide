@@ -54,6 +54,8 @@ public partial class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     public DesktopTransferPresentation Transfer { get; } = new();
     private readonly DesktopStateStore _stateStore = new();
     private readonly Stopwatch _transferStopwatch = new();
+    private readonly DesktopTransferRateCalculator _transferRateCalculator = new();
+    private Guid _rateCalculatorRunId;
     private string _receiveDirectory = "";
     private int _listenerPortPreference = LanDiscoveryConstants.DefaultPort;
 
@@ -135,6 +137,7 @@ public partial class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     public RelayCommand SendFilesCommand { get; }
     public RelayCommand ToggleListenerCommand { get; }
     public RelayCommand BrowseReceiveFolderCommand { get; }
+    public RelayCommand ToggleStopResumeTransferCommand { get; }
     public RelayCommand CancelTransferCommand { get; }
     public RelayCommand RetryTransferCommand { get; }
     public RelayCommand OpenTransferFolderCommand { get; }
@@ -194,6 +197,10 @@ public partial class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                 if (Transfer.ApplySnapshot(snapshot, navigateOnPreparation: trustedSend)) CurrentTab = "Activity";
                 OnPropertyChanged(nameof(IsTransferBannerVisible));
             });
+            if (snapshot.Phase is DesktopTransferPhase.Paused or DesktopTransferPhase.Completed or DesktopTransferPhase.Cancelled or DesktopTransferPhase.Failed)
+            {
+                _ = RefreshResumeEntriesAsync();
+            }
         };
         _transferRuntime.EventOccurred += (_, ev) =>
         {
@@ -263,7 +270,7 @@ public partial class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         _pairing = new DesktopPairingCoordinator(
             _trustManager, _pairInvitationManager, _mdnsService,
             () => Environment.MachineName, EnsurePairListenerAsync, ReleasePairListener,
-            () => IsTransferActive || _transferRuntime.IsBusy);
+            () => IsTransferActive || _transferRuntime.IsBusy || Transfer.IsPaused);
         _pairing.Changed += snapshot => RunOnUi(() =>
         {
             if (snapshot.Phase is DesktopPairingPhase.Idle or DesktopPairingPhase.Success or DesktopPairingPhase.Failed)
@@ -352,8 +359,25 @@ public partial class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             () => IsSendActionVisible);
         ToggleListenerCommand = new RelayCommand(async () => await ToggleListenerAsync());
         BrowseReceiveFolderCommand = new RelayCommand(ExecuteBrowseReceiveFolder);
+        ToggleStopResumeTransferCommand = new RelayCommand(() =>
+        {
+            if (Transfer.IsPaused && !string.IsNullOrWhiteSpace(Transfer.PausedSessionId))
+            {
+                _ = ResumeBatchBySessionIdAsync(Transfer.PausedSessionId);
+                return;
+            }
+            if (Transfer.CanStop)
+            {
+                _transferRuntime.StopActiveTransferForResume();
+            }
+        });
         CancelTransferCommand = new RelayCommand(() =>
         {
+            if (Transfer.IsPaused && !string.IsNullOrWhiteSpace(Transfer.PausedSessionId))
+            {
+                _ = CancelPausedTransferAsync(Transfer.PausedSessionId);
+                return;
+            }
             _transferRuntime.CancelActiveTransfer();
             _activeTransferCts?.Cancel();
         });
@@ -667,7 +691,7 @@ public partial class MainViewModel : ViewModelBase, IDesktopTransferInteraction
     public bool IsSendSelected => CurrentTab == "Send";
     public bool IsReceiveSelected => CurrentTab == "Receive";
     public bool IsActivitySelected => CurrentTab == "Activity";
-    public bool IsTransferBannerVisible => Transfer.IsActive && !IsActivitySelected;
+    public bool IsTransferBannerVisible => Transfer.IsActiveOrPaused && !IsActivitySelected;
     public bool IsSettingsSelected => CurrentTab == "Settings";
     public bool IsPairDevicesSelected => CurrentTab == "Pair devices";
     public bool IsUseInvitationSelected => _pairDirection == PairDirectionChoice.UseInvitation;
@@ -1153,7 +1177,8 @@ public partial class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                 StagingStore: new QuarantineStagingStore(destinationRoot: ReceiveDirectory),
                 LocalDeviceName: Environment.MachineName,
                 TrustManager: _trustManager,
-                Invitation: invitation);
+                Invitation: invitation,
+                ResumeStore: _resumeStore);
 
             DesktopTransferResult result = await _transferRuntime.ReceiveFromInvitationAsync(
                 request,
@@ -1467,7 +1492,7 @@ public partial class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                 {
                     result = await _transferRuntime.SendHostedAsync(
                         conn,
-                        hostedRequest with { HostedInvitationAuthority = _invitationAuthority },
+                        hostedRequest with { HostedInvitationAuthority = _invitationAuthority, ResumeStore = _resumeStore },
                         this,
                         cancellationToken);
                 }
@@ -1480,7 +1505,8 @@ public partial class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                                 destinationRoot: ReceiveDirectory),
                             _invitationAuthority,
                             LocalDeviceName: Environment.MachineName,
-                            TrustManager: _trustManager),
+                            TrustManager: _trustManager,
+                            ResumeStore: _resumeStore),
                         this,
                         cancellationToken);
                 }
@@ -1554,7 +1580,8 @@ public partial class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                     _pairedInvitation,
                     Environment.MachineName,
                     TrustManager: _trustManager,
-                    ExpectedPeerFingerprintHex: _selectedTrustedDevice?.FingerprintHex),
+                    ExpectedPeerFingerprintHex: _selectedTrustedDevice?.FingerprintHex,
+                    ResumeStore: _resumeStore),
                 this,
                 cancellationToken);
 
@@ -1703,7 +1730,8 @@ public partial class MainViewModel : ViewModelBase, IDesktopTransferInteraction
             LocalDeviceName: Environment.MachineName,
             TrustManager: _trustManager,
             ExpectedPeerFingerprintHex: _selectedTrustedDevice?.FingerprintHex,
-            HostedInvitationAuthority: _invitationAuthority);
+            HostedInvitationAuthority: _invitationAuthority,
+            ResumeStore: _resumeStore);
         PairInputUri = string.Empty;
         IsPairModalVisible = true;
         OnPropertyChanged(nameof(IsHostedSendQrVisible));
@@ -1823,18 +1851,21 @@ public partial class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                 return;
             }
 
+            if (_rateCalculatorRunId != _transferRuntime.Snapshot.RunId)
+            {
+                _rateCalculatorRunId = _transferRuntime.Snapshot.RunId;
+                _transferRateCalculator.Reset(latest.TransferredBytes);
+            }
+
             CurrentFileName = latest.ItemName;
             TotalProgress = latest.Fraction * 100.0;
 
-            double elapsedSeconds = Math.Max(
-                0.01,
-                _transferStopwatch.Elapsed.TotalSeconds);
-            double megabytesPerSecond =
-                (latest.TransferredBytes / 1_000_000.0) /
-                elapsedSeconds;
+            var (_, rateText, _) = _transferRateCalculator.Update(
+                latest.TransferredBytes,
+                latest.TotalBytes);
 
             TransferRateText = _transferRuntime.Snapshot.Phase == DesktopTransferPhase.Transferring
-                ? $"{megabytesPerSecond:F1} MB/s"
+                ? rateText
                 : "";
             TransferredBytesText =
                 $"{TransferItemViewModel.FormatSize(latest.TransferredBytes)} / " +

@@ -28,12 +28,21 @@
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Text="{Binding Label}" VerticalAlignment="Center" TextWrapping="Wrap" />
                                     <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="12,0,0,0">
-                                        <Button Content="Resume" Style="{StaticResource SecondaryButtonStyle}"
+                                        <Button Style="{StaticResource CompactIconButtonStyle}"
                                                 Command="{Binding DataContext.ResumeInterruptedTransferCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                CommandParameter="{Binding}" Margin="0,0,8,0" />
-                                        <Button Content="Discard" Style="{StaticResource SecondaryButtonStyle}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip="Resume transfer" AutomationProperties.Name="Resume transfer"
+                                                Margin="0,0,6,0">
+                                            <Path Data="{StaticResource IconPlay}" Width="14" Height="14" Stretch="Uniform"
+                                                  Fill="{DynamicResource PrimaryBrush}" />
+                                        </Button>
+                                        <Button Style="{StaticResource CompactDangerIconButtonStyle}"
                                                 Command="{Binding DataContext.DiscardInterruptedTransferCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                CommandParameter="{Binding}" />
+                                                CommandParameter="{Binding}"
+                                                ToolTip="Cancel transfer" AutomationProperties.Name="Cancel transfer">
+                                            <Path Data="{StaticResource IconCancel}" Width="14" Height="14" Stretch="Uniform"
+                                                  Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                                        </Button>
                                     </StackPanel>
                                 </Grid>
                             </DataTemplate>
@@ -337,11 +346,11 @@
                         <TextBlock Text="Current transfers and verified file history." Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,20" />
                         <Border Style="{StaticResource CardStyle}">
                             <StackPanel>
-                                <TextBlock Text="Current transfer" FontWeight="SemiBold" Visibility="{Binding Transfer.IsActive, Converter={StaticResource BoolToVis}}" />
+                                <TextBlock Text="Current transfer" FontWeight="SemiBold" Visibility="{Binding Transfer.IsActiveOrPaused, Converter={StaticResource BoolToVis}}" />
                                 <TextBlock Text="No transfer in progress." Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,8,0,0">
                                     <TextBlock.Style><Style TargetType="TextBlock"><Style.Triggers><DataTrigger Binding="{Binding Transfer.HasTransfer}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger></Style.Triggers></Style></TextBlock.Style>
                                 </TextBlock>
-                                <Grid x:Name="ActivityTransferGrid" Margin="0,12,0,0" Visibility="{Binding Transfer.IsActive, Converter={StaticResource BoolToVis}}">
+                                <Grid x:Name="ActivityTransferGrid" Margin="0,12,0,0" Visibility="{Binding Transfer.IsActiveOrPaused, Converter={StaticResource BoolToVis}}">
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                     <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                                     <StackPanel Grid.Column="0">
@@ -349,13 +358,42 @@
                                         <TextBlock Text="{Binding Transfer.PhaseText}" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,3,0,0" />
                                         <TextBlock Text="{Binding Transfer.CurrentFile}" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" Margin="0,3,0,0" />
                                     </StackPanel>
-                                    <StackPanel x:Name="ActivityTransferActions" Grid.Column="1" HorizontalAlignment="Right" Orientation="Horizontal">
-                                        <TextBlock Text="{Binding Transfer.BytesText}" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,14,0" />
-                                        <TextBlock Text="{Binding Transfer.RateText}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,14,0" />
-                                        <Button Style="{StaticResource SecondaryButtonStyle}" Content="Cancel" Command="{Binding CancelTransferCommand}" />
+                                    <StackPanel x:Name="ActivityTransferActions" Grid.Column="1" HorizontalAlignment="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding Transfer.BytesText}" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,12,0" />
+                                        <TextBlock Text="{Binding Transfer.RateText}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,12,0" />
+                                        <Button x:Name="ActivityStopResumeButton"
+                                                Style="{StaticResource CompactIconButtonStyle}"
+                                                Command="{Binding ToggleStopResumeTransferCommand}"
+                                                Visibility="{Binding Transfer.ShowStopResumeButton, Converter={StaticResource BoolToVis}}"
+                                                ToolTip="{Binding Transfer.StopResumeTooltip}"
+                                                AutomationProperties.Name="{Binding Transfer.StopResumeTooltip}"
+                                                Margin="0,0,6,0">
+                                            <Path Width="14" Height="14" Stretch="Uniform">
+                                                <Path.Style>
+                                                    <Style TargetType="Path">
+                                                        <Setter Property="Data" Value="{StaticResource IconStop}" />
+                                                        <Setter Property="Fill" Value="{DynamicResource TextPrimaryBrush}" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Transfer.IsPaused}" Value="True">
+                                                                <Setter Property="Data" Value="{StaticResource IconPlay}" />
+                                                                <Setter Property="Fill" Value="{DynamicResource PrimaryBrush}" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Path.Style>
+                                            </Path>
+                                        </Button>
+                                        <Button x:Name="ActivityCancelButton"
+                                                Style="{StaticResource CompactDangerIconButtonStyle}"
+                                                Command="{Binding CancelTransferCommand}"
+                                                ToolTip="Cancel transfer"
+                                                AutomationProperties.Name="Cancel transfer">
+                                            <Path Data="{StaticResource IconCancel}" Width="14" Height="14" Stretch="Uniform"
+                                                  Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                                        </Button>
                                     </StackPanel>
                                 </Grid>
-                                <ProgressBar x:Name="ActivityTransferProgressBar" Style="{StaticResource ModernProgressBarStyle}" Maximum="100" Value="{Binding Transfer.Progress, Mode=OneWay}" IsIndeterminate="{Binding Transfer.IsIndeterminate, Mode=OneWay}" Margin="0,14,0,0" Visibility="{Binding Transfer.IsActive, Converter={StaticResource BoolToVis}}" />
+                                <ProgressBar x:Name="ActivityTransferProgressBar" Style="{StaticResource ModernProgressBarStyle}" Maximum="100" Value="{Binding Transfer.Progress, Mode=OneWay}" IsIndeterminate="{Binding Transfer.IsIndeterminate, Mode=OneWay}" Margin="0,14,0,0" Visibility="{Binding Transfer.IsActiveOrPaused, Converter={StaticResource BoolToVis}}" />
                                 <StackPanel Margin="0,12,0,0" Visibility="{Binding Transfer.HasResult, Converter={StaticResource BoolToVis}}">
                                     <TextBlock Text="{Binding Transfer.Title}" FontWeight="SemiBold" FontSize="18" />
                                     <TextBlock Text="{Binding Transfer.PeerName}" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0" />
@@ -439,8 +477,47 @@
                 </ScrollViewer>
             </Grid>
 
-            <Border Grid.Row="2" Margin="0,16,0,0" Background="{DynamicResource SurfaceRaisedBrush}" CornerRadius="8" Padding="12" Visibility="{Binding IsTransferBannerVisible, Converter={StaticResource BoolToVis}}">
-                <Grid><TextBlock Text="{Binding Transfer.Title}" FontWeight="SemiBold" /><TextBlock HorizontalAlignment="Right" Text="{Binding Transfer.BytesText}" Foreground="{DynamicResource TextSecondaryBrush}" /></Grid>
+            <Border Grid.Row="2" Margin="0,16,0,0" Background="{DynamicResource SurfaceRaisedBrush}" CornerRadius="8" Padding="12,10" Visibility="{Binding IsTransferBannerVisible, Converter={StaticResource BoolToVis}}">
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
+                        <TextBlock Text="{Binding Transfer.Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding Transfer.CurrentFile}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Transfer.BytesText}" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,10,0" />
+                        <Button Style="{StaticResource CompactIconButtonStyle}"
+                                Width="30" Height="30" MinWidth="30" MinHeight="30"
+                                Command="{Binding ToggleStopResumeTransferCommand}"
+                                Visibility="{Binding Transfer.ShowStopResumeButton, Converter={StaticResource BoolToVis}}"
+                                ToolTip="{Binding Transfer.StopResumeTooltip}"
+                                AutomationProperties.Name="{Binding Transfer.StopResumeTooltip}"
+                                Margin="0,0,6,0">
+                            <Path Width="12" Height="12" Stretch="Uniform">
+                                <Path.Style>
+                                    <Style TargetType="Path">
+                                        <Setter Property="Data" Value="{StaticResource IconStop}" />
+                                        <Setter Property="Fill" Value="{DynamicResource TextPrimaryBrush}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Transfer.IsPaused}" Value="True">
+                                                <Setter Property="Data" Value="{StaticResource IconPlay}" />
+                                                <Setter Property="Fill" Value="{DynamicResource PrimaryBrush}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Path.Style>
+                            </Path>
+                        </Button>
+                        <Button Style="{StaticResource CompactDangerIconButtonStyle}"
+                                Width="30" Height="30" MinWidth="30" MinHeight="30"
+                                Command="{Binding CancelTransferCommand}"
+                                ToolTip="Cancel transfer"
+                                AutomationProperties.Name="Cancel transfer">
+                            <Path Data="{StaticResource IconCancel}" Width="12" Height="12" Stretch="Uniform"
+                                  Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                        </Button>
+                    </StackPanel>
+                </Grid>
             </Border>
         </Grid>
 

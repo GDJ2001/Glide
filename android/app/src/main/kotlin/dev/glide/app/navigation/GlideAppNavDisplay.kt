@@ -737,6 +737,11 @@ fun GlideAppNavDisplay(
                 val openFileFeedback by viewModel.openFileFeedback.collectAsStateWithLifecycle()
                 val exportStatus by viewModel.exportStatus.collectAsStateWithLifecycle()
                 val context = androidx.compose.ui.platform.LocalContext.current
+                val transferSettingsStore = androidx.compose.runtime.remember(customSettingsStore, context) {
+                    customSettingsStore ?: dev.glide.app.di.DatabaseModule.provideSettingsStore(context)
+                }
+                val transferSettings by transferSettingsStore.settingsFlow
+                    .collectAsStateWithLifecycle(initialValue = dev.glide.core.ports.GlideSettings())
 
                 androidx.compose.runtime.LaunchedEffect(route, uiState) {
                     if (!route.resumingBatch && uiState is dev.glide.app.ui.transfer.TransferUiState.Completed &&
@@ -759,6 +764,19 @@ fun GlideAppNavDisplay(
                     exportStatus = exportStatus,
                     onAcceptConsent = { viewModel.acceptConsent() },
                     onRejectConsent = { viewModel.rejectConsent() },
+                    onPauseTransfer = { viewModel.pauseTransfer() },
+                    onResumeTransfer = {
+                        val paused = uiState as? dev.glide.app.ui.transfer.TransferUiState.Paused
+                        if (paused != null) {
+                            dev.glide.app.service.TransferService.startRetainedResume(
+                                context,
+                                paused.resumableSessionId,
+                                transferSettings.deviceName
+                            )
+                        } else {
+                            viewModel.resumeTransfer()
+                        }
+                    },
                     onCancelTransfer = { viewModel.cancelTransfer() },
                     onConfirmMatch = { peerId -> viewModel.confirmPairing(peerId) },
                     onRejectMatch = { peerId -> viewModel.rejectPairing(peerId) },

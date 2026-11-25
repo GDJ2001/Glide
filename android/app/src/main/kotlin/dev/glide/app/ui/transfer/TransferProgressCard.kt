@@ -16,16 +16,19 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.TabletAndroid
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.ui.graphics.vector.ImageVector
 import dev.glide.app.ui.discovery.DeviceType
@@ -68,12 +71,23 @@ import dev.glide.designsystem.PrimaryButtonShape
 fun TransferProgressCard(
     state: TransferUiState,
     onCancelTransfer: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onPauseTransfer: () -> Unit = {},
+    onResumeTransfer: () -> Unit = {}
 ) {
     when (state) {
         is TransferUiState.Transferring -> {
             ActiveTransferringCard(
                 state = state,
+                onPauseTransfer = onPauseTransfer,
+                onCancelTransfer = onCancelTransfer,
+                modifier = modifier
+            )
+        }
+        is TransferUiState.Paused -> {
+            PausedTransferCard(
+                state = state,
+                onResumeTransfer = onResumeTransfer,
                 onCancelTransfer = onCancelTransfer,
                 modifier = modifier
             )
@@ -92,6 +106,7 @@ fun TransferProgressCard(
 @Composable
 private fun ActiveTransferringCard(
     state: TransferUiState.Transferring,
+    onPauseTransfer: () -> Unit,
     onCancelTransfer: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -228,56 +243,239 @@ private fun ActiveTransferringCard(
                 trackColor = MaterialTheme.colorScheme.surface
             )
 
-            // Byte progress row
-            androidx.compose.foundation.layout.FlowRow(
+            // Byte progress, metrics & compact icon controls
+            Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "${TransferFormatting.formatBytes(state.transferredBytes)} / ${TransferFormatting.formatBytes(state.totalBytes)}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontFamily = FontFamily.Default,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                // Speed & ETA metrics pill
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 1.dp
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Text(
-                        text = "$speedText • $etaText",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        text = "${TransferFormatting.formatBytes(state.transferredBytes)} / ${TransferFormatting.formatBytes(state.totalBytes)}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontFamily = FontFamily.Default,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        tonalElevation = 1.dp
+                    ) {
+                        Text(
+                            text = "$speedText • $etaText",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(start = 12.dp)
+                ) {
+                    if (state.isResumable) {
+                        FilledTonalIconButton(
+                            onClick = onPauseTransfer,
+                            modifier = Modifier
+                                .size(40.dp)
+                                .testTag("transfer_stop_resume_button")
+                                .semantics {
+                                    role = Role.Button
+                                    contentDescription = "Stop transfer"
+                                }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Stop,
+                                contentDescription = "Stop transfer"
+                            )
+                        }
+                    }
+
+                    FilledTonalIconButton(
+                        onClick = onCancelTransfer,
+                        colors = IconButtonDefaults.filledTonalIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer,
+                            contentColor = MaterialTheme.colorScheme.onErrorContainer
+                        ),
+                        modifier = Modifier
+                            .size(40.dp)
+                            .testTag("transfer_cancel_button")
+                            .semantics {
+                                role = Role.Button
+                                contentDescription = "Cancel transfer"
+                            }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Cancel transfer"
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PausedTransferCard(
+    state: TransferUiState.Paused,
+    onResumeTransfer: () -> Unit,
+    onCancelTransfer: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val roleLabel = if (state.role == DeviceRole.Sender) {
+        "Sending to ${state.peerName.isolateBidi()}"
+    } else {
+        "Receiving from ${state.peerName.isolateBidi()}"
+    }
+    val progress = state.progressFraction.coerceIn(0f, 1f)
+    val percentText = TransferFormatting.formatPercent(progress)
+
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("transfer_progress_card")
+            .semantics {
+                contentDescription = "$roleLabel paused: ${state.itemName.isolateBidi()}. $percentText complete."
+            }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = state.peerDeviceType.icon(),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Text(
+                        text = "$roleLabel · Paused",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+
+                if (state.itemCount > 1) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        modifier = Modifier.padding(start = 8.dp)
+                    ) {
+                        Text(
+                            text = "File ${state.itemIndex} of ${state.itemCount}",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                        )
+                    }
                 }
             }
 
-            // Cancel button
-            Button(
-                onClick = onCancelTransfer,
-                shape = PrimaryButtonShape,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.errorContainer,
-                    contentColor = MaterialTheme.colorScheme.onErrorContainer
-                ),
+            Text(
+                text = state.itemName.isolateBidi(),
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            Text(
+                text = state.statusMessage,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            LinearProgressIndicator(
+                progress = { progress },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 56.dp)
-                    .padding(top = 8.dp)
-                    .semantics {
-                        role = Role.Button
-                        contentDescription = "Cancel transfer and delete partial unverified files"
-                    }
+                    .height(8.dp)
+                    .clip(RoundedCornerShape(4.dp)),
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.surface
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Cancel transfer",
-                    style = MaterialTheme.typography.titleMedium
+                    text = "${TransferFormatting.formatBytes(state.transferredBytes)} / ${TransferFormatting.formatBytes(state.totalBytes)} ($percentText)",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f)
                 )
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(start = 12.dp)
+                ) {
+                    FilledTonalIconButton(
+                        onClick = onResumeTransfer,
+                        colors = IconButtonDefaults.filledTonalIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                        ),
+                        modifier = Modifier
+                            .size(40.dp)
+                            .testTag("transfer_stop_resume_button")
+                            .semantics {
+                                role = Role.Button
+                                contentDescription = "Resume transfer"
+                            }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = "Resume transfer"
+                        )
+                    }
+
+                    FilledTonalIconButton(
+                        onClick = onCancelTransfer,
+                        colors = IconButtonDefaults.filledTonalIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer,
+                            contentColor = MaterialTheme.colorScheme.onErrorContainer
+                        ),
+                        modifier = Modifier
+                            .size(40.dp)
+                            .testTag("transfer_cancel_button")
+                            .semantics {
+                                role = Role.Button
+                                contentDescription = "Cancel transfer"
+                            }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Cancel transfer"
+                        )
+                    }
+                }
             }
         }
     }
@@ -393,22 +591,25 @@ private fun IntegrityVerifyingCard(
                 trackColor = MaterialTheme.colorScheme.primaryContainer
             )
 
-            // Cancel action
-            OutlinedButton(
+            // Compact Cancel action
+            FilledTonalIconButton(
                 onClick = onCancelTransfer,
-                shape = PrimaryButtonShape,
+                colors = IconButtonDefaults.filledTonalIconButtonColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer
+                ),
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 52.dp)
-                    .padding(top = 8.dp)
+                    .padding(top = 4.dp)
+                    .size(40.dp)
+                    .testTag("transfer_cancel_button")
                     .semantics {
                         role = Role.Button
                         contentDescription = "Cancel transfer verification"
                     }
             ) {
-                Text(
-                    text = "Cancel",
-                    style = MaterialTheme.typography.titleMedium
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Cancel transfer verification"
                 )
             }
         }

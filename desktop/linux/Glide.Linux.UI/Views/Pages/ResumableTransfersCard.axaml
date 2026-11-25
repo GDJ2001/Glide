@@ -11,13 +11,22 @@
           <DataTemplate x:CompileBindings="False">
             <Grid ColumnDefinitions="*,Auto" Margin="0,4">
               <TextBlock Text="{Binding Label}" VerticalAlignment="Center" TextWrapping="Wrap" />
-              <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" Margin="12,0,0,0">
-                <Button Content="Resume" Classes="secondary"
+              <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" Margin="12,0,0,0">
+                <Button Classes="icon-action"
+                        ToolTip.Tip="Resume transfer"
+                        AutomationProperties.Name="Resume transfer"
                         Command="{Binding $parent[ItemsControl].DataContext.ResumeInterruptedTransferCommand}"
-                        CommandParameter="{Binding}" />
-                <Button Content="Discard" Classes="secondary"
+                        CommandParameter="{Binding}">
+                  <PathIcon Data="{StaticResource IconPlay}" Width="14" Height="14"
+                            Foreground="{DynamicResource AccentPrimaryBrush}" />
+                </Button>
+                <Button Classes="icon-danger"
+                        ToolTip.Tip="Cancel transfer"
+                        AutomationProperties.Name="Cancel transfer"
                         Command="{Binding $parent[ItemsControl].DataContext.DiscardInterruptedTransferCommand}"
-                        CommandParameter="{Binding}" />
+                        CommandParameter="{Binding}">
+                  <PathIcon Data="{StaticResource IconClose}" Width="14" Height="14" />
+                </Button>
               </StackPanel>
             </Grid>
           </DataTemplate>

@@ -19,6 +19,7 @@ import dev.glide.data.export.AndroidFileExporter
 import dev.glide.app.ui.transfer.toUiState
 import dev.glide.core.coordinator.ItemPhase
 import dev.glide.core.coordinator.ReducerEvent
+import dev.glide.core.coordinator.SessionPhase
 import dev.glide.core.coordinator.SessionState
 import dev.glide.core.coordinator.TransferCoordinator
 import dev.glide.core.domain.BatchId
@@ -46,6 +47,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.util.Collections
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -100,6 +102,7 @@ class TransferRuntime private constructor(
     private var activeCoordinator: TransferCoordinator? = null
     private var activeCoordinatorJob: Job? = null
     private var activePeerDisplayName: String = "Nearby device"
+    private val pausedSessionIds: MutableSet<String> = Collections.synchronizedSet(mutableSetOf())
 
     private var pairingTransport: TransferTransport? = null
     private var pairingJob: Job? = null
@@ -432,6 +435,7 @@ class TransferRuntime private constructor(
             is TransferRuntimeCommand.RejectPairing -> rejectPairing(command.peerId)
             is TransferRuntimeCommand.AcceptOffer -> acceptOffer(command.sessionId)
             is TransferRuntimeCommand.RejectOffer -> rejectOffer(command.sessionId, command.reason)
+            is TransferRuntimeCommand.Pause -> pause(command.sessionId, command.reason)
             is TransferRuntimeCommand.Cancel -> cancel(command.sessionId, command.reason)
             is TransferRuntimeCommand.Resume -> resume(command.sessionId)
             is TransferRuntimeCommand.ApprovePeerEnrollment ->
@@ -963,12 +967,21 @@ class TransferRuntime private constructor(
                         committedItemKeys = committedKeys,
                         current = _transferState.value
                     )
-                    if (nextUiState != null) _transferState.value = nextUiState
+                    val resolvedUiState = if (nextUiState is TransferUiState.Transferring &&
+                        coordinator.originalResumableSessionId != null
+                    ) {
+                        nextUiState.copy(isResumable = true)
+                    } else {
+                        nextUiState
+                    }
+                    if (resolvedUiState != null && sessionState.phase != SessionPhase.Interrupted) {
+                        _transferState.value = resolvedUiState
+                    }
 
                     // Keep the service and its single-operation gate active while verified
                     // received files are being published to the selected public folder.
-                    val pendingPublicSave = nextUiState is TransferUiState.Completed &&
-                        nextUiState.role == dev.glide.core.domain.DeviceRole.Receiver &&
+                    val pendingPublicSave = resolvedUiState is TransferUiState.Completed &&
+                        resolvedUiState.role == dev.glide.core.domain.DeviceRole.Receiver &&
                         applicationContext != null
                     val active = !sessionState.phase.isTerminal || pendingPublicSave
                     _isSessionActive.value = active
@@ -980,6 +993,14 @@ class TransferRuntime private constructor(
                             activeCoordinator === coordinator
                         }
                         if (!stillOwned) return@collect
+                        if (sessionState.phase == SessionPhase.Interrupted) {
+                            val pausedUi = buildPausedStateIfRetained(coordinator, sessionState, peerDisplayName)
+                            if (pausedUi != null) {
+                                _transferState.value = pausedUi
+                            } else if (resolvedUiState != null) {
+                                _transferState.value = resolvedUiState
+                            }
+                        }
                         val shouldSave = synchronized(lock) {
                             if (autoSavedSessionId == coordinator.sessionId.value) false
                             else {
@@ -987,11 +1008,11 @@ class TransferRuntime private constructor(
                                 true
                             }
                         }
-                        if (shouldSave && nextUiState is TransferUiState.Completed &&
-                            nextUiState.role == dev.glide.core.domain.DeviceRole.Receiver
+                        if (shouldSave && resolvedUiState is TransferUiState.Completed &&
+                            resolvedUiState.role == dev.glide.core.domain.DeviceRole.Receiver
                         ) {
                             try {
-                                autoSaveVerifiedFiles(nextUiState)
+                                autoSaveVerifiedFiles(resolvedUiState)
                             } catch (e: Exception) {
                                 _autoSaveStatus.value = ExportUiStatus.Failed(
                                     "Could not save the verified files: ${e.message ?: "Unknown error"}"
@@ -1141,30 +1162,142 @@ class TransferRuntime private constructor(
         return true
     }
 
-    private fun cancel(sessionId: String, reason: String): Boolean {
-        val coordinator: TransferCoordinator?
+    private fun pause(sessionId: String, reason: String): Boolean {
+        val coordinator: TransferCoordinator
         val ownerScope: CoroutineScope?
         synchronized(lock) {
             if (_activeSessionId.value != sessionId) return false
-            coordinator = activeCoordinator
+            coordinator = activeCoordinator ?: return false
+            if (coordinator.state.value.phase.isTerminal) return false
+            if (coordinator.originalResumableSessionId == null) return false
             ownerScope = serviceScope
-            diagnosticsObserver?.onCancellationRequested(sessionId)
-            if (coordinator == null) {
-                val current = _transferState.value
+            pausedSessionIds.add(coordinator.sessionId.value)
+        }
+        if (ownerScope == null) {
+            coordinator.scope.launch {
+                coordinator.interruptAndAwaitCleanup(reason)
+            }
+            return true
+        }
+        coordinator.scope.launch {
+            coordinator.interruptAndAwaitCleanup(reason)
+            finalizeTerminalCoordinator(coordinator)
+        }
+        return true
+    }
+
+    private suspend fun buildPausedStateIfRetained(
+        coordinator: TransferCoordinator,
+        sessionState: SessionState,
+        peerDisplayName: String
+    ): TransferUiState.Paused? {
+        val origId = coordinator.originalResumableSessionId ?: return null
+        val userPaused = pausedSessionIds.contains(coordinator.sessionId.value)
+        val hasRetained = userPaused ||
+            sessionFactory?.listRetainedBatches()?.any { it.manifest.sessionId.value == origId } == true
+        if (!hasRetained) return null
+        return buildPausedUiState(sessionState, peerDisplayName, origId, userPaused)
+    }
+
+    private fun buildPausedUiState(
+        sessionState: SessionState,
+        peerDisplayName: String,
+        origId: String,
+        userPaused: Boolean
+    ): TransferUiState.Paused {
+        val batch = sessionState.batch
+        val items = batch?.items ?: emptyList()
+        val currentItem = sessionState.currentItemState?.item ?: items.firstOrNull()
+        val itemCount = items.size.coerceAtLeast(1)
+        val itemIndex = if (currentItem != null && items.isNotEmpty()) {
+            (items.indexOfFirst { it.id == currentItem.id } + 1).coerceAtLeast(1)
+        } else 1
+        val totalBytes = batch?.totalBytes ?: (currentItem?.sizeBytes ?: 0L)
+        val transferredBytes = sessionState.itemStates.values.sumOf { it.transferredBytes }.coerceIn(0L, totalBytes.coerceAtLeast(0L))
+        val fraction = if (totalBytes > 0L) (transferredBytes.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f) else 0f
+        val verifiedCount = sessionState.itemStates.values.count { it.phase == ItemPhase.Verified }
+        val statusMsg = if (itemCount > 1 && verifiedCount > 0) {
+            if (userPaused) "Paused · $verifiedCount of $itemCount files verified"
+            else "Paused — connection interrupted · $verifiedCount of $itemCount files verified"
+        } else if (userPaused) {
+            "Transfer paused"
+        } else {
+            "Transfer paused — connection interrupted"
+        }
+        return TransferUiState.Paused(
+            sessionId = sessionState.sessionId.value,
+            role = sessionState.role,
+            peerName = peerDisplayName,
+            itemName = currentItem?.name ?: "Transfer batch",
+            transferredBytes = transferredBytes,
+            totalBytes = totalBytes,
+            progressFraction = fraction,
+            itemIndex = itemIndex,
+            itemCount = itemCount,
+            resumableSessionId = origId,
+            statusMessage = statusMsg,
+            peerDeviceType = DeviceType.fromDeviceName(peerDisplayName)
+        )
+    }
+
+    private fun cancel(sessionId: String, reason: String): Boolean {
+        val coordinator: TransferCoordinator?
+        val ownerScope: CoroutineScope?
+        var pausedToPurge: TransferUiState.Paused? = null
+        synchronized(lock) {
+            val current = _transferState.value
+            if (activeCoordinator == null && _activeSessionId.value == null &&
+                current is TransferUiState.Paused &&
+                (current.sessionId == sessionId || current.resumableSessionId == sessionId)
+            ) {
+                pausedToPurge = current
+                ownerScope = serviceScope
                 _transferState.value = TransferUiState.Cancelled(
                     sessionId = current.sessionId,
                     role = current.role,
-                    reason = reason
+                    reason = reason,
+                    peerDeviceType = current.peerDeviceType
                 )
+                diagnosticsObserver?.onCancellationRequested(sessionId)
                 diagnosticsObserver?.onCancellationUiUpdated(sessionId)
                 _isSessionActive.value = false
                 _activeSessionId.value = null
                 terminalCallback?.invoke()
+                coordinator = null
+            } else {
+                if (_activeSessionId.value != sessionId) return false
+                coordinator = activeCoordinator
+                ownerScope = serviceScope
+                pausedSessionIds.remove(sessionId)
+                diagnosticsObserver?.onCancellationRequested(sessionId)
+                if (coordinator == null) {
+                    _transferState.value = TransferUiState.Cancelled(
+                        sessionId = current.sessionId,
+                        role = current.role,
+                        reason = reason
+                    )
+                    diagnosticsObserver?.onCancellationUiUpdated(sessionId)
+                    _isSessionActive.value = false
+                    _activeSessionId.value = null
+                    terminalCallback?.invoke()
+                }
             }
+        }
+
+        pausedToPurge?.let { paused ->
+            val store = resumableStagingStore
+            if (store != null) {
+                val purgeScope = ownerScope ?: kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO)
+                purgeScope.launch {
+                    store.purgeOriginalSession(paused.resumableSessionId)
+                }
+            }
+            return true
         }
 
         // Explicit user cancellation invalidates retained resume authority for this transfer.
         // Service/process interruption deliberately does not call this path.
+        val originalResumableId = coordinator?.originalResumableSessionId
         if (ownerScope != null &&
             resumableStagingStore != null
         ) {
@@ -1173,6 +1306,9 @@ class TransferRuntime private constructor(
                     .purgeOriginalSession(
                         sessionId
                     )
+                if (originalResumableId != null && originalResumableId != sessionId) {
+                    resumableStagingStore.purgeOriginalSession(originalResumableId)
+                }
             }
         }
 
@@ -1615,6 +1751,7 @@ class TransferRuntime private constructor(
         lastTerminalState = null
         lastSenderBatch = null
         lastSourceMap = emptyMap()
+        pausedSessionIds.clear()
         _transferState.value = TransferUiState.Idle
         _autoSaveStatus.value = ExportUiStatus.Idle
         _autoSavedItemIds.value = emptySet()
@@ -1660,11 +1797,20 @@ class TransferRuntime private constructor(
             val committedKeys = coordinator.committedItemFiles
                 .mapKeys { it.key.value }
                 .mapValues { it.value.value }
-            _transferState.value = sessionState.toUiState(
-                peerDisplayName = peerDisplayName,
-                committedFileKey = coordinator.lastCommittedFileHandle?.value,
-                committedItemKeys = committedKeys
-            )
+            val userPaused = pausedSessionIds.remove(coordinator.sessionId.value)
+            val origId = coordinator.originalResumableSessionId
+            val currentUi = _transferState.value
+            if (currentUi is TransferUiState.Paused && currentUi.sessionId == coordinator.sessionId.value) {
+                // Keep Paused UI produced by observeCoordinator.
+            } else if (sessionState.phase == SessionPhase.Interrupted && userPaused && origId != null) {
+                _transferState.value = buildPausedUiState(sessionState, peerDisplayName, origId, userPaused = true)
+            } else {
+                _transferState.value = sessionState.toUiState(
+                    peerDisplayName = peerDisplayName,
+                    committedFileKey = coordinator.lastCommittedFileHandle?.value,
+                    committedItemKeys = committedKeys
+                )
+            }
             if (sessionState.phase == dev.glide.core.coordinator.SessionPhase.Cancelled) {
                 diagnosticsObserver?.onCancellationUiUpdated(coordinator.sessionId.value)
             }
@@ -1781,6 +1927,10 @@ sealed interface TransferRuntimeCommand {
     data class RejectOffer(
         val sessionId: String,
         val reason: String = "USER_REJECTED"
+    ) : TransferRuntimeCommand
+    data class Pause(
+        val sessionId: String,
+        val reason: String = "USER_PAUSED"
     ) : TransferRuntimeCommand
     data class Cancel(
         val sessionId: String,

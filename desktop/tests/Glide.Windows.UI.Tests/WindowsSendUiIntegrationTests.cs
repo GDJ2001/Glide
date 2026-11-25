@@ -41,7 +41,8 @@ public sealed class WindowsSendUiIntegrationTests
                 {
                     "IconSend", "IconReceive", "IconActivity", "IconSettings",
                     "IconFolderOpen", "IconDocumentAdd", "IconFolderAdd",
-                    "IconPhone", "IconLaptop", "IconRefresh"
+                    "IconPhone", "IconLaptop", "IconRefresh",
+                    "IconStop", "IconPlay", "IconCancel"
                 })
                 {
                     Assert.IsAssignableFrom<Geometry>(application.FindResource(icon));
@@ -245,6 +246,27 @@ public sealed class WindowsSendUiIntegrationTests
                     Assert.IsType<StackPanel>(window.FindName("ReceiveQrLayout")).Orientation);
                 Assert.Equal(1, Grid.GetRow(historyActions));
                 Assert.Equal(1, Grid.GetRow(Assert.IsType<StackPanel>(window.FindName("ActivityTransferActions"))));
+                Guid pauseRun = Guid.NewGuid();
+                viewModel.Transfer.ApplySnapshot(new DesktopTransferSnapshot(
+                    DesktopTransferPhase.Transferring, DesktopTransferDirection.Send, "Test Peer", "Sending...",
+                    RunId: pauseRun, IsResumable: true, ResumableSessionId: "pause-test"));
+                viewModel.CurrentTab = "Activity";
+                window.UpdateLayout();
+                var stopResumeBtn = Assert.IsType<Button>(window.FindName("ActivityStopResumeButton"));
+                var cancelBtn = Assert.IsType<Button>(window.FindName("ActivityCancelButton"));
+                Assert.Equal(Visibility.Visible, stopResumeBtn.Visibility);
+                Assert.Equal(Visibility.Visible, cancelBtn.Visibility);
+                Assert.Equal("Stop transfer", AutomationProperties.GetName(stopResumeBtn));
+                viewModel.Transfer.ApplySnapshot(new DesktopTransferSnapshot(
+                    DesktopTransferPhase.Paused, DesktopTransferDirection.Send, "Test Peer", "Transfer paused.",
+                    DesktopTransferResult.PausedForResume("Transfer paused.", "pause-test", 1, 10),
+                    RunId: pauseRun, IsResumable: true, ResumableSessionId: "pause-test"));
+                window.UpdateLayout();
+                Assert.Equal(Visibility.Visible, Assert.IsType<Grid>(window.FindName("ActivityTransferGrid")).Visibility);
+                Assert.Equal(Visibility.Visible, stopResumeBtn.Visibility);
+                Assert.Equal("Resume transfer", AutomationProperties.GetName(stopResumeBtn));
+                Assert.Equal(Visibility.Visible, cancelBtn.Visibility);
+                viewModel.Transfer.ApplySnapshot(DesktopTransferSnapshot.Idle);
                 foreach (string tab in new[] { "Send", "Receive", "Activity", "Pair devices", "Settings" })
                 {
                     viewModel.CurrentTab = tab;

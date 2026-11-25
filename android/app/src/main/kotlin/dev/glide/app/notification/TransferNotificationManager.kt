@@ -167,6 +167,17 @@ class TransferNotificationManager(
                 smallIcon = R.drawable.ic_notification
             }
 
+            is TransferUiState.Paused -> {
+                val actionVerb = if (state.role == DeviceRole.Sender) "Sending paused" else "Receiving paused"
+                title = actionVerb
+                text = "${formatFileSize(state.transferredBytes)} / ${formatFileSize(state.totalBytes)}"
+                subText = state.peerName
+                isIndeterminate = false
+                maxProgress = PROGRESS_MAX
+                currentProgress = (state.progressFraction * PROGRESS_MAX).toInt().coerceIn(0, PROGRESS_MAX)
+                smallIcon = R.drawable.ic_notification
+            }
+
             is TransferUiState.Verifying -> {
                 title = if (settings.notificationDetails) {
                     if (state.itemCount > 1) {

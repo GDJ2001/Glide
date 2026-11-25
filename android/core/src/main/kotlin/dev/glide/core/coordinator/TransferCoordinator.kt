@@ -175,6 +175,9 @@ class TransferCoordinator(
     private var emptyResumeRequestId: String? = null
     private var approvedResumeSourceHashes: List<String> = emptyList()
     private var lastResumeProgressNanos = 0L
+    @Volatile
+    var originalResumableSessionId: String? = resumeBatch?.manifest?.sessionId?.value
+        private set
     private class ResumeJournalException(
         message: String
     ) : IllegalStateException(message)
@@ -941,7 +944,10 @@ class TransferCoordinator(
             throw TrustedSessionAuthenticationException("Accepted resume manifest differs from the authenticated offer")
         }
         val persist = persistAcceptedResumeBatch ?: return null
-        if (manifest != null) persist(manifest, role)
+        if (manifest != null) {
+            persist(manifest, role)
+            originalResumableSessionId = manifest.sessionId.value
+        }
         return digest
     }
 
@@ -1165,7 +1171,7 @@ class TransferCoordinator(
             batch.copy(items = batch.items.drop(resumeReceiverVerifiedCount)) else batch
         _state.value = _state.value.copy(batch = offer, phase = SessionPhase.AwaitingConsent,
             itemStates = offer.items.associate { it.id to ItemTransferState(it) })
-        if (role == DeviceRole.Receiver && (resume.localInitiated || resumeReceiverVerifiedCount == batch.items.size))
+        if (role == DeviceRole.Receiver)
             decideResumeBatch(true)
     }
 

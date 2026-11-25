@@ -29,7 +29,7 @@
       <!-- Active Transfer Card (LUI-07: Active batch first) -->
 
       <Border Classes="card" BorderBrush="{DynamicResource AccentPrimaryBrush}"
-              BorderThickness="1.5" IsVisible="{Binding Transfer.IsActive}">
+              BorderThickness="1.5" IsVisible="{Binding Transfer.IsActiveOrPaused}">
         <Grid RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="*,Auto">
           <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" Spacing="8">
             <Ellipse Classes="status-dot active" VerticalAlignment="Center" />
@@ -51,10 +51,29 @@
             <TextBlock Text="{Binding Transfer.BytesText}" Classes="muted" />
           </StackPanel>
 
-          <Button Grid.Row="2" Grid.Column="1" Content="Cancel transfer"
-                  Command="{Binding CancelTransferCommand}"
-                  Classes="danger" VerticalAlignment="Center"
-                  AutomationProperties.Name="Cancel active transfer" />
+          <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="12,0,0,0">
+            <Button x:Name="ActivityStopResumeButton"
+                    Classes="icon-action"
+                    IsVisible="{Binding Transfer.ShowStopResumeButton}"
+                    Command="{Binding ToggleStopResumeTransferCommand}"
+                    ToolTip.Tip="{Binding Transfer.StopResumeTooltip}"
+                    AutomationProperties.Name="{Binding Transfer.StopResumeTooltip}">
+              <Panel>
+                <PathIcon Data="{StaticResource IconStop}" Width="14" Height="14"
+                          IsVisible="{Binding !Transfer.IsPaused}" />
+                <PathIcon Data="{StaticResource IconPlay}" Width="14" Height="14"
+                          Foreground="{DynamicResource AccentPrimaryBrush}"
+                          IsVisible="{Binding Transfer.IsPaused}" />
+              </Panel>
+            </Button>
+            <Button x:Name="ActivityCancelButton"
+                    Classes="icon-danger"
+                    Command="{Binding CancelTransferCommand}"
+                    ToolTip.Tip="Cancel transfer"
+                    AutomationProperties.Name="Cancel transfer">
+              <PathIcon Data="{StaticResource IconClose}" Width="14" Height="14" />
+            </Button>
+          </StackPanel>
         </Grid>
       </Border>
 

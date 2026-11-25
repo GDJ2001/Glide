@@ -7,11 +7,14 @@ namespace Glide.Desktop;
 public sealed partial class DesktopTransferEngine
 {
     private sealed class DesktopResumeCancellation(
-        DesktopResumeStore? store, SessionId session, CancellationToken cancellationToken) : IAsyncDisposable
+        DesktopResumeStore? store, SessionId session, CancellationToken cancellationToken,
+        Func<bool>? preserveOnStop = null) : IAsyncDisposable
     {
         public async ValueTask DisposeAsync()
         {
             if (store == null || !cancellationToken.IsCancellationRequested)
+                return;
+            if (preserveOnStop?.Invoke() == true || DesktopStopForResumeContext.IsRequested)
                 return;
             try
             {
@@ -19,6 +22,22 @@ public sealed partial class DesktopTransferEngine
             }
             catch (IOException) { }
             catch (UnauthorizedAccessException) { }
+        }
+    }
+
+    private static async Task<bool> HasUnfinishedAcceptedBatchAsync(
+        DesktopResumeStore? store, SessionId sessionId, string role)
+    {
+        if (store == null)
+            return false;
+        try
+        {
+            return await store.HasActiveAcceptedBatchAsync(sessionId, role, CancellationToken.None)
+                .ConfigureAwait(false);
+        }
+        catch
+        {
+            return false;
         }
     }
 

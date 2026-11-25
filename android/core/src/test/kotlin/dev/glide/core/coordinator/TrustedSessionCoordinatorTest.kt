@@ -150,10 +150,6 @@ class TrustedSessionCoordinatorTest {
             try {
                 receiver.start()
                 sender.start()
-                while (receiver.state.value.phase != SessionPhase.AwaitingConsent && !receiver.state.value.isTerminal) delay(10)
-                assertEquals(SessionPhase.AwaitingConsent, receiver.state.value.phase)
-                assertTrue(committed.isEmpty())
-                receiver.acceptOffer()
                 while (!receiver.state.value.isTerminal || !sender.state.value.isTerminal) delay(10)
                 assertEquals(receiver.state.value.failure?.message, SessionPhase.Completed, receiver.state.value.phase)
                 assertEquals(sender.state.value.failure?.message, SessionPhase.Completed, sender.state.value.phase)

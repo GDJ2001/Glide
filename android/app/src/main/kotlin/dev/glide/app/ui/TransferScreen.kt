@@ -11,15 +11,21 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -58,6 +64,8 @@ fun TransferScreen(
     uiState: TransferUiState = TransferUiState.Idle,
     onAcceptConsent: () -> Unit = {},
     onRejectConsent: () -> Unit = {},
+    onPauseTransfer: () -> Unit = {},
+    onResumeTransfer: () -> Unit = {},
     onCancelTransfer: () -> Unit = {},
     onOpenFile: () -> Unit = {},
     openFileFeedback: String? = null,
@@ -208,22 +216,28 @@ fun TransferScreen(
 
                 Spacer(modifier = Modifier.weight(1f, fill = false))
 
-                Button(
-                    onClick = onCancelTransfer,
-                    shape = PrimaryButtonShape,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error,
-                        contentColor = MaterialTheme.colorScheme.onError
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 56.dp)
-                        .semantics {
-                            role = Role.Button
-                            contentDescription = "Cancel transfer connection"
-                        }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
                 ) {
-                    Text(text = "Cancel", style = MaterialTheme.typography.titleMedium)
+                    FilledTonalIconButton(
+                        onClick = onCancelTransfer,
+                        colors = IconButtonDefaults.filledTonalIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer,
+                            contentColor = MaterialTheme.colorScheme.onErrorContainer
+                        ),
+                        modifier = Modifier
+                            .size(40.dp)
+                            .semantics {
+                                role = Role.Button
+                                contentDescription = "Cancel transfer connection"
+                            }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Cancel transfer connection"
+                        )
+                    }
                 }
             }
 
@@ -236,10 +250,12 @@ fun TransferScreen(
                 )
             }
 
-            is TransferUiState.Transferring, is TransferUiState.Verifying -> {
+            is TransferUiState.Transferring, is TransferUiState.Verifying, is TransferUiState.Paused -> {
                 TransferProgressCard(
                     state = uiState,
-                    onCancelTransfer = onCancelTransfer
+                    onCancelTransfer = onCancelTransfer,
+                    onPauseTransfer = onPauseTransfer,
+                    onResumeTransfer = onResumeTransfer
                 )
             }
 
