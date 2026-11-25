@@ -24,7 +24,8 @@ sealed interface GlideRoute : NavKey {
     data class Transfer(
         val sessionId: String = "session-demo",
         val batchId: String? = null,
-        val pairedPeerFingerprintHex: String? = null
+        val pairedPeerFingerprintHex: String? = null,
+        val resumingBatch: Boolean = false
     ) : GlideRoute
 
     @Serializable

@@ -670,7 +670,7 @@ fun GlideAppNavDisplay(
                 val context = androidx.compose.ui.platform.LocalContext.current
 
                 androidx.compose.runtime.LaunchedEffect(route, uiState) {
-                    if (uiState is dev.glide.app.ui.transfer.TransferUiState.Completed &&
+                    if (!route.resumingBatch && uiState is dev.glide.app.ui.transfer.TransferUiState.Completed &&
                         uiState.role == dev.glide.core.domain.DeviceRole.Sender
                     ) {
                         val sourceUris = route.batchId?.let { batchId ->
@@ -757,6 +757,13 @@ fun GlideAppNavDisplay(
                 dev.glide.app.ui.history.HistoryScreen(
                     viewModel = viewModel,
                     initialSessionId = route.initialSessionId,
+                    resumePanel = {
+                        if (transferRuntime != null)
+                            dev.glide.app.ui.history.RetainedTransfersPanel(transferRuntime) { original ->
+                                dev.glide.app.service.TransferService.startRetainedResume(context, original, "Glide Device")
+                                backStack.add(GlideRoute.Transfer(resumingBatch = true))
+                            }
+                    },
                     onBack = {
                         if (backStack.size > 1) {
                             backStack.removeAt(backStack.lastIndex)

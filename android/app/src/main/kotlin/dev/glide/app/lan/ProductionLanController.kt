@@ -526,7 +526,8 @@ class ProductionLanController private constructor(
         trustManager: PersistentTrustManager,
         localDeviceName: String,
         onConnected: (LanTransferTransport, PeerDevice) -> Unit,
-        onFailure: (dev.glide.transport.lan.LanConnectionFailure) -> Unit
+        onFailure: (dev.glide.transport.lan.LanConnectionFailure) -> Unit,
+        resume: LanTransferTransport.TrustedResumeOpening? = null
     ): Boolean {
         val readinessError = readinessError()
         if (readinessError != null) {
@@ -591,7 +592,8 @@ class ProductionLanController private constructor(
                         displayName = trustedPeer.displayName,
                         endpoints = candidates.map { LanEndpoint(it.address, it.port) }.distinct(),
                         localIdentityPublicKeyDer = trustManager.localPublicKeyDer(),
-                        expectedPresenceId = candidates.singleOrNull()?.presenceId
+                        expectedPresenceId = candidates.singleOrNull()?.presenceId,
+                        resume = resume
                     )
                 )
                 val connectionJob = activeScope.launch {

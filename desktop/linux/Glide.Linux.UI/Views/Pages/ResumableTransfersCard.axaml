@@ -1,0 +1,28 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Glide.Linux.UI.ViewModels"
+             x:Class="Glide.Linux.UI.Views.Pages.ResumableTransfersCard"
+             x:DataType="vm:LinuxMainViewModel" IsVisible="{Binding HasResumeEntries}">
+  <Border Classes="card">
+    <StackPanel Spacing="8">
+      <TextBlock Text="Resumable transfers" Classes="h3" />
+      <ItemsControl ItemsSource="{Binding ResumeEntries}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:CompileBindings="False">
+            <Grid ColumnDefinitions="*,Auto" Margin="0,4">
+              <TextBlock Text="{Binding Label}" VerticalAlignment="Center" TextWrapping="Wrap" />
+              <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" Margin="12,0,0,0">
+                <Button Content="Resume" Classes="secondary"
+                        Command="{Binding $parent[ItemsControl].DataContext.ResumeInterruptedTransferCommand}"
+                        CommandParameter="{Binding}" />
+                <Button Content="Discard" Classes="secondary"
+                        Command="{Binding $parent[ItemsControl].DataContext.DiscardInterruptedTransferCommand}"
+                        CommandParameter="{Binding}" />
+              </StackPanel>
+            </Grid>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </StackPanel>
+  </Border>
+</UserControl>

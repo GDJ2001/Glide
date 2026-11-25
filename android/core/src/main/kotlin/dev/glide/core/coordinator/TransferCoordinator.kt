@@ -8,10 +8,12 @@ import dev.glide.core.domain.ItemId
 import dev.glide.core.domain.MessageId
 import dev.glide.core.domain.PeerId
 import dev.glide.core.domain.SessionId
+import dev.glide.core.domain.Sha256Digest
 import dev.glide.core.domain.SourceHandle
 import dev.glide.core.domain.StagingHandle
 import dev.glide.core.domain.TransferBatch
 import dev.glide.core.domain.TransferFailure
+import dev.glide.core.domain.TransferItem
 import dev.glide.core.identity.PersistentTrustManager
 import dev.glide.core.identity.VerifiedPeerIdentity
 import dev.glide.core.ports.AuthenticatedChannelContextProvider
@@ -25,6 +27,10 @@ import dev.glide.core.ports.StreamExpectation
 import dev.glide.core.ports.SourceAccess
 import dev.glide.core.ports.TransferTransport
 import dev.glide.core.protocol.Envelope
+import dev.glide.core.protocol.BatchEndBody
+import dev.glide.core.protocol.BatchResultBody
+import dev.glide.core.protocol.IdentityResumeTranscript
+import dev.glide.core.protocol.OfferDecisionBody
 import dev.glide.core.protocol.IdentityChallengeDto
 import dev.glide.core.protocol.IdentityResponseDto
 import dev.glide.core.protocol.MessageTypes
@@ -41,6 +47,7 @@ import dev.glide.core.protocol.ResumeStreamStartDto
 import dev.glide.core.protocol.WireErrorCodes
 import dev.glide.core.resume.ResumeAuthorityLookup
 import dev.glide.core.resume.ResumeBatchManifest
+import dev.glide.core.resume.ResumeBatchReconnect
 import dev.glide.core.resume.ResumeReconnectPlan
 import dev.glide.core.resume.ResumeReconnectState
 import dev.glide.core.resume.ResumeRequestAuthority
@@ -65,6 +72,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.Collections
@@ -125,7 +135,7 @@ class TransferCoordinator(
             SessionId,
             ItemId
         ) -> Unit)? = null,
-    val resumeReconnectPlan:
+    resumeReconnectPlan:
         ResumeReconnectPlan? = null,
     val loadReceiverResumeAuthority:
         (suspend (
@@ -153,8 +163,18 @@ class TransferCoordinator(
         ) -> CommittedFileHandle)? = null,
     val enableTrueResumeCapability: Boolean = false,
     private val persistAcceptedResumeBatch: (suspend (ResumeBatchManifest, DeviceRole) -> Unit)? = null,
-    private val recordResumeBatchCommit: (suspend (SessionId, ItemId, Long, dev.glide.core.domain.Sha256Digest) -> Unit)? = null
+    private val recordResumeBatchCommit: (suspend (SessionId, ItemId, Long, dev.glide.core.domain.Sha256Digest) -> Unit)? = null,
+    private val resumeBatch: ResumeBatchReconnect? = null,
+    private val purgeAcceptedResumeBatch: (suspend (SessionId) -> Unit)? = null,
+    private val recoverResumeCommitReceipts: (suspend (ResumeBatchManifest, Int) -> Int)? = null
 ) {
+    private var resumeReconnectPlan = resumeReconnectPlan
+    private var resumeBatchStarted = false
+    private var resumeBatchIndex = 0
+    private var resumeReceiverVerifiedCount = resumeBatch?.receiverVerifiedCount ?: 0
+    private var emptyResumeRequestId: String? = null
+    private var approvedResumeSourceHashes: List<String> = emptyList()
+    private var lastResumeProgressNanos = 0L
     private class ResumeJournalException(
         message: String
     ) : IllegalStateException(message)
@@ -361,6 +381,23 @@ class TransferCoordinator(
         launchTracked { observeControlMessages() }
         launchTracked { observeBulkProgress() }
         launchTracked { observeConnectionEvents() }
+        if (resumeBatch != null) {
+            launchTracked {
+                _resumeReconnectState.collect { resume ->
+                    val code = when (resume) {
+                        is ResumeReconnectState.Failed -> resume.code
+                        is ResumeReconnectState.Rejected -> resume.code
+                        else -> return@collect
+                    }
+                    if (!_state.value.isTerminal) {
+                        val failure = if (code == ResumeRejectCodes.FILE_CHANGED)
+                            TransferFailure.SourceUnavailable("The original file changed or is unavailable")
+                        else TransferFailure.TransferInterrupted("The approved transfer could not be resumed")
+                        dispatch(ReducerEvent.TransportFailure(failure, clock()))
+                    }
+                }
+            }
+        }
 
         if (role == DeviceRole.Receiver) {
             launchTracked { observeIncomingStreams() }
@@ -386,6 +423,10 @@ class TransferCoordinator(
      */
      fun acceptOffer() {
         launchTracked {
+            if (resumeBatch != null) {
+                respondToResumeConsent(true)
+                return@launchTracked
+            }
             var manifestDigest: dev.glide.core.domain.Sha256Digest? = null
             val batch =
                 _state.value.batch
@@ -500,6 +541,10 @@ class TransferCoordinator(
      */
     fun rejectOffer(reason: String = "USER_REJECTED") {
         launchTracked {
+            if (resumeBatch != null) {
+                respondToResumeConsent(false)
+                return@launchTracked
+            }
             dispatch(
                 ReducerEvent.SubmitOfferDecision(
                     accepted = false,
@@ -538,6 +583,7 @@ class TransferCoordinator(
             )
         }
         awaitTerminalCleanup()
+        resumeBatch?.let { purgeAcceptedResumeBatch?.invoke(it.manifest.sessionId) }
     }
 
     /**
@@ -734,7 +780,7 @@ class TransferCoordinator(
     }
 
     private suspend fun maybeSubmitSenderOffer() {
-        if (resumeReconnectPlan != null) {
+        if (resumeReconnectPlan != null || resumeBatch != null) {
             return
         }
         val batch =
@@ -958,6 +1004,13 @@ class TransferCoordinator(
     private suspend fun sendHandshakeControl(
         type: String,
         body: JsonObject
+    ): Envelope = sendSessionControl(type, body, null)
+
+    private suspend fun sendSessionControl(
+        type: String,
+        body: JsonObject,
+        extensions: JsonObject?,
+        onPrepared: (Envelope) -> Unit = {}
     ): Envelope {
         val envelope =
             mutex.withLock {
@@ -978,7 +1031,8 @@ class TransferCoordinator(
                             ),
                         seq =
                             current.nextOutboundSeq,
-                        body = body
+                        body = body,
+                        extensions = extensions
                     )
 
                 _state.value =
@@ -991,6 +1045,7 @@ class TransferCoordinator(
                 next
             }
 
+        onPrepared(envelope)
         try {
             transport.sendControl(
                 peerId,
@@ -1056,7 +1111,7 @@ class TransferCoordinator(
         if (role == DeviceRole.Sender &&
             handshake.isComplete
         ) {
-            maybeSubmitSenderOffer()
+            if (resumeBatch != null) onResumeBatchAuthenticated() else maybeSubmitSenderOffer()
         }
     }
 
@@ -1080,8 +1135,247 @@ class TransferCoordinator(
         )
         cancelIdentityTimeoutIfComplete()
         if (handshake.isComplete) {
-            maybeStartReceiverResumeRequest()
+            if (resumeBatch != null) onResumeBatchAuthenticated() else maybeStartReceiverResumeRequest()
         }
+    }
+
+    private suspend fun onResumeBatchAuthenticated() {
+        val resume = checkNotNull(resumeBatch)
+        if (resumeBatchStarted) return
+        resumeBatchStarted = true
+        if (!isTrueResumeNegotiated()) {
+            dispatch(ReducerEvent.TransportFailure(
+                TransferFailure.UnsupportedProtocol("The paired device cannot resume this batch"), clock()
+            ))
+            return
+        }
+        val manager = checkNotNull(persistentTrustManager)
+        val peer = checkNotNull(authenticatedPeerFingerprintHex)
+        val localExpected = if (role == DeviceRole.Sender) resume.manifest.senderFingerprint else resume.manifest.receiverFingerprint
+        val peerExpected = if (role == DeviceRole.Sender) resume.manifest.receiverFingerprint else resume.manifest.senderFingerprint
+        check(manager.localFingerprintHex() == localExpected.value && peer == peerExpected.value &&
+            manager.trustedPeerByFingerprint(peer) != null) { "The approved batch belongs to another identity" }
+        if (role == DeviceRole.Receiver) {
+            resumeReceiverVerifiedCount = recoverResumeCommitReceipts?.invoke(resume.manifest, resumeReceiverVerifiedCount)
+                ?: resumeReceiverVerifiedCount
+            check(resumeReceiverVerifiedCount in resume.receiverVerifiedCount..resume.manifest.items.size)
+        }
+        val batch = resume.manifest.asTransferBatch()
+        val offer = if (role == DeviceRole.Receiver && resumeReceiverVerifiedCount in 1 until batch.items.size)
+            batch.copy(items = batch.items.drop(resumeReceiverVerifiedCount)) else batch
+        _state.value = _state.value.copy(batch = offer, phase = SessionPhase.AwaitingConsent,
+            itemStates = offer.items.associate { it.id to ItemTransferState(it) })
+        if (role == DeviceRole.Receiver && (resume.localInitiated || resumeReceiverVerifiedCount == batch.items.size))
+            decideResumeBatch(true)
+    }
+
+    private suspend fun decideResumeBatch(approved: Boolean) {
+        val resume = checkNotNull(resumeBatch)
+        mutex.withLock {
+            if (role != DeviceRole.Receiver || !resumeBatchStarted || _state.value.phase != SessionPhase.AwaitingConsent) return
+            _state.value = _state.value.copy(phase = SessionPhase.PreparingItem)
+        }
+        val peer = checkNotNull(authenticatedPeerFingerprintHex)
+        val manager = checkNotNull(persistentTrustManager)
+        check(manager.trustedPeerByFingerprint(peer) != null) { "The paired device was revoked" }
+        val remaining = resume.manifest.items.drop(resumeReceiverVerifiedCount).sumOf { it.sizeBytes }
+        val hasSpace = !approved || remaining == 0L || receiveStore.hasAvailableSpace(remaining)
+        val accepted = approved && hasSpace
+        val options = if (accepted) buildJsonObject {
+            put("resumeManifestDigest", resume.manifest.digest().value)
+            put("resumeVerifiedCount", resumeReceiverVerifiedCount)
+        } else null
+        val rejection = if (accepted) null else if (hasSpace) "USER_REJECTED" else "INSUFFICIENT_STORAGE"
+        if (_state.value.isTerminal) return
+        if (accepted) setResumePosition(resumeReceiverVerifiedCount)
+        sendSessionControl(MessageTypes.OFFER_DECISION, ProtocolCodec.encodeBody(
+            OfferDecisionBody(resume.manifest.batchId, accepted, rejection)), options)
+        if (accepted) startCurrentResumeItem()
+        else dispatch(ReducerEvent.TransportFailure(TransferFailure.UserRejected(rejection!!), clock()))
+    }
+
+    private suspend fun respondToResumeConsent(approved: Boolean) {
+        try {
+            decideResumeBatch(approved)
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            dispatch(ReducerEvent.TransportFailure(TransferFailure.TransferInterrupted("Could not continue the retained transfer"), clock()))
+        }
+    }
+
+    private suspend fun handleResumeBatchDecision(envelope: Envelope) {
+        val resume = checkNotNull(resumeBatch)
+        check(role == DeviceRole.Sender && resumeBatchStarted && _state.value.phase == SessionPhase.AwaitingConsent)
+        val decision = ProtocolCodec.decodeBody<OfferDecisionBody>(envelope)
+        check(decision.batchId == resume.manifest.batchId) { "Resume consent is for a different batch" }
+        if (!decision.accepted) {
+            dispatch(ReducerEvent.TransportFailure(TransferFailure.UserRejected(decision.code ?: "USER_REJECTED"), clock()))
+            return
+        }
+        check(ResumeOfferMetadata.decodeAcceptance(envelope.extensions) == resume.manifest.digest())
+        val count = (envelope.extensions?.get("resumeVerifiedCount") as? JsonPrimitive)
+            ?.takeIf { !it.isString }?.content?.toIntOrNull()
+        check(count in 0..resume.manifest.items.size) { "Invalid verified prefix in resume consent" }
+        setResumePosition(checkNotNull(count))
+        startCurrentResumeItem()
+    }
+
+    private fun setResumePosition(index: Int) {
+        val resume = checkNotNull(resumeBatch)
+        val peer = checkNotNull(authenticatedPeerFingerprintHex)
+        resumeBatchIndex = index
+        val item = resume.manifest.items.getOrNull(index)
+        resumeReconnectPlan = item?.let {
+            if (role == DeviceRole.Sender) ResumeReconnectPlan.Sender(resume.manifest.sessionId, it.id, peer)
+            else ResumeReconnectPlan.Receiver(resume.manifest.sessionId, it.id, peer)
+        }
+        pendingResumeRequest = null
+        pendingReceiverResumeJournal = null
+        emptyResumeRequestId = null
+        approvedResumeSourceHashes = emptyList()
+        lastResumeProgressNanos = 0L
+        _resumeReconnectState.value = ResumeReconnectState.Idle
+        val batch = resume.manifest.asTransferBatch()
+        _state.value = _state.value.copy(
+            batch = batch,
+            phase = if (item == null) SessionPhase.AwaitingReceipt else SessionPhase.TransferringItem,
+            currentItemIndex = index.coerceAtMost(batch.items.lastIndex),
+            itemStates = batch.items.mapIndexed { position, offered ->
+                offered.id to ItemTransferState(
+                    offered,
+                    phase = if (position < index) ItemPhase.Verified else ItemPhase.Queued,
+                    transferredBytes = if (position < index) offered.sizeBytes else 0,
+                    actualDigest = if (position < index) offered.digest else null
+                )
+            }.toMap()
+        )
+    }
+
+    private fun ResumeBatchManifest.asTransferBatch(): TransferBatch = TransferBatch(batchId, items.map {
+        TransferItem(it.id, it.name, "application/octet-stream", it.sizeBytes,
+            digest = it.digest, relativePath = it.relativePath)
+    })
+
+    private suspend fun startCurrentResumeItem() {
+        val resume = checkNotNull(resumeBatch)
+        if (_state.value.isTerminal) return
+        if (resumeBatchIndex == resume.manifest.items.size) {
+            if (role == DeviceRole.Sender)
+                sendHandshakeControl(MessageTypes.BATCH_END, ProtocolCodec.encodeBody(BatchEndBody(resume.manifest.batchId)))
+        } else if (role == DeviceRole.Receiver) {
+            maybeStartReceiverResumeRequest()
+            val failure = _resumeReconnectState.value as? ResumeReconnectState.Rejected
+            if (failure != null)
+                dispatch(ReducerEvent.TransportFailure(TransferFailure.TransferInterrupted("The retained file cannot be resumed"), clock()))
+        }
+    }
+
+    private suspend fun advanceResumeBatchItem(startReceiver: Boolean = true) {
+        val resume = checkNotNull(resumeBatch)
+        val item = resume.manifest.items[resumeBatchIndex]
+        historyStore?.updateItemOutcome(item.id, "Verified", item.sizeBytes, item.digest)
+        setResumePosition(resumeBatchIndex + 1)
+        if (role == DeviceRole.Sender || startReceiver) startCurrentResumeItem()
+    }
+
+    private suspend fun reportResumedBytes(itemId: ItemId, bytes: Long, force: Boolean = false) {
+        if (resumeBatch == null) return
+        val time = System.nanoTime()
+        mutex.withLock {
+            val current = _state.value
+            if (current.isTerminal || current.currentItemState?.item?.id != itemId ||
+                (!force && time - lastResumeProgressNanos < 200_000_000L)) return
+            val item = current.itemStates.getValue(itemId)
+            if (bytes !in item.transferredBytes..item.item.sizeBytes) return
+            lastResumeProgressNanos = time
+            _state.value = current.copy(itemStates = current.itemStates +
+                (itemId to item.copy(transferredBytes = bytes, phase = ItemPhase.Streaming)))
+        }
+    }
+
+    private suspend fun finishResumeBatch(envelope: Envelope, sender: Boolean) {
+        val manifest = checkNotNull(resumeBatch).manifest
+        val total = manifest.items.sumOf { it.sizeBytes }
+        check((role == DeviceRole.Sender) == sender && resumeBatchIndex == manifest.items.size &&
+            _state.value.phase == SessionPhase.AwaitingReceipt)
+        if (sender) {
+            val result = ProtocolCodec.decodeBody<BatchResultBody>(envelope)
+            check(result.batchId == manifest.batchId && result.status == "completed" &&
+                result.verifiedCount == manifest.items.size && result.totalVerifiedBytes.toLong() == total)
+            purgeAcceptedResumeBatch?.invoke(manifest.sessionId)
+        } else {
+            check(ProtocolCodec.decodeBody<BatchEndBody>(envelope).batchId == manifest.batchId)
+            sendHandshakeControl(MessageTypes.BATCH_RESULT, ProtocolCodec.encodeBody(
+                BatchResultBody(manifest.batchId, "completed", manifest.items.size, total.toString())))
+        }
+        mutex.withLock {
+            if (!_state.value.isTerminal) _state.value = _state.value.copy(phase = SessionPhase.Completed)
+        }
+    }
+
+    private suspend fun sendEmptyResumeRequest() {
+        val manifest = checkNotNull(resumeBatch).manifest
+        val item = manifest.items[resumeBatchIndex]
+        val request = ResumeRequestAuthority.createRequest(sessionId, checkNotNull(activeResumeChannelContext()),
+            checkNotNull(_state.value.negotiated).capabilities, checkNotNull(persistentTrustManager),
+            checkNotNull(authenticatedPeerFingerprintHex), ResumeRequestAuthority.ReceiverJournal(
+                manifest.sessionId, item.id, 0, 0, 1, 0, "0".repeat(64)))
+        sendSessionControl(MessageTypes.RESUME_REQUEST, ProtocolCodec.encodeBody(request), null) {
+            emptyResumeRequestId = it.messageId.value
+        }
+    }
+
+    private suspend fun handleEmptyResumeRequest(envelope: Envelope) {
+        val manifest = checkNotNull(resumeBatch).manifest
+        val item = manifest.items[resumeBatchIndex]
+        check(role == DeviceRole.Sender && item.sizeBytes == 0L && emptyResumeRequestId == null)
+        val request = ProtocolCodec.decodeBody<ResumeRequestDto>(envelope)
+        ResumeRequestAuthority.verifyRequest(sessionId, checkNotNull(activeResumeChannelContext()),
+            checkNotNull(_state.value.negotiated).capabilities, checkNotNull(persistentTrustManager),
+            checkNotNull(authenticatedPeerFingerprintHex), request, ResumeRequestAuthority.SenderSourceAuthority(
+                manifest.sessionId, item.id, 1, 0, "0".repeat(64)))
+        emptyResumeRequestId = envelope.messageId.value
+        sendHandshakeControl(MessageTypes.RESUME_ACCEPT, ProtocolCodec.encodeBody(
+            ResumeAcceptDto(IdentityResumeTranscript.RESUME_PROFILE, envelope.messageId.value,
+                manifest.sessionId.value, item.id.value, 0, "0")))
+    }
+
+    private suspend fun completeEmptyResumeReceiver(envelope: Envelope) {
+        val manifest = checkNotNull(resumeBatch).manifest
+        val item = manifest.items[resumeBatchIndex]
+        val accept = ProtocolCodec.decodeBody<ResumeAcceptDto>(envelope)
+        check(role == DeviceRole.Receiver && item.sizeBytes == 0L &&
+            accept.requestMessageId == emptyResumeRequestId && accept.originalSessionId == manifest.sessionId.value &&
+            accept.itemId == item.id.value && accept.startChunkIndex == 0L && accept.startByteOffset == "0")
+        check(persistentTrustManager?.trustedPeerByFingerprint(checkNotNull(authenticatedPeerFingerprintHex)) != null)
+        val staging = receiveStore.prepareStaging(sessionId, item.id, 0, item.name, relativePath = item.relativePath)
+        try {
+            receiveStore.openStagingOutput(staging).close()
+            val committed = receiveStore.commitVerified(staging, item.digest)
+            _committedFiles.add(committed)
+            _committedItemFiles[item.id] = committed
+            lastCommittedFileHandle = committed
+            recordResumeBatchCommit?.invoke(manifest.sessionId, item.id, 0, item.digest)
+            advanceResumeBatchItem(startReceiver = false)
+            sendHandshakeControl(MessageTypes.RESUME_RESULT, ProtocolCodec.encodeBody(
+                ResumeResultDto(IdentityResumeTranscript.RESUME_PROFILE, accept.requestMessageId,
+                    manifest.sessionId.value, item.id.value, "verified", "0", item.digest.value)))
+            startCurrentResumeItem()
+        } finally {
+            receiveStore.discardStaging(staging)
+        }
+    }
+
+    private suspend fun verifyEmptyResumeResult(envelope: Envelope) {
+        val manifest = checkNotNull(resumeBatch).manifest
+        val item = manifest.items[resumeBatchIndex]
+        val result = ProtocolCodec.decodeBody<ResumeResultDto>(envelope)
+        check(role == DeviceRole.Sender && item.sizeBytes == 0L &&
+            result.requestMessageId == emptyResumeRequestId && result.originalSessionId == manifest.sessionId.value &&
+            result.itemId == item.id.value && result.status == "verified" && result.sizeBytes == "0" &&
+            result.sha256 == item.digest.value)
+        advanceResumeBatchItem()
     }
 
     private suspend fun maybeStartReceiverResumeRequest() {
@@ -1090,6 +1384,10 @@ class TransferCoordinator(
                 as? ResumeReconnectPlan
                     .Receiver
                 ?: return
+        if (resumeBatch?.manifest?.items?.getOrNull(resumeBatchIndex)?.sizeBytes == 0L) {
+            sendEmptyResumeRequest()
+            return
+        }
         if (_resumeReconnectState.value !is
             ResumeReconnectState.Idle
         ) {
@@ -1230,42 +1528,23 @@ class TransferCoordinator(
                 return
             }
 
-        val envelope =
-            sendHandshakeControl(
-                MessageTypes.RESUME_REQUEST,
-                ProtocolCodec.encodeBody(
-                    request
-                )
+        sendSessionControl(MessageTypes.RESUME_REQUEST, ProtocolCodec.encodeBody(request), null) { envelope ->
+            pendingResumeRequest = envelope
+            pendingReceiverResumeJournal = journal
+            _resumeReconnectState.value = ResumeReconnectState.AwaitingResponse(
+                requestMessageId = envelope.messageId.value,
+                originalSessionId = journal.originalSessionId,
+                itemId = journal.itemId,
+                requestedChunkIndex = journal.verifiedChunkCount,
+                requestedByteOffset = journal.contiguousByteOffset
             )
-        pendingResumeRequest =
-            envelope
-        pendingReceiverResumeJournal =
-            journal
-        _resumeReconnectState.value =
-            ResumeReconnectState
-                .AwaitingResponse(
-                    requestMessageId =
-                        envelope
-                            .messageId
-                            .value,
-                    originalSessionId =
-                        journal
-                            .originalSessionId,
-                    itemId =
-                        journal.itemId,
-                    requestedChunkIndex =
-                        journal
-                            .verifiedChunkCount,
-                    requestedByteOffset =
-                        journal
-                            .contiguousByteOffset
-                )
+        }
 
         resumeTimeoutJob?.cancel()
         resumeTimeoutJob =
             scope.launch {
                 kotlinx.coroutines.delay(
-                    30_000L
+                    (30_000L + journal.totalSizeBytes / 8192L).coerceAtMost(20 * 60_000L)
                 )
                 if (_resumeReconnectState
                         .value is
@@ -1292,6 +1571,10 @@ class TransferCoordinator(
     private suspend fun handleResumeRequest(
         envelope: Envelope
     ) {
+        if (resumeBatch?.manifest?.items?.getOrNull(resumeBatchIndex)?.sizeBytes == 0L) {
+            handleEmptyResumeRequest(envelope)
+            return
+        }
         val plan =
             resumeReconnectPlan
                 as? ResumeReconnectPlan
@@ -1402,6 +1685,15 @@ class TransferCoordinator(
             return
         }
 
+        if (resumeBatch != null) {
+            val item = resumeBatch.manifest.items[resumeBatchIndex]
+            if (ready.wholeFileSha256Hex != item.digest.value || ready.authority.totalSizeBytes != item.sizeBytes ||
+                ready.authority.chunkSize != item.chunkSize || ready.authority.chunkRootHashHex != item.rootHash?.value) {
+                sendResumeReject(envelope, request, ResumeRejectCodes.FILE_CHANGED)
+                return
+            }
+        }
+
         val verified =
             try {
                 ResumeRequestAuthority
@@ -1447,6 +1739,7 @@ class TransferCoordinator(
                     verified =
                         verified
                 )
+        approvedResumeSourceHashes = ready.verifiedSourceChunks
         sendHandshakeControl(
             MessageTypes.RESUME_ACCEPT,
             ProtocolCodec.encodeBody(
@@ -1498,6 +1791,10 @@ class TransferCoordinator(
     private suspend fun handleResumeAccept(
         envelope: Envelope
     ) {
+        if (resumeBatch != null && emptyResumeRequestId != null) {
+            completeEmptyResumeReceiver(envelope)
+            return
+        }
         val plan =
             resumeReconnectPlan
                 as? ResumeReconnectPlan
@@ -1714,7 +2011,9 @@ class TransferCoordinator(
                                     .totalSizeBytes,
                             startByteOffset =
                                 accepted
-                                    .startByteOffset
+                                    .startByteOffset,
+                            verifiedChunkSize = accepted.chunkSize,
+                            verifiedChunkDigests = approvedResumeSourceHashes
                         )
                 }
             } catch (
@@ -1911,7 +2210,8 @@ class TransferCoordinator(
                 accepted.chunkRootHashHex ||
             remaining !=
                 accepted.totalSizeBytes -
-                    accepted.startByteOffset
+                    accepted.startByteOffset ||
+            (resumeBatch != null && start.wholeFileSha256Hex != resumeBatch.manifest.items[resumeBatchIndex].digest.value)
         ) {
             throw ResumeJournalException(
                 "RESUME_STREAM_START does not match the accepted prefix/source authority"
@@ -2056,13 +2356,15 @@ class TransferCoordinator(
             val stream =
                 prepared.stream
             try {
+                reportResumedBytes(accepted.itemId, accepted.startByteOffset, force = true)
                 transport
                     .sendStream(
                         peerId,
                         bulkRef
                     )
-                    .collect {
+                    .collect { progress ->
                         // The transport owns authenticated DATA/STREAM_END framing.
+                        reportResumedBytes(accepted.itemId, accepted.startByteOffset + progress.bytesTransferred)
                     }
 
                 stream.proveEof()
@@ -2113,6 +2415,10 @@ class TransferCoordinator(
     private suspend fun handleResumeResult(
         envelope: Envelope
     ) {
+        if (resumeBatch != null && emptyResumeRequestId != null) {
+            verifyEmptyResumeResult(envelope)
+            return
+        }
         val plan =
             resumeReconnectPlan
                 as? ResumeReconnectPlan
@@ -2186,7 +2492,7 @@ class TransferCoordinator(
         }
 
         try {
-            purgeResumeItemAuthority
+            if (resumeBatch == null) purgeResumeItemAuthority
                 ?.invoke(
                     accepted
                         .originalSessionId,
@@ -2211,6 +2517,7 @@ class TransferCoordinator(
                     sizeBytes = size,
                     sha256Hex = sha
                 )
+        if (resumeBatch != null) advanceResumeBatchItem()
     }
 
     private suspend fun executeEffects(effects: List<ReducerEffect>) {
@@ -2268,6 +2575,16 @@ class TransferCoordinator(
                 }
 
                 is ReducerEffect.NotifyTerminalOutcome -> {
+                    if (resumeBatch == null && role == DeviceRole.Sender &&
+                        effect.phase == SessionPhase.Completed && isTrueResumeNegotiated()) {
+                        try {
+                            purgeAcceptedResumeBatch?.invoke(sessionId)
+                        } catch (error: kotlinx.coroutines.CancellationException) {
+                            throw error
+                        } catch (_: Exception) {
+                            // The peer's final verified receipt stands. Retained data expires independently.
+                        }
+                    }
                     val terminalOutcome = effect.phase.name
                     val failureCode = effect.failure?.code ?: _state.value.failure?.code
                     ensureSessionRecorded(terminalOutcome, failureCode)
@@ -2655,6 +2972,10 @@ class TransferCoordinator(
                 }
                 MessageTypes.OFFER_DECISION -> {
                     requireIdentityReadyForOffer()
+                    if (resumeBatch != null) {
+                        handleResumeBatchDecision(envelope)
+                        return
+                    }
                     val decision = ProtocolCodec.decodeBody<dev.glide.core.protocol.OfferDecisionBody>(envelope)
                     val acceptedDigest = ResumeOfferMetadata.decodeAcceptance(envelope.extensions)
                     if (acceptedDigest != null && (!isTrueResumeNegotiated() || !decision.accepted)) {
@@ -2743,10 +3064,18 @@ class TransferCoordinator(
                     }
                 }
                 MessageTypes.BATCH_END -> {
+                    if (resumeBatch != null) {
+                        finishResumeBatch(envelope, sender = false)
+                        return
+                    }
                     val batchEnd = ProtocolCodec.decodeBody<dev.glide.core.protocol.BatchEndBody>(envelope)
                     dispatch(ReducerEvent.BatchEndReceived(batchEnd, envelope.messageId, envelope.seq, now))
                 }
                 MessageTypes.BATCH_RESULT -> {
+                    if (resumeBatch != null) {
+                        finishResumeBatch(envelope, sender = true)
+                        return
+                    }
                     val batchResult = ProtocolCodec.decodeBody<dev.glide.core.protocol.BatchResultBody>(envelope)
                     dispatch(ReducerEvent.BatchResultReceived(batchResult, envelope.messageId, envelope.seq, now))
                 }
@@ -3055,6 +3384,7 @@ class TransferCoordinator(
                 )
 
         try {
+            reportResumedBytes(accepted.itemId, accepted.startByteOffset, force = true)
             StreamHasher
                 .copyAndHashWithChunks(
                     inputStream =
@@ -3082,9 +3412,12 @@ class TransferCoordinator(
                                 "Resume chunk could not atomically advance the durable journal"
                             )
                         }
+                        reportResumedBytes(accepted.itemId, chunkIndex * start.chunkSize + chunkData.size)
                     }
                 )
 
+            if (resumeBatch != null)
+                _state.value = _state.value.copy(phase = SessionPhase.VerifyingItem)
             val committed =
                 finalizer(
                     sessionId,
@@ -3130,6 +3463,11 @@ class TransferCoordinator(
                         start
                             .wholeFileSha256Hex
                 )
+            if (resumeBatch != null) {
+                recordResumeBatchCommit?.invoke(accepted.originalSessionId, accepted.itemId,
+                    accepted.totalSizeBytes, dev.glide.core.domain.Sha256Digest(start.wholeFileSha256Hex))
+                advanceResumeBatchItem(startReceiver = false)
+            }
             sendHandshakeControl(
                 MessageTypes.RESUME_RESULT,
                 ProtocolCodec.encodeBody(
@@ -3141,6 +3479,10 @@ class TransferCoordinator(
                 null
             pendingResumeStreamBulkRef =
                 null
+            if (resumeBatch != null) {
+                startCurrentResumeItem()
+                return
+            }
             _resumeReconnectState.value =
                 ResumeReconnectState
                     .Verified(

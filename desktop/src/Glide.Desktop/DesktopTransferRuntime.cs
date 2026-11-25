@@ -3,6 +3,8 @@ using Glide.Transport.Sockets;
 using Glide.Desktop.Diagnostics;
 using Glide.Desktop.Services;
 using Glide.Core.Security;
+using Glide.Core.Storage;
+using Glide.Core.Pairing;
 
 namespace Glide.Desktop;
 
@@ -132,6 +134,24 @@ public sealed class DesktopTransferRuntime : IAsyncDisposable
             (observer, token) => _executor.ReceiveFromInvitationAsync(request, observer, token),
             interaction,
             cancellationToken);
+
+    public Task<DesktopTransferResult> ResumeTrustedAsync(
+        DesktopResumeRequest request, IDesktopTransferInteraction interaction,
+        CancellationToken cancellationToken = default) =>
+        RunAsync(request.Batch.Role == DesktopResumeJournalRoles.Sender
+                ? DesktopTransferDirection.Send : DesktopTransferDirection.Receive,
+            "Paired device", (observer, token) => _executor.ResumeTrustedAsync(request, observer, token),
+            interaction, cancellationToken);
+
+    public Task<DesktopTransferResult> ReceiveTrustedResumeAsync(
+        TlsSocketConnection connection, Profile2Message.SessionOpen open, DesktopReceiveRequest request,
+        IDesktopTransferInteraction interaction, CancellationToken cancellationToken = default) =>
+        RunAsync(open.InitiatorRole == DesktopResumeJournalRoles.Sender
+                ? DesktopTransferDirection.Receive : DesktopTransferDirection.Send,
+            open.InitiatorDeviceName,
+            (observer, token) => _executor.ReceiveTrustedResumeAsync(connection, open, request, observer, false, token),
+            interaction, cancellationToken,
+            token => _executor.ReceiveTrustedResumeAsync(connection, open, request, SilentInteraction.Instance, true, token));
 
     public Task<DesktopTransferResult> SendHostedAsync(
         TlsSocketConnection connection,

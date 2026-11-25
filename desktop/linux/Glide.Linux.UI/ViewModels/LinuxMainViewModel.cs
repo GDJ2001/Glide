@@ -61,7 +61,7 @@ public enum AppThemePreference
     Dark
 }
 
-public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteraction, IDisposable
+public sealed partial class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteraction, IDisposable
 {
     private int _disposeState;
     private LinuxPage _activePage = LinuxPage.Send;
@@ -232,6 +232,7 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
                 OnPropertyChanged(nameof(IsTransferBannerVisible));
                 OnPropertyChanged(nameof(IsSettingsActive));
                 if (value != LinuxPage.Pair) _pairing.OnPageLeft();
+                if (value is LinuxPage.Activity or LinuxPage.Send) _ = RefreshResumeEntriesAsync();
             }
         }
     }
@@ -728,6 +729,8 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
         {
             if (p is string tab) CurrentTab = tab;
         });
+        ResumeInterruptedTransferCommand = new AsyncRelayCommand(value => UseResumeEntryAsync(value, discard: false));
+        DiscardInterruptedTransferCommand = new AsyncRelayCommand(value => UseResumeEntryAsync(value, discard: true));
         FindPairDevicesCommand = new RelayCommand(() => _pairing.BeginFindDevices());
         ReadyToPairCommand = new AsyncRelayCommand(() => _pairing.StartReadyAsync(_lifetimeCts.Token));
         CancelPairCommand = new RelayCommand(() => _pairing.Cancel());
@@ -856,6 +859,7 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
             string fingerprint = peer.FingerprintHex;
             if (_trustManager.RevokePeer(fingerprint))
             {
+                _ = RemoveResumeAuthorityAsync(fingerprint);
                 if (SelectedTrustedPeer?.FingerprintHex == fingerprint)
                     SelectedTrustedPeer = null;
                 RefreshTrustedPeers();
@@ -1106,9 +1110,10 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
                         await Task.Delay(450, ct);
                         return TrustedEndpointResolver.ResolveCandidates(
                             peer, _mdnsDiscovery.Snapshot.Peers);
-                    });
+                    }, ResumeStore: _resumeStore);
                 DesktopTransferResult result = await _runtime.SendTrustedAsync(request, this, _activeTransferCts.Token);
                 StatusMessage = result.Message;
+                await RefreshResumeEntriesAsync();
                 if (result.Success)
                 {
                     StagedItems.Clear();
@@ -1595,7 +1600,8 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
 
     private Task HandleProfile2ConnectionAsync(TlsSocketConnection connection, CancellationToken cancellationToken) =>
         DesktopProfile2Router.RouteAsync(connection, _pairing,
-            IsListening ? HandleTrustedIncomingAsync : null, cancellationToken);
+            IsListening ? HandleTrustedIncomingAsync : null, openDeadline: null,
+            cancellationToken, HandleResumeConnectionAsync);
 
     private async Task HandleTrustedIncomingAsync(
         TlsSocketConnection connection,
@@ -1607,7 +1613,7 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
             var request = new DesktopReceiveRequest(
                 new QuarantineStagingStore(destinationRoot: DownloadDirectory),
                 LocalDeviceName: DeviceName,
-                TrustManager: _trustManager);
+                TrustManager: _trustManager, ResumeStore: _resumeStore);
             await OnUiAsync(() =>
             {
                 IsTransferActive = true;
@@ -1621,6 +1627,7 @@ public sealed class LinuxMainViewModel : ViewModelBase, IDesktopTransferInteract
                 StatusMessage = result.Message;
                 RefreshTrustedPeers();
             });
+            await RefreshResumeEntriesAsync();
         }
     }
 

@@ -35,6 +35,7 @@ import dev.glide.core.protocol.MessageTypes
 import dev.glide.core.protocol.ProtocolCodec
 import dev.glide.core.resume.ResumeAuthorityLookup
 import dev.glide.core.resume.ResumeBatchManifest
+import dev.glide.core.resume.ResumeBatchReconnect
 import dev.glide.core.resume.ResumeReconnectPlan
 import dev.glide.core.resume.ResumeReconnectState
 import dev.glide.core.resume.ResumeRequestAuthority
@@ -58,6 +59,113 @@ import java.security.spec.ECGenParameterSpec
 import java.util.UUID
 
 class TrustedSessionCoordinatorTest {
+
+    @Test
+    fun batchReconnectSkipsVerifiedFileAndContinuesFromRetainedByteOffset() = runBlocking {
+        withTimeout(12_000L) {
+            val session = SessionId(UUID.randomUUID().toString())
+            val original = SessionId(UUID.randomUUID().toString())
+            val senderPeer = PeerId("batch-resume-sender")
+            val receiverPeer = PeerId("batch-resume-receiver")
+            val senderIdentity = TestPersistentIdentityStore()
+            val receiverIdentity = TestPersistentIdentityStore()
+            fun enrolled(identity: TestPersistentIdentityStore) = TrustedPeerRecord(
+                identity.getFingerprint(), with(PeerIdentityVerifier) { identity.getOrCreatePublicKeyDer().toHex() },
+                "Test peer", 1, 1)
+            val senderTrust = newTrustManager(listOf(enrolled(receiverIdentity)), senderIdentity)
+            val receiverTrust = newTrustManager(listOf(enrolled(senderIdentity)), receiverIdentity)
+            val senderWire = TrustedControlTransport(senderPeer, session, "ab".repeat(32))
+            val receiverWire = TrustedControlTransport(receiverPeer, session, "ab".repeat(32))
+            senderWire.remote = receiverWire
+            receiverWire.remote = senderWire
+            senderWire.deliverStreams = true
+            val digest = dev.glide.core.domain.Sha256Digest.fromByteArray(
+                java.security.MessageDigest.getInstance("SHA-256").digest())
+            val payload = "parttail".encodeToByteArray()
+            fun sha(bytes: ByteArray) = dev.glide.core.domain.Sha256Digest.fromByteArray(
+                java.security.MessageDigest.getInstance("SHA-256").digest(bytes))
+            val payloadDigest = sha(payload)
+            val chunkDigests = payload.asIterable().chunked(4).map { sha(it.toByteArray()).value }
+            val root = sha("approved chunk root".encodeToByteArray())
+            val items = List(3) {
+                ResumeBatchManifest.Item(ItemId(UUID.randomUUID().toString()), "empty-$it.txt", null, 0, 0, null, digest)
+            }.toMutableList().apply {
+                this[1] = this[1].copy(name = "remaining.bin", sizeBytes = payload.size.toLong(),
+                    chunkSize = 4, rootHash = root, digest = payloadDigest)
+            }
+            val manifest = ResumeBatchManifest(original, BatchId(UUID.randomUUID().toString()),
+                dev.glide.core.domain.Sha256Digest(senderIdentity.getFingerprint()),
+                dev.glide.core.domain.Sha256Digest(receiverIdentity.getFingerprint()), items)
+            val committed = mutableListOf<ItemId>()
+            val receivedChunks = mutableListOf<ByteArray>()
+            val sourceHandle = SourceHandle("test-original-source")
+            val source = FakeSourceAccess().apply {
+                registerSource(sourceHandle, dev.glide.core.ports.SourceMetadata("remaining.bin",
+                    "application/octet-stream", payload.size.toLong()), payload)
+            }
+            var senderPurged = false
+            val sender = TransferCoordinator(
+                session, DeviceRole.Sender, receiverPeer, transport = senderWire,
+                sourceAccess = source, receiveStore = FakeReceiveStore(), scope = this,
+                persistentTrustManager = senderTrust, expectedPeerFingerprintHex = receiverIdentity.getFingerprint(),
+                resumeReconnectPlan = ResumeReconnectPlan.Sender(original, items.first().id, receiverIdentity.getFingerprint()),
+                loadSenderResumeAuthority = { _, id, _ ->
+                    assertEquals(items[1].id, id)
+                    ResumeAuthorityLookup.Ready(ResumeSenderReadySource(
+                        ResumeRequestAuthority.SenderSourceAuthority(original, id, 4, payload.size.toLong(), root.value),
+                        sourceHandle, payloadDigest.value, chunkDigests))
+                },
+                resumeBatch = ResumeBatchReconnect(manifest, 0, true),
+                purgeAcceptedResumeBatch = { senderPurged = it == original },
+                enableTrueResumeCapability = true)
+            val receiver = TransferCoordinator(
+                session, DeviceRole.Receiver, senderPeer, transport = receiverWire,
+                sourceAccess = FakeSourceAccess(), receiveStore = FakeReceiveStore(), scope = this,
+                persistentTrustManager = receiverTrust, expectedPeerFingerprintHex = senderIdentity.getFingerprint(),
+                resumeReconnectPlan = ResumeReconnectPlan.Receiver(original, items.first().id, senderIdentity.getFingerprint()),
+                loadReceiverResumeAuthority = { _, id, _ ->
+                    assertEquals(items[1].id, id)
+                    ResumeAuthorityLookup.Ready(ResumeRequestAuthority.ReceiverJournal(
+                        original, id, 1, 4, 4, payload.size.toLong(), root.value))
+                },
+                recordReceiverResumeChunk = { _, id, index, bytes ->
+                    assertEquals(items[1].id, id)
+                    assertEquals(1L, index)
+                    receivedChunks.add(bytes.copyOf())
+                    true
+                },
+                finalizeReceiverResumeItem = { _, _, id, expected ->
+                    assertEquals(items[1].id, id)
+                    assertEquals(payloadDigest.value, expected)
+                    dev.glide.core.domain.CommittedFileHandle("retained-item")
+                },
+                recordResumeBatchCommit = { _, id, size, sha ->
+                    val item = items.first { it.id == id }
+                    assertEquals(item.sizeBytes, size)
+                    assertEquals(item.digest, sha)
+                    committed.add(id)
+                },
+                resumeBatch = ResumeBatchReconnect(manifest, 1, false),
+                enableTrueResumeCapability = true)
+            try {
+                receiver.start()
+                sender.start()
+                while (receiver.state.value.phase != SessionPhase.AwaitingConsent && !receiver.state.value.isTerminal) delay(10)
+                assertEquals(SessionPhase.AwaitingConsent, receiver.state.value.phase)
+                assertTrue(committed.isEmpty())
+                receiver.acceptOffer()
+                while (!receiver.state.value.isTerminal || !sender.state.value.isTerminal) delay(10)
+                assertEquals(receiver.state.value.failure?.message, SessionPhase.Completed, receiver.state.value.phase)
+                assertEquals(sender.state.value.failure?.message, SessionPhase.Completed, sender.state.value.phase)
+                assertEquals(items.drop(1).map { it.id }, committed)
+                org.junit.Assert.assertArrayEquals("tail".encodeToByteArray(), receivedChunks.single())
+                assertTrue(senderPurged)
+            } finally {
+                sender.stop()
+                receiver.stop()
+            }
+        }
+    }
 
     @Test
     fun authenticatedConsentPersistsSameOrderedBatchOnBothPeers() = runBlocking {
@@ -1370,6 +1478,8 @@ class TrustedSessionCoordinatorTest {
             Channel<ControlMessage>(
                 Channel.UNLIMITED
             )
+        private val incomingStreams = Channel<IncomingStream>(Channel.BUFFERED)
+        var deliverStreams = false
         val sentControls =
             mutableListOf<Envelope>()
         var rewriteOutgoing:
@@ -1446,7 +1556,7 @@ class TrustedSessionCoordinatorTest {
 
         override fun observeIncomingStream():
             Flow<IncomingStream> =
-            emptyFlow()
+            incomingStreams.receiveAsFlow()
 
         override fun observeBulkProgress():
             Flow<BulkProgress> =
@@ -1467,6 +1577,12 @@ class TrustedSessionCoordinatorTest {
         ): Flow<BulkProgress> = kotlinx.coroutines.flow.flow {
             val s = lastStreamSource?.openStream()
             if (s != null) {
+                if (deliverStreams) {
+                    val bytes = s.readBytes()
+                    remote.incomingStreams.send(IncomingStream(localPeerId, bulkRef, bytes.inputStream()))
+                    emit(BulkProgress(bulkRef, bytes.size.toLong(), true))
+                    return@flow
+                }
                 val buf = ByteArray(16384)
                 while (s.read(buf) != -1) {
                 }

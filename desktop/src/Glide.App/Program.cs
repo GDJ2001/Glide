@@ -13,7 +13,7 @@ using Glide.Transport.Sockets;
 
 namespace Glide.App;
 
-public static class Program
+public static partial class Program
 {
     public static async Task<int> Main(string[] args)
     {
@@ -34,6 +34,7 @@ public static class Program
                 "receive" => await RunReceiveAsync(args[1..]),
                 "daemon" => await RunDaemonAsync(args[1..]),
                 "send" => await RunSendAsync(args[1..]),
+                "resume" => await RunResumeAsync(args[1..]),
                 "identity" => await RunIdentityAsync(args[1..]),
                 "trust" => await RunTrustAsync(args[1..]),
                 "web" => HandleRetiredWebCommand(),
@@ -85,6 +86,7 @@ public static class Program
         Console.WriteLine("  glide trust list");
         Console.WriteLine("  glide trust revoke <fingerprint>");
         Console.WriteLine("      Inspect or revoke enrolled peer identities. Enrollment itself requires verified identity proof.\n");
+        Console.WriteLine("  glide resume list | discard <session-id> | run <session-id> [--connect <address:port>]");
         Console.WriteLine("Examples:");
         Console.WriteLine("  glide receive");
         Console.WriteLine("  glide daemon --accept-paired-offers --trusted-peer <64-lowercase-hex> --max-offer-bytes 1073741824");
@@ -133,6 +135,7 @@ public static class Program
         {
             DesktopTrustInitialization rotated =
                 manager.RotateLocalIdentity();
+            ResumeStore.Value.PurgeAllAsync().GetAwaiter().GetResult();
             Console.WriteLine(
                 $"Persistent identity rotated: {rotated.LocalFingerprintHex}");
             Console.WriteLine(
@@ -201,6 +204,7 @@ public static class Program
 
             Console.WriteLine(
                 "Peer trust and its headless policy were revoked.");
+            ResumeStore.Value.PurgePeerAsync(args[1]).GetAwaiter().GetResult();
             return Task.FromResult(0);
         }
 
@@ -478,17 +482,22 @@ public static class Program
             isDaemon, trustManager, authorizedPeerFingerprintHex, destinationRoot);
         var request = new DesktopReceiveRequest(
             stagingStore, invitationAuthority, Environment.MachineName,
-            trustManager, authorizedPeerFingerprintHex);
+            trustManager, authorizedPeerFingerprintHex, ResumeStore: ResumeStore.Value);
         if (kind == LanSessionDispatchKind.Profile1LanRecord)
             return await engine.ReceiveAsync(connection, request, interaction, cancellationToken).ConfigureAwait(false);
         if (kind == LanSessionDispatchKind.Profile2Gld2)
         {
             Profile2Message first = await Profile2WireCodec.ReadMessageAsync(
                 connection.TransportStream, cancellationToken).ConfigureAwait(false);
-            if (first is Profile2Message.SessionOpen open &&
-                string.Equals(open.Purpose, Profile2Constants.PurposeTrustedSend, StringComparison.Ordinal))
-                return await engine.ReceiveTrustedAsync(connection, open, request, interaction,
-                    cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (first is Profile2Message.SessionOpen open)
+            {
+                if (open.Purpose == Profile2Constants.PurposeTrustedSend)
+                    return await engine.ReceiveTrustedAsync(connection, open, request, interaction,
+                        cancellationToken: cancellationToken).ConfigureAwait(false);
+                if (open.Purpose == Profile2Constants.PurposeTrustedResume)
+                    return await engine.ReceiveTrustedResumeAsync(connection, open, request, interaction,
+                        cancellationToken: cancellationToken).ConfigureAwait(false);
+            }
         }
         return DesktopTransferResult.Failed("Unsupported or incomplete session.", TransferErrorCategory.Protocol);
     }
@@ -873,7 +882,7 @@ public static class Program
                 Environment.MachineName,
                 TrustManager: trustManager,
                 ExpectedPeerFingerprintHex:
-                    trustedPeerFingerprint);
+                    trustedPeerFingerprint, ResumeStore: invitation == null ? ResumeStore.Value : null);
         var result = invitation == null
             ? await engine.SendTrustedAsync(request, interaction)
             : await engine.SendAsync(request, interaction);

@@ -250,6 +250,28 @@ An older peer can omit the extension and finish an ordinary transfer. The
 receipt alone does not permit a new connection or bypass consent. Every
 committed prefix entry must match the original item ID, length, and digest.
 
+### 7.0.1 Batch reconnect
+
+The initiator opens Profile 2 with `TRUSTED_RESUME`, the original session ID,
+the ordered manifest digest, and its transfer role. Transfer roles stay
+independent of TLS socket roles. Both peers negotiate `resume-v1` and prove
+their enrolled identities against the TLS server certificate before a retained
+batch can proceed.
+
+The receiver replies with `OFFER_DECISION` for the original batch ID. A positive
+decision includes the original `resumeManifestDigest` and
+`resumeVerifiedCount`, the count of the contiguous prefix that was already
+committed. Receiver initiation supplies consent for that attempt. For sender
+initiation, the receiver approves the remaining list. Only those remaining
+items are processed, in original order.
+
+Each remaining item uses its own signed request and correlated result. Empty
+items use chunk size 1, offset and chunk count 0, and an all-zero chunk root
+in the signed request. They proceed directly from `RESUME_ACCEPT` to verified
+empty-file commit and `RESUME_RESULT`. The entire batch ends with the original
+`BATCH_END` and verified `BATCH_RESULT` totals. Failed reconnects do not fall
+back to an invitation or an ordinary send.
+
 The sender derives these values from a bounded source preflight pass before the offer and persists
 the source handle/identity plus the same root in its durable sender journal. The receiver persists
 the root/chunk size together with only the chunk digests it actually retains from the authenticated

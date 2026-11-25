@@ -22,8 +22,10 @@ import dev.glide.core.coordinator.ReducerEvent
 import dev.glide.core.coordinator.SessionState
 import dev.glide.core.coordinator.TransferCoordinator
 import dev.glide.core.domain.BatchId
+import dev.glide.core.domain.DeviceRole
 import dev.glide.core.domain.PeerId
 import dev.glide.core.domain.SessionId
+import dev.glide.core.domain.Sha256Digest
 import dev.glide.core.domain.SourceHandle
 import dev.glide.core.domain.TransferBatch
 import dev.glide.core.domain.TransferFailure
@@ -34,7 +36,9 @@ import dev.glide.core.pairing.LanInvitation
 import dev.glide.core.ports.AuthenticatedChannelContextProvider
 import dev.glide.core.ports.ConnectionEvent
 import dev.glide.core.ports.TransferTransport
+import dev.glide.core.resume.ResumeBatchReconnect
 import dev.glide.data.store.ResumableStagingStore
+import dev.glide.transport.lan.LanTransferTransport
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -302,6 +306,101 @@ class TransferRuntime private constructor(
 
     fun isServiceAttached(): Boolean = synchronized(lock) { serviceScope != null }
 
+    data class RetainedTransfer(val sessionId: String, val label: String)
+
+    suspend fun listRetainedTransfers(): List<RetainedTransfer> {
+        val manager = persistentTrustManager ?: return emptyList()
+        refreshPersistentTrustState()
+        return sessionFactory?.listRetainedBatches().orEmpty().mapNotNull { batch ->
+            val sender = batch.role == DeviceRole.Sender
+            val fingerprint = if (sender) batch.manifest.receiverFingerprint else batch.manifest.senderFingerprint
+            val peer = manager.trustedPeerByFingerprint(fingerprint.value) ?: return@mapNotNull null
+            val direction = if (sender) "Send to" else "Receive from"
+            RetainedTransfer(batch.manifest.sessionId.value, "$direction ${peer.displayName} · ${batch.manifest.items.size} files")
+        }
+    }
+
+    suspend fun discardRetainedTransfer(sessionId: String) {
+        if (_isSessionActive.value) return
+        val original = runCatching { SessionId(sessionId) }.getOrNull() ?: return
+        resumableStagingStore?.purgeOriginalSession(original.value)
+    }
+
+    suspend fun startRetainedResume(sessionId: String, localDeviceName: String): Boolean {
+        val manager = persistentTrustManager ?: return false
+        val controller = lanController ?: return false
+        val scope = synchronized(lock) { if (_isSessionActive.value) null else serviceScope } ?: return false
+        val batch = sessionFactory?.listRetainedBatches()?.firstOrNull { it.manifest.sessionId.value == sessionId }
+            ?: return failPairing("Transfer unavailable", "The retained transfer expired or was discarded.")
+        val fingerprint = if (batch.role == DeviceRole.Sender)
+            batch.manifest.receiverFingerprint else batch.manifest.senderFingerprint
+        val peer = manager.trustedPeerByFingerprint(fingerprint.value)
+            ?: return failPairing("Device no longer paired", "The original device is no longer trusted.")
+        _transferState.value = TransferUiState.Idle
+        _pairingState.value = PairingUiState.Connecting(
+            peerId = PeerId("resume-${fingerprint.value.take(16)}"), peerName = peer.displayName,
+            deviceType = DeviceType.fromDeviceName(peer.displayName)
+        )
+        val opening = LanTransferTransport.TrustedResumeOpening(
+            sessionId, if (batch.role == DeviceRole.Sender) "sender" else "receiver", batch.manifest.digest().value)
+        return controller.startTrustedSender(
+            ownerScope = scope, trustedPeer = peer, trustManager = manager, localDeviceName = localDeviceName,
+            onConnected = { transport, remote ->
+                scope.launch {
+                    if (!openResumeCoordinator(transport, remote.id, remote.displayName, localInitiated = true)) {
+                        transport.disconnect(remote.id)
+                        failPairing("Resume failed", "The approved transfer could not be reopened.")
+                        terminalCallback?.invoke()
+                    } else {
+                        _pairingState.value = PairingUiState.Connected(remote)
+                    }
+                }
+            },
+            onFailure = { failure ->
+                failPairing("Could not resume transfer", failure.message)
+                _transferState.value = TransferUiState.Failed(
+                    sessionId, batch.role, "Could not resume. Keep Glide open on the paired device and try again.",
+                    "RESUME_CONNECTION_FAILED", isRecoverable = true
+                )
+                terminalCallback?.invoke()
+            },
+            resume = opening
+        )
+    }
+
+    private suspend fun openResumeCoordinator(
+        transport: LanTransferTransport, peerId: PeerId, peerName: String, localInitiated: Boolean
+    ): Boolean = try {
+        startResumeCoordinator(transport, peerId, peerName, localInitiated)
+    } catch (error: CancellationException) {
+        throw error
+    } catch (_: Exception) {
+        false
+    }
+
+    private suspend fun startResumeCoordinator(
+        transport: LanTransferTransport, peerId: PeerId, peerName: String, localInitiated: Boolean
+    ): Boolean {
+        val factory = sessionFactory ?: return false
+        val manager = persistentTrustManager ?: return false
+        val scope = synchronized(lock) { serviceScope } ?: return false
+        val open = transport.trustedResumeOpening(peerId) ?: return false
+        val fingerprint = transport.trustedInboundPeerFingerprint(peerId)?.let(::Sha256Digest) ?: return false
+        val actualSession = transport.authenticatedChannelContext(peerId)?.sessionId ?: return false
+        val original = SessionId(open.originalSessionId)
+        val sender = (open.initiatorRole == "sender") == localInitiated
+        val role = if (sender) DeviceRole.Sender else DeviceRole.Receiver
+        val batch = factory.findRetainedBatch(original, role, fingerprint, Sha256Digest(open.manifestDigest)) ?: return false
+        val context = ResumeBatchReconnect(batch.manifest, batch.verifiedCount, localInitiated)
+        val first = batch.manifest.items.first().id
+        val coordinator = if (sender) factory.createResumeSenderSession(
+            actualSession, original, first, peerId, peerName, fingerprint.value, transport, scope, manager, context
+        ) else factory.createResumeReceiverSession(
+            actualSession, original, first, peerId, peerName, fingerprint.value, transport, scope, manager, context
+        )
+        return startCoordinator(coordinator, peerName)
+    }
+
     /**
      * Single typed command entry point for production/user actions.
      */
@@ -503,6 +602,15 @@ class TransferRuntime private constructor(
             deviceName = command.localDeviceName
         ) { transport, peer ->
             _pairingState.value = PairingUiState.Connected(peer)
+            if (transport.trustedResumeOpening(peer.id) != null) {
+                scope.launch {
+                    if (!openResumeCoordinator(transport, peer.id, peer.displayName, localInitiated = false)) {
+                        transport.disconnect(peer.id)
+                        failPairing("Resume failed", "The approved transfer is unavailable.")
+                    }
+                }
+                return@startReceiver
+            }
             val started = startReceiver(
                 TransferRuntimeCommand.StartReceiver(
                     transport = transport,

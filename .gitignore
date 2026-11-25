@@ -12,6 +12,7 @@
 *.dmg
 *.pkg
 *.app/
+!/desktop/src/Glide.App/
 *.appex/
 *.xcarchive/
 *.dSYM/

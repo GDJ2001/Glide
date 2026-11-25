@@ -436,6 +436,13 @@ public sealed class QuarantineStagingStore
         return Path.Combine(_stagingRoot, sessionId.Value, $"{itemId.Value}.quarantine");
     }
 
+    public string PrepareResumeQuarantinePath(SessionId sessionId, ItemId itemId)
+    {
+        EnsurePrivateDirectory(_stagingRoot, ref _sameVolumeSecurityVerified);
+        EnsurePrivateDirectory(Path.Combine(_stagingRoot, sessionId.Value), ref _sameVolumeSecurityVerified);
+        return GetQuarantinePath(sessionId, itemId);
+    }
+
     public Stream OpenQuarantineWrite(SessionId sessionId, ItemId itemId)
     {
         if (Interlocked.Exchange(ref _commitCleanupAttempted, 1) == 0)
@@ -686,7 +693,8 @@ public sealed class QuarantineStagingStore
         Action? onBeforePublish = null,
         Action<long>? onStorageProgress = null,
         TimeSpan? storageProgressTimeout = null,
-        bool preVerifiedByExclusiveStreamingHandle = false)
+        bool preVerifiedByExclusiveStreamingHandle = false,
+        Func<string, CancellationToken, Task>? onPublishCandidate = null)
     {
         bool skipRedundantRead = preVerifiedByExclusiveStreamingHandle ||
                                  TryConsumePreVerifiedItem(sessionId, itemId, expectedDigest, expectedSizeBytes);
@@ -701,7 +709,8 @@ public sealed class QuarantineStagingStore
             cancellationToken: cancellationToken,
             onBeforePublish: onBeforePublish,
             onStorageProgress: onStorageProgress,
-            storageProgressTimeout: storageProgressTimeout);
+            storageProgressTimeout: storageProgressTimeout,
+            onPublishCandidate: onPublishCandidate);
     }
 
     public int PurgeAbandonedCommitFiles() =>

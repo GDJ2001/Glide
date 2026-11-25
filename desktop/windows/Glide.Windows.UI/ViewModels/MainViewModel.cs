@@ -24,7 +24,7 @@ namespace Glide.Windows.UI.ViewModels;
 public enum SendMethodChoice { None, QuickQr, Nearby, Trusted }
 public enum PairDirectionChoice { UseInvitation, ShowThisPcQr }
 
-public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
+public partial class MainViewModel : ViewModelBase, IDesktopTransferInteraction
 {
     private string _currentTab = "Send";
     private readonly WindowsUiPreferencesStore _uiPreferences = new();
@@ -179,6 +179,8 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
 
     public MainViewModel()
     {
+        ResumeInterruptedTransferCommand = new RelayCommand(async value => await UseResumeEntryAsync(value, discard: false));
+        DiscardInterruptedTransferCommand = new RelayCommand(async value => await UseResumeEntryAsync(value, discard: true));
         _transferRuntime.SnapshotChanged += (_, snapshot) =>
         {
             if (!snapshot.IsActive)
@@ -657,6 +659,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                 OnPropertyChanged(nameof(IsPairDevicesSelected));
                 OnPropertyChanged(nameof(IsTransferBannerVisible));
                 if (value != "Pair devices") _pairing.OnPageLeft();
+                if (value is "Activity" or "Send") _ = RefreshResumeEntriesAsync();
             }
         }
     }
@@ -1347,7 +1350,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                 {
                     await DesktopProfile2Router.RouteAsync(
                         conn, _pairing, IsListening ? HandleTrustedIncomingAsync : null,
-                        CancellationToken.None);
+                        openDeadline: null, CancellationToken.None, HandleResumeConnectionAsync);
                 }
                 else if (kind == LanSessionDispatchKind.Profile1LanRecord &&
                          (IsListening || _hostedSendRequest != null))
@@ -1417,10 +1420,11 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                 var request = new DesktopReceiveRequest(
                     new QuarantineStagingStore(destinationRoot: ReceiveDirectory),
                     LocalDeviceName: Environment.MachineName,
-                    TrustManager: _trustManager);
+                    TrustManager: _trustManager, ResumeStore: _resumeStore);
                 DesktopTransferResult result = await _transferRuntime.ReceiveTrustedAsync(
                     connection, open, request, this, linkedToken);
                 RunOnUi(() => StatusMessage = result.Message);
+                await RefreshResumeEntriesAsync();
             }
             finally
             {
@@ -1620,11 +1624,12 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
                     await Task.Delay(450, ct);
                     return TrustedEndpointResolver.ResolveCandidates(
                         trustedPeerModel, _mdnsService.Snapshot.Peers);
-                });
+                }, ResumeStore: _resumeStore);
             _pendingTrustedSend = true;
             DesktopTransferResult result = await _transferRuntime.SendTrustedAsync(
                 request, this, _activeTransferCts.Token);
             StatusMessage = result.Message;
+            await RefreshResumeEntriesAsync();
             if (result.Success) RefreshTrustedDevices();
         }
         finally
@@ -2001,6 +2006,7 @@ public class MainViewModel : ViewModelBase, IDesktopTransferInteraction
         {
             if (_trustManager.RevokePeer(device.FingerprintHex))
             {
+                _ = RemoveResumeAuthorityAsync(device.FingerprintHex);
                 StatusMessage = $"Removed {device.DisplayName} from trusted devices.";
                 RefreshTrustedDevices();
             }

@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Glide.Linux.UI.ViewModels"
+             xmlns:local="using:Glide.Linux.UI.Views.Pages"
              x:Class="Glide.Linux.UI.Views.Pages.ActivityPage"
              x:DataType="vm:LinuxMainViewModel">
 
@@ -26,6 +27,7 @@
       </Grid>
 
       <!-- Active Transfer Card (LUI-07: Active batch first) -->
+
       <Border Classes="card" BorderBrush="{DynamicResource AccentPrimaryBrush}"
               BorderThickness="1.5" IsVisible="{Binding Transfer.IsActive}">
         <Grid RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="*,Auto">
@@ -91,6 +93,8 @@
           </ItemsControl>
         </StackPanel>
       </Border>
+
+      <local:ResumableTransfersCard />
 
       <!-- History Section with Search and Filter -->
       <Border Classes="card">

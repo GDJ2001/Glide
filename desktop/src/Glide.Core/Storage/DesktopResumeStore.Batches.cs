@@ -9,12 +9,45 @@ public sealed record DesktopAcceptedResumeBatch(
     string Role,
     string PeerFingerprintHex,
     int VerifiedCount,
-    long ExpiresAtUnixMs);
+    long ExpiresAtUnixMs,
+    string? PendingCommitPath = null);
 
 public sealed partial class DesktopResumeStore
 {
     private const int MaxBatchJournalBytes = 16 * 1024 * 1024;
     private string BatchesRoot => Path.Combine(_root, "batches");
+
+    public async Task<IReadOnlyList<DesktopAcceptedResumeBatch>> ListAcceptedBatchesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            long now = _nowUnixMs();
+            var active = new List<DesktopAcceptedResumeBatch>();
+            if (!Directory.Exists(BatchesRoot) || (File.GetAttributes(BatchesRoot) & FileAttributes.ReparsePoint) != 0)
+                return active;
+            foreach (string path in Directory.EnumerateFiles(BatchesRoot, "*.json"))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                string name = Path.GetFileNameWithoutExtension(path);
+                if (!IdentifierValidation.IsValidUuidV4(name))
+                    continue;
+                try
+                {
+                    var batch = ReadAcceptedBatchUnsafe(new SessionId(name));
+                    if (batch != null && batch.ExpiresAtUnixMs > now && batch.VerifiedCount < batch.Manifest.Items.Count)
+                        active.Add(batch);
+                }
+                catch (Exception error) when (error is IOException or JsonException or ArgumentException) { }
+            }
+            return active.OrderByDescending(batch => batch.ExpiresAtUnixMs).ToArray();
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
 
     public async Task SaveAcceptedBatchAsync(
         ResumeBatchManifest manifest, string role, CancellationToken cancellationToken = default)
@@ -82,8 +115,81 @@ public sealed partial class DesktopResumeStore
                 return false;
             int verified = batch.Manifest.RecordVerifiedItem(batch.VerifiedCount, itemId, sizeBytes, digest);
             if (verified != batch.VerifiedCount)
-                PersistJsonUnsafe(BatchJournalPath(sessionId), batch with { VerifiedCount = verified });
+                PersistJsonUnsafe(BatchJournalPath(sessionId), batch with { VerifiedCount = verified, PendingCommitPath = null });
             return true;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <summary>Records the verified publication candidate before the no-overwrite rename.</summary>
+    public async Task RecordBatchPublishCandidateAsync(SessionId sessionId, ItemId itemId, string destination,
+        CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var batch = ReadAcceptedBatchUnsafe(sessionId);
+            if (batch == null || batch.Role != DesktopResumeJournalRoles.Receiver ||
+                batch.VerifiedCount >= batch.Manifest.Items.Count ||
+                batch.Manifest.Items[batch.VerifiedCount].Id != itemId.Value ||
+                batch.ExpiresAtUnixMs <= _nowUnixMs())
+                throw new InvalidDataException("The resume batch no longer authorizes this commit.");
+            PersistJsonUnsafe(BatchJournalPath(sessionId),
+                batch with { PendingCommitPath = Path.GetFullPath(destination) });
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <summary>Reconciles a process interruption between publication and receipt persistence.</summary>
+    public async Task<DesktopAcceptedResumeBatch?> RecoverBatchPublishAsync(SessionId sessionId,
+        string destinationRoot, CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var batch = ReadAcceptedBatchUnsafe(sessionId);
+            if (batch?.PendingCommitPath is not { } target || batch.ExpiresAtUnixMs <= _nowUnixMs() ||
+                batch.Role != DesktopResumeJournalRoles.Receiver || batch.VerifiedCount >= batch.Manifest.Items.Count)
+                return batch;
+            string relative = Path.GetRelativePath(destinationRoot, target);
+            if (Path.IsPathRooted(relative) || relative is "." or ".." ||
+                relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+                return batch;
+            string? candidate = target;
+            var comparer = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+            try
+            {
+                while (candidate != null)
+                {
+                    if ((File.GetAttributes(candidate) & FileAttributes.ReparsePoint) != 0)
+                        return batch;
+                    if (comparer.Equals(candidate, Path.TrimEndingDirectorySeparator(destinationRoot)))
+                        break;
+                    candidate = Path.GetDirectoryName(candidate);
+                }
+                if (candidate == null)
+                    return batch;
+                var item = batch.Manifest.Items[batch.VerifiedCount];
+                if (new FileInfo(target).Length != item.SizeBytes ||
+                    await HashFileHexAsync(target, cancellationToken).ConfigureAwait(false) != item.Digest)
+                    return batch;
+                batch = batch with { VerifiedCount = batch.VerifiedCount + 1, PendingCommitPath = null };
+                PersistJsonUnsafe(BatchJournalPath(sessionId), batch);
+                var storedItem = ReadKnownJournalUnsafe(sessionId, new ItemId(item.Id));
+                if (storedItem != null)
+                    PurgeJournalUnsafe(storedItem);
+                return batch;
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                return batch;
+            }
         }
         finally
         {
@@ -112,7 +218,8 @@ public sealed partial class DesktopResumeStore
                 batch.Manifest.Digest() != batch.ManifestDigest ||
                 BatchPeerFingerprint(batch.Manifest, batch.Role) != batch.PeerFingerprintHex ||
                 batch.VerifiedCount < 0 || batch.VerifiedCount > batch.Manifest.Items.Count ||
-                (batch.Role == DesktopResumeJournalRoles.Sender && batch.VerifiedCount != 0))
+                (batch.Role == DesktopResumeJournalRoles.Sender && (batch.VerifiedCount != 0 || batch.PendingCommitPath != null)) ||
+                (batch.PendingCommitPath != null && !Path.IsPathFullyQualified(batch.PendingCommitPath)))
                 throw new InvalidDataException("Invalid accepted resume batch journal.");
             return batch;
         }

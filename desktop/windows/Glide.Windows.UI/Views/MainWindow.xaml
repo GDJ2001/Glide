@@ -13,6 +13,37 @@
         <vm:MainViewModel />
     </Window.DataContext>
 
+    <Window.Resources>
+        <DataTemplate x:Key="ResumableTransfersTemplate">
+            <Border Style="{StaticResource CardStyle}" Margin="0,0,0,16"
+                    Visibility="{Binding HasResumeEntries, Converter={StaticResource BoolToVis}}">
+                <StackPanel>
+                    <TextBlock Text="Resumable transfers" FontWeight="SemiBold" Margin="0,0,0,8" />
+                    <ItemsControl ItemsSource="{Binding ResumeEntries}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{Binding Label}" VerticalAlignment="Center" TextWrapping="Wrap" />
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="12,0,0,0">
+                                        <Button Content="Resume" Style="{StaticResource SecondaryButtonStyle}"
+                                                Command="{Binding DataContext.ResumeInterruptedTransferCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                CommandParameter="{Binding}" Margin="0,0,8,0" />
+                                        <Button Content="Discard" Style="{StaticResource SecondaryButtonStyle}"
+                                                Command="{Binding DataContext.DiscardInterruptedTransferCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                CommandParameter="{Binding}" />
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+    </Window.Resources>
+
     <Grid KeyboardNavigation.TabNavigation="Cycle">
         <Grid.ColumnDefinitions>
             <ColumnDefinition x:Name="SidebarColumn" Width="212" />
@@ -89,6 +120,7 @@
                 <!-- Send -->
                 <ScrollViewer x:Name="SendPage" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Visibility="{Binding IsSendSelected, Converter={StaticResource BoolToVis}}">
                     <StackPanel>
+                        <ContentControl Content="{Binding}" ContentTemplate="{StaticResource ResumableTransfersTemplate}" />
                         <Border x:Name="SendDropZone" AllowDrop="True" Drop="DropZone_Drop" DragOver="DropZone_DragOver" SizeChanged="SendDropZone_SizeChanged" AutomationProperties.Name="Files to send drop area">
                             <Border.Style>
                                 <Style TargetType="Border" BasedOn="{StaticResource CardStyle}">
@@ -345,6 +377,7 @@
                                 </ItemsControl>
                             </StackPanel>
                         </Border>
+                        <ContentControl Content="{Binding}" ContentTemplate="{StaticResource ResumableTransfersTemplate}" />
                         <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0">
                             <Grid>
                                 <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>

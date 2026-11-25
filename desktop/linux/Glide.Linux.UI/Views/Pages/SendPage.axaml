@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Glide.Linux.UI.ViewModels"
+             xmlns:local="using:Glide.Linux.UI.Views.Pages"
              x:Class="Glide.Linux.UI.Views.Pages.SendPage"
              x:DataType="vm:LinuxMainViewModel">
 
@@ -13,6 +14,8 @@
         <TextBlock Text="Select files or folders, choose a sharing method, and send securely peer-to-peer."
                    Classes="secondary" TextWrapping="Wrap" />
       </StackPanel>
+
+      <local:ResumableTransfersCard />
 
       <!-- TRANSFORMING FILE QUEUE (LUI-06) -->
       <!-- Empty Drop State -->

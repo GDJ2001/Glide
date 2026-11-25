@@ -170,6 +170,16 @@ public interface IDesktopTransferExecutor
         CancellationToken cancellationToken = default) =>
         Task.FromResult(DesktopTransferResult.Failed(
             "This transfer runtime does not support trusted reconnect receiving."));
+
+    Task<DesktopTransferResult> ResumeTrustedAsync(
+        DesktopResumeRequest request, IDesktopTransferInteraction interaction, CancellationToken cancellationToken = default) =>
+        Task.FromResult(DesktopTransferResult.Failed("This runtime does not support resuming transfers."));
+
+    Task<DesktopTransferResult> ReceiveTrustedResumeAsync(
+        Glide.Transport.Sockets.TlsSocketConnection connection, Profile2Message.SessionOpen open,
+        DesktopReceiveRequest request, IDesktopTransferInteraction interaction, bool isBusy = false,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(DesktopTransferResult.Failed("This runtime does not support resuming transfers."));
 }
 
 public abstract class DesktopTransferInteractionBase : IDesktopTransferInteraction
@@ -208,7 +218,8 @@ public sealed record DesktopSendRequest(
     string? ExpectedPresenceId = null,
     IReadOnlyList<LanEndpoint>? CandidateEndpoints = null,
     IReadOnlyList<Glide.Desktop.Services.TrustedEndpointCandidate>? CandidateDetails = null,
-    Func<CancellationToken, Task<IReadOnlyList<Glide.Desktop.Services.TrustedEndpointCandidate>>>? RefreshCandidatesAsync = null);
+    Func<CancellationToken, Task<IReadOnlyList<Glide.Desktop.Services.TrustedEndpointCandidate>>>? RefreshCandidatesAsync = null,
+    DesktopResumeStore? ResumeStore = null);
 
 public sealed record DesktopReceiveRequest(
     QuarantineStagingStore StagingStore,
@@ -216,4 +227,10 @@ public sealed record DesktopReceiveRequest(
     string LocalDeviceName = "",
     DesktopPersistentTrustManager? TrustManager = null,
     string? ExpectedPeerFingerprintHex = null,
-    LanInvitation? Invitation = null);
+    LanInvitation? Invitation = null,
+    DesktopResumeStore? ResumeStore = null);
+
+public sealed record DesktopResumeRequest(
+    DesktopAcceptedResumeBatch Batch,
+    DesktopReceiveRequest Local,
+    IReadOnlyList<Glide.Desktop.Services.TrustedEndpointCandidate> Candidates);

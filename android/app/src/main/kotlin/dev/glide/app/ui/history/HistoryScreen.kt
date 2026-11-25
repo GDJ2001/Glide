@@ -73,7 +73,8 @@ fun HistoryScreen(
     onBack: () -> Unit,
     initialSessionId: String? = null,
     windowSizeClass: WindowSizeClass = LocalWindowSizeClass.current,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    resumePanel: @Composable () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -141,6 +142,7 @@ fun HistoryScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
+            resumePanel()
             // Filter Chips Row
             Row(
                 modifier = Modifier

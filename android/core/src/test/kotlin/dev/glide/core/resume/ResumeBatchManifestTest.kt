@@ -4,6 +4,11 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import dev.glide.core.pairing.Profile2Message
 import dev.glide.core.pairing.Profile2WireCodec
+import dev.glide.core.protocol.OfferDecisionBody
+import dev.glide.core.protocol.ProtocolCodec
+import dev.glide.core.protocol.ResumeOfferMetadata
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.int
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -30,6 +35,14 @@ class ResumeBatchManifestTest {
         val parsed = Profile2WireCodec.decode(wire) as Profile2Message.SessionOpen
         assertEquals("receiver", parsed.initiatorRole)
         assertArrayEquals(wire, Profile2WireCodec.encode(parsed))
+    }
+
+    @Test
+    fun decodesSharedBatchApprovalWithVerifiedPrefix() {
+        val message = ProtocolCodec.decode(fixture("resume_batch_approval_v1.json").readBytes())
+        assertEquals(true, ProtocolCodec.decodeBody<OfferDecisionBody>(message).accepted)
+        assertEquals("a".repeat(64), ResumeOfferMetadata.decodeAcceptance(message.extensions)?.value)
+        assertEquals(1, message.extensions?.get("resumeVerifiedCount")?.jsonPrimitive?.int)
     }
 
     @Test

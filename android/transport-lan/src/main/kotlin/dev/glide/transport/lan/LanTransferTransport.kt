@@ -109,7 +109,14 @@ class LanTransferTransport(
         val displayName: String,
         val endpoints: List<dev.glide.core.pairing.LanEndpoint>,
         val localIdentityPublicKeyDer: ByteArray,
-        val expectedPresenceId: String? = null
+        val expectedPresenceId: String? = null,
+        val resume: TrustedResumeOpening? = null
+    )
+
+    data class TrustedResumeOpening(
+        val originalSessionId: String,
+        val initiatorRole: String,
+        val manifestDigest: String
     )
 
     private val pendingInvitations = ConcurrentHashMap<PeerId, PendingInvitation>()
@@ -128,7 +135,8 @@ class LanTransferTransport(
         val writer: LanRecordWriter,
         val readerJob: Job,
         val channelContext: AuthenticatedChannelContext,
-        val trustedPeerFingerprintHex: String? = null
+        val trustedPeerFingerprintHex: String? = null,
+        val resume: TrustedResumeOpening? = null
     )
 
     fun registerPendingInvitation(
@@ -295,7 +303,15 @@ class LanTransferTransport(
         val open = dev.glide.core.pairing.Profile2WireCodec.readMessage(input)
             as? dev.glide.core.pairing.Profile2Message.SessionOpen
             ?: run { socket.close(); return }
-        if (open.purpose == dev.glide.core.pairing.Profile2Constants.PURPOSE_TRUSTED_RESUME) {
+        val resume = if (open.purpose == dev.glide.core.pairing.Profile2Constants.PURPOSE_TRUSTED_RESUME) {
+            val original = open.originalSessionId
+            val role = open.initiatorRole
+            val digest = open.resumeManifestDigest
+            if (original != null && role != null && digest != null && open.itemId == null)
+                TrustedResumeOpening(original, role, digest)
+            else null
+        } else null
+        if (open.purpose == dev.glide.core.pairing.Profile2Constants.PURPOSE_TRUSTED_RESUME && resume == null) {
             try {
                 dev.glide.core.pairing.Profile2WireCodec.writeMessage(
                     output,
@@ -332,12 +348,13 @@ class LanTransferTransport(
             socket.close()
             return
         }
-        val authorized = open.purpose == dev.glide.core.pairing.Profile2Constants.PURPOSE_TRUSTED_SEND &&
+        val authorized = (open.purpose == dev.glide.core.pairing.Profile2Constants.PURPOSE_TRUSTED_SEND || resume != null) &&
             open.authMethod == dev.glide.core.pairing.Profile2Constants.AUTH_METHOD_IDENTITY_V1 &&
             manager != null && key != null && saved != null &&
             saved.publicKeyDerHex == key.joinToString("") { "%02x".format(it.toInt() and 0xff) } &&
             (open.expectedPeerIdentityFingerprint == null ||
-                open.expectedPeerIdentityFingerprint == localFingerprint)
+                open.expectedPeerIdentityFingerprint == localFingerprint) &&
+            (resume == null || open.expectedPeerIdentityFingerprint == localFingerprint)
         if (busy || !authorized) {
             dev.glide.core.pairing.Profile2WireCodec.writeMessage(
                 output,
@@ -381,7 +398,8 @@ class LanTransferTransport(
                 sessionId = SessionId(open.sessionId),
                 channelBindingHex = serverSpki
             ),
-            trustedPeerFingerprintHex = fingerprint
+            trustedPeerFingerprintHex = fingerprint,
+            resume = resume
         )
         inboundAcceptedSocket = socket
         readerJob.start()
@@ -394,6 +412,8 @@ class LanTransferTransport(
 
     fun trustedInboundPeerFingerprint(peerId: PeerId): String? =
         activeConnections[peerId]?.trustedPeerFingerprintHex
+
+    fun trustedResumeOpening(peerId: PeerId): TrustedResumeOpening? = activeConnections[peerId]?.resume
 
     val trustedAdvertisingStatus:
         kotlinx.coroutines.flow.StateFlow<dev.glide.transport.lan.discovery.NsdDiscoveryAdapter.RegistrationStatus>?
@@ -620,14 +640,18 @@ class LanTransferTransport(
             val encoder = java.util.Base64.getUrlEncoder().withoutPadding()
             val open = dev.glide.core.pairing.Profile2Message.SessionOpen(
                 sessionId = senderSessionId,
-                purpose = dev.glide.core.pairing.Profile2Constants.PURPOSE_TRUSTED_SEND,
+                purpose = if (trustedPeer.resume == null) dev.glide.core.pairing.Profile2Constants.PURPOSE_TRUSTED_SEND
+                    else dev.glide.core.pairing.Profile2Constants.PURPOSE_TRUSTED_RESUME,
                 authMethod = dev.glide.core.pairing.Profile2Constants.AUTH_METHOD_IDENTITY_V1,
                 initiatorNonce = encoder.encodeToString(nonceBytes),
                 initiatorDeviceName = localDeviceName,
                 initiatorPlatform = "android",
                 initiatorIdentityPublicKey = encoder.encodeToString(trustedPeer.localIdentityPublicKeyDer),
                 expectedPresenceId = trustedPeer.expectedPresenceId,
-                expectedPeerIdentityFingerprint = trustedPeer.expectedFingerprintHex
+                expectedPeerIdentityFingerprint = trustedPeer.expectedFingerprintHex,
+                originalSessionId = trustedPeer.resume?.originalSessionId,
+                initiatorRole = trustedPeer.resume?.initiatorRole,
+                resumeManifestDigest = trustedPeer.resume?.manifestDigest
             )
             dev.glide.core.pairing.Profile2WireCodec.writeMessage(outputStream, open)
 
@@ -643,6 +667,7 @@ class LanTransferTransport(
                 val mapped = when (ack.errorCode) {
                     dev.glide.core.pairing.Profile2Constants.ERROR_BUSY -> "This device is busy — try again"
                     dev.glide.core.pairing.Profile2Constants.ERROR_EXPIRED -> "Code expired — get a new code"
+                    dev.glide.core.pairing.Profile2Constants.ERROR_UNSUPPORTED_VERSION -> "This device cannot resume the accepted batch"
                     else -> "Identity changed — pair again"
                 }
                 throw IOException(mapped)
@@ -676,7 +701,9 @@ class LanTransferTransport(
                 channelContext = AuthenticatedChannelContext(
                     sessionId = SessionId(senderSessionId),
                     channelBindingHex = serverSpkiHex
-                )
+                ),
+                trustedPeerFingerprintHex = trustedPeer.expectedFingerprintHex,
+                resume = trustedPeer.resume
             )
 
             readerJob.start()

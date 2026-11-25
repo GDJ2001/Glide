@@ -165,6 +165,18 @@ class TransferService : Service() {
                 }
             }
 
+            ACTION_START_RETAINED_RESUME -> {
+                startForegroundWithNotification()
+                startNotificationUpdates()
+                val original = intent?.getStringExtra(EXTRA_SESSION_ID)
+                val deviceName = intent?.getStringExtra(EXTRA_LOCAL_DEVICE_NAME) ?: "Glide Device"
+                serviceScope.launch {
+                    val started = original != null && runtime().refreshPersistentTrustState() &&
+                        runtime().startRetainedResume(original, deviceName)
+                    if (!started) handleTerminalTeardown()
+                }
+            }
+
             ACTION_START_LAN_RECEIVER_PAIRING -> {
                 releaseHotspotLease = dev.glide.transport.lan.network.AndroidHotspotConnections.claimCurrentLease()
                 startForegroundWithNotification()
@@ -457,6 +469,8 @@ class TransferService : Service() {
             }
             ACTION_START_TRUSTED_SENDER ->
                 "trusted-sender:${intent?.getStringExtra(EXTRA_ATTEMPT_ID).orEmpty()}"
+            ACTION_START_RETAINED_RESUME ->
+                "resume:${intent?.getStringExtra(EXTRA_SESSION_ID).orEmpty()}"
             ACTION_START_LAN_RECEIVER -> null
             ACTION_START_LAN_RECEIVER_PAIRING -> {
                 val encoded = intent?.getStringExtra(EXTRA_LAN_INVITATION)
@@ -486,6 +500,17 @@ class TransferService : Service() {
     }
 
     companion object {
+        private const val ACTION_START_RETAINED_RESUME = "dev.glide.app.action.START_RETAINED_RESUME"
+
+        fun startRetainedResume(context: Context, sessionId: String, deviceName: String) {
+            val intent = Intent(context, TransferService::class.java).apply {
+                action = ACTION_START_RETAINED_RESUME
+                putExtra(EXTRA_SESSION_ID, sessionId)
+                putExtra(EXTRA_LOCAL_DEVICE_NAME, deviceName)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(intent)
+            else context.startService(intent)
+        }
         @Volatile private var isRunning = false
         const val ACTION_START = "dev.glide.app.action.START_TRANSFER"
         const val ACTION_START_NEARBY_SENDER =

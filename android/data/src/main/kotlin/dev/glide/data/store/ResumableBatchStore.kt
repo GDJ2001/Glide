@@ -58,6 +58,14 @@ class ResumableBatchStore(
         return decode(entry)
     }
 
+    suspend fun listActive(): List<Accepted> {
+        val timestamp = now()
+        dao.purgeExpired(timestamp)
+        return dao.listActive(timestamp).mapNotNull { entry ->
+            runCatching { decode(entry) }.getOrNull()?.takeIf { it.verifiedCount < it.manifest.items.size }
+        }
+    }
+
     suspend fun recordVerifiedCommit(
         sessionId: SessionId,
         itemId: ItemId,

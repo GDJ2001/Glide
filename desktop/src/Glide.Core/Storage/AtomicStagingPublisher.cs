@@ -40,7 +40,8 @@ public sealed class AtomicStagingPublisher
         CancellationToken cancellationToken = default,
         Action? onBeforePublish = null,
         Action<long>? onStorageProgress = null,
-        TimeSpan? storageProgressTimeout = null)
+        TimeSpan? storageProgressTimeout = null,
+        Func<string, CancellationToken, Task>? onPublishCandidate = null)
     {
         string quarantinePath = _store.GetQuarantinePath(sessionId, itemId);
         if (!File.Exists(quarantinePath))
@@ -87,6 +88,7 @@ public sealed class AtomicStagingPublisher
                     skipRedundantVerificationRead,
                     onBeforePublish,
                     ReportProgress,
+                    onPublishCandidate,
                     effectiveToken).ConfigureAwait(false);
 
                 if (atomicResult != null)
@@ -106,6 +108,7 @@ public sealed class AtomicStagingPublisher
                 expectedSizeBytes,
                 skipRedundantVerificationRead,
                 ReportProgress,
+                onPublishCandidate,
                 effectiveToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (watchdogCts != null && watchdogCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
@@ -123,6 +126,7 @@ public sealed class AtomicStagingPublisher
         bool skipRedundantVerificationRead,
         Action? onBeforePublish,
         Action<long>? onStorageProgress,
+        Func<string, CancellationToken, Task>? onPublishCandidate,
         CancellationToken cancellationToken)
     {
         string initialFinalPath = ResolveSafeDestinationPath(rawRelativePath);
@@ -142,6 +146,7 @@ public sealed class AtomicStagingPublisher
                 skipRedundantVerificationRead,
                 onBeforePublish,
                 onStorageProgress,
+                onPublishCandidate,
                 cancellationToken).ConfigureAwait(false);
         }
 
@@ -350,6 +355,8 @@ public sealed class AtomicStagingPublisher
 
             for (int attempt = 0; ; attempt++)
             {
+                if (onPublishCandidate != null)
+                    await onPublishCandidate(committedPath, cancellationToken).ConfigureAwait(false);
                 try
                 {
                     if (OperatingSystem.IsWindows())
@@ -460,6 +467,7 @@ public sealed class AtomicStagingPublisher
         bool skipRedundantVerificationRead,
         Action? onBeforePublish,
         Action<long>? onStorageProgress,
+        Func<string, CancellationToken, Task>? onPublishCandidate,
         CancellationToken cancellationToken)
     {
         IStagingFileSystem fs = _fileSystem!;
@@ -586,6 +594,8 @@ public sealed class AtomicStagingPublisher
 
             for (int attempt = 0; ; attempt++)
             {
+                if (onPublishCandidate != null)
+                    await onPublishCandidate(committedPath, cancellationToken).ConfigureAwait(false);
                 try
                 {
                     fs.AtomicRenameNoReplace(
@@ -646,6 +656,7 @@ public sealed class AtomicStagingPublisher
         long expectedSizeBytes,
         bool skipRedundantVerificationRead,
         Action<long>? onStorageProgress,
+        Func<string, CancellationToken, Task>? onPublishCandidate,
         CancellationToken cancellationToken)
     {
         if (_store.GetDestinationAvailableFreeSpaceBytes() < expectedSizeBytes)
@@ -813,6 +824,8 @@ public sealed class AtomicStagingPublisher
 
             for (int attempt = 0; ; attempt++)
             {
+                if (onPublishCandidate != null)
+                    await onPublishCandidate(finalPath, cancellationToken).ConfigureAwait(false);
                 try
                 {
                     File.Move(temporaryPath, finalPath, overwrite: false);

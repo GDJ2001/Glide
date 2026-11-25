@@ -721,6 +721,14 @@ object TransferReducer {
         if (state.role != DeviceRole.Sender || state.phase != SessionPhase.AwaitingReceipt) {
             return ReducerResult(state, emptyList())
         }
+        val batch = state.batch ?: return ReducerResult(state, emptyList())
+        if (event.result.batchId != batch.id || event.result.verifiedCount != batch.items.size ||
+            event.result.totalVerifiedBytes.toLongOrNull() != batch.totalBytes ||
+            batch.items.any { state.itemStates[it.id]?.isVerified != true }) {
+            return handleTransportFailure(state, ReducerEvent.TransportFailure(
+                TransferFailure.ProtocolOrder("The final receipt does not match the verified batch"), event.timestampMs
+            ))
+        }
         val nextState = state.copy(
             phase = SessionPhase.Completed,
             lastActivityMonotonicMs = event.timestampMs

@@ -15,6 +15,7 @@ import dev.glide.core.ports.ReceiveStore
 import dev.glide.core.ports.SourceAccess
 import dev.glide.core.ports.TransferTransport
 import dev.glide.core.resume.ResumeAuthorityLookup
+import dev.glide.core.resume.ResumeBatchReconnect
 import dev.glide.core.resume.ResumeReconnectPlan
 import dev.glide.core.resume.ResumeRequestAuthority
 import dev.glide.core.resume.ResumeSenderReadySource
@@ -156,7 +157,10 @@ class TransferSessionFactory(
             purgeResumeItemAuthority = resumableStagingStore?.let { store ->
                 { original, item -> store.purgeSession(original.value, item.value) }
             },
-            persistAcceptedResumeBatch = resumableBatchStore?.let { it::saveAccepted }
+            persistAcceptedResumeBatch = resumableBatchStore?.let { it::saveAccepted },
+            purgeAcceptedResumeBatch = resumableStagingStore?.let { store ->
+                { original -> store.purgeOriginalSession(original.value) }
+            }
         )
     }
 
@@ -292,7 +296,8 @@ class TransferSessionFactory(
         transport: TransferTransport,
         scope: CoroutineScope,
         persistentTrustManager:
-            PersistentTrustManager
+            PersistentTrustManager,
+        batchResume: ResumeBatchReconnect? = null
     ): TransferCoordinator {
         val verifier =
             resumeSourceVerifier
@@ -344,7 +349,9 @@ class TransferSessionFactory(
             },
             purgeResumeItemAuthority = { original, item -> store.purgeSession(original.value, item.value) },
             enableTrueResumeCapability =
-                true
+                true,
+            resumeBatch = batchResume,
+            purgeAcceptedResumeBatch = { store.purgeOriginalSession(it.value) }
         )
     }
 
@@ -361,7 +368,8 @@ class TransferSessionFactory(
         transport: TransferTransport,
         scope: CoroutineScope,
         persistentTrustManager:
-            PersistentTrustManager
+            PersistentTrustManager,
+        batchResume: ResumeBatchReconnect? = null
     ): TransferCoordinator {
         val store =
             resumableStagingStore
@@ -479,7 +487,7 @@ class TransferSessionFactory(
                 val digest = Sha256Digest(expectedDigest)
                 val alreadyCommitted = receiveStore.findVerifiedCommit(item, journal.totalBytes, digest)
                 if (alreadyCommitted != null) {
-                    store.purgeSession(original.value, item.value)
+                    if (batchResume == null) store.purgeSession(original.value, item.value)
                     return@finalizeResume alreadyCommitted
                 }
                 val staging = receiveStore.prepareStaging(
@@ -494,16 +502,44 @@ class TransferSessionFactory(
                     check(persistentTrustManager.trustedPeerByFingerprint(journal.peerFingerprintHex) != null)
                     receiveStore.commitVerified(staging, digest).also {
                         committed = true
-                        store.purgeSession(original.value, item.value)
+                        if (batchResume == null) store.purgeSession(original.value, item.value)
                     }
                 } finally {
                     if (!committed) withContext(NonCancellable) { receiveStore.discardStaging(staging) }
                 }
             },
             enableTrueResumeCapability =
-                true
+                true,
+            resumeBatch = batchResume,
+            recordResumeBatchCommit = resumableBatchStore?.let { batchStore ->
+                { original, item, size, digest ->
+                    withContext(NonCancellable) {
+                        batchStore.recordVerifiedCommit(original, item, size, digest)
+                        store.purgeSession(original.value, item.value)
+                    }
+                }
+            },
+            purgeAcceptedResumeBatch = { store.purgeOriginalSession(it.value) },
+            recoverResumeCommitReceipts = resumableBatchStore?.let { batchStore ->
+                { manifest, prefix ->
+                    var committed = prefix
+                    for (item in manifest.items.drop(prefix)) {
+                        if (receiveStore.findVerifiedCommit(item.id, item.sizeBytes, item.digest) == null) break
+                        batchStore.recordVerifiedCommit(manifest.sessionId, item.id, item.sizeBytes, item.digest)
+                        store.purgeSession(manifest.sessionId.value, item.id.value)
+                        committed++
+                    }
+                    committed
+                }
+            }
         )
     }
+
+    suspend fun listRetainedBatches() = resumableBatchStore?.listActive().orEmpty()
+
+    suspend fun findRetainedBatch(
+        original: SessionId, role: DeviceRole, peer: Sha256Digest, digest: Sha256Digest
+    ) = resumableBatchStore?.findAccepted(original, role, peer, digest)
     private suspend fun loadSenderResumeAuthorityImpl(
         store: ResumableStagingStore,
         verifier: ResumeSourceVerifier,
@@ -603,7 +639,8 @@ class TransferSessionFactory(
                                     chunkRootHashHex = reconciled.chunkRootHashHex
                                 ),
                                 sourceHandle = SourceHandle(reconciled.sourceHandle),
-                                wholeFileSha256Hex = reconciled.wholeFileSha256Hex
+                                wholeFileSha256Hex = reconciled.wholeFileSha256Hex,
+                                verifiedSourceChunks = snapshot.chunkHashesHex
                             )
                         )
                     ResumeSenderRevalidationResult.Expired ->

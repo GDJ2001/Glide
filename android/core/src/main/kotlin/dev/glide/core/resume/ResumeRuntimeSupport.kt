@@ -1,5 +1,14 @@
 package dev.glide.core.resume
 
+/** A previously approved ordered batch on a new mutually authenticated LAN session. */
+data class ResumeBatchReconnect(
+    val manifest: ResumeBatchManifest,
+    val receiverVerifiedCount: Int,
+    val localInitiated: Boolean
+) {
+    init { require(receiverVerifiedCount in 0..manifest.items.size) }
+}
+
 /**
  * Platform-neutral bounded source authority prepared before a resume-capable offer.
  *
@@ -89,7 +98,8 @@ data class ResumeSenderReadySource(
             .SenderSourceAuthority,
     val sourceHandle:
         dev.glide.core.domain.SourceHandle,
-    val wholeFileSha256Hex: String
+    val wholeFileSha256Hex: String,
+    val verifiedSourceChunks: List<String> = emptyList()
 ) {
     init {
         require(

@@ -2,7 +2,10 @@ using System.IO;
 using System.Net;
 using System.Security.Cryptography;
 using Glide.Core.Pairing;
+using Glide.Core.Models;
 using Glide.Core.Security;
+using Glide.Core.Storage;
+using Glide.Desktop;
 using Glide.Desktop.Pairing;
 using Glide.Desktop.Services;
 using Glide.Transport.Discovery;
@@ -14,6 +17,131 @@ namespace Glide.Tests;
 
 public sealed class DesktopPairingCoordinatorTests
 {
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    public async Task TrustedBatchResumesRemainingFilesAndDoesNotRepeatCommittedFiles(bool senderInitiates, bool changeSource)
+    {
+        string root = Path.Combine(Path.GetTempPath(), $"glide-live-resume-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            using var senderIdentity = new InMemoryIdentityStore();
+            using var receiverIdentity = new InMemoryIdentityStore();
+            var senderTrust = new DesktopPersistentTrustManager(senderIdentity, new DesktopTrustStore(Path.Combine(root, "s.json")));
+            var receiverTrust = new DesktopPersistentTrustManager(receiverIdentity, new DesktopTrustStore(Path.Combine(root, "r.json")));
+            senderTrust.Initialize();
+            receiverTrust.Initialize();
+            void Enroll(DesktopPersistentTrustManager local, DesktopPersistentTrustManager peer, string name) =>
+                local.EnrollVerifiedPeer(new VerifiedDesktopPeerIdentity(peer.LocalFingerprintHex(),
+                    Convert.ToHexStringLower(peer.LocalPublicKeyDer()), name, "windows"), userApproved: true);
+            Enroll(senderTrust, receiverTrust, "Receiver");
+            Enroll(receiverTrust, senderTrust, "Sender");
+            var senderJournal = new DesktopResumeStore(Path.Combine(root, "sr"));
+            var receiverJournal = new DesktopResumeStore(Path.Combine(root, "rr"));
+            var senderLocal = new DesktopReceiveRequest(
+                new QuarantineStagingStore(Path.Combine(root, "stg-s"), Path.Combine(root, "dst-s")),
+                TrustManager: senderTrust, ResumeStore: senderJournal);
+            string received = Path.Combine(root, "dst-r");
+            var receiverLocal = new DesktopReceiveRequest(
+                new QuarantineStagingStore(Path.Combine(root, "stg-r"), received),
+                TrustManager: receiverTrust, ResumeStore: receiverJournal);
+            string a = Path.Combine(root, "a.txt");
+            string b = Path.Combine(root, "b.bin");
+            string c = Path.Combine(root, "c.txt");
+            File.WriteAllText(a, "First");
+            byte[] bytes = RandomNumberGenerator.GetBytes(3 * 1024 * 1024 + 271);
+            File.WriteAllBytes(b, bytes);
+            File.WriteAllBytes(c, []);
+            var senderEngine = new DesktopTransferEngine(ioOptions: new DesktopTransferIoOptions { EnableBoundedPipeline = false });
+            var receiverEngine = new DesktopTransferEngine(ioOptions: new DesktopTransferIoOptions { EnableBoundedPipeline = false });
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+            using var initial = new TlsSocketListener(0);
+            var originalReceiver = Task.Run(async () =>
+            {
+                await using var conn = await initial.AcceptConnectionAsync(timeout.Token);
+                await LanSessionPreambleInspector.InspectAndPrepareAsync(conn, timeout.Token);
+                var open = Assert.IsType<Profile2Message.SessionOpen>(
+                    await Profile2WireCodec.ReadMessageAsync(conn.TransportStream, timeout.Token));
+                return await receiverEngine.ReceiveTrustedAsync(conn, open, receiverLocal, new ResumeInteraction(progress =>
+                {
+                    if (progress.ItemName == "b.bin" && progress.TransferredBytes >= 1024 * 1024 + 5)
+                        conn.AbortTransport();
+                }), cancellationToken: timeout.Token);
+            }, timeout.Token);
+            var sent = await senderEngine.SendTrustedAsync(new DesktopSendRequest("127.0.0.1", initial.BoundPort,
+                [new(a), new(b), new(c)], TrustManager: senderTrust,
+                ExpectedPeerFingerprintHex: receiverTrust.LocalFingerprintHex(), ResumeStore: senderJournal,
+                CandidateEndpoints: [new("127.0.0.1", initial.BoundPort)]), new ResumeInteraction(), timeout.Token);
+            var interrupted = await originalReceiver;
+            Assert.False(sent.Success);
+            Assert.False(interrupted.Success);
+            Assert.True(File.Exists(Path.Combine(received, "a.txt")), $"{sent.Message} / {interrupted.Message}");
+            Assert.Equal("First", File.ReadAllText(Path.Combine(received, "a.txt")));
+            var senderBatch = Assert.Single(await senderJournal.ListAcceptedBatchesAsync(timeout.Token));
+            var receiverBatch = Assert.Single(await receiverJournal.ListAcceptedBatchesAsync(timeout.Token));
+            Assert.Equal(1, receiverBatch.VerifiedCount);
+            var partial = await receiverJournal.LoadAsync(new SessionId(receiverBatch.Manifest.SessionId),
+                new ItemId(receiverBatch.Manifest.Items[1].Id), timeout.Token);
+            Assert.Equal(1024 * 1024, partial?.ContiguousByteOffset);
+            if (changeSource)
+            {
+                bytes[^1] ^= 0xff;
+                File.WriteAllBytes(b, bytes);
+            }
+
+            using var reconnect = new TlsSocketListener(0);
+            int approvals = 0;
+            var incoming = Task.Run(async () =>
+            {
+                await using var conn = await reconnect.AcceptConnectionAsync(timeout.Token);
+                await LanSessionPreambleInspector.InspectAndPrepareAsync(conn, timeout.Token);
+                var open = Assert.IsType<Profile2Message.SessionOpen>(
+                    await Profile2WireCodec.ReadMessageAsync(conn.TransportStream, timeout.Token));
+                return await (senderInitiates ? receiverEngine : senderEngine).ReceiveTrustedResumeAsync(conn, open,
+                    senderInitiates ? receiverLocal : senderLocal, new ResumeInteraction(approval: () => approvals++),
+                    cancellationToken: timeout.Token);
+            }, timeout.Token);
+            var resumed = await (senderInitiates ? senderEngine : receiverEngine).ResumeTrustedAsync(
+                new DesktopResumeRequest(senderInitiates ? senderBatch : receiverBatch,
+                    senderInitiates ? senderLocal : receiverLocal, [new(new("127.0.0.1", reconnect.BoundPort), false, true)]),
+                new ResumeInteraction(approval: () => approvals++), timeout.Token);
+            var inbound = await incoming;
+            if (changeSource)
+            {
+                Assert.False(resumed.Success);
+                Assert.False(inbound.Success);
+                Assert.False(File.Exists(Path.Combine(received, "b.bin")));
+                Assert.False(File.Exists(Path.Combine(received, "c.txt")));
+                Assert.Single(Directory.GetFiles(received, "a*"));
+                return;
+            }
+            Assert.True(resumed.Success, $"{resumed.Message} / {inbound.Message}");
+            Assert.True(inbound.Success, inbound.Message);
+            Assert.Equal(senderInitiates ? 1 : 0, approvals);
+            Assert.Equal(bytes, File.ReadAllBytes(Path.Combine(received, "b.bin")));
+            Assert.Equal(0, new FileInfo(Path.Combine(received, "c.txt")).Length);
+            Assert.Single(Directory.GetFiles(received, "a*"));
+            Assert.Empty(await senderJournal.ListAcceptedBatchesAsync(timeout.Token));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private sealed class ResumeInteraction(Action<DesktopTransferProgress>? progress = null, Action? approval = null)
+        : DesktopTransferInteractionBase
+    {
+        public override void OnProgress(DesktopTransferProgress snapshot) => progress?.Invoke(snapshot);
+        public override Task<bool> ConfirmOfferAsync(DesktopOffer offer, CancellationToken cancellationToken)
+        {
+            approval?.Invoke();
+            return Task.FromResult(true);
+        }
+    }
+
     private sealed class InMemoryIdentityStore : IDesktopPersistentIdentityStore, IDisposable
     {
         private readonly ECDsa _ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);

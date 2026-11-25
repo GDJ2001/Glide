@@ -1019,7 +1019,8 @@ public sealed partial class DesktopResumeStore
             Sha256Digest expectedWholeFileDigest,
             string destinationPath,
             CancellationToken cancellationToken =
-                default)
+                default,
+            bool purgeOnSuccess = true)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(
             destinationPath);
@@ -1222,10 +1223,8 @@ public sealed partial class DesktopResumeStore
                     return false;
                 }
 
-                PurgeKnownUnsafe(
-                    originalSessionId,
-                    itemId,
-                    journal);
+                if (purgeOnSuccess)
+                    PurgeKnownUnsafe(originalSessionId, itemId, journal);
                 return true;
             }
             finally

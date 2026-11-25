@@ -24,7 +24,7 @@ namespace Glide.Desktop;
 /// ceiling, all identifiers are correlated exactly, control/data reads have deadlines, and file
 /// hashing is performed incrementally while bytes are streamed.
 /// </summary>
-public sealed class DesktopTransferEngine : IDesktopTransferExecutor
+public sealed partial class DesktopTransferEngine : IDesktopTransferExecutor
 {
     private const int MaxOfferPageItems = 32;
     private const int SafeOfferPagePayloadBytes = 14_000;
@@ -73,7 +73,9 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
         ItemId ItemId,
         DesktopTransferFile File,
         long DeclaredSize,
-        DateTime LastWriteTimeUtc);
+        DateTime LastWriteTimeUtc,
+        DesktopResumeSourceSnapshot? ResumeSnapshot = null,
+        string? ResumeDigest = null);
 
     public async Task<DesktopTransferResult> SendAsync(
         DesktopSendRequest request,
@@ -1288,6 +1290,10 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                 : new JsonArray(
                     ProtocolCapabilities.FolderV1,
                     ProtocolCapabilities.IdentityV1);
+        var resumeStore = preEstablishedTrustedSessionId != null && trustManager != null
+            ? request.ResumeStore : null;
+        if (resumeStore != null)
+            optionalCapabilities.Add(ProtocolCapabilities.ResumeV1);
 
         await channel.WriteEnvelopeAsync(
             sequence.Create(
@@ -1325,7 +1331,11 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                 identityOffered:
                     trustManager != null,
                 requireIdentity:
-                    request.ExpectedPeerFingerprintHex != null);
+                    request.ExpectedPeerFingerprintHex != null,
+                resumeOffered: resumeStore != null);
+        if (!negotiatedCapabilities.Contains(ProtocolCapabilities.ResumeV1))
+            resumeStore = null;
+        await using var resumeCancellation = new DesktopResumeCancellation(resumeStore, sessionId, cancellationToken);
 
         string peerName =
             helloAck.Body["displayName"]?.ToString()
@@ -1394,15 +1404,27 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
         {
             cancellationToken.ThrowIfCancellationRequested();
             var info = new FileInfo(file.FilePath);
-            preparedItems.Add(
-                new PreparedSendItem(
+            var prepared = new PreparedSendItem(
                     new ItemId(
                         Guid.NewGuid()
                             .ToString("D")
                             .ToLowerInvariant()),
                     file,
                     info.Length,
-                    info.LastWriteTimeUtc));
+                    info.LastWriteTimeUtc);
+            if (resumeStore != null && prepared.DeclaredSize != 0)
+            {
+                var snapshot = await new DesktopResumeSourceVerifier().SnapshotAsync(
+                    file.FilePath, cancellationToken: cancellationToken).ConfigureAwait(false);
+                if (snapshot.TotalBytes != prepared.DeclaredSize || snapshot.LastWriteTimeUtc != prepared.LastWriteTimeUtc)
+                    throw new IOException("Source changed while preparing a resumable transfer.");
+                prepared = prepared with { ResumeSnapshot = snapshot, ResumeDigest = snapshot.WholeFileSha256Hex };
+            }
+            else if (resumeStore != null)
+            {
+                prepared = prepared with { ResumeDigest = Convert.ToHexStringLower(SHA256.HashData([])) };
+            }
+            preparedItems.Add(prepared);
         }
 
         var batchId = new BatchId(
@@ -1410,7 +1432,15 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                 .ToString("D")
                 .ToLowerInvariant());
         List<JsonArray> offerPages =
-            BuildOfferPages(preparedItems);
+            BuildOfferPages(preparedItems, resumeStore != null);
+        var manifest = resumeStore != null
+            ? new ResumeBatchManifest(sessionId.Value, batchId.Value, trustManager!.LocalFingerprintHex(),
+                request.ExpectedPeerFingerprintHex!, preparedItems.Select(item => new ResumeBatchManifest.Item(
+                    item.ItemId.Value, item.File.Name, item.File.TransferRelativePath, item.DeclaredSize,
+                    item.ResumeSnapshot?.ChunkSize ?? 0, item.ResumeSnapshot?.ChunkRootHashHex,
+                    item.ResumeDigest!)).ToArray())
+            : null;
+        int offeredIndex = 0;
 
         await channel.WriteEnvelopeAsync(
             sequence.Create(
@@ -1429,8 +1459,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
              pageIndex < offerPages.Count;
              pageIndex++)
         {
-            await channel.WriteEnvelopeAsync(
-                sequence.Create(
+            var pageEnvelope = sequence.Create(
                     MessageTypes.OfferPage,
                     sessionId,
                     new JsonObject
@@ -1438,8 +1467,16 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                         ["batchId"] = batchId.Value,
                         ["pageIndex"] = pageIndex,
                         ["items"] = offerPages[pageIndex]
-                    }),
-                cancellationToken);
+                    });
+            if (manifest != null)
+            {
+                pageEnvelope = pageEnvelope with { Extensions = new JsonObject
+                {
+                    ["resumeDigests"] = new JsonArray(offerPages[pageIndex]
+                        .Select(_ => JsonValue.Create(manifest.Items[offeredIndex++].Digest)).ToArray())
+                } };
+            }
+            await channel.WriteEnvelopeAsync(pageEnvelope, cancellationToken);
         }
 
         await channel.WriteEnvelopeAsync(
@@ -1473,6 +1510,25 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
         bool accepted =
             offerDecision.Body["accepted"]?.GetValue<bool>()
             ?? false;
+        if (offerDecision.Extensions?["resumeManifestDigest"] is JsonNode acceptedDigest)
+        {
+            if (!accepted || manifest == null || acceptedDigest.ToString() != manifest.Digest())
+                throw new ProtocolViolationException(WireErrorCodes.AuthenticationFailed,
+                    "The accepted resume batch does not match the authenticated offer.");
+            var trusted = trustManager!.GetTrustedPeer(manifest.ReceiverFingerprint);
+            if (trusted == null)
+                throw new ProtocolViolationException(WireErrorCodes.AuthenticationFailed, "Resume peer was revoked.");
+            foreach (var item in preparedItems)
+                if (item.ResumeSnapshot != null)
+                    await resumeStore!.InitializeSenderAsync(sessionId, item.ItemId, item.File.Name,
+                        trusted.FingerprintHex, item.ResumeSnapshot, cancellationToken).ConfigureAwait(false);
+            await resumeStore!.SaveAcceptedBatchAsync(manifest, DesktopResumeJournalRoles.Sender,
+                cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            resumeStore = null;
+        }
         if (!accepted)
         {
             string code =
@@ -1653,6 +1709,13 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
             string digest =
                 Convert.ToHexStringLower(
                     digestBytes);
+            if (prepared.ResumeDigest is not null && prepared.ResumeDigest != digest)
+            {
+                if (resumeStore != null)
+                    await resumeStore.PurgeOriginalSessionAsync(sessionId, CancellationToken.None).ConfigureAwait(false);
+                throw new ProtocolViolationException(WireErrorCodes.IntegrityMismatch,
+                    "The source digest changed after the offer.");
+            }
 
             await channel.WriteStreamEndAsync(
                 bulkRef,
@@ -1858,6 +1921,8 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
 
         string successMessage =
             $"Transfer complete: peer verified {verifiedCount} item(s) ({verifiedBytes} bytes).";
+        if (resumeStore != null)
+            await resumeStore.PurgeOriginalSessionAsync(sessionId, CancellationToken.None).ConfigureAwait(false);
         interaction.OnStatus(
             DesktopTransferDirection.Send,
             successMessage);
@@ -2073,11 +2138,16 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
 
             trustManager?.Initialize();
 
+            var resumeStore = preEstablishedTrustedSessionId != null && trustManager != null &&
+                !_ioOptions.DiscardStorageForBenchmark ? request.ResumeStore : null;
             HashSet<string> negotiatedCapabilities =
                 NegotiateHelloCapabilities(
                     hello,
                     allowIdentity:
-                        trustManager != null);
+                        trustManager != null,
+                    allowResume: resumeStore != null);
+            if (!negotiatedCapabilities.Contains(ProtocolCapabilities.ResumeV1))
+                resumeStore = null;
 
             if (request.ExpectedPeerFingerprintHex != null &&
                 !negotiatedCapabilities.Contains(
@@ -2182,7 +2252,8 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                     channel,
                     MessageTypes.OfferBegin,
                     sessionId,
-                    cancellationToken);
+                    cancellationToken,
+                    timeout: resumeStore is null ? null : TimeSpan.FromMinutes(20));
 
             string batchId =
                 offerBegin.Body["batchId"]!
@@ -2209,6 +2280,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                 new HashSet<string>(
                     StringComparer.Ordinal);
             long offeredBytes = 0;
+            var resumeItems = new List<ResumeBatchManifest.Item>(itemCount);
 
             for (int pageIndex = 0;
                  pageIndex < pageCount;
@@ -2243,6 +2315,12 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                         WireErrorCodes.MalformedMessage,
                         "OFFER_PAGE items must be an array.");
 
+                var offeredDigests = offerPage.Extensions?["resumeDigests"];
+                if (offeredDigests != null && (resumeStore == null || offeredDigests is not JsonArray digestArray ||
+                    digestArray.Count != itemArray.Count))
+                    throw new ProtocolViolationException(WireErrorCodes.MalformedMessage,
+                        "Malformed resume offer digest list.");
+                int digestIndex = 0;
                 foreach (JsonNode? node in itemArray)
                 {
                     if (node is not JsonObject itemObject)
@@ -2289,6 +2367,18 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                         WindowsPathSanitizer
                             .SanitizeRelativePath(
                                 rawRelativePath);
+                    if (offeredDigests is JsonArray digests)
+                    {
+                        if (digests[digestIndex++] is not JsonValue digestNode ||
+                            !digestNode.TryGetValue<string>(out string? digest) ||
+                            digest is null || !IdentifierValidation.IsValidSha256(digest))
+                            throw new ProtocolViolationException(WireErrorCodes.MalformedMessage,
+                                "Malformed resume item digest.");
+                        resumeItems.Add(new ResumeBatchManifest.Item(itemId, name,
+                            itemObject["relativePath"]?.ToString(), size,
+                            itemObject["chunkSize"] is { } chunkSize ? int.Parse(chunkSize.ToString()) : 0,
+                            itemObject["rootHash"]?.ToString(), digest));
+                    }
 
                     offeredBytes =
                         checked(offeredBytes + size);
@@ -2387,12 +2477,29 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                         : WireErrorCodes.InsufficientStorage;
             }
 
-            await channel.WriteEnvelopeAsync(
-                sequence.Create(
-                    MessageTypes.OfferDecision,
-                    sessionId,
-                    decisionBody),
-                cancellationToken).ConfigureAwait(false);
+            await using var resumeCancellation = new DesktopResumeCancellation(resumeStore, sessionId, cancellationToken);
+            var offerResponse = sequence.Create(MessageTypes.OfferDecision, sessionId, decisionBody);
+            Dictionary<string, ResumeBatchManifest.Item>? resumeItemsById = null;
+            if (offerAccepted && resumeStore != null && resumeItems.Count != 0)
+            {
+                if (resumeItems.Count != items.Count || authenticatedPeerFingerprint == null ||
+                    trustManager!.GetTrustedPeer(authenticatedPeerFingerprint) == null)
+                    throw new ProtocolViolationException(WireErrorCodes.AuthenticationFailed,
+                        "Cannot retain an incomplete or untrusted resume offer.");
+                var manifest = new ResumeBatchManifest(sessionId.Value, batchId, authenticatedPeerFingerprint,
+                    trustManager.LocalFingerprintHex(), resumeItems);
+                string manifestDigest = manifest.Digest();
+                resumeItemsById = resumeItems.ToDictionary(item => item.Id, StringComparer.Ordinal);
+                foreach (var item in resumeItems)
+                    if (item.SizeBytes > 0)
+                        await resumeStore.InitializeReceiverAsync(sessionId, new ItemId(item.Id), item.Name,
+                            authenticatedPeerFingerprint, item.SizeBytes, item.ChunkSize, item.RootHash!,
+                            cancellationToken).ConfigureAwait(false);
+                await resumeStore.SaveAcceptedBatchAsync(manifest, DesktopResumeJournalRoles.Receiver,
+                    cancellationToken).ConfigureAwait(false);
+                offerResponse = offerResponse with { Extensions = new JsonObject { ["resumeManifestDigest"] = manifestDigest } };
+            }
+            await channel.WriteEnvelopeAsync(offerResponse, cancellationToken).ConfigureAwait(false);
 
             if (!offerAccepted)
             {
@@ -2465,11 +2572,15 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                     new ItemId(item.ItemId);
                 byte[] hash;
                 long receivedBytes = 0;
+                var retained = resumeItemsById?.GetValueOrDefault(item.ItemId);
                 try
                 {
-                    await using Stream fileStream = discardStorage
+                    await using Stream output = discardStorage
                         ? Stream.Null
                         : request.StagingStore.OpenQuarantineWrite(sessionId, itemId);
+                    using var recorder = retained is { SizeBytes: > 0 }
+                        ? new ResumeRecordingStream(output, resumeStore!, sessionId, retained, 0) : null;
+                    Stream fileStream = recorder ?? output;
                     using var sha256 =
                         IncrementalHash.CreateHash(
                             HashAlgorithmName.SHA256);
@@ -2701,8 +2812,10 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                 if (!string.Equals(
                         actualSha,
                         declaredSha,
-                        StringComparison.Ordinal))
+                        StringComparison.Ordinal) || (retained != null && retained.Digest != actualSha))
                 {
+                    if (retained != null)
+                        await resumeStore!.PurgeOriginalSessionAsync(sessionId, CancellationToken.None).ConfigureAwait(false);
                     if (!discardStorage)
                     {
                         request.StagingStore
@@ -2760,7 +2873,10 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                                         interaction.OnPhase(DesktopTransferDirection.Receive, DesktopTransferPhase.Saving);
                                         diag.OnPhaseChanged(DesktopTransferPhase.Saving);
                                     },
-                                    storageProgressTimeout: _timeoutPolicy.NoPayloadProgressTimeout).ConfigureAwait(false);
+                                    storageProgressTimeout: _timeoutPolicy.NoPayloadProgressTimeout,
+                                    onPublishCandidate: retained == null ? null : (path, token) =>
+                                        resumeStore!.RecordBatchPublishCandidateAsync(sessionId, itemId, path, token))
+                                    .ConfigureAwait(false);
                     }
                     catch (TimeoutException timeoutEx)
                     {
@@ -2778,6 +2894,13 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                 verifiedBytes +=
                     item.SizeBytes;
                 diag.OnItemVerified(item.SizeBytes);
+                if (retained != null)
+                {
+                    if (!await resumeStore!.RecordVerifiedBatchCommitAsync(sessionId, itemId, receivedBytes, actualSha,
+                            CancellationToken.None).ConfigureAwait(false))
+                        throw new IOException("The verified file was saved, but the resume receipt could not be recorded.");
+                    await resumeStore.PurgeItemAsync(sessionId, itemId, CancellationToken.None).ConfigureAwait(false);
+                }
 
                 await channel.WriteEnvelopeAsync(
                     sequence.Create(
@@ -2918,7 +3041,8 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
 
     private static HashSet<string> NegotiateHelloCapabilities(
         Envelope hello,
-        bool allowIdentity)
+        bool allowIdentity,
+        bool allowResume = false)
     {
         HashSet<string> required =
             ReadCapabilitySet(
@@ -2955,7 +3079,8 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
                  string.Equals(
                      capability,
                      ProtocolCapabilities.IdentityV1,
-                     StringComparison.Ordinal)))
+                     StringComparison.Ordinal)) ||
+                (allowResume && capability == ProtocolCapabilities.ResumeV1))
             {
                 negotiated.Add(capability);
             }
@@ -2969,7 +3094,8 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
     private static HashSet<string> ValidateHelloAckCapabilities(
         Envelope helloAck,
         bool identityOffered,
-        bool requireIdentity)
+        bool requireIdentity,
+        bool resumeOffered = false)
     {
         if (long.Parse(helloAck.Body["selectedMajor"]?.ToString() ?? "-1") != 1)
         {
@@ -3004,6 +3130,8 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
             allowed.Add(
                 ProtocolCapabilities.IdentityV1);
         }
+        if (resumeOffered)
+            allowed.Add(ProtocolCapabilities.ResumeV1);
 
         if (capabilities.Except(
                 allowed,
@@ -3066,7 +3194,8 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
     }
 
     private static List<JsonArray> BuildOfferPages(
-        IReadOnlyList<PreparedSendItem> items)
+        IReadOnlyList<PreparedSendItem> items,
+        bool resume = false)
     {
         var pages = new List<JsonArray>();
         var current = new JsonArray();
@@ -3077,7 +3206,7 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
             int itemEstimate =
                 EstimateOfferItemBytes(item);
             if (current.Count > 0 &&
-                (current.Count >= MaxOfferPageItems ||
+                (current.Count >= (resume ? 14 : MaxOfferPageItems) ||
                  estimatedBytes + itemEstimate >
                  SafeOfferPagePayloadBytes))
             {
@@ -3107,9 +3236,9 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
         return pages;
     }
 
-    private static JsonObject CreateOfferItem(
-        PreparedSendItem item) =>
-        new()
+    private static JsonObject CreateOfferItem(PreparedSendItem item)
+    {
+        var result = new JsonObject
         {
             ["itemId"] = item.ItemId.Value,
             ["name"] = item.File.Name,
@@ -3120,12 +3249,19 @@ public sealed class DesktopTransferEngine : IDesktopTransferExecutor
             ["relativePath"] =
                 item.File.TransferRelativePath
         };
+        if (item.ResumeSnapshot is { } snapshot)
+        {
+            result["rootHash"] = snapshot.ChunkRootHashHex;
+            result["chunkSize"] = snapshot.ChunkSize;
+        }
+        return result;
+    }
 
     private static int EstimateOfferItemBytes(
         PreparedSendItem item)
     {
         const int JsonOverhead = 128;
-        return JsonOverhead +
+        return JsonOverhead + (item.ResumeSnapshot == null ? 0 : 100) +
                Encoding.UTF8.GetByteCount(
                    item.File.TransferRelativePath) * 2 +
                item.DeclaredSize
