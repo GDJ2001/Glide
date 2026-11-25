@@ -1,6 +1,5 @@
 package dev.glide.app.ui.transfer
 
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -10,7 +9,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -26,14 +24,9 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.TabletAndroid
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.ui.graphics.vector.ImageVector
-import dev.glide.app.ui.discovery.DeviceType
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -44,9 +37,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.role
@@ -57,10 +50,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.glide.app.ui.components.ActionTone
+import dev.glide.app.ui.components.GlideIconAction
+import dev.glide.app.ui.discovery.DeviceType
+import dev.glide.core.domain.DeviceRole
 import dev.glide.designsystem.AccessibilityProgressThrottler
 import dev.glide.designsystem.isolateBidi
-import dev.glide.core.domain.DeviceRole
-import dev.glide.designsystem.PrimaryButtonShape
 
 /**
  * Polished composable for active transfer progress and integrity verification phases.
@@ -169,7 +164,7 @@ private fun ActiveTransferringCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(24.dp),
+                .padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // Header: Peer badge & Device Type
@@ -191,6 +186,9 @@ private fun ActiveTransferringCard(
                     )
                     Text(
                         text = roleLabel,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.primary
                     )
@@ -204,6 +202,8 @@ private fun ActiveTransferringCard(
                     ) {
                         Text(
                             text = "File ${state.itemIndex} of ${state.itemCount}",
+                            softWrap = false,
+                            maxLines = 1,
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -225,7 +225,7 @@ private fun ActiveTransferringCard(
             // Large Tabular Percentage
             Text(
                 text = percentText,
-                fontSize = 48.sp,
+                fontSize = 36.sp,
                 fontWeight = FontWeight.Medium,
                 fontFamily = FontFamily.Default,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -281,42 +281,17 @@ private fun ActiveTransferringCard(
                     modifier = Modifier.padding(start = 12.dp)
                 ) {
                     if (state.isResumable) {
-                        FilledTonalIconButton(
-                            onClick = onPauseTransfer,
-                            modifier = Modifier
-                                .size(40.dp)
-                                .testTag("transfer_stop_resume_button")
-                                .semantics {
-                                    role = Role.Button
-                                    contentDescription = "Stop transfer"
-                                }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Pause,
-                                contentDescription = "Stop transfer"
-                            )
-                        }
-                    }
-
-                    FilledTonalIconButton(
-                        onClick = onCancelTransfer,
-                        colors = IconButtonDefaults.filledTonalIconButtonColors(
-                            containerColor = MaterialTheme.colorScheme.errorContainer,
-                            contentColor = MaterialTheme.colorScheme.onErrorContainer
-                        ),
-                        modifier = Modifier
-                            .size(40.dp)
-                            .testTag("transfer_cancel_button")
-                            .semantics {
-                                role = Role.Button
-                                contentDescription = "Cancel transfer"
-                            }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Cancel transfer"
+                        GlideIconAction(
+                            Icons.Default.Pause, "Stop transfer", onPauseTransfer,
+                            Modifier.testTag("transfer_stop_resume_button")
                         )
                     }
+
+                    GlideIconAction(
+                        Icons.Default.Close, "Cancel transfer", onCancelTransfer,
+                        Modifier.testTag("transfer_cancel_button"),
+                        tone = ActionTone.Destructive
+                    )
                 }
             }
         }
@@ -352,7 +327,7 @@ private fun PausedTransferCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(24.dp),
+                .padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Row(
@@ -386,6 +361,8 @@ private fun PausedTransferCard(
                     ) {
                         Text(
                             text = "File ${state.itemIndex} of ${state.itemCount}",
+                            softWrap = false,
+                            maxLines = 1,
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -436,45 +413,17 @@ private fun PausedTransferCard(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.padding(start = 12.dp)
                 ) {
-                    FilledTonalIconButton(
-                        onClick = onResumeTransfer,
-                        colors = IconButtonDefaults.filledTonalIconButtonColors(
-                            containerColor = MaterialTheme.colorScheme.primaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                        ),
-                        modifier = Modifier
-                            .size(40.dp)
-                            .testTag("transfer_stop_resume_button")
-                            .semantics {
-                                role = Role.Button
-                                contentDescription = "Resume transfer"
-                            }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.PlayArrow,
-                            contentDescription = "Resume transfer"
-                        )
-                    }
+                    GlideIconAction(
+                        Icons.Default.PlayArrow, "Resume transfer", onResumeTransfer,
+                        Modifier.testTag("transfer_stop_resume_button"),
+                        tone = ActionTone.Primary
+                    )
 
-                    FilledTonalIconButton(
-                        onClick = onCancelTransfer,
-                        colors = IconButtonDefaults.filledTonalIconButtonColors(
-                            containerColor = MaterialTheme.colorScheme.errorContainer,
-                            contentColor = MaterialTheme.colorScheme.onErrorContainer
-                        ),
-                        modifier = Modifier
-                            .size(40.dp)
-                            .testTag("transfer_cancel_button")
-                            .semantics {
-                                role = Role.Button
-                                contentDescription = "Cancel transfer"
-                            }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Cancel transfer"
-                        )
-                    }
+                    GlideIconAction(
+                        Icons.Default.Close, "Cancel transfer", onCancelTransfer,
+                        Modifier.testTag("transfer_cancel_button"),
+                        tone = ActionTone.Destructive
+                    )
                 }
             }
         }
@@ -509,7 +458,7 @@ private fun IntegrityVerifyingCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(24.dp),
+                .padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -561,6 +510,8 @@ private fun IntegrityVerifyingCard(
                     ) {
                         Text(
                             text = "File ${state.itemIndex} of ${state.itemCount}",
+                            softWrap = false,
+                            maxLines = 1,
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -592,26 +543,11 @@ private fun IntegrityVerifyingCard(
             )
 
             // Compact Cancel action
-            FilledTonalIconButton(
-                onClick = onCancelTransfer,
-                colors = IconButtonDefaults.filledTonalIconButtonColors(
-                    containerColor = MaterialTheme.colorScheme.errorContainer,
-                    contentColor = MaterialTheme.colorScheme.onErrorContainer
-                ),
-                modifier = Modifier
-                    .padding(top = 4.dp)
-                    .size(40.dp)
-                    .testTag("transfer_cancel_button")
-                    .semantics {
-                        role = Role.Button
-                        contentDescription = "Cancel transfer verification"
-                    }
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = "Cancel transfer verification"
-                )
-            }
+            GlideIconAction(
+                Icons.Default.Close, "Cancel transfer", onCancelTransfer,
+                Modifier.testTag("transfer_cancel_button"),
+                tone = ActionTone.Destructive
+            )
         }
     }
 }

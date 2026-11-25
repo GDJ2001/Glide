@@ -103,10 +103,10 @@ Start-Sleep -Milliseconds 500
 & $adb -s $SenderSerial shell "am start -a android.intent.action.SEND -t application/octet-stream --eu android.intent.extra.STREAM content://dev.glide.app.debug.fileprovider/shares/$PayloadName -n dev.glide.app.debug/dev.glide.app.MainActivity" | Out-Null
 Start-Sleep -Milliseconds 1500
 
-# Tap 'Proceed to send'
-Write-Host "Tapping Proceed to send..."
-if (-not (Tap-Element $SenderSerial "Proceed to send")) {
-    Write-Error "Could not find 'Proceed to send' button on $SenderSerial"
+# Tap 'Continue ('
+Write-Host "Tapping Continue (..."
+if (-not (Tap-Element $SenderSerial "Continue (")) {
+    Write-Error "Could not find 'Continue (' button on $SenderSerial"
 }
 
 # Tap 'Scan QR or paste invite'
@@ -188,8 +188,8 @@ for ($attempt = 1; $attempt -le 15; $attempt++) {
         Tap-Element $ReceiverSerial "Trust device" | Out-Null
     }
 
-    # If Accept file is shown on Receiver
-    if ($rXml -match 'Accept file') {
+    # If Accept is shown on Receiver
+    if ($rXml -match 'Accept transfer of') {
         Write-Host "Offer detected on Receiver!"
         if ($Action -eq "reject") {
             Write-Host "Action is REJECT: Tapping Decline..."
@@ -197,8 +197,8 @@ for ($attempt = 1; $attempt -le 15; $attempt++) {
             Start-Sleep -Seconds 2
             return "rejected"
         } else {
-            Write-Host "Action is ${Action}: Tapping Accept file..."
-            Tap-Element $ReceiverSerial "Accept file" | Out-Null
+            Write-Host "Action is ${Action}: Tapping Accept..."
+            Tap-Element $ReceiverSerial "Accept transfer of" -ByDesc | Out-Null
             break
         }
     }

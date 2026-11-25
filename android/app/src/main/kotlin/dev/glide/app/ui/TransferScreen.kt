@@ -1,5 +1,6 @@
 package dev.glide.app.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -7,10 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
@@ -19,14 +17,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -39,22 +35,19 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
-import androidx.activity.compose.BackHandler
 import dev.glide.app.navigation.GlideRoute
 import dev.glide.app.service.TrustRuntimeState
+import dev.glide.app.ui.components.GlideCompactTopBar
 import dev.glide.app.ui.pairing.PairingUiState
 import dev.glide.app.ui.pairing.PairingVerificationCard
 import dev.glide.app.ui.transfer.ExportUiStatus
 import dev.glide.app.ui.transfer.OfferConsentCard
-import dev.glide.app.ui.transfer.VerifiedItemUiState
 import dev.glide.app.ui.transfer.TransferProgressCard
 import dev.glide.app.ui.transfer.TransferResultCard
 import dev.glide.app.ui.transfer.TransferUiState
+import dev.glide.app.ui.transfer.VerifiedItemUiState
 import dev.glide.core.domain.DeviceRole
 import dev.glide.core.domain.PeerId
-import dev.glide.designsystem.glideHoverHand
-import dev.glide.designsystem.PrimaryButtonShape
-import java.util.Locale
 
 @Composable
 fun TransferScreen(
@@ -109,7 +102,7 @@ fun TransferScreen(
 
     val windowSizeClass = dev.glide.designsystem.LocalWindowSizeClass.current
     val postureInfo = dev.glide.designsystem.LocalDevicePosture.current
-    val verticalSpacing = if (windowSizeClass.isCompactHeight) 12.dp else 24.dp
+    val verticalSpacing = if (windowSizeClass.isCompactHeight) 12.dp else 16.dp
 
     Box(
         modifier = modifier.fillMaxSize(),
@@ -126,33 +119,11 @@ fun TransferScreen(
                 ),
             verticalArrangement = Arrangement.spacedBy(verticalSpacing)
         ) {
-        // Navigation Header
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .semantics {
-                    contentDescription = "Transfer route navigation header"
-                },
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            OutlinedButton(
-                onClick = onBack,
-                shape = PrimaryButtonShape,
-                modifier = Modifier
-                    .heightIn(min = 48.dp)
-                    .glideHoverHand()
-                    .semantics {
-                        role = Role.Button
-                        contentDescription = "Navigate back to home"
-                    }
-            ) {
-                Text(
-                    text = "Back",
-                    style = MaterialTheme.typography.labelLarge
-                )
-            }
-        }
+        GlideCompactTopBar(
+            if (isActivelyVerifying) "Verify device" else "Transfer",
+            onBack = onBack,
+            backLabel = "Navigate back to home"
+        )
 
         // 1. Connection & Pairing Verification Surface (Strictly isolated during verification)
         if (isActivelyVerifying) {

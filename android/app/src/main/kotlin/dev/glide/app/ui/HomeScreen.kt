@@ -1,57 +1,58 @@
 package dev.glide.app.ui
 
+import android.text.format.DateUtils
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Download
-import dev.glide.core.domain.TrustedPeerRecord
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.glide.app.R
-import dev.glide.designsystem.PrimaryButtonShape
-import dev.glide.designsystem.brandCyanAccent
-import dev.glide.designsystem.avoidHinge
-import dev.glide.designsystem.glideHoverHand
-import androidx.compose.foundation.layout.widthIn
-import android.text.format.DateUtils
+import dev.glide.app.ui.components.GlideIconAction
 import dev.glide.core.domain.DeviceRole
+import dev.glide.core.domain.TrustedPeerRecord
+import dev.glide.designsystem.avoidHinge
+import dev.glide.designsystem.brandCyanAccent
+import dev.glide.designsystem.glideHoverHand
 
 data class RecentActivity(
     val sessionId: String,
@@ -85,7 +86,7 @@ fun HomeScreen(
     val logoRes = if (isDark) R.drawable.ic_glide_logo_inverse else R.drawable.ic_glide_logo_color
     val windowSizeClass = dev.glide.designsystem.LocalWindowSizeClass.current
     val postureInfo = dev.glide.designsystem.LocalDevicePosture.current
-    val verticalSpacing = if (windowSizeClass.isCompactHeight) 12.dp else 24.dp
+    val verticalSpacing = if (windowSizeClass.isCompactHeight) 10.dp else 14.dp
 
     Box(
         modifier = modifier.fillMaxSize(),
@@ -144,7 +145,6 @@ fun HomeScreen(
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .semantics { contentDescription = "Active transfer in progress. Tap to resume." }
             ) {
                 Row(
                     modifier = Modifier
@@ -169,22 +169,11 @@ fun HomeScreen(
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                     }
-                    Button(
-                        onClick = { onNavigateToTransfer(activeSessionId) },
-                        shape = PrimaryButtonShape,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary
-                        ),
-                        modifier = Modifier
-                            .heightIn(min = 48.dp)
-                            .semantics {
-                                role = Role.Button
-                                contentDescription = "Resume active transfer"
-                            }
-                    ) {
-                        Text("Resume")
-                    }
+                    GlideIconAction(
+                        Icons.AutoMirrored.Filled.ArrowForward,
+                        "Open active transfer",
+                        { onNavigateToTransfer(activeSessionId) }
+                    )
                 }
             }
         }
@@ -203,137 +192,82 @@ fun HomeScreen(
             Spacer(modifier = Modifier.avoidHinge(postureInfo.hinge, additionalPadding = 8.dp))
         }
 
-        // Action Buttons (Send & Receive >= 56dp height)
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Button(
-                onClick = onNavigateToSend,
-                shape = PrimaryButtonShape,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 56.dp)
-                    .glideHoverHand()
-                    .semantics {
-                        role = Role.Button
-                        contentDescription = "Send files to a nearby device"
-                    }
-            ) {
-                Icon(imageVector = Icons.AutoMirrored.Filled.Send, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Send files",
-                    style = MaterialTheme.typography.titleMedium
-                )
-            }
-
-            OutlinedButton(
-                onClick = onNavigateToReceive,
-                shape = PrimaryButtonShape,
-                colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = MaterialTheme.colorScheme.primary
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 56.dp)
-                    .glideHoverHand()
-                    .semantics {
-                        role = Role.Button
-                        contentDescription = "Receive files from a nearby device"
-                    }
-            ) {
-                Icon(imageVector = Icons.Default.Download, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Receive files",
-                    style = MaterialTheme.typography.titleMedium
-                )
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val useRow = maxWidth >= 300.dp * LocalDensity.current.fontScale
+            if (useRow) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    HomeAction("Send files", Icons.AutoMirrored.Filled.Send, onNavigateToSend, Modifier.weight(1f), primary = true)
+                    HomeAction("Receive files", Icons.Default.Download, onNavigateToReceive, Modifier.weight(1f))
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    HomeAction("Send files", Icons.AutoMirrored.Filled.Send, onNavigateToSend, Modifier.fillMaxWidth(), primary = true)
+                    HomeAction("Receive files", Icons.Default.Download, onNavigateToReceive, Modifier.fillMaxWidth())
+                }
             }
         }
 
         GlideBluetoothShare()
 
-        // Paired Devices Section
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Paired devices",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                TextButton(
-                    onClick = onPairDevice,
-                    modifier = Modifier
-                        .glideHoverHand()
-                        .semantics {
-                            role = Role.Button
-                            contentDescription = "Pair with another device"
-                        }
-                ) {
-                    Text("Pair device")
-                }
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Paired devices", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                GlideIconAction(Icons.Default.QrCodeScanner, "Pair device", onPairDevice)
             }
-
             if (pairedDevices.isEmpty()) {
-                Card(
-                    onClick = onPairDevice,
-                    shape = MaterialTheme.shapes.medium,
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .glideHoverHand()
-                        .semantics { contentDescription = "Pair with another device" }
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(24.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                text = "No paired devices yet.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = "Pair with a nearby device to start sharing quickly.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
+                Text("No paired devices yet.", style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    pairedDevices.forEach { peer ->
-                        PairedDeviceCard(
-                            peer = peer,
-                            onClick = { onSelectPairedDevice(peer) }
-                        )
-                    }
+                pairedDevices.forEach { peer ->
+                    PairedDeviceCard(peer, onClick = { onSelectPairedDevice(peer) })
                 }
             }
         }
+
+        if (recentActivities.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Recent activity", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                    GlideIconAction(Icons.Default.History, "Open transfer history", onNavigateToHistory)
+                }
+                recentActivities.take(3).forEach { activity ->
+                    RecentActivityCard(activity, onClick = { onOpenRecentActivity(activity.sessionId) })
+                }
+            }
+        }
+        }
     }
 }
+
+@Composable
+private fun HomeAction(
+    title: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier,
+    primary: Boolean = false
+) {
+    val scheme = MaterialTheme.colorScheme
+    Card(
+        onClick = onClick,
+        modifier = modifier.glideHoverHand().semantics {
+            role = Role.Button
+            contentDescription = if (primary) "Send files to a nearby device" else "Receive files from a nearby device"
+        },
+        colors = CardDefaults.cardColors(
+            containerColor = if (primary) scheme.primaryContainer else scheme.surfaceVariant,
+            contentColor = if (primary) scheme.onPrimaryContainer else scheme.onSurfaceVariant
+        )
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Icon(icon, contentDescription = null)
+            Text(title, style = MaterialTheme.typography.labelLarge)
+        }
+    }
 }
 
 @Composable
@@ -385,20 +319,19 @@ private fun PairedDeviceCard(
                     text = peer.displayName,
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
-                Text(
-                    text = if (peer.lastSeenAtMs > 0) "Last seen $whenText" else "Paired device",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1
-                )
+                if (peer.lastSeenAtMs > 0) {
+                    Text(
+                        text = "Last seen $whenText",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
-            Text(
-                text = "Paired",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary
-            )
         }
     }
 }
@@ -457,13 +390,15 @@ private fun RecentActivityCard(
                     text = if (isSent) "Sent to ${activity.peerLabel}" else "Received from ${activity.peerLabel}",
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = "${activity.itemCount} ${if (activity.itemCount == 1) "item" else "items"} • ${formatTransferSize(activity.totalBytes)} • $whenText",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
             Text(

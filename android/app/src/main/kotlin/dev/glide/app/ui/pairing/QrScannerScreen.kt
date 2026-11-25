@@ -2,7 +2,6 @@ package dev.glide.app.ui.pairing
 
 import android.Manifest
 import android.content.ClipboardManager
-import android.content.Context
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -14,13 +13,10 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -29,11 +25,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.FlashOff
 import androidx.compose.material.icons.filled.FlashOn
@@ -46,7 +45,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -55,19 +53,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
@@ -75,13 +72,15 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import dev.glide.app.qr.QrDecoder
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import dev.glide.app.qr.QrFrameAnalyzer
+import dev.glide.app.ui.components.GlideIconAction
 import dev.glide.core.pairing.LanInvitation
 import dev.glide.designsystem.PrimaryButtonShape
 import dev.glide.designsystem.brandCyanAccent
@@ -122,12 +121,11 @@ fun QrScannerScreen(
     var activeCamera by remember { mutableStateOf<Camera?>(null) }
     var cameraAttempt by remember { mutableIntStateOf(0) }
     var headerHeight by remember { mutableIntStateOf(0) }
-    var footerHeight by remember { mutableIntStateOf(0) }
     val density = LocalDensity.current
     val controlsPadding = with(density) {
         androidx.compose.foundation.layout.PaddingValues(
             top = if (headerHeight > 0) headerHeight.toDp() else 80.dp,
-            bottom = if (footerHeight > 0) footerHeight.toDp() else 100.dp
+            bottom = 0.dp
         )
     }
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -181,7 +179,6 @@ fun QrScannerScreen(
             // Camera Permission Educational Fallback Card
             CameraPermissionRationale(
                 onRequestPermission = { permissionLauncher.launch(Manifest.permission.CAMERA) },
-                onPasteClicked = { showPasteDialog = true },
                 modifier = Modifier.fillMaxSize().padding(controlsPadding)
             )
         }
@@ -218,59 +215,19 @@ fun QrScannerScreen(
                 style = MaterialTheme.typography.titleMedium,
                 color = Color.White,
                 textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f).padding(horizontal = 8.dp).semantics { heading() }
             )
 
             if (hasCameraPermission && hasFlashlight) {
-                IconButton(
-                    onClick = { torchEnabled = !torchEnabled },
-                    modifier = Modifier
-                        .size(48.dp)
-                        .background(Color.Black.copy(alpha = 0.5f), CircleShape)
-                        .semantics {
-                            role = Role.Button
-                            contentDescription = if (torchEnabled) "Turn off flashlight" else "Turn on flashlight"
-                        }
-                ) {
-                    Icon(
-                        imageVector = if (torchEnabled) Icons.Default.FlashOff else Icons.Default.FlashOn,
-                        contentDescription = null,
-                        tint = if (torchEnabled) MaterialTheme.colorScheme.brandCyanAccent else Color.White
-                    )
-                }
-            } else {
-                Spacer(modifier = Modifier.size(48.dp))
+                GlideIconAction(
+                    if (torchEnabled) Icons.Default.FlashOff else Icons.Default.FlashOn,
+                    if (torchEnabled) "Turn off flashlight" else "Turn on flashlight",
+                    { torchEnabled = !torchEnabled }
+                )
             }
-        }
-
-        // Bottom Action Bar: Always provide Paste Invitation alternative
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .onSizeChanged { footerHeight = it.height }
-                .align(Alignment.BottomCenter)
-                .padding(24.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            OutlinedButton(
-                onClick = { showPasteDialog = true },
-                shape = PrimaryButtonShape,
-                colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
-                    containerColor = Color.Black.copy(alpha = 0.6f),
-                    contentColor = Color.White
-                ),
-                modifier = Modifier
-                    .fillMaxWidth(0.85f)
-                    .heightIn(min = 52.dp)
-                    .semantics {
-                        role = Role.Button
-                        contentDescription = "Paste invitation link without using camera"
-                    }
-            ) {
-                Icon(imageVector = Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(20.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(text = "Paste invitation", style = MaterialTheme.typography.labelLarge)
-            }
+            GlideIconAction(Icons.Default.ContentPaste, "Paste invitation", { showPasteDialog = true })
         }
 
         // Confirmation Dialog (Section 8: explicit confirmation required before connect)
@@ -521,7 +478,6 @@ private fun ViewfinderOverlay(modifier: Modifier = Modifier) {
 @Composable
 private fun CameraPermissionRationale(
     onRequestPermission: () -> Unit,
-    onPasteClicked: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -555,7 +511,7 @@ private fun CameraPermissionRationale(
                 )
 
                 Text(
-                    text = "Glide uses the camera solely to scan offline pairing QR codes on your local network. No photos or video are ever stored or uploaded.",
+                    text = "Allow camera access to scan an invitation, or paste the link.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center
@@ -571,15 +527,6 @@ private fun CameraPermissionRationale(
                     Text("Grant camera access")
                 }
 
-                OutlinedButton(
-                    onClick = onPasteClicked,
-                    shape = PrimaryButtonShape,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 48.dp)
-                ) {
-                    Text("Paste invitation instead")
-                }
             }
         }
     }
@@ -726,38 +673,28 @@ private fun PasteInvitationDialog(
         title = { Text("Paste invitation") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(
-                    text = "Paste the glide://pair/v1 invitation link copied from the receiving device.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
 
                 OutlinedTextField(
                     value = textValue,
                     onValueChange = { textValue = it },
-                    placeholder = { Text("glide://pair/v1#...") },
+                    label = { Text("Invitation link") },
+                    trailingIcon = {
+                        if (textValue.isNotEmpty()) {
+                            GlideIconAction(Icons.Default.Close, "Clear invitation", { textValue = "" })
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = false,
                     maxLines = 4
                 )
 
-                OutlinedButton(
-                    onClick = {
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                        val item = clipboard?.primaryClip?.getItemAt(0)
-                        val pasteText = item?.text?.toString() ?: ""
-                        if (pasteText.isNotBlank()) {
-                            textValue = pasteText
-                        }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 48.dp)
-                ) {
-                    Icon(imageVector = Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Paste from clipboard")
-                }
+                GlideIconAction(Icons.Default.ContentPaste, "Paste from clipboard", {
+                    val clipboard = context.getSystemService(ClipboardManager::class.java)
+                    val clip = clipboard?.primaryClip
+                    if (clip != null && clip.itemCount > 0) {
+                        clip.getItemAt(0).text?.toString()?.takeIf { it.isNotBlank() }?.let { textValue = it }
+                    }
+                })
             }
         },
         confirmButton = {

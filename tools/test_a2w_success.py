@@ -155,12 +155,12 @@ def main():
 
     # Step 4: Flow through Android UI to connect
     print("[4] Stepping through Android UI: Proceed -> Paste -> Verify & connect...", flush=True)
-    # Tap Proceed to send (35)
+    # Tap Continue ( (35)
     for _ in range(20):
         xml_text = dump_ui("/data/local/tmp/ui_step.xml")
-        center = find_bounds_center(xml_text, "Proceed to send")
+        center = find_bounds_center(xml_text, "Continue (")
         if center:
-            print(f"    Tapping Proceed to send at {center}...", flush=True)
+            print(f"    Tapping Continue ( at {center}...", flush=True)
             adb_cmd(["shell", f"input tap {center[0]} {center[1]}"])
             time.sleep(1.0)
             break

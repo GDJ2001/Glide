@@ -23,13 +23,14 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.WifiTethering
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -51,8 +52,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -63,12 +62,17 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.glide.app.ui.components.ActionTone
+import dev.glide.app.ui.components.GlideCompactTopBar
+import dev.glide.app.ui.components.GlideIconAction
+import dev.glide.core.domain.TrustedPeerRecord
 import dev.glide.core.ports.GlideSettings
 import dev.glide.core.ports.ReducedMotionPreference
 import dev.glide.core.ports.ThemePreference
-import dev.glide.core.domain.TrustedPeerRecord
+import dev.glide.designsystem.isolateBidi
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -113,30 +117,9 @@ fun SettingsScreen(
         modifier = modifier.fillMaxSize(),
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
         topBar = {
-            TopAppBar(
-                windowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
-                title = {
-                    Text(
-                        text = "Settings",
-                        style = MaterialTheme.typography.titleLarge
-                    )
-                },
-                navigationIcon = {
-                    IconButton(
-                        onClick = onBack,
-                        modifier = Modifier.semantics {
-                            contentDescription = "Navigate back from settings"
-                        }
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = null
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
-                )
+            GlideCompactTopBar(
+                "Settings", Modifier.padding(horizontal = 16.dp),
+                onBack = onBack, backLabel = "Navigate back from settings"
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
@@ -149,11 +132,9 @@ fun SettingsScreen(
                 .verticalScroll(scrollState)
                 .widthIn(max = dev.glide.designsystem.AdaptiveLayoutTokens.MaxContentWidth)
                 .padding(horizontal = windowSizeClass.pageHorizontalPadding, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp)
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             val haptics = dev.glide.designsystem.GlideTheme.haptics
-
-            dev.glide.app.ui.GlideBluetoothShare()
 
             // 1. Device Section
             DeviceNameSection(
@@ -394,25 +375,31 @@ private fun ReceiveSaveLocationSection(
     onChooseFolder: () -> Unit,
     onUseDefault: () -> Unit
 ) {
-    val location = if (treeUri == null) "Download/Glide" else runCatching {
-        DocumentsContract.getTreeDocumentId(Uri.parse(treeUri)).substringAfter(':')
-    }.getOrDefault("Selected folder")
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("Received file save location", style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
-        Text(location, style = MaterialTheme.typography.bodyLarge)
-        Text("Verified files save here automatically. Glide also keeps a private copy.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (android.os.Build.VERSION.SDK_INT < 29 && treeUri == null) {
-            Text("On this Android version, choose a local folder to enable automatic saving.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error)
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = onChooseFolder) { Text("Choose folder") }
-            if (treeUri != null) {
-                TextButton(onClick = onUseDefault) { Text("Use Download/Glide") }
+    val needsFolder = android.os.Build.VERSION.SDK_INT < 29 && treeUri == null
+    val location = when {
+        needsFolder -> "No folder selected"
+        treeUri == null -> "Download/Glide"
+        else -> runCatching {
+            DocumentsContract.getTreeDocumentId(Uri.parse(treeUri)).substringAfter(':')
+        }.getOrDefault("Selected folder")
+    }
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("Save received files to", style = MaterialTheme.typography.titleMedium)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(location.isolateBidi(), Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                GlideIconAction(Icons.Default.FolderOpen, "Choose receive folder", onChooseFolder)
+                if (treeUri != null) {
+                    GlideIconAction(Icons.Default.RestartAlt, "Use Download/Glide", onUseDefault)
+                }
+            }
+            if (needsFolder) {
+                Text("Choose a folder to save verified files automatically.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -444,36 +431,17 @@ private fun DeviceNameSection(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = deviceName,
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = "Visible to nearby devices",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-
-                OutlinedButton(
-                    onClick = onEditClick,
-                    modifier = Modifier.semantics {
-                        contentDescription = "Edit device name"
-                    }
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Edit,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Edit")
-                }
+                Text(
+                    text = deviceName.isolateBidi(),
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodyLarge,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                GlideIconAction(Icons.Default.Edit, "Edit device name", onEditClick)
             }
         }
+        dev.glide.app.ui.GlideBluetoothShare()
     }
 }
 
@@ -754,25 +722,13 @@ private fun PrivateStorageSection(
                 if (isDeleting) {
                     CircularProgressIndicator(modifier = Modifier.size(24.dp))
                 } else {
-                    Button(
-                        onClick = onDeleteAllClick,
+                    GlideIconAction(
+                        Icons.Default.DeleteOutline,
+                        "Delete all received files from private storage",
+                        onDeleteAllClick,
                         enabled = totalFiles > 0,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.error,
-                            contentColor = MaterialTheme.colorScheme.onError
-                        ),
-                        modifier = Modifier.semantics {
-                            contentDescription = "Delete all received files from private storage"
-                        }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.DeleteOutline,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Delete all")
-                    }
+                        tone = ActionTone.Destructive
+                    )
                 }
             }
         }
@@ -1239,74 +1195,22 @@ private fun TrustedDevicesSection(
     onPairDevice: () -> Unit,
     onManageClick: () -> Unit
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(
-            text = "Trusted Devices",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.primary
-        )
-
-        Card(
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant
-            ),
-            modifier = Modifier.fillMaxWidth()
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+        Row(
+            Modifier.fillMaxWidth().padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Security,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Remembered Devices",
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Text(
-                            text = if (trustedPeerCount == 1) "1 device identity enrolled"
-                            else "$trustedPeerCount device identities enrolled",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                OutlinedButton(
-                    onClick = onManageClick,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 48.dp)
-                        .semantics {
-                            contentDescription = "Manage trusted devices"
-                        }
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Security,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Manage trusted devices")
-                }
-                OutlinedButton(
-                    onClick = onPairDevice,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
-                ) {
-                    Text("Pair with another device")
-                }
+            Column(Modifier.weight(1f)) {
+                Text("Trusted devices", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    if (trustedPeerCount == 1) "1 device" else "$trustedPeerCount devices",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
+            GlideIconAction(Icons.Default.Security, "Manage trusted devices", onManageClick)
+            GlideIconAction(Icons.Default.QrCodeScanner, "Pair with another device", onPairDevice)
         }
     }
 }

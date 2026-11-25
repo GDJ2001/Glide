@@ -1,11 +1,5 @@
 package dev.glide.app.ui.discovery
 
-import androidx.compose.animation.core.EaseInOutCubic
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -20,20 +14,19 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.BluetoothDisabled
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.QrCode2
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material.icons.filled.Security
@@ -46,7 +39,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -58,17 +50,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import dev.glide.app.ui.components.GlideCompactTopBar
+import dev.glide.app.ui.components.GlideIconAction
 import dev.glide.core.domain.PeerId
 import dev.glide.designsystem.PrimaryButtonShape
 import dev.glide.designsystem.brandCyanAccent
@@ -92,36 +83,10 @@ fun DiscoveryScreen(
         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Top Navigation Bar
         item {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .semantics { contentDescription = "Discovery navigation bar" },
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(
-                    onClick = onBack,
-                    modifier = Modifier
-                        .size(48.dp)
-                        .semantics {
-                            role = Role.Button
-                            contentDescription = "Back to file selection"
-                        }
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Select recipient",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.semantics { heading() }
-                )
+            GlideCompactTopBar("Select recipient", onBack = onBack, backLabel = "Back to file selection") {
+                GlideIconAction(Icons.Default.QrCodeScanner, "Scan QR code or paste invite", onScanQrClicked)
+                ManualHotspotAction(host = false, onReady = onScanQrClicked)
             }
         }
 
@@ -165,52 +130,9 @@ fun DiscoveryScreen(
         }
 
         // Main Discovery Content State Presentation
-        item { ManualHotspotAction(host = false, onReady = onScanQrClicked) }
-
         when (uiState) {
             is DiscoveryUiState.Searching -> {
-                if (uiState.peers.isEmpty()) {
-                    item {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 24.dp, horizontal = 16.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(16.dp),
-                                modifier = Modifier.semantics {
-                                    contentDescription = "Looking for nearby devices. Waiting for receiving devices to appear."
-                                }
-                            ) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(36.dp),
-                                    color = MaterialTheme.colorScheme.primary,
-                                    strokeWidth = 3.dp
-                                )
-                                OutlinedButton(
-                                    onClick = onScanQrClicked,
-                                    shape = PrimaryButtonShape,
-                                    modifier = Modifier
-                                        .heightIn(min = 48.dp)
-                                        .semantics {
-                                            role = Role.Button
-                                            contentDescription = "Scan QR code or paste invitation"
-                                        }
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.QrCode2,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Scan QR or paste invite")
-                                }
-                            }
-                        }
-                    }
-                } else {
+                if (uiState.peers.isNotEmpty()) {
                     items(
                         items = uiState.peers,
                         key = { it.id.value }
@@ -227,12 +149,6 @@ fun DiscoveryScreen(
                         )
                     }
 
-                    item {
-                        Spacer(modifier = Modifier.height(4.dp))
-                        ScanQrActionCard(
-                            onClick = onScanQrClicked
-                        )
-                    }
                 }
             }
 
@@ -266,7 +182,7 @@ fun DiscoveryScreen(
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = "Ensure the receiving device has Glide open and 'Receive files' active on the same local network or nearby.",
+                                text = "Open Glide on the other device and choose Receive files.",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -322,7 +238,6 @@ fun DiscoveryScreen(
                     )
                 }
                 item {
-                    ManualHotspotAction(host = false, onReady = onScanQrClicked)
                 }
             }
         }
@@ -517,66 +432,6 @@ fun DiscoveredPeerCard(
 
 /**
  * Action card displayed in the peer list providing quick access to offline QR scan or paste pairing (LAN-019).
- */
-@Composable
-fun ScanQrActionCard(
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Card(
-        shape = MaterialTheme.shapes.medium,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-            contentColor = MaterialTheme.colorScheme.onSurface
-        ),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-        modifier = modifier
-            .fillMaxWidth()
-            .heightIn(min = 64.dp)
-            .glideHoverHand()
-            .clickable(
-                onClick = onClick,
-                onClickLabel = "Scan QR code or paste invitation",
-                role = Role.Button
-            )
-            .semantics {
-                role = Role.Button
-                contentDescription = "Scan QR code or paste invitation directly from receiver"
-            }
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Surface(
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.secondaryContainer,
-                modifier = Modifier.size(40.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Default.QrCode2,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-            }
-            Text(
-                text = "Scan QR code or paste invite",
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.weight(1f)
-            )
-        }
-    }
-}
-
-/**
- * Explanatory card for blocked hardware radio and permission states with explicit action buttons.
  */
 @Composable
 fun DiscoveryBlockedCard(

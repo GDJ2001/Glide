@@ -1,34 +1,27 @@
 package dev.glide.app.ui.discovery
 
-import androidx.compose.animation.core.EaseInOutCubic
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.PaddingValues
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.HourglassBottom
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.QrCode2
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Button
@@ -36,7 +29,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -45,18 +37,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import dev.glide.app.ui.components.ActionTone
+import dev.glide.app.ui.components.GlideCompactTopBar
+import dev.glide.app.ui.components.GlideIconAction
 import dev.glide.designsystem.PrimaryButtonShape
-import dev.glide.designsystem.brandCyanAccent
 import dev.glide.designsystem.isolateBidi
 
 @Composable
@@ -69,7 +60,7 @@ fun ReceiveReadinessScreen(
     onScanPcQr: (() -> Unit)? = null,
     onStartHotspot: (() -> Unit)? = null,
     hotspotStatus: String? = null,
-        showManualHotspotFallback: Boolean = false,
+    showManualHotspotFallback: Boolean = false,
     onDismissManualHotspotFallback: () -> Unit = {}
 ) {
     val scrollState = rememberScrollState()
@@ -82,194 +73,31 @@ fun ReceiveReadinessScreen(
             .padding(horizontal = 20.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Navigation Header
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .semantics { contentDescription = "Receive readiness navigation bar" },
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(
-                onClick = onStopReceiving,
-                modifier = Modifier
-                    .size(48.dp)
-                    .semantics {
-                        role = Role.Button
-                        contentDescription = "Stop receiving and return to Home"
-                    }
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurface
-                )
-            }
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = "Receive files",
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.semantics { heading() }
-            )
-        }
-
-        onShowQrCode?.let {
-            ManualHotspotAction(
-                host = true,
-                onReady = it,
-                onStartHost = onStartHotspot,
-                status = hotspotStatus,
-                externalOpen = showManualHotspotFallback,
-                onExternalDismiss = onDismissManualHotspotFallback
-            )
+        GlideCompactTopBar("Receive files") {
+            GlideIconAction(Icons.Default.Stop, "Stop receiving", onStopReceiving, tone = ActionTone.Destructive)
         }
 
         when (uiState) {
             is ReceiveReadinessUiState.Advertising -> {
-                // Ambient Breathing Container
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(MaterialTheme.shapes.medium)
-                        .background(
-                            Brush.radialGradient(
-                                colors = listOf(
-                                    MaterialTheme.colorScheme.brandCyanAccent.copy(alpha = 0.08f),
-                                    Color.Transparent
-                                )
-                            )
-                        )
-                        .padding(24.dp),
-                    contentAlignment = Alignment.Center
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                 ) {
                     Column(
+                        Modifier.fillMaxWidth().padding(14.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                        modifier = Modifier.semantics {
-                            contentDescription = "Ready to receive. Visible to nearby devices as ${uiState.localDeviceName.isolateBidi()}. Discoverable for ${uiState.secondsRemaining} seconds."
-                        }
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         ReceiveTonalBreathingBadge()
-
+                        Text("Ready to receive", style = MaterialTheme.typography.titleLarge)
                         Text(
-                            text = "Ready to receive",
-                            style = MaterialTheme.typography.headlineMedium,
-                            color = MaterialTheme.colorScheme.onSurface
+                            uiState.localDeviceName.isolateBidi(),
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
-
-                        Card(
-                            shape = MaterialTheme.shapes.medium,
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant
-                            ),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(20.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Text(
-                                    text = "Visible to nearby devices as:",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = uiState.localDeviceName.isolateBidi(),
-                                    style = MaterialTheme.typography.titleLarge,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.HourglassBottom,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Text(
-                                        text = "Discoverable for ${uiState.secondsRemaining}s",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        }
+                        Text("Discoverable for ${uiState.secondsRemaining}s", style = MaterialTheme.typography.bodyMedium)
                     }
-                }
-
-                Spacer(modifier = Modifier.weight(1f, fill = false))
-
-                // Show QR Code Button (LAN-018)
-                if (onShowQrCode != null) {
-                    OutlinedButton(
-                        onClick = onShowQrCode,
-                        shape = PrimaryButtonShape,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 52.dp)
-                            .semantics {
-                                role = Role.Button
-                                contentDescription = "Show QR code for local network pairing"
-                            }
-                    ) {
-                        Icon(imageVector = Icons.Default.QrCode2, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Show QR code",
-                            style = MaterialTheme.typography.titleSmall
-                        )
-                    }
-                }
-
-                if (onScanPcQr != null) {
-                    OutlinedButton(
-                        onClick = onScanPcQr,
-                        shape = PrimaryButtonShape,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 52.dp)
-                            .semantics {
-                                role = Role.Button
-                                contentDescription = "Scan a QR code displayed by a Windows PC that is sending files"
-                            }
-                    ) {
-                        Icon(imageVector = Icons.Default.QrCode2, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Scan PC QR code",
-                            style = MaterialTheme.typography.titleSmall
-                        )
-                    }
-                }
-
-                // Stop Receiving Button
-                Button(
-                    onClick = onStopReceiving,
-                    shape = PrimaryButtonShape,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error,
-                        contentColor = MaterialTheme.colorScheme.onError
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 56.dp)
-                        .semantics {
-                            role = Role.Button
-                            contentDescription = "Stop receiving and turn off device discoverability"
-                        }
-                ) {
-                    Icon(imageVector = Icons.Default.Stop, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Stop receiving",
-                        style = MaterialTheme.typography.titleMedium
-                    )
                 }
             }
 
@@ -297,16 +125,10 @@ fun ReceiveReadinessScreen(
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
-                            text = "Receive timed out",
+                            text = "Receiving timed out",
                             style = MaterialTheme.typography.titleLarge,
                             color = MaterialTheme.colorScheme.onSurface
                         )
-                        Text(
-                            text = "Discoverability stopped after 120 seconds to save battery. No incoming connections were detected.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -389,6 +211,47 @@ fun ReceiveReadinessScreen(
                 }
             }
         }
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            onShowQrCode?.let {
+                ReceiveDockAction(Icons.Default.QrCode2, "Show QR", "Show QR code for receiving files", it)
+            }
+            onScanPcQr?.let {
+                ReceiveDockAction(Icons.Default.QrCodeScanner, "Scan QR", "Scan PC QR code", it)
+            }
+            onShowQrCode?.let {
+                ManualHotspotAction(
+                    host = true,
+                    onReady = it,
+                    onStartHost = onStartHotspot,
+                    status = hotspotStatus,
+                    showCaption = true,
+                    externalOpen = showManualHotspotFallback,
+                    onExternalDismiss = onDismissManualHotspotFallback
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReceiveDockAction(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    accessibleLabel: String,
+    onClick: () -> Unit
+) {
+    OutlinedButton(
+        onClick = onClick,
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+        modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = accessibleLabel }
+    ) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(label)
     }
 }
 
@@ -406,7 +269,7 @@ private fun ReceiveTonalBreathingBadge() {
     Surface(
         shape = CircleShape,
         color = MaterialTheme.colorScheme.primary.copy(alpha = alpha * 0.15f),
-        modifier = Modifier.size(80.dp)
+        modifier = Modifier.size(if (dev.glide.designsystem.LocalWindowSizeClass.current.isCompactHeight) 62.dp else 72.dp)
     ) {
         Box(contentAlignment = Alignment.Center) {
             Surface(

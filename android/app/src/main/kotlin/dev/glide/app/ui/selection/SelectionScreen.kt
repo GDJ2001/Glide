@@ -17,13 +17,20 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Android
+import androidx.compose.material.icons.filled.AudioFile
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.VideoFile
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -39,15 +46,14 @@ import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
@@ -63,6 +69,10 @@ import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.glide.app.ui.components.ActionTone
+import dev.glide.app.ui.components.GlideCompactTopBar
+import dev.glide.app.ui.components.GlideIconAction
+import dev.glide.app.ui.components.ShortFileTypeFormatter
 import dev.glide.core.domain.SourceHandle
 import dev.glide.core.domain.TransferBatch
 import dev.glide.data.source.InstalledAppsRepository
@@ -146,55 +156,85 @@ fun SelectionScreen(
     }
     val stagedPackages = batch?.items.orEmpty().mapNotNull { it.installedPackageName }.toSet()
 
-    Column(modifier.fillMaxSize().safeDrawingPadding()) {
+    Column(modifier.fillMaxSize()) {
+        GlideCompactTopBar(
+            "Select files to send",
+            Modifier.padding(horizontal = 16.dp),
+            onBack = { viewModel.clear(); onBack() }
+        ) {
+            if (batch?.items?.isNotEmpty() == true) {
+                GlideIconAction(Icons.Default.DeleteSweep, "Clear all selected files", viewModel::clear, enabled = !busy)
+            }
+        }
         LazyColumn(
             modifier = Modifier.weight(1f),
             contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             item {
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    OutlinedButton(onClick = { viewModel.clear(); onBack() }) { Text("Back") }
-                    if (batch?.items?.isNotEmpty() == true) {
-                        TextButton(onClick = viewModel::clear) { Text("Clear all") }
-                    }
-                }
-                Text("Select files to send", style = MaterialTheme.typography.headlineLarge)
-            }
-
-            item {
                 PrimaryScrollableTabRow(selectedTabIndex = category.ordinal, edgePadding = 0.dp) {
                     SelectionCategory.entries.forEach { tab ->
                         Tab(
                             selected = tab == category,
                             onClick = { category = tab },
-                            text = { Text(tab.label) }
+                            text = { Text(tab.label) },
+                            icon = { Icon(tab.icon, contentDescription = null) }
                         )
                     }
                 }
             }
 
+            when (val progress = state) {
+                is SelectionUiState.Validating -> item {
+                    SelectionProgress(
+                        if (progress.totalCount > 0) "Preparing ${progress.currentCount} of ${progress.totalCount}…" else "Checking folder…",
+                        viewModel::cancelStaging
+                    )
+                }
+                is SelectionUiState.StagingSource -> item {
+                    SelectionProgress(
+                        "Preparing ${progress.displayName.isolateBidi()} · ${formatFileSize(progress.bytesStaged)}",
+                        viewModel::cancelStaging
+                    )
+                }
+                is SelectionUiState.Hashing -> item { Text("Checking ${progress.displayName.isolateBidi()}…") }
+                is SelectionUiState.Error -> item { Text(progress.message, color = MaterialTheme.colorScheme.error) }
+                is SelectionUiState.Ready -> item {
+                    Text(progress.displayName.isolateBidi(), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+                else -> Unit
+            }
+            batch?.notice?.let { notice -> item { Text(notice, color = MaterialTheme.colorScheme.error) } }
+            if (batch?.items?.isNotEmpty() == true) {
+                item { Text("Selected items", style = MaterialTheme.typography.titleMedium) }
+                items(batch.items, key = { it.id.value }) { item ->
+                    FileItemRow(item = item, onRemove = { viewModel.removeFile(item.id) })
+                }
+            }
+
             if (!busy && category == SelectionCategory.Apps) {
                 item {
-                    OutlinedTextField(
-                        value = appSearch,
-                        onValueChange = { appSearch = it },
-                        label = { Text("Search apps") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(selected = !showSystemApps, onClick = { showSystemApps = false },
-                            label = { Text("User apps") })
-                        FilterChip(selected = showSystemApps, onClick = { showSystemApps = true },
-                            label = { Text("System apps") })
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        OutlinedTextField(
+                            value = appSearch,
+                            onValueChange = { appSearch = it },
+                            label = { Text("Search apps") },
+                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                            trailingIcon = {
+                                if (appSearch.isNotEmpty()) {
+                                    GlideIconAction(Icons.Default.Close, "Clear app search", { appSearch = "" })
+                                }
+                            },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(selected = !showSystemApps, onClick = { showSystemApps = false },
+                                label = { Text("User apps") })
+                            FilterChip(selected = showSystemApps, onClick = { showSystemApps = true },
+                                label = { Text("System apps") })
+                        }
                     }
-                    Text("Tap any app to add or remove it from the batch.", style = MaterialTheme.typography.bodySmall)
                 }
 
                 val visibleApps = apps.orEmpty().filter { app ->
@@ -237,7 +277,9 @@ fun SelectionScreen(
                             Text(
                                 text = "v${app.versionName}$sizeLabel$kindLabel",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                         Checkbox(
@@ -265,11 +307,13 @@ fun SelectionScreen(
                             }
                         }
                     ) {
+                        Icon(category.icon, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
                         Text(
                             when (category) {
                                 SelectionCategory.Folders -> "Browse folder"
                                 SelectionCategory.Photos, SelectionCategory.Videos, SelectionCategory.Audio ->
-                                    "Browse ${category.label.lowercase()} with system picker"
+                                    "Browse ${category.label.lowercase()}"
                                 else -> "Add ${category.label.lowercase()}"
                             }
                         )
@@ -290,10 +334,11 @@ fun SelectionScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
+                            Icon(category.icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                             Column(Modifier.weight(1f)) {
                                 Text(media.displayName.isolateBidi(), maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 Text(
-                                    "${formatFileSize(media.sizeBytes)} · ${media.mimeType}",
+                                    "${formatFileSize(media.sizeBytes)} · ${ShortFileTypeFormatter.format(media.displayName, media.mimeType)}",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -309,29 +354,7 @@ fun SelectionScreen(
                 }
             }
 
-            when (val progress = state) {
-                is SelectionUiState.Validating -> item {
-                    CircularProgressIndicator()
-                    Text(if (progress.totalCount > 0) "Preparing ${progress.currentCount} of ${progress.totalCount}…" else "Checking folder…")
-                    TextButton(onClick = viewModel::cancelStaging) { Text("Cancel") }
-                }
-                is SelectionUiState.StagingSource -> item {
-                    CircularProgressIndicator()
-                    Text("Preparing ${progress.displayName.isolateBidi()} · ${formatFileSize(progress.bytesStaged)}")
-                    TextButton(onClick = viewModel::cancelStaging) { Text("Cancel") }
-                }
-                is SelectionUiState.Hashing -> item { Text("Checking ${progress.displayName.isolateBidi()}…") }
-                is SelectionUiState.Error -> item { Text(progress.message, color = MaterialTheme.colorScheme.error) }
-                is SelectionUiState.Ready -> item { Text(progress.displayName.isolateBidi()) }
-                else -> Unit
-            }
-            batch?.notice?.let { notice -> item { Text(notice, color = MaterialTheme.colorScheme.error) } }
-            if (batch?.items?.isNotEmpty() == true) {
-                item { Text("Selected items", style = MaterialTheme.typography.titleMedium) }
-                items(batch.items, key = { it.id.value }) { item ->
-                    FileItemRow(item = item, onRemove = { viewModel.removeFile(item.id) })
-                }
-            }
+
         }
 
         val ready = state as? SelectionUiState.Ready
@@ -342,7 +365,6 @@ fun SelectionScreen(
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     if (batch != null) {
-                        Text("${batch.itemCount} selected · ${formatFileSize(batch.totalBytes)}")
                         val limitMessage = when {
                             batch.hasUnavailableItems -> "Remove unavailable files to proceed."
                             batch.isLimitExceeded -> "A batch can contain up to 1,000 files."
@@ -352,7 +374,7 @@ fun SelectionScreen(
                         limitMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                     }
                     Button(
-                        enabled = ready != null || batch?.canProceed == true,
+                        enabled = !busy && (ready != null || batch?.canProceed == true),
                         onClick = {
                             val prepared = if (ready != null) viewModel.prepareReadyFileForTransfer()
                                 else viewModel.prepareBatchForTransfer()
@@ -363,9 +385,34 @@ fun SelectionScreen(
                         },
                         shape = PrimaryButtonShape,
                         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
-                    ) { Text("Proceed to send") }
+                    ) { Text("Continue (${if (ready != null) 1 else batch?.itemCount ?: 0})") }
                 }
             }
+        }
+    }
+}
+
+private val SelectionCategory.icon
+    get() = when (this) {
+        SelectionCategory.Photos -> Icons.Default.Image
+        SelectionCategory.Videos -> Icons.Default.VideoFile
+        SelectionCategory.Audio -> Icons.Default.AudioFile
+        SelectionCategory.Documents -> Icons.Default.Description
+        SelectionCategory.Folders -> Icons.Default.FolderOpen
+        SelectionCategory.Apps -> Icons.Default.Android
+    }
+
+@Composable
+private fun SelectionProgress(message: String, onCancel: () -> Unit) {
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+            Text(message, Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+            GlideIconAction(Icons.Default.Close, "Cancel staging", onCancel, tone = ActionTone.Destructive)
         }
     }
 }
@@ -462,23 +509,13 @@ private fun FileItemRow(
 
             Spacer(modifier = Modifier.width(8.dp))
 
-            // Accessible Remove button (touch target >= 48dp)
-            TextButton(
-                onClick = onRemove,
-                modifier = Modifier
-                    .heightIn(min = 48.dp)
-                    .glideHoverHand()
-                    .semantics {
-                        role = Role.Button
-                        contentDescription = "Remove ${item.displayName.isolateBidi()} from batch"
-                    }
-            ) {
-                Text(
-                    text = "Remove",
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.labelMedium
-                )
-            }
+            GlideIconAction(
+                Icons.Default.Close,
+                "Remove ${item.displayName.isolateBidi()} from batch",
+                onRemove,
+                tone = ActionTone.Destructive,
+                tooltip = "Remove file"
+            )
         }
     }
 }

@@ -1,14 +1,10 @@
 package dev.glide.app.ui.pairing
 
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -162,7 +158,7 @@ fun PairingVerificationCard(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(24.dp),
+                        .padding(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
@@ -332,11 +328,10 @@ fun PairingVerificationCard(
                     Spacer(modifier = Modifier.height(4.dp))
 
                     if (!state.localConfirmed) {
-                        // Hierarchy: Primary "Numbers match" stacked above secondary "Don't match"
-                        // Immune to button text clipping at 200% font scale
-                        Column(
+                        FlowRow(
                             modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             val haptics = dev.glide.designsystem.GlideTheme.haptics
                             Button(
@@ -350,8 +345,7 @@ fun PairingVerificationCard(
                                     contentColor = MaterialTheme.colorScheme.onPrimary
                                 ),
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(min = 56.dp)
+                                    .heightIn(min = 48.dp)
                                     .semantics {
                                         role = Role.Button
                                         contentDescription = "Numbers match. Confirm connection with ${state.peerName.isolateBidi()}."
@@ -364,7 +358,7 @@ fun PairingVerificationCard(
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = "Numbers match",
+                                    text = "Codes match",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.SemiBold
                                 )
@@ -378,8 +372,7 @@ fun PairingVerificationCard(
                                 ),
                                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(min = 52.dp)
+                                    .heightIn(min = 48.dp)
                                     .semantics {
                                         role = Role.Button
                                         contentDescription = "Numbers do not match. Reject connection with ${state.peerName.isolateBidi()}."
@@ -392,7 +385,7 @@ fun PairingVerificationCard(
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = "Don't match",
+                                    text = "Reject",
                                     style = MaterialTheme.typography.titleMedium,
                                     color = MaterialTheme.colorScheme.error
                                 )
@@ -472,7 +465,7 @@ fun PairingVerificationCard(
                         color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
                     Text(
-                        text = "Authenticated with ${state.peer.displayName}. Ready for file transfer.",
+                        text = "Verified ${state.peer.displayName}",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onPrimaryContainer
                     )

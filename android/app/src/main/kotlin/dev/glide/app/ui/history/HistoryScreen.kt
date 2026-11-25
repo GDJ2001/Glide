@@ -1,9 +1,11 @@
 package dev.glide.app.ui.history
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -11,8 +13,8 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -20,10 +22,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.CallMade
 import androidx.compose.material.icons.automirrored.filled.CallReceived
-import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -33,13 +34,10 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -50,21 +48,23 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.ui.semantics.selected
-import dev.glide.designsystem.isolateBidi
+import dev.glide.app.ui.components.ActionTone
+import dev.glide.app.ui.components.GlideCompactTopBar
+import dev.glide.app.ui.components.GlideIconAction
 import dev.glide.core.domain.DeviceRole
 import dev.glide.designsystem.AdaptiveLayoutTokens
+import dev.glide.designsystem.HingeOrientation
+import dev.glide.designsystem.LocalDevicePosture
 import dev.glide.designsystem.LocalWindowSizeClass
 import dev.glide.designsystem.WindowSizeClass
-import dev.glide.designsystem.LocalDevicePosture
-import dev.glide.designsystem.HingeOrientation
-import dev.glide.designsystem.glideHoverHand
 import dev.glide.designsystem.avoidHinge
+import dev.glide.designsystem.glideHoverHand
+import dev.glide.designsystem.isolateBidi
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -92,49 +92,19 @@ fun HistoryScreen(
         modifier = modifier.fillMaxSize(),
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
         topBar = {
-            TopAppBar(
-                windowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
-                title = {
-                    Text(
-                        text = "Transfer history",
-                        style = MaterialTheme.typography.titleLarge
+            GlideCompactTopBar(
+                "Transfer history",
+                Modifier.padding(horizontal = 16.dp),
+                onBack = onBack,
+                backLabel = "Navigate back to Home"
+            ) {
+                if (uiState.sessions.isNotEmpty()) {
+                    GlideIconAction(
+                        Icons.Default.DeleteSweep, "Clear transfer history",
+                        viewModel::requestClearHistory, tone = ActionTone.Destructive
                     )
-                },
-                navigationIcon = {
-                    IconButton(
-                        onClick = onBack,
-                        modifier = Modifier.semantics {
-                            role = Role.Button
-                            contentDescription = "Navigate back to Home"
-                        }
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = null
-                        )
-                    }
-                },
-                actions = {
-                    if (uiState.sessions.isNotEmpty()) {
-                        IconButton(
-                            onClick = { viewModel.requestClearHistory() },
-                            modifier = Modifier.semantics {
-                                role = Role.Button
-                                contentDescription = "Clear transfer history"
-                            }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Delete,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
-            )
+                }
+            }
         }
     ) { innerPadding ->
         Column(
@@ -143,8 +113,7 @@ fun HistoryScreen(
                 .padding(innerPadding)
         ) {
             resumePanel()
-            // Filter Chips Row
-            Row(
+            FlowRow(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp, vertical = 8.dp),
@@ -266,7 +235,6 @@ fun HistoryScreen(
                                 onExportFile = { item -> viewModel.exportItemFile(context, item) },
                                 onShareFile = { item -> viewModel.shareItemFile(context, item) },
                                 onDeleteSession = { viewModel.deleteSession(selectedDetail.session.sessionId) },
-                                showCloseButton = false,
                                 modifier = Modifier.fillMaxSize()
                             )
                         } else {
@@ -431,7 +399,7 @@ fun HistorySessionCard(
                         color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.weight(1f, fill = false),
                         maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     StatusBadge(outcome = session.outcome, failureCode = session.failureCode)

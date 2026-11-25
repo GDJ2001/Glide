@@ -7,7 +7,6 @@ import android.content.Context
 import android.os.Build
 import android.os.PersistableBundle
 import androidx.compose.foundation.Image
-import dev.glide.core.pairing.InvitationCodec
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,7 +20,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -31,18 +29,14 @@ import androidx.compose.material.icons.filled.HourglassBottom
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SheetState
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -61,9 +55,11 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import dev.glide.app.ui.components.ActionTone
+import dev.glide.app.ui.components.GlideIconAction
+import dev.glide.core.pairing.InvitationCodec
 import dev.glide.designsystem.PrimaryButtonShape
 import dev.glide.designsystem.isolateBidi
 
@@ -113,21 +109,7 @@ fun QrInvitationSheet(
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.weight(1f).semantics { heading() }
                 )
-                IconButton(
-                    onClick = onDismiss,
-                    modifier = Modifier
-                        .size(48.dp)
-                        .semantics {
-                            role = Role.Button
-                            contentDescription = "Close QR code sheet"
-                        }
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                GlideIconAction(Icons.Default.Close, "Close QR code", onDismiss)
             }
 
             when (uiState) {
@@ -220,18 +202,13 @@ fun QrInvitationSheet(
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Text(
-                            text = "Visible as: ${uiState.localDeviceName.isolateBidi()}",
+                            text = uiState.localDeviceName.isolateBidi(),
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurface
                         )
-                        if (uiState.endpointsSummary.isNotBlank()) {
-                            Text(
-                                text = "Local address: ${uiState.endpointsSummary}",
-                                style = MaterialTheme.typography.bodySmall,
-                                fontFamily = FontFamily.Monospace,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+
                     }
 
                     if (!uiState.hotspotSsid.isNullOrBlank()) {
@@ -246,38 +223,8 @@ fun QrInvitationSheet(
                                     .padding(12.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Text(
-                                    text = "Hotspot Wi-Fi credentials",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                androidx.compose.foundation.text.selection.SelectionContainer {
-                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Text(
-                                            text = "Network: ${uiState.hotspotSsid}",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            fontFamily = FontFamily.Monospace
-                                        )
-                                        if (!uiState.hotspotPassphrase.isNullOrBlank()) {
-                                            Text(
-                                                text = "Password: ${uiState.hotspotPassphrase}",
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                fontFamily = FontFamily.Monospace
-                                            )
-                                        }
-                                    }
-                                }
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    androidx.compose.material3.TextButton(onClick = {
-                                        copyInvitationToClipboard(context, uiState.hotspotSsid)
-                                        copyNotice = "Network name copied"
-                                    }) { Text("Copy network") }
-                                    if (!uiState.hotspotPassphrase.isNullOrBlank()) {
-                                        androidx.compose.material3.TextButton(onClick = {
-                                            copyInvitationToClipboard(context, uiState.hotspotPassphrase)
-                                            copyNotice = "Password copied"
-                                        }) { Text("Copy password") }
-                                    }
+                                HotspotCredentials(uiState.hotspotSsid, uiState.hotspotPassphrase) {
+                                    copyNotice = it
                                 }
                             }
                         }
@@ -300,50 +247,18 @@ fun QrInvitationSheet(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    // Actions: Refresh and Copy Invitation
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
                     ) {
-                        OutlinedButton(
-                            onClick = onRefresh,
-                            shape = PrimaryButtonShape,
-                            modifier = Modifier
-                                .weight(1f)
-                                .heightIn(min = 48.dp)
-                                .semantics {
-                                    role = Role.Button
-                                    contentDescription = "Refresh QR code and reset countdown"
-                                }
-                        ) {
-                            Icon(imageVector = Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(text = "Refresh", style = MaterialTheme.typography.labelLarge)
-                        }
-
-                        Button(
-                            onClick = {
-                                copyInvitationToClipboard(
-                                    context,
-                                    uiState.hotspotQr ?: InvitationCodec.encode(uiState.invitation)
-                                )
-                                copyNotice = "Invitation copied"
-                            },
-                            shape = PrimaryButtonShape,
-                            modifier = Modifier
-                                .weight(1f)
-                                .heightIn(min = 48.dp)
-                                .semantics {
-                                    role = Role.Button
-                                    contentDescription = "Copy receive link to clipboard"
-                                }
-                        ) {
-                            Icon(imageVector = Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(text = "Copy receive link", style = MaterialTheme.typography.labelLarge)
-                        }
+                        GlideIconAction(Icons.Default.Refresh, "Refresh QR code", onRefresh)
+                        GlideIconAction(Icons.Default.ContentCopy, "Copy receive link", {
+                            copyInvitationToClipboard(
+                                context,
+                                uiState.hotspotQr ?: InvitationCodec.encode(uiState.invitation)
+                            )
+                            copyNotice = "Invitation copied"
+                        }, tone = ActionTone.Primary)
                     }
                 }
 

@@ -1,13 +1,24 @@
 package dev.glide.app.ui.discovery
 
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
+
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+
 import android.content.Intent
 import android.os.Build
 import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.WifiTethering
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -22,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import dev.glide.app.lan.HotspotInterfaceWatcher
+import dev.glide.app.ui.components.GlideIconAction
 import kotlinx.coroutines.delay
 
 @Composable
@@ -30,6 +42,7 @@ internal fun ManualHotspotAction(
     onReady: () -> Unit,
     onStartHost: (() -> Unit)? = null,
     status: String? = null,
+    showCaption: Boolean = false,
     externalOpen: Boolean = false,
     onExternalDismiss: (() -> Unit)? = null
 ) {
@@ -64,44 +77,54 @@ internal fun ManualHotspotAction(
         }
     }
 
-    TextButton(onClick = { internalOpen = true }) {
-        Text(if (host) "Hotspot Direct" else "Use a phone hotspot")
+    if (showCaption) {
+        OutlinedButton(
+            onClick = { internalOpen = true },
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+            modifier = Modifier.heightIn(min = 48.dp)
+        ) {
+            Icon(Icons.Default.WifiTethering, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("Hotspot")
+        }
+    } else {
+        GlideIconAction(Icons.Default.WifiTethering, "Use a phone hotspot", { internalOpen = true })
     }
-    status?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
     if (!open) return
 
     AlertDialog(
         onDismissRequest = closeDialog,
         title = {
             Text(
-                if (host) "Manual system hotspot setup"
-                else "Connect to receiver hotspot"
+                if (host) "Phone hotspot"
+                else "Join receiver hotspot"
             )
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 Text(
                     when {
                         settingsUnavailable ->
                             "Open Android Settings manually to turn on Hotspot / Wi-Fi, then return to Glide."
                         host ->
-                            "1. Open Android Hotspot Settings and turn on your Portable Hotspot.\n" +
-                                "2. Return here — Glide will detect the hotspot automatically and open your Receive QR code."
+                            "Turn on your phone hotspot, then return to Glide to show the receive QR code."
                         else ->
-                            "1. Open Wi-Fi Settings and connect to the receiving device's hotspot.\n" +
-                                "2. Return here and tap Scan QR code to start the transfer."
+                            "Join the receiver’s hotspot in Wi-Fi settings, then scan their QR code."
                     }
                 )
+                status?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                if (host && !hotspotDetected) {
+                    Text("Waiting for hotspot…", style = MaterialTheme.typography.labelMedium)
+                }
                 if (host) {
-                    Text(
-                        text = if (hotspotDetected) {
-                            "Hotspot detected. Opening QR code…"
-                        } else {
-                            "Waiting for portable hotspot to turn on…"
-                        },
-                        style = MaterialTheme.typography.labelMedium,
-                        color = if (hotspotDetected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    onStartHost?.let { start ->
+                        TextButton(onClick = { closeDialog(); start() }) { Text("Retry Glide hotspot") }
+                    }
+                } else {
+                    TextButton(onClick = { closeDialog(); onReady() }) { Text("Scan receiver QR") }
                 }
             }
         },
@@ -117,7 +140,7 @@ internal fun ManualHotspotAction(
                         if (opened.isFailure) settingsUnavailable = true
                     }
                 ) {
-                    Text("Open Hotspot Settings")
+                    Text("Hotspot settings")
                 }
             } else {
                 Button(
@@ -135,35 +158,10 @@ internal fun ManualHotspotAction(
                         if (opened.isFailure) settingsUnavailable = true
                     }
                 ) {
-                    Text("Open Wi-Fi Settings")
+                    Text("Wi-Fi settings")
                 }
             }
         },
-        dismissButton = {
-            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (host) {
-                    onStartHost?.let { start ->
-                        TextButton(onClick = {
-                            closeDialog()
-                            start()
-                        }) { Text("Retry Glide hotspot") }
-                    }
-                    OutlinedButton(
-                        enabled = hotspotDetected,
-                        onClick = {
-                            closeDialog()
-                            onReady()
-                        }
-                    ) { Text("Show Receive QR code") }
-                } else {
-                    OutlinedButton(
-                        onClick = {
-                            closeDialog()
-                            onReady()
-                        }
-                    ) { Text("Scan receiver QR") }
-                }
-            }
-        }
+        dismissButton = { TextButton(onClick = closeDialog) { Text("Close") } }
     )
 }

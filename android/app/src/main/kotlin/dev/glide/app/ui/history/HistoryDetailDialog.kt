@@ -13,13 +13,10 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.OpenInNew
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Share
@@ -33,7 +30,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -50,13 +46,18 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import dev.glide.designsystem.isolateBidi
-import dev.glide.designsystem.glideHoverHand
+import dev.glide.app.ui.components.ActionTone
+import dev.glide.app.ui.components.GlideIconAction
+import dev.glide.app.ui.components.ShortFileTypeFormatter
 import dev.glide.app.ui.transfer.ExportUiStatus
+import dev.glide.app.ui.transfer.ReceivedFileActions
 import dev.glide.core.domain.DeviceRole
+import dev.glide.designsystem.glideHoverHand
+import dev.glide.designsystem.isolateBidi
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -98,7 +99,6 @@ fun HistoryDetailDialog(
                 onExportFile = onExportFile,
                 onShareFile = onShareFile,
                 onDeleteSession = onDeleteSession,
-                showCloseButton = true
             )
         }
     }
@@ -114,7 +114,6 @@ fun HistoryDetailContent(
     onExportFile: (HistoryItemDetail) -> Unit,
     onShareFile: (HistoryItemDetail) -> Unit = {},
     onDeleteSession: () -> Unit = {},
-    showCloseButton: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -122,7 +121,9 @@ fun HistoryDetailContent(
             .fillMaxWidth()
             .padding(24.dp)
     ) {
-        // Header with Peer and Close button
+        var showDeleteDialog by remember { mutableStateOf(false) }
+
+        // Header with peer and session actions
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -131,6 +132,8 @@ fun HistoryDetailContent(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = detail.session.peerLabel.isolateBidi(),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -143,24 +146,8 @@ fun HistoryDetailContent(
                 )
             }
 
-            if (showCloseButton) {
-                IconButton(
-                    onClick = onDismiss,
-                    modifier = Modifier
-                        .size(48.dp)
-                        .glideHoverHand()
-                        .semantics {
-                            role = Role.Button
-                            contentDescription = "Close details"
-                        }
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
+            GlideIconAction(Icons.Outlined.Delete, "Delete transfer from history",
+                { showDeleteDialog = true }, tone = ActionTone.Destructive)
         }
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -309,36 +296,8 @@ fun HistoryDetailContent(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        var showDeleteDialog by remember { mutableStateOf(false) }
-
-        // Action CTA row
-        FlowRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            TextButton(
-                onClick = { showDeleteDialog = true },
-                colors = ButtonDefaults.textButtonColors(
-                    contentColor = MaterialTheme.colorScheme.error
-                ),
-                modifier = Modifier.semantics {
-                    role = Role.Button
-                    contentDescription = "Delete transfer from history"
-                }
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.Delete,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("Delete from history")
-            }
-
-            TextButton(onClick = onDismiss) {
-                Text("Close")
-            }
+        TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) {
+            Text("Close", maxLines = 1, softWrap = false)
         }
 
         if (showDeleteDialog) {
@@ -418,6 +377,8 @@ fun HistoryItemCard(
             ) {
                 Text(
                     text = item.displayName.isolateBidi(),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.weight(1f)
@@ -443,7 +404,7 @@ fun HistoryItemCard(
             }
 
             Text(
-                text = "${formatByteSize(item.actualBytes ?: item.offeredBytes)} · ${item.mimeType}",
+                text = "${formatByteSize(item.actualBytes ?: item.offeredBytes)} · ${ShortFileTypeFormatter.format(item.displayName, item.mimeType)}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -452,70 +413,10 @@ fun HistoryItemCard(
             if (isReceiver && item.outcome == "Verified") {
                 Spacer(modifier = Modifier.height(10.dp))
                 if (item.isFileAvailable) {
-                    dev.glide.app.ui.transfer.AppInstallAction(
-                        item.receivedFileKey, item.digestHex, item.displayName, item.mimeType
+                    ReceivedFileActions(
+                        item.receivedFileKey, item.digestHex, item.displayName, item.mimeType,
+                        onOpen = onOpenFile, onShare = onShareFile, onSave = onExportFile
                     )
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        if (!dev.glide.app.installer.AppPackageInstaller.isSplitBundle(item.mimeType, item.displayName)) {
-                            OutlinedButton(
-                                onClick = onOpenFile,
-                                shape = RoundedCornerShape(10.dp),
-                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 6.dp),
-                                modifier = Modifier
-                                    .widthIn(min = 88.dp)
-                                    .heightIn(min = 48.dp)
-                                    .glideHoverHand()
-                                    .semantics {
-                                        role = Role.Button
-                                        contentDescription = "Open ${item.displayName.isolateBidi()}"
-                                    }
-                            ) {
-                                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(15.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Open", style = MaterialTheme.typography.labelMedium, maxLines = 1, softWrap = false)
-                            }
-                        }
-
-                        OutlinedButton(
-                            onClick = onShareFile,
-                            shape = RoundedCornerShape(10.dp),
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 6.dp),
-                            modifier = Modifier
-                                .widthIn(min = 88.dp)
-                                .heightIn(min = 48.dp)
-                                .glideHoverHand()
-                                .semantics {
-                                    role = Role.Button
-                                    contentDescription = "Share ${item.displayName.isolateBidi()}"
-                                }
-                        ) {
-                            Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(15.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Share", style = MaterialTheme.typography.labelMedium, maxLines = 1, softWrap = false)
-                        }
-
-                        Button(
-                            onClick = onExportFile,
-                            shape = RoundedCornerShape(10.dp),
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 6.dp),
-                            modifier = Modifier
-                                .widthIn(min = 88.dp)
-                                .heightIn(min = 48.dp)
-                                .glideHoverHand()
-                                .semantics {
-                                    role = Role.Button
-                                    contentDescription = "Save ${item.displayName.isolateBidi()} to selected folder"
-                                }
-                        ) {
-                            Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(15.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Save", style = MaterialTheme.typography.labelMedium, maxLines = 1, softWrap = false)
-                        }
-                    }
                 } else {
                     Row(
                         modifier = Modifier
@@ -592,7 +493,7 @@ fun StatusBadge(outcome: String?, failureCode: String? = null, modifier: Modifie
 
 @Composable
 fun ItemOutcomeBadge(outcome: String?, failureCode: String? = null, modifier: Modifier = Modifier) {
-    val label = formatHistoryOutcomeLabel(outcome, failureCode)
+    val label = if (outcome == "Verified") "Verified" else formatHistoryOutcomeLabel(outcome, failureCode)
     val (containerColor, contentColor, text) = when (outcome) {
         "Verified", "Completed" -> Triple(
             MaterialTheme.colorScheme.primaryContainer,

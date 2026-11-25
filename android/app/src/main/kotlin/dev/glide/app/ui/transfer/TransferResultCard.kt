@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -11,15 +12,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
@@ -29,7 +25,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import dev.glide.designsystem.glideHoverHand
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -41,17 +36,18 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import dev.glide.app.ui.components.GlideIconAction
+import dev.glide.app.ui.components.ShortFileTypeFormatter
 import dev.glide.core.domain.DeviceRole
 import dev.glide.designsystem.PrimaryButtonShape
+import dev.glide.designsystem.isolateBidi
 import dev.glide.designsystem.onWarningContainer
 import dev.glide.designsystem.warning
 import dev.glide.designsystem.warningContainer
-import dev.glide.designsystem.isolateBidi
 
 /**
  * Converts internal transfer failure codes into the recovery text that is safe to show in UI.
@@ -176,8 +172,8 @@ private fun CompletedResultCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // Checkmark Success Badge
@@ -286,7 +282,7 @@ private fun CompletedResultCard(
                                             )
                                         }
                                         Text(
-                                            text = "${TransferFormatting.formatBytes(item.sizeBytes)} • ${item.mimeType}",
+                                            text = "${TransferFormatting.formatBytes(item.sizeBytes)} • ${ShortFileTypeFormatter.format(item.displayName, item.mimeType)}",
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
@@ -316,70 +312,14 @@ private fun CompletedResultCard(
                                     }
                                 }
 
-                                if (isReceiver) {
-                                    AppInstallAction(item.committedFileKey, item.digestHex, item.displayName, item.mimeType)
-                                }
                                 if (isReceiver && item.committedFileKey != null && state.verifiedItems.size > 1) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        if (!dev.glide.app.installer.AppPackageInstaller.isSplitBundle(item.mimeType, item.displayName)) {
-                                            OutlinedButton(
-                                                onClick = { onOpenItem(item) },
-                                                shape = RoundedCornerShape(10.dp),
-                                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 6.dp),
-                                                modifier = Modifier
-                                                    .weight(1f)
-                                                    .heightIn(min = 40.dp)
-                                                    .glideHoverHand()
-                                                    .semantics {
-                                                        role = Role.Button
-                                                        contentDescription = "Open ${item.displayName.isolateBidi()}"
-                                                    }
-                                            ) {
-                                                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(14.dp))
-                                                Spacer(modifier = Modifier.width(4.dp))
-                                                Text("Open", style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
-                                            }
-                                        }
-
-                                        OutlinedButton(
-                                            onClick = { onShareItem(item) },
-                                            shape = RoundedCornerShape(10.dp),
-                                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 6.dp),
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .heightIn(min = 40.dp)
-                                                .glideHoverHand()
-                                                .semantics {
-                                                    role = Role.Button
-                                                    contentDescription = "Share ${item.displayName.isolateBidi()}"
-                                                }
-                                        ) {
-                                            Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(14.dp))
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text("Share", style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
-                                        }
-
-                                        if (exportStatus !is ExportUiStatus.Success) Button(
-                                            onClick = { onExportItem(item) },
-                                            shape = RoundedCornerShape(10.dp),
-                                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 6.dp),
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .heightIn(min = 40.dp)
-                                                .glideHoverHand()
-                                                .semantics {
-                                                    role = Role.Button
-                                                    contentDescription = "Save ${item.displayName.isolateBidi()} to selected folder"
-                                                }
-                                        ) {
-                                            Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(14.dp))
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text("Save", style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
-                                        }
-                                    }
+                                    ReceivedFileActions(
+                                        item.committedFileKey, item.digestHex, item.displayName, item.mimeType,
+                                        onOpen = { onOpenItem(item) },
+                                        onShare = { onShareItem(item) },
+                                        onSave = if (exportStatus is ExportUiStatus.Success) null else ({ onExportItem(item) }),
+                                        saving = exportStatus is ExportUiStatus.Exporting
+                                    )
                                 }
                             }
                         }
@@ -401,7 +341,15 @@ private fun CompletedResultCard(
             }
 
             when (exportStatus) {
-                is ExportUiStatus.Idle -> {}
+                is ExportUiStatus.Idle -> {
+                    if (isReceiver && (state.committedFileKey != null || state.verifiedItems.any { it.committedFileKey != null })) {
+                        Text(
+                            "Saved in Glide • export to keep outside the app",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
                 is ExportUiStatus.Exporting -> {
                     Text(
                         text = "Saving verified files…",
@@ -439,143 +387,34 @@ private fun CompletedResultCard(
                 }
             }
 
-            // Action Buttons
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                if (isReceiver && (state.committedFileKey != null || state.verifiedItems.any { it.committedFileKey != null })) {
-                    if (state.verifiedItems.size > 1) {
-                        if (exportStatus !is ExportUiStatus.Success) Button(
-                            onClick = onExportAll,
-                            enabled = exportStatus !is ExportUiStatus.Exporting,
-                            shape = PrimaryButtonShape,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary
-                            ),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 56.dp)
-                                .semantics {
-                                    role = Role.Button
-                                    contentDescription = "Save all ${state.verifiedItems.size} files to selected folder"
-                                }
-                        ) {
-                            Text(
-                                text = if (exportStatus is ExportUiStatus.Exporting) "Saving…" else "Save all files",
-                                style = MaterialTheme.typography.titleMedium
-                            )
+            if (isReceiver && (state.committedFileKey != null || state.verifiedItems.any { it.committedFileKey != null })) {
+                if (state.verifiedItems.size > 1) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        if (exportStatus !is ExportUiStatus.Success) {
+                            GlideIconAction(Icons.Default.Download, "Save all files", onExportAll,
+                                enabled = exportStatus !is ExportUiStatus.Exporting)
                         }
-
-                        OutlinedButton(
-                            onClick = onShareAll,
-                            shape = PrimaryButtonShape,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 48.dp)
-                                .semantics {
-                                    role = Role.Button
-                                    contentDescription = "Share all verified files"
-                                }
-                        ) {
-                            Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(text = "Share all files", style = MaterialTheme.typography.labelLarge)
-                        }
-                    } else {
-                        if (exportStatus !is ExportUiStatus.Success) Button(
-                            onClick = onExportFile,
-                            enabled = exportStatus !is ExportUiStatus.Exporting,
-                            shape = PrimaryButtonShape,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary
-                            ),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 56.dp)
-                                .semantics {
-                                    role = Role.Button
-                                    contentDescription = "Save received file ${state.itemName.isolateBidi()} to selected folder"
-                                }
-                        ) {
-                            Text(
-                                text = if (exportStatus is ExportUiStatus.Exporting) "Saving…" else "Save file",
-                                style = MaterialTheme.typography.titleMedium
-                            )
-                        }
-
-                        OutlinedButton(
-                            onClick = onShareFile,
-                            shape = PrimaryButtonShape,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 48.dp)
-                                .semantics {
-                                    role = Role.Button
-                                    contentDescription = "Share received file ${state.itemName.isolateBidi()}"
-                                }
-                        ) {
-                            Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(text = "Share file", style = MaterialTheme.typography.labelLarge)
-                        }
-
-                        val singleItem = state.verifiedItems.singleOrNull()
-                        val hideSingleOpen = singleItem?.let {
-                            dev.glide.app.installer.AppPackageInstaller.isSplitBundle(it.mimeType, it.displayName)
-                        } ?: state.itemName.endsWith(".apks", ignoreCase = true)
-                        if (!hideSingleOpen) OutlinedButton(
-                            onClick = onOpenFile,
-                            shape = PrimaryButtonShape,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 48.dp)
-                                .semantics {
-                                    role = Role.Button
-                                    contentDescription = "Open received file ${state.itemName.isolateBidi()}"
-                                }
-                        ) {
-                            Text(text = "Open file", style = MaterialTheme.typography.labelLarge)
-                        }
-                    }
-
-                    OutlinedButton(
-                        onClick = onBack,
-                        shape = PrimaryButtonShape,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 48.dp)
-                            .semantics {
-                                role = Role.Button
-                                contentDescription = "Dismiss transfer and return home"
-                            }
-                    ) {
-                        Text(text = "Done", style = MaterialTheme.typography.labelLarge)
+                        GlideIconAction(Icons.Default.Share, "Share all verified files", onShareAll)
                     }
                 } else {
-                    Button(
-                        onClick = onBack,
-                        shape = PrimaryButtonShape,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 56.dp)
-                            .semantics {
-                                role = Role.Button
-                                contentDescription = "Dismiss transfer and return home"
-                            }
-                    ) {
-                        Text(text = "Done", style = MaterialTheme.typography.titleMedium)
-                    }
+                    val item = state.verifiedItems.singleOrNull()
+                    ReceivedFileActions(
+                        item?.committedFileKey, item?.digestHex, item?.displayName ?: state.itemName,
+                        item?.mimeType ?: "application/octet-stream",
+                        onOpen = onOpenFile,
+                        onShare = onShareFile,
+                        onSave = if (exportStatus is ExportUiStatus.Success) null else onExportFile,
+                        saving = exportStatus is ExportUiStatus.Exporting
+                    )
                 }
             }
+            Button(
+                onClick = onBack,
+                shape = PrimaryButtonShape,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).semantics {
+                    contentDescription = "Dismiss transfer and return"
+                }
+            ) { Text("Done") }
         }
     }
 }

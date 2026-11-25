@@ -3,9 +3,16 @@ package dev.glide.app.ui.transfer
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.InstallMobile
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.SystemUpdateAlt
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -18,9 +25,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import dev.glide.app.installer.AppPackageInstaller
 import dev.glide.app.installer.InstallEvents
+import dev.glide.app.ui.components.GlideIconAction
 import dev.glide.core.domain.AppTransferMetadata
+import dev.glide.designsystem.isolateBidi
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -40,8 +50,44 @@ internal fun OfferedAppBadge(metadata: AppTransferMetadata) {
 }
 
 @Composable
-internal fun AppInstallAction(key: String?, digest: String?, name: String, mime: String) {
-    if (key == null || digest == null || !AppPackageInstaller.supports(mime, name)) return
+internal fun ReceivedFileActions(
+    key: String?,
+    digest: String?,
+    name: String,
+    mime: String,
+    onOpen: () -> Unit,
+    onShare: () -> Unit,
+    onSave: (() -> Unit)?,
+    saving: Boolean = false
+) {
+    val filename = name.isolateBidi()
+    val actions: @Composable (@Composable () -> Unit) -> Unit = { install ->
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (!AppPackageInstaller.isSplitBundle(mime, name)) {
+                GlideIconAction(Icons.AutoMirrored.Filled.OpenInNew, "Open $filename", onOpen, tooltip = "Open file")
+            }
+            GlideIconAction(Icons.Default.Share, "Share $filename", onShare, tooltip = "Share file")
+            onSave?.let {
+                GlideIconAction(Icons.Default.Download, "Save $filename to selected folder", it,
+                    enabled = !saving, tooltip = "Save file")
+            }
+            install()
+        }
+    }
+    if (key != null && digest != null && AppPackageInstaller.supports(mime, name)) {
+        AppInstallAction(key, digest, name, actions)
+    } else {
+        actions {}
+    }
+}
+
+@Composable
+private fun AppInstallAction(
+    key: String,
+    digest: String,
+    name: String,
+    actions: @Composable (@Composable () -> Unit) -> Unit
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var busy by remember(key) { mutableStateOf(false) }
@@ -72,26 +118,31 @@ internal fun AppInstallAction(key: String?, digest: String?, name: String, mime:
         )
     }
     val installLabel = inspection?.installLabel
-    if (installLabel != null) OutlinedButton(
-        enabled = !busy,
-        onClick = {
-            if (!context.packageManager.canRequestPackageInstalls()) {
-                showPermission = true
-            } else {
-                busy = true
-                scope.launch {
-                    try {
-                        message = AppPackageInstaller.install(context, key, digest, name)
-                    } catch (failure: Exception) {
-                        if (failure is CancellationException) throw failure
-                        message = "This app package couldn’t be installed. Check its version and compatibility."
-                    } finally {
-                        busy = false
+    actions {
+        if (installLabel != null) GlideIconAction(
+            icon = if (installLabel == "Update") Icons.Default.SystemUpdateAlt else Icons.Default.InstallMobile,
+            label = if (busy) "Preparing app" else "$installLabel ${name.isolateBidi()}",
+            tooltip = if (busy) "Preparing app…" else installLabel,
+            enabled = !busy,
+            onClick = {
+                if (!context.packageManager.canRequestPackageInstalls()) {
+                    showPermission = true
+                } else {
+                    busy = true
+                    scope.launch {
+                        try {
+                            message = AppPackageInstaller.install(context, key, digest, name)
+                        } catch (failure: Exception) {
+                            if (failure is CancellationException) throw failure
+                            message = "This app package couldn’t be installed. Check its version and compatibility."
+                        } finally {
+                            busy = false
+                        }
                     }
                 }
             }
-        }
-    ) { Text(if (busy) "Preparing app…" else installLabel) }
+        )
+    }
 
     message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
     if (showPermission) {

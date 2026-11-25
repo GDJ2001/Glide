@@ -1,14 +1,10 @@
 package dev.glide.app.ui.transfer
 
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -26,13 +22,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Computer
-import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.HourglassBottom
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.PhoneAndroid
-import androidx.compose.material.icons.filled.TabletAndroid
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -60,11 +51,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import dev.glide.designsystem.isolateBidi
-import dev.glide.app.ui.discovery.DeviceType
+import dev.glide.app.ui.components.ActionTone
+import dev.glide.app.ui.components.GlideIconAction
+import dev.glide.app.ui.components.ShortFileTypeFormatter
 import dev.glide.core.domain.DeviceRole
 import dev.glide.core.domain.TransferItem
 import dev.glide.designsystem.PrimaryButtonShape
+import dev.glide.designsystem.isolateBidi
 import java.util.Locale
 
 /**
@@ -139,8 +132,8 @@ private fun ReceiverOfferConsentCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             // Header with Icon and Title
             Row(
@@ -231,7 +224,7 @@ private fun ReceiverOfferConsentCard(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 200.dp)
+                        .heightIn(max = 120.dp)
                         .verticalScroll(scrollState)
                         .padding(horizontal = 12.dp, vertical = 8.dp)
                 ) {
@@ -251,7 +244,7 @@ private fun ReceiverOfferConsentCard(
                             ) {
                                 Box(modifier = Modifier.padding(6.dp), contentAlignment = Alignment.Center) {
                                     Text(
-                                        text = mimeBadgeLabel(item.mimeType, item.name),
+                                        text = ShortFileTypeFormatter.format(item.name, item.mimeType),
                                         maxLines = 1,
                                         style = MaterialTheme.typography.labelSmall.copy(
                                             fontFamily = FontFamily.Monospace,
@@ -295,63 +288,38 @@ private fun ReceiverOfferConsentCard(
             }
 
             // Storage Validation Banner
-            if (state.storageAvailableBytes != null) {
-                if (isStorageSufficient) {
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
-                        modifier = Modifier.fillMaxWidth()
+            if (state.storageAvailableBytes != null && !isStorageSufficient) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Check,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Text(
-                                text = "Device storage: ${formatOfferBytes(state.storageAvailableBytes)} available (${formatOfferBytes(state.storageRequiredBytes)} needed)",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                        }
-                    }
-                } else {
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.errorContainer,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Warning,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onErrorContainer,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Text(
-                                text = "Insufficient storage: ${formatOfferBytes(state.storageRequiredBytes)} needed, only ${formatOfferBytes(state.storageAvailableBytes)} available",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onErrorContainer
-                            )
-                        }
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = "Insufficient storage: ${formatOfferBytes(state.storageRequiredBytes)} needed, only ${formatOfferBytes(state.storageAvailableBytes)} available",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
                     }
                 }
             }
 
             val haptics = dev.glide.designsystem.GlideTheme.haptics
-            Column(
+            FlowRow(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Button(
                     onClick = {
@@ -365,8 +333,7 @@ private fun ReceiverOfferConsentCard(
                         contentColor = MaterialTheme.colorScheme.onPrimary
                     ),
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 56.dp)
+                        .heightIn(min = 48.dp)
                         .semantics {
                             role = Role.Button
                             contentDescription = if (isStorageSufficient) {
@@ -383,7 +350,7 @@ private fun ReceiverOfferConsentCard(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = if (state.itemCount > 1) "Accept ${state.itemCount} files" else "Accept file",
+                        text = "Accept",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -397,8 +364,7 @@ private fun ReceiverOfferConsentCard(
                     ),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 50.dp)
+                        .heightIn(min = 48.dp)
                         .semantics {
                             role = Role.Button
                             contentDescription = "Decline transfer from ${state.peerName.isolateBidi()}"
@@ -442,9 +408,9 @@ private fun SenderOfferWaitingCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(24.dp),
+                .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Surface(
                 shape = CircleShape,
@@ -521,44 +487,8 @@ private fun SenderOfferWaitingCard(
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            OutlinedButton(
-                onClick = onCancel,
-                shape = PrimaryButtonShape,
-                colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = MaterialTheme.colorScheme.error
-                ),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 52.dp)
-                    .semantics {
-                        role = Role.Button
-                        contentDescription = "Cancel transfer offer"
-                    }
-            ) {
-                Text(
-                    text = "Cancel transfer",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.error
-                )
-            }
+            GlideIconAction(Icons.Default.Close, "Cancel transfer offer", onCancel, tone = ActionTone.Destructive)
         }
-    }
-}
-
-private fun mimeBadgeLabel(mimeType: String, fileName: String): String {
-    val ext = fileName.substringAfterLast('.', "").uppercase(Locale.ROOT)
-    if (ext.isNotBlank() && ext.length <= 4) return ext
-
-    val lowerMime = mimeType.lowercase(Locale.ROOT)
-    return when {
-        lowerMime.startsWith("image/") -> "IMG"
-        lowerMime.startsWith("video/") -> "VID"
-        lowerMime.startsWith("audio/") -> "AUD"
-        lowerMime.contains("pdf") -> "PDF"
-        lowerMime.contains("zip") || lowerMime.contains("tar") || lowerMime.contains("gzip") -> "ZIP"
-        lowerMime.startsWith("text/") -> "TXT"
-        else -> "FILE"
     }
 }
 

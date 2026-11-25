@@ -5,7 +5,6 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onFirst
-import androidx.compose.ui.test.onNodeWithText
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.glide.app.MainActivity
 import org.junit.Rule
@@ -41,7 +40,7 @@ class AccessibilitySemanticsTest {
 
         composeTestRule.onNodeWithContentDescription("Send files to a nearby device").assertIsDisplayed()
         composeTestRule.onNodeWithContentDescription("Receive files from a nearby device").assertIsDisplayed()
-        composeTestRule.onNodeWithText("Pair device").assertIsDisplayed()
+        composeTestRule.onNodeWithContentDescription("Pair device").assertIsDisplayed()
     }
 
     @Test

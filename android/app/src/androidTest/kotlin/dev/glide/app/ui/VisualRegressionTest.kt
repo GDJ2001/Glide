@@ -1,5 +1,12 @@
 package dev.glide.app.ui
 
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onNodeWithContentDescription
+
 import android.content.Intent
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
@@ -11,6 +18,7 @@ import androidx.compose.ui.test.printToString
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.core.view.WindowCompat
 import androidx.test.core.app.ActivityScenario
@@ -60,7 +68,7 @@ class VisualRegressionTest {
     @Test
     fun lightThemeScannerKeepsLightSystemBarIconsAfterRecreation() {
         launch("discovery_peers", "light").use { scenario ->
-            compose.onNodeWithText("Scan QR code or paste invite").performScrollTo().performClick()
+            compose.onNodeWithContentDescription("Scan QR code or paste invite").performScrollTo().performClick()
             repeat(2) { attempt ->
                 try {
                     compose.waitUntil(15_000) { compose.onAllNodesWithText("Scan receiving device QR").fetchSemanticsNodes().isNotEmpty() }
@@ -92,11 +100,24 @@ class VisualRegressionTest {
     }
 
     @Test
-    fun selectionActionsKeepTheirCompleteLabels() {
+    fun selectionShowsReadableContinueActionAndFileSpecificRemoval() {
         launch("share_test_multiple").use {
-            assertSingleLine("Add photos")
-            assertSingleLine("Add files")
-            assertSingleLine("Add folder")
+            assertSingleLine("Continue (2)")
+            val files = compose.onNode(SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange))
+            listOf("vacation_1.jpg", "vacation_2.jpg").forEach { name ->
+                val remove = hasContentDescription("Remove ", substring = true) and
+                    hasContentDescription(name, substring = true)
+                files.performScrollToNode(remove)
+                compose.onNode(remove).assertIsDisplayed()
+            }
+        }
+    }
+
+    @Test
+    fun blockedDiscoveryShowsExactlyOneHotspotAction() {
+        launch("discovery_blocked").use {
+            compose.onAllNodesWithContentDescription("Use a phone hotspot").assertCountEquals(1)
+            compose.onNodeWithContentDescription("Scan QR code or paste invite").assertIsDisplayed()
         }
     }
 }
