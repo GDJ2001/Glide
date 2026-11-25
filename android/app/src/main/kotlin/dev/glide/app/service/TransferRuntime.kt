@@ -87,6 +87,8 @@ class TransferRuntime private constructor(
     private val lock = Any()
 
     private var serviceScope: CoroutineScope? = null
+    private var onTransferStarting: (() -> Boolean)? = null
+    private var onVerifiedCompletion: ((TransferUiState.Completed) -> Unit)? = null
     private var terminalCallback: (() -> Unit)? = null
     private var terminalCallbackSessionId: String? = null
     private var autoSavedSessionId: String? = null
@@ -156,9 +158,13 @@ class TransferRuntime private constructor(
      */
     fun attachServiceScope(
         scope: CoroutineScope,
+        onTransferStarting: (() -> Boolean)? = null,
+        onVerifiedCompletion: ((TransferUiState.Completed) -> Unit)? = null,
         onTerminal: (() -> Unit)? = null
     ) {
         synchronized(lock) {
+            this.onTransferStarting = onTransferStarting
+            this.onVerifiedCompletion = onVerifiedCompletion
             if (serviceScope === scope) {
                 terminalCallback = onTerminal
                 return
@@ -235,6 +241,8 @@ class TransferRuntime private constructor(
             _isSessionActive.value = false
             _activeSessionId.value = null
             serviceScope = null
+            onTransferStarting = null
+            onVerifiedCompletion = null
             terminalCallback = null
             terminalCallbackSessionId = null
             statePresenter.reset()
@@ -791,6 +799,7 @@ class TransferRuntime private constructor(
             if (activeCoordinator != null && _isSessionActive.value) {
                 return false
             }
+            if (onTransferStarting?.invoke() == false) return false
 
             activeCoordinatorJob?.cancel()
             activeCoordinator?.let {
@@ -1526,6 +1535,7 @@ class TransferRuntime private constructor(
     private fun finalizeTerminalCoordinator(coordinator: TransferCoordinator) {
         val peerDisplayName: String
         val callback: (() -> Unit)?
+        val publishCompletion: (() -> Unit)?
         val terminalSessionState: SessionState
         val terminalScope: CoroutineScope?
         val exportStatusSnapshot: ExportUiStatus
@@ -1557,9 +1567,15 @@ class TransferRuntime private constructor(
             captureTerminalSnapshot(coordinator)
 
             callback = if (terminalCallbackSessionId == coordinator.sessionId.value) {
+                publishCompletion = null
                 null
             } else {
                 terminalCallbackSessionId = coordinator.sessionId.value
+                val state = _transferState.value as? TransferUiState.Completed
+                val publisher = onVerifiedCompletion
+                publishCompletion = if (state != null && publisher != null) {
+                    { publisher(state) }
+                } else null
                 terminalCallback
             }
         }
@@ -1571,6 +1587,7 @@ class TransferRuntime private constructor(
             exportStatus = exportStatusSnapshot
         )
         callback?.invoke()
+        publishCompletion?.invoke()
     }
 
     companion object {

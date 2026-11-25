@@ -26,6 +26,7 @@ import dev.glide.core.protocol.NegotiationConstants
 import dev.glide.core.protocol.NegotiationValidator
 import dev.glide.core.protocol.OfferAssembler
 import dev.glide.core.protocol.OfferDecisionBody
+import dev.glide.core.protocol.AppOfferMetadata
 import dev.glide.core.protocol.OfferPaginator
 import dev.glide.core.protocol.ProtocolCodec
 import java.util.UUID
@@ -164,9 +165,17 @@ object TransferReducer {
         effects.add(ReducerEffect.SendControl(beginEnv))
         curState = curState.copy(nextOutboundSeq = seq1)
 
+        val appHints = event.batch.items.mapNotNull { item ->
+            item.appMetadata?.let { item.id to it }
+        }.toMap()
         for (page in paged.pages) {
             val (pageEnv, seqN) = makeEnvelope(curState, MessageTypes.OFFER_PAGE, ProtocolCodec.encodeBody(page))
-            effects.add(ReducerEffect.SendControl(pageEnv))
+            val pageApps = page.items.mapNotNull { item ->
+                appHints[item.itemId]?.takeIf {
+                    AppOfferMetadata.encode(mapOf(item.itemId to it)) != null
+                }?.let { item.itemId to it }
+            }.toMap()
+            effects.add(ReducerEffect.SendControl(pageEnv.copy(extensions = AppOfferMetadata.encode(pageApps))))
             curState = curState.copy(nextOutboundSeq = seqN)
         }
 
@@ -217,7 +226,7 @@ object TransferReducer {
             return ReducerResult(state, emptyList())
         }
         val assembler = state.offerAssembler ?: return ReducerResult(state, emptyList())
-        assembler.addPage(event.page)
+        assembler.addPage(event.page, event.appMetadata)
         return ReducerResult(state.copy(lastActivityMonotonicMs = event.timestampMs), emptyList())
     }
 

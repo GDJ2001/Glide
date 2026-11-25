@@ -316,6 +316,9 @@ private fun CompletedResultCard(
                                     }
                                 }
 
+                                if (isReceiver) {
+                                    AppInstallAction(item.committedFileKey, item.digestHex, item.displayName, item.mimeType)
+                                }
                                 if (isReceiver && item.committedFileKey != null && state.verifiedItems.size > 1) {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),

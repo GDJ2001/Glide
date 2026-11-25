@@ -21,7 +21,9 @@ data class SelectedFileItem(
     val mimeType: String,
     val isAvailable: Boolean = true,
     val errorMessage: String? = null,
-    val relativePath: String? = null
+    val relativePath: String? = null,
+    val installedPackageName: String? = null,
+    val appMetadata: dev.glide.core.domain.AppTransferMetadata? = null
 )
 
 /**
@@ -82,7 +84,8 @@ sealed interface SelectionUiState {
      * Active batch of selected files with summary, count, and ceiling enforcement.
      */
     data class BatchReady(
-        val items: List<SelectedFileItem>
+        val items: List<SelectedFileItem>,
+        val notice: String? = null
     ) : SelectionUiState {
         val itemCount: Int = items.size
         val validItems: List<SelectedFileItem> = items.filter { it.isAvailable }
@@ -106,7 +109,8 @@ sealed interface SelectionUiState {
                         name = item.displayName,
                         mimeType = item.mimeType,
                         sizeBytes = item.sizeBytes,
-                        relativePath = item.relativePath
+                        relativePath = item.relativePath,
+                        appMetadata = item.appMetadata
                     )
                 }
             )

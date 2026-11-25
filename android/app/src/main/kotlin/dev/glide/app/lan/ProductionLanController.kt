@@ -754,6 +754,11 @@ class ProductionLanController private constructor(
     ): List<LanEndpoint> {
         return addresses
             .asSequence()
+            .filter { address ->
+                dev.glide.transport.lan.network.AndroidHotspotConnections.host?.let {
+                    address.hostAddress?.let(it.addresses::contains) == true
+                } ?: true
+            }
             .filterNot {
                 it.isAnyLocalAddress ||
                     it.isLinkLocalAddress ||

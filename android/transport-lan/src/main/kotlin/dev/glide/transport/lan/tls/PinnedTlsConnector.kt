@@ -2,6 +2,7 @@ package dev.glide.transport.lan.tls
 
 import android.os.Build
 import androidx.annotation.RequiresApi
+import androidx.annotation.ChecksSdkIntAtLeast
 import dev.glide.transport.lan.LanConnectionException
 import dev.glide.transport.lan.LanConnectionFailure
 import dev.glide.transport.lan.network.LanAddressRejectionCode
@@ -125,7 +126,7 @@ class PinnedTlsConnector(
             sslSocket.useClientMode = true
             sslSocket.enabledProtocols = arrayOf(PROTOCOL_TLS_V1_3)
 
-            if (Build.VERSION.SDK_INT == 0 || Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            if (hasPlatformAlpn()) {
                 val params = sslSocket.sslParameters
                 params.applicationProtocols = arrayOf(ALPN_GLIDE_LAN_V1)
                 sslSocket.sslParameters = params
@@ -141,7 +142,7 @@ class PinnedTlsConnector(
                 throw IOException("Incompatible TLS version: expected $PROTOCOL_TLS_V1_3, got $negotiatedProtocol")
             }
 
-            if (Build.VERSION.SDK_INT == 0 || Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            if (hasPlatformAlpn()) {
                 val negotiatedAlpn = sslSocket.applicationProtocol
                 if (negotiatedAlpn != ALPN_GLIDE_LAN_V1) {
                     throw IOException("Incompatible ALPN: expected '$ALPN_GLIDE_LAN_V1', got '$negotiatedAlpn'")
@@ -168,3 +169,8 @@ class PinnedTlsConnector(
         }
     }
 }
+
+/** Android unit tests run on the JVM, whose TLS provider exposes ALPN when SDK_INT is stubbed to 0. */
+@ChecksSdkIntAtLeast(api = Build.VERSION_CODES.Q)
+internal fun hasPlatformAlpn(): Boolean =
+    Build.VERSION.SDK_INT == 0 || Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q

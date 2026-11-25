@@ -722,7 +722,8 @@ public sealed class DesktopResumeStore
             string authenticatedPeerFingerprintHex,
             bool peerStillTrusted,
             CancellationToken cancellationToken =
-                default)
+                default,
+            bool requirePositiveRemainder = false)
     {
         await _gate.WaitAsync(
             cancellationToken);
@@ -840,6 +841,12 @@ public sealed class DesktopResumeStore
                         validOffset +
                         expectedLength);
                 validChunks++;
+            }
+
+            if (requirePositiveRemainder && validChunks > 0 && validOffset == journal.TotalBytes)
+            {
+                validChunks--;
+                validOffset = validChunks * journal.ChunkSize;
             }
 
             if (validChunks <
@@ -1226,6 +1233,43 @@ public sealed class DesktopResumeStore
                 TryDeleteFile(
                     assembledPath);
             }
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task<IReadOnlyList<DesktopResumeJournal>> ListActiveJournalsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            var now = _nowUnixMs();
+            var journals = LoadAllUnsafe();
+            foreach (var expired in journals.Where(item => item.ExpiresAtUnixMs <= now))
+                PurgeJournalUnsafe(expired);
+            return journals.Where(item => item.ExpiresAtUnixMs > now)
+                .OrderByDescending(item => item.UpdatedAtUnixMs).ToArray();
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task<bool> PurgeItemAsync(
+        SessionId originalSessionId, ItemId itemId, CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            var journal = ReadKnownJournalUnsafe(originalSessionId, itemId);
+            if (journal is null)
+                return false;
+            PurgeJournalUnsafe(journal);
+            return true;
         }
         finally
         {

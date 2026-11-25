@@ -244,6 +244,8 @@ fun HomeScreen(
             }
         }
 
+        GlideBluetoothShare()
+
         // Paired Devices Section
         Column(
             modifier = Modifier.fillMaxWidth(),

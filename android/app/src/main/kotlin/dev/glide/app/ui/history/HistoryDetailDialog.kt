@@ -452,6 +452,9 @@ fun HistoryItemCard(
             if (isReceiver && item.outcome == "Verified") {
                 Spacer(modifier = Modifier.height(10.dp))
                 if (item.isFileAvailable) {
+                    dev.glide.app.ui.transfer.AppInstallAction(
+                        item.receivedFileKey, item.digestHex, item.displayName, item.mimeType
+                    )
                     FlowRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),

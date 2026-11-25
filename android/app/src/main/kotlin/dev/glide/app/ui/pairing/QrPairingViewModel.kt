@@ -118,12 +118,13 @@ class QrPairingViewModel(
      */
     fun showLiveReceiverInvitation(
         invitation: LanInvitation,
-        onRevoke: () -> Unit
+        onRevoke: () -> Unit,
+        hotspotQr: String? = null
     ) {
         countdownJob?.cancel()
         externalInvitationRevoker = onRevoke
 
-        val uriString = InvitationCodec.encode(invitation)
+        val uriString = hotspotQr ?: InvitationCodec.encode(invitation)
         val bitmap = try {
             qrBitmapGenerator?.invoke(uriString) ?: QrEncoder.encodeToBitmap(uriString, 512)
         } catch (_: Exception) {

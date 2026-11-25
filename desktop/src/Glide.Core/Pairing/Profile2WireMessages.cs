@@ -15,6 +15,7 @@ public static class Profile2Constants
 
     public const string PurposePairOnly = "PAIR_ONLY";
     public const string PurposeTrustedSend = "TRUSTED_SEND";
+    public const string PurposeTrustedResume = "TRUSTED_RESUME";
 
     public const string AuthMethodSpake2PinV1 = "spake2-pin-v1";
     public const string AuthMethodQrTokenV2 = "qr-token-v2";
@@ -50,8 +51,35 @@ public abstract record Profile2Message(int V, string Type, string SessionId)
         string? ExpectedPresenceId = null,
         string? InvitationId = null,
         string? ExpectedPeerIdentityFingerprint = null,
-        int V = Profile2Constants.WireVersion)
-        : Profile2Message(V, "SESSION_OPEN", SessionId);
+        int V = Profile2Constants.WireVersion,
+        string? OriginalSessionId = null,
+        string? ItemId = null,
+        string? InitiatorRole = null,
+        string? ResumeManifestDigest = null)
+        : Profile2Message(V, "SESSION_OPEN", SessionId)
+    {
+        internal SessionOpen ValidateResume()
+        {
+            if (Purpose == Profile2Constants.PurposeTrustedResume)
+            {
+                if (AuthMethod != Profile2Constants.AuthMethodIdentityV1 || InvitationId is not null
+                    || OriginalSessionId is null || !IdentifierValidation.IsValidUuidV4(OriginalSessionId)
+                    || (ItemId is not null && !IdentifierValidation.IsValidUuidV4(ItemId))
+                    || InitiatorRole is not ("sender" or "receiver")
+                    || (ResumeManifestDigest is not null && !IdentifierValidation.IsValidSha256(ResumeManifestDigest))
+                    || (ItemId is null && ResumeManifestDigest is null))
+                    throw new ProtocolViolationException(WireErrorCodes.MalformedMessage,
+                        "Invalid trusted resume session opening.");
+            }
+            else if (OriginalSessionId is not null || ItemId is not null || InitiatorRole is not null
+                || ResumeManifestDigest is not null)
+            {
+                throw new ProtocolViolationException(WireErrorCodes.MalformedMessage,
+                    "Resume fields require a trusted resume session.");
+            }
+            return this;
+        }
+    }
 
     public sealed record SessionOpenAck(
         string SessionId,
@@ -115,6 +143,7 @@ public static class Profile2WireCodec
         switch (message)
         {
             case Profile2Message.SessionOpen open:
+                open.ValidateResume();
                 obj["purpose"] = open.Purpose;
                 obj["authMethod"] = open.AuthMethod;
                 obj["initiatorNonce"] = open.InitiatorNonce;
@@ -124,6 +153,10 @@ public static class Profile2WireCodec
                 if (open.ExpectedPresenceId != null) obj["expectedPresenceId"] = open.ExpectedPresenceId;
                 if (open.InvitationId != null) obj["invitationId"] = open.InvitationId;
                 if (open.ExpectedPeerIdentityFingerprint != null) obj["expectedPeerIdentityFingerprint"] = open.ExpectedPeerIdentityFingerprint;
+                if (open.OriginalSessionId != null) obj["originalSessionId"] = open.OriginalSessionId;
+                if (open.ItemId != null) obj["itemId"] = open.ItemId;
+                if (open.InitiatorRole != null) obj["initiatorRole"] = open.InitiatorRole;
+                if (open.ResumeManifestDigest != null) obj["resumeManifestDigest"] = open.ResumeManifestDigest;
                 break;
 
             case Profile2Message.SessionOpenAck ack:
@@ -223,7 +256,7 @@ public static class Profile2WireCodec
 
         string[] allowedFields = type switch
         {
-            "SESSION_OPEN" => ["v", "type", "sessionId", "purpose", "authMethod", "initiatorNonce", "initiatorDeviceName", "initiatorPlatform", "initiatorIdentityPublicKey", "expectedPresenceId", "invitationId", "expectedPeerIdentityFingerprint"],
+            "SESSION_OPEN" => ["v", "type", "sessionId", "purpose", "authMethod", "initiatorNonce", "initiatorDeviceName", "initiatorPlatform", "initiatorIdentityPublicKey", "expectedPresenceId", "invitationId", "expectedPeerIdentityFingerprint", "originalSessionId", "itemId", "initiatorRole", "resumeManifestDigest"],
             "SESSION_OPEN_ACK" => ["v", "type", "sessionId", "accepted", "errorCode", "message", "responderNonce", "responderDeviceName", "responderPlatform", "responderIdentityPublicKey", "advertisedPresenceId"],
             "PAIR_MSG" => ["v", "type", "sessionId", "role", "spakePublicValue", "invitationHash"],
             "PAIR_CONFIRM" => ["v", "type", "sessionId", "role", "keyConfirmationMac", "identitySignature"],
@@ -254,7 +287,11 @@ public static class Profile2WireCodec
                 ExpectedPresenceId: GetOptionalString(obj, "expectedPresenceId"),
                 InvitationId: GetOptionalString(obj, "invitationId"),
                 ExpectedPeerIdentityFingerprint: GetOptionalString(obj, "expectedPeerIdentityFingerprint"),
-                V: v),
+                V: v,
+                OriginalSessionId: GetOptionalString(obj, "originalSessionId"),
+                ItemId: GetOptionalString(obj, "itemId"),
+                InitiatorRole: GetOptionalString(obj, "initiatorRole"),
+                ResumeManifestDigest: GetOptionalString(obj, "resumeManifestDigest")).ValidateResume(),
 
             "SESSION_OPEN_ACK" => new Profile2Message.SessionOpenAck(
                 SessionId: sessionId,

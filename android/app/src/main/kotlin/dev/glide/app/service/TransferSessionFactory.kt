@@ -5,6 +5,7 @@ import dev.glide.core.domain.DeviceRole
 import dev.glide.core.domain.ItemId
 import dev.glide.core.domain.PeerId
 import dev.glide.core.domain.SessionId
+import dev.glide.core.domain.Sha256Digest
 import dev.glide.core.domain.SourceHandle
 import dev.glide.core.domain.TransferBatch
 import dev.glide.core.identity.PersistentTrustManager
@@ -25,6 +26,8 @@ import dev.glide.data.store.ResumeSenderRevalidationResult
 import dev.glide.data.source.ResumeSourceVerifier
 import dev.glide.data.store.ResumableStagingStore
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import javax.inject.Singleton
 
 /**
@@ -146,7 +149,10 @@ class TransferSessionFactory(
             enableTrueResumeCapability =
                 persistentTrustManager != null &&
                     resumeSourceVerifier != null &&
-                    resumableStagingStore != null
+                    resumableStagingStore != null,
+            purgeResumeItemAuthority = resumableStagingStore?.let { store ->
+                { original, item -> store.purgeSession(original.value, item.value) }
+            }
         )
     }
 
@@ -267,7 +273,7 @@ class TransferSessionFactory(
 
     /**
      * Constructs a sender-side reconnect coordinator for exactly one retained resumable item.
-     * Ordinary sender sessions never call this method and keep resume-v1 disabled.
+     * A reconnect is bound to the original authenticated item and peer.
      */
     fun createResumeSenderSession(
         activeSessionId: SessionId,
@@ -329,6 +335,7 @@ class TransferSessionFactory(
                     authenticatedPeerFingerprintHex = authenticatedPeerFingerprintHex
                 )
             },
+            purgeResumeItemAuthority = { original, item -> store.purgeSession(original.value, item.value) },
             enableTrueResumeCapability =
                 true
         )
@@ -401,7 +408,8 @@ class TransferSessionFactory(
                             authenticatedPeerFingerprintHex =
                                 authenticatedPeerFingerprintHex,
                             peerStillTrusted =
-                                peerStillTrusted
+                                peerStillTrusted,
+                            requirePositiveRemainder = true
                         )
                 ) {
                     is ResumeReceiverRevalidationResult.Ready ->
@@ -451,6 +459,38 @@ class TransferSessionFactory(
                                     .ResumeRejectCodes
                                     .UNAUTHORIZED
                             )
+                }
+            },
+            recordReceiverResumeChunk = { original, item, index, bytes ->
+                store.recordReceiverChunk(original.value, item.value, index, bytes)
+            },
+            finalizeReceiverResumeItem = finalizeResume@{ _, original, item, expectedDigest ->
+                val journal = checkNotNull(store.getJournal(original.value, item.value))
+                check(persistentTrustManager.trustedPeerByFingerprint(journal.peerFingerprintHex) != null) {
+                    "Resume peer is no longer trusted."
+                }
+                val digest = Sha256Digest(expectedDigest)
+                val alreadyCommitted = receiveStore.findVerifiedCommit(item, journal.totalBytes, digest)
+                if (alreadyCommitted != null) {
+                    store.purgeSession(original.value, item.value)
+                    return@finalizeResume alreadyCommitted
+                }
+                val staging = receiveStore.prepareStaging(
+                    original, item, journal.totalBytes, journal.itemName, journal.mimeType, journal.relativePath
+                )
+                var committed = false
+                try {
+                    val copied = receiveStore.openStagingOutput(staging).use { output ->
+                        store.copyVerifiedReceiverTo(original.value, item.value, expectedDigest, output)
+                    }
+                    check(copied != null && copied.sizeBytes == journal.totalBytes)
+                    check(persistentTrustManager.trustedPeerByFingerprint(journal.peerFingerprintHex) != null)
+                    receiveStore.commitVerified(staging, digest).also {
+                        committed = true
+                        store.purgeSession(original.value, item.value)
+                    }
+                } finally {
+                    if (!committed) withContext(NonCancellable) { receiveStore.discardStaging(staging) }
                 }
             },
             enableTrueResumeCapability =

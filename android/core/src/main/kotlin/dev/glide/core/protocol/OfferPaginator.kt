@@ -6,7 +6,8 @@ import dev.glide.core.domain.ProtocolLimits
 import dev.glide.core.domain.TransferBatch
 import dev.glide.core.domain.TransferFailure
 import dev.glide.core.domain.TransferItem
-import java.nio.charset.StandardCharsets
+import dev.glide.core.domain.AppTransferMetadata
+import dev.glide.core.domain.ItemId
 
 data class PagedOffer(
     val begin: OfferBeginBody,
@@ -33,6 +34,7 @@ object OfferPaginator {
         val pages = mutableListOf<OfferPageBody>()
         var currentPageItems = mutableListOf<OfferItemDto>()
         var currentPageEstimatedBytes = 256 // Base JSON envelope overhead
+        val currentApps = mutableMapOf<ItemId, AppTransferMetadata>()
 
         for (item in batch.items) {
             val carriesResumeMetadata =
@@ -60,26 +62,15 @@ object OfferPaginator {
                     item.resumeChunkSize
             )
 
-            val nameBytes = item.name.toByteArray(StandardCharsets.UTF_8).size
-            val mimeBytes = item.mimeType.toByteArray(StandardCharsets.UTF_8).size
-            val relPathBytes = item.relativePath?.toByteArray(StandardCharsets.UTF_8)?.size ?: 0
-            val resumeMetadataBytes =
-                if (itemDto.rootHash != null) {
-                    96
-                } else {
-                    0
-                }
-            val itemEstimatedBytes =
-                36 +
-                    nameBytes +
-                    mimeBytes +
-                    itemDto.sizeBytes.length +
-                    (if (relPathBytes > 0) relPathBytes + 20 else 0) +
-                    resumeMetadataBytes +
-                    32
+            val itemEstimatedBytes = ProtocolCodec.encodeBody(itemDto).toString().encodeToByteArray().size + 1
+            val appHint = item.appMetadata?.takeIf {
+                AppOfferMetadata.encode(mapOf(item.id to it)) != null
+            }
+            val appHintsOverflow = appHint != null &&
+                AppOfferMetadata.encode(currentApps + (item.id to appHint)) == null
 
             // If page is full by item count OR would exceed safe payload ceiling, start new page
-            if (currentPageItems.size >= maxItemsPerPage ||
+            if (currentPageItems.size >= maxItemsPerPage || appHintsOverflow ||
                 (currentPageItems.isNotEmpty() && currentPageEstimatedBytes + itemEstimatedBytes > safePagePayloadCeilingBytes)
             ) {
                 pages.add(
@@ -91,9 +82,11 @@ object OfferPaginator {
                 )
                 currentPageItems = mutableListOf()
                 currentPageEstimatedBytes = 256
+                currentApps.clear()
             }
 
             currentPageItems.add(itemDto)
+            if (appHint != null) currentApps[item.id] = appHint
             currentPageEstimatedBytes += itemEstimatedBytes
         }
 

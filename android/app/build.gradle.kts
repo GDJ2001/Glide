@@ -68,6 +68,7 @@ android {
         targetSdk = 37
         versionCode = customVersionCode
         versionName = customVersionName
+        resValue("string", "shortcut_target_package", customApplicationId)
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -75,6 +76,7 @@ android {
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
+            resValue("string", "shortcut_target_package", "$customApplicationId.debug")
             isDebuggable = true
         }
         release {
@@ -106,6 +108,7 @@ android {
 
     buildFeatures {
         compose = true
+        resValues = true
     }
 
     testOptions {
@@ -122,9 +125,9 @@ android {
     }
 
     bundle {
-        language { enableSplit = true }
-        density { enableSplit = true }
-        abi { enableSplit = true }
+        language { enableSplit = false }
+        density { enableSplit = false }
+        abi { enableSplit = false }
     }
 }
 

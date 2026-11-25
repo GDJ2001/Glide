@@ -25,7 +25,8 @@ public static class DesktopProfile2Router
         DesktopPairingCoordinator pairing,
         Func<TlsSocketConnection, Profile2Message.SessionOpen, CancellationToken, Task>? trustedSendHandler,
         TimeSpan? openDeadline,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Func<TlsSocketConnection, Profile2Message.SessionOpen, CancellationToken, Task>? trustedResumeHandler = null)
     {
         ArgumentNullException.ThrowIfNull(connection);
         ArgumentNullException.ThrowIfNull(pairing);
@@ -68,6 +69,13 @@ public static class DesktopProfile2Router
             && trustedSendHandler != null)
         {
             await trustedSendHandler(connection, open, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        if (string.Equals(open.Purpose, Profile2Constants.PurposeTrustedResume, StringComparison.Ordinal)
+            && trustedResumeHandler != null)
+        {
+            await trustedResumeHandler(connection, open, cancellationToken).ConfigureAwait(false);
             return;
         }
 

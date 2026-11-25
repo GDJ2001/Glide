@@ -165,6 +165,8 @@ fun DiscoveryScreen(
         }
 
         // Main Discovery Content State Presentation
+        item { ManualHotspotAction(host = false, onReady = onScanQrClicked) }
+
         when (uiState) {
             is DiscoveryUiState.Searching -> {
                 if (uiState.peers.isEmpty()) {

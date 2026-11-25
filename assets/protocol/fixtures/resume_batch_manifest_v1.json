@@ -1,0 +1,29 @@
+{
+  "manifest": {
+    "sessionId": "b1aa8c35-58df-4d2c-b066-a73bb1a8ec77",
+    "batchId": "895bc6b2-98bf-42e6-9e8a-8bfda09065a2",
+    "senderFingerprint": "1212121212121212121212121212121212121212121212121212121212121212",
+    "receiverFingerprint": "abababababababababababababababababababababababababababababababab",
+    "items": [
+      {
+        "id": "dd3b5290-b203-4a42-9364-843cd995a833",
+        "name": "empty.txt",
+        "relativePath": null,
+        "sizeBytes": 0,
+        "chunkSize": 0,
+        "rootHash": null,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "id": "ea2a6c5f-07dc-4079-971c-12be8fdabb6f",
+        "name": "résumé.bin",
+        "relativePath": "Examples/résumé.bin",
+        "sizeBytes": 4294967301,
+        "chunkSize": 1048576,
+        "rootHash": "dededededededededededededededededededededededededededededededede",
+        "digest": "3535353535353535353535353535353535353535353535353535353535353535"
+      }
+    ]
+  },
+  "sha256": "84dad5efcc668f2cb3655bf17812ae20a97065f4d5b7ae937511f82c004b8e41"
+}

@@ -136,7 +136,8 @@ class DatabaseSchemaVersionTest {
                 GlideDatabase.MIGRATION_1_2,
                 GlideDatabase.MIGRATION_2_3,
                 GlideDatabase.MIGRATION_3_4,
-                GlideDatabase.MIGRATION_4_5
+                GlideDatabase.MIGRATION_4_5,
+                GlideDatabase.MIGRATION_5_6
             )
         assertEquals(
             "Number of declared migrations (${declaredMigrations.size}) must equal (schema version count - 1 = ${versionCount - 1})",

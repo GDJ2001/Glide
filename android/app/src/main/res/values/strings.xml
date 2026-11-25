@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Glide</string>
+    <string name="quick_tile_label">Glide Share</string>
+    <string name="shortcut_send">Send Files &amp; Apps</string>
+    <string name="shortcut_receive">Receive</string>
+    <string name="shortcut_scan">Scan QR</string>
 </resources>

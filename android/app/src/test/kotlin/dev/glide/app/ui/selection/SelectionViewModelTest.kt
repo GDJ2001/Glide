@@ -162,7 +162,7 @@ class SelectionViewModelTest {
         val state = viewModel.uiState.value
         assertTrue(state is SelectionUiState.Error)
         val error = state as SelectionUiState.Error
-        assertTrue(error.message.contains("Batch limit exceeded"))
+        assertTrue(error.message.contains(ProtocolLimits.MAX_ITEMS_PER_BATCH.toString()))
     }
 
     @Test

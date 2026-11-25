@@ -113,15 +113,13 @@ class LanListener(
             return
         }
 
-        // 3. Bind socket to active network if network scope is present
-        networkScope?.bindSocket(rawSocket)
-
         // 4. Concurrency limit: max 2 concurrent pre-auth handshakes
         if (!preAuthSemaphore.tryAcquire()) {
             // Server busy with pre-auth handshakes; reject immediately
             try { rawSocket.close() } catch (_: Exception) {}
             return
         }
+        networkScope?.registerAcceptedSocket(rawSocket)
 
         // 5. Perform TLS handshake on IO dispatcher
         coroutineScope.launch {
@@ -133,13 +131,13 @@ class LanListener(
                     rawSocket,
                     null,
                     rawSocket.port,
-                    false // do not auto-close underlying socket on wrap failure
+                    true // closing the TLS stream must close its underlying socket
                 ) as SSLSocket
 
                 sslSocket.useClientMode = false
                 sslSocket.enabledProtocols = arrayOf(PinnedTlsConnector.PROTOCOL_TLS_V1_3)
 
-                if (Build.VERSION.SDK_INT == 0 || Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                if (hasPlatformAlpn()) {
                     val params = sslSocket.sslParameters
                     params.applicationProtocols = arrayOf(PinnedTlsConnector.ALPN_GLIDE_LAN_V1)
                     sslSocket.sslParameters = params
@@ -150,7 +148,7 @@ class LanListener(
 
                 // Verify ALPN & protocol
                 val negotiatedProtocol = sslSocket.session.protocol
-                val negotiatedAlpn = if (Build.VERSION.SDK_INT == 0 || Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val negotiatedAlpn = if (hasPlatformAlpn()) {
                     sslSocket.applicationProtocol
                 } else {
                     PinnedTlsConnector.ALPN_GLIDE_LAN_V1
@@ -171,6 +169,7 @@ class LanListener(
                 rateLimiter.recordFailure(remoteAddress)
                 try { sslSocket?.close() } catch (_: Exception) {}
                 try { rawSocket.close() } catch (_: Exception) {}
+                networkScope?.unregisterSocket(rawSocket)
             } finally {
                 preAuthSemaphore.release()
             }

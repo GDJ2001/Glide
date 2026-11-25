@@ -2,13 +2,10 @@ package dev.glide.app.ui.selection
 
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.material.icons.Icons
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,61 +17,58 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import dev.glide.core.domain.BatchId
-import dev.glide.core.domain.ItemId
-import dev.glide.core.domain.ProtocolLimits
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.glide.core.domain.SourceHandle
 import dev.glide.core.domain.TransferBatch
-import dev.glide.core.ports.SourceAccessException
-import dev.glide.data.source.AndroidContentResolverWrapper
-import dev.glide.data.source.AndroidSourceAccess
-import dev.glide.data.source.BoundedSourceStager
+import dev.glide.data.source.InstalledAppsRepository
 import dev.glide.designsystem.PrimaryButtonShape
 import dev.glide.designsystem.glideHoverHand
 import dev.glide.designsystem.isolateBidi
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.io.File
-import java.util.UUID
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 
+private enum class SelectionCategory(val label: String) {
+    Apps("Apps"), Photos("Photos"), Videos("Videos"), Audio("Audio"),
+    Documents("Documents"), Folders("Folders")
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SelectionScreen(
     onBack: () -> Unit,
@@ -86,644 +80,220 @@ fun SelectionScreen(
     viewModel: SelectionViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
 ) {
     val context = LocalContext.current
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val batch = state as? SelectionUiState.BatchReady
+    val busy = state is SelectionUiState.Validating ||
+        state is SelectionUiState.StagingSource || state is SelectionUiState.Hashing
+    var category by rememberSaveable { mutableStateOf(SelectionCategory.Documents) }
+    var pendingApps by rememberSaveable { mutableStateOf(arrayListOf<String>()) }
+    var showSystemApps by rememberSaveable { mutableStateOf(false) }
+    var appSearch by rememberSaveable { mutableStateOf("") }
+    val repository = remember(context.applicationContext) { InstalledAppsRepository(context) }
+    var apps by remember { mutableStateOf<List<InstalledAppsRepository.App>?>(null) }
+    var catalogError by remember { mutableStateOf(false) }
 
-    androidx.compose.runtime.LaunchedEffect(initialState) {
-        if (initialState !is SelectionUiState.Idle) {
-            viewModel.setUiStateForTesting(initialState)
+    LaunchedEffect(category) {
+        if (category == SelectionCategory.Apps) {
+            catalogError = false
+            try {
+                apps = repository.list()
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                catalogError = true
+            }
         }
     }
-
-    androidx.compose.runtime.LaunchedEffect(initialUris) {
-        if (initialUris.isNotEmpty() && uiState is SelectionUiState.Idle) {
+    LaunchedEffect(initialState) {
+        if (initialState !is SelectionUiState.Idle) viewModel.setUiStateForTesting(initialState)
+    }
+    LaunchedEffect(initialUris) {
+        if (initialUris.isNotEmpty() && state == SelectionUiState.Idle) {
             viewModel.onUrisSelected(initialUris, context)
         }
     }
-
-    val onUrisSelected: (List<Uri>) -> Unit = { uris: List<Uri> ->
-        viewModel.onUrisSelected(uris, context)
+    val visualPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) {
+        viewModel.onUrisSelected(it, context)
     }
-
-    // Photo picker contract (PickMultipleVisualMedia)
-    val photoPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickMultipleVisualMedia()
-    ) { uris: List<Uri> ->
-        onUrisSelected(uris)
+    val documentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) {
+        viewModel.onUrisSelected(it, context)
     }
-
-    // Multi-document picker contract (OpenMultipleDocuments)
-    val documentPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenMultipleDocuments()
-    ) { uris: List<Uri> ->
-        onUrisSelected(uris)
+    val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { tree ->
+        tree?.let { viewModel.onTreeUriSelected(it, context) }
     }
+    val stagedPackages = batch?.items.orEmpty().mapNotNull { it.installedPackageName }.toSet()
 
-    // Folder picker contract (OpenDocumentTree)
-    val folderPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocumentTree()
-    ) { treeUri: Uri? ->
-        if (treeUri != null) {
-            viewModel.onTreeUriSelected(treeUri, context)
-        }
-    }
-
-    LazyColumn(
-        modifier = modifier
-            .fillMaxSize()
-            .safeDrawingPadding(),
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        // Top Navigation Header
-        item {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .semantics { contentDescription = "Selection screen navigation header" },
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                OutlinedButton(
-                    onClick = {
-                        viewModel.clear()
-                        onBack()
-                    },
-                    shape = PrimaryButtonShape,
-                    modifier = Modifier
-                        .heightIn(min = 48.dp)
-                        .semantics {
-                            role = Role.Button
-                            contentDescription = "Navigate back"
-                        }
+    Column(modifier.fillMaxSize().safeDrawingPadding()) {
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            item {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(text = "Back", style = MaterialTheme.typography.labelLarge)
-                }
-
-                if (uiState is SelectionUiState.BatchReady) {
-                    TextButton(
-                        onClick = {
-                            viewModel.clear()
-                        },
-                        modifier = Modifier.semantics {
-                            role = Role.Button
-                            contentDescription = "Clear all selected files"
-                        }
-                    ) {
-                        Text("Clear all", color = MaterialTheme.colorScheme.error)
+                    OutlinedButton(onClick = { viewModel.clear(); onBack() }) { Text("Back") }
+                    if (batch?.items?.isNotEmpty() == true) {
+                        TextButton(onClick = viewModel::clear) { Text("Clear all") }
                     }
                 }
+                Text("Select files to send", style = MaterialTheme.typography.headlineLarge)
             }
-        }
 
-        // Section Title
-        item {
-            Text(
-                text = "Select files to send",
-                style = MaterialTheme.typography.headlineLarge,
-                color = MaterialTheme.colorScheme.onBackground
-            )
-        }
-
-        // State Content Presentation
-        when (val state = uiState) {
-            is SelectionUiState.Idle, is SelectionUiState.Cancelled -> {
-                item {
-                    Card(
-                        shape = MaterialTheme.shapes.medium,
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .semantics { contentDescription = "File picker prompt card" }
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(24.dp),
-                            verticalArrangement = Arrangement.spacedBy(16.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            if (state is SelectionUiState.Cancelled) {
-                                Text(
-                                    text = "Selection cancelled",
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-
-                            Button(
-                                onClick = {
-                                    photoPickerLauncher.launch(
-                                        MediaPickerHelper.createVisualMediaRequest()
-                                    )
-                                },
-                                shape = PrimaryButtonShape,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(min = 56.dp)
-                                    .semantics {
-                                        role = Role.Button
-                                        contentDescription = "Choose photos and videos from system photo picker"
-                                    }
-                            ) {
-                                Text(
-                                    text = "Choose photos & videos",
-                                    style = MaterialTheme.typography.titleMedium
-                                )
-                            }
-
-                            OutlinedButton(
-                                onClick = {
-                                    documentPickerLauncher.launch(MediaPickerHelper.getDocumentMimeTypes())
-                                },
-                                shape = PrimaryButtonShape,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(min = 48.dp)
-                                    .semantics {
-                                        role = Role.Button
-                                        contentDescription = "Choose files and documents from system picker"
-                                    }
-                            ) {
-                                Text(
-                                    text = "Choose files & documents",
-                                    style = MaterialTheme.typography.labelLarge
-                                )
-                            }
-
-                            OutlinedButton(
-                                onClick = {
-                                    folderPickerLauncher.launch(null)
-                                },
-                                shape = PrimaryButtonShape,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(min = 48.dp)
-                                    .semantics {
-                                        role = Role.Button
-                                        contentDescription = "Choose entire folder from system picker"
-                                    }
-                            ) {
-                                Text(
-                                    text = "Choose folder",
-                                    style = MaterialTheme.typography.labelLarge
-                                )
-                            }
-                        }
+            item {
+                PrimaryScrollableTabRow(selectedTabIndex = category.ordinal, edgePadding = 0.dp) {
+                    SelectionCategory.entries.forEach { tab ->
+                        Tab(
+                            selected = tab == category,
+                            onClick = { category = tab },
+                            text = { Text(tab.label) }
+                        )
                     }
                 }
             }
 
-            is SelectionUiState.Validating -> {
+            if (!busy && category == SelectionCategory.Apps) {
                 item {
-                    Card(
-                        shape = MaterialTheme.shapes.medium,
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .semantics { contentDescription = "Validating selected files metadata" }
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(24.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
-                            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                            Text(
-                                text = "Checking files (${state.currentCount}/${state.totalCount})...",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    }
-                }
-            }
-
-            is SelectionUiState.StagingSource -> {
-                item {
-                    Card(
-                        shape = MaterialTheme.shapes.medium,
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .semantics {
-                                contentDescription = "Staging ${state.displayName}: ${formatFileSize(state.bytesStaged)} prepared"
-                            }
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(24.dp),
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(16.dp)
-                            ) {
-                                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                                Column {
-                                    Text(
-                                        text = "Preparing file: ${state.displayName}",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Text(
-                                        text = "Staged: ${formatFileSize(state.bytesStaged)}",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-
-                            OutlinedButton(
-                                onClick = {
-                                    viewModel.cancelStaging()
-                                },
-                                shape = PrimaryButtonShape,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(min = 48.dp)
-                                    .semantics {
-                                        role = Role.Button
-                                        contentDescription = "Cancel file staging"
-                                    }
-                            ) {
-                                Text(
-                                    text = "Cancel staging",
-                                    color = MaterialTheme.colorScheme.error,
-                                    style = MaterialTheme.typography.labelLarge
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            is SelectionUiState.BatchReady -> {
-                // Batch Summary Card
-                item {
-                    Card(
-                        shape = MaterialTheme.shapes.medium,
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.primaryContainer
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .semantics {
-                                contentDescription = "Batch summary: ${state.itemCount} files selected, total size ${formatFileSize(state.totalBytes)}"
-                            }
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            FlowRow(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Text(
-                                    text = "${state.itemCount} ${if (state.itemCount == 1) "file" else "files"} · ${formatFileSize(state.totalBytes)}",
-                                    style = MaterialTheme.typography.headlineSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                                )
-                                Text(
-                                    text = "${state.itemCount} / ${ProtocolLimits.MAX_ITEMS_PER_BATCH}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                                )
-                            }
-
-                            if (state.hasUnavailableItems) {
-                                Surface(
-                                    shape = MaterialTheme.shapes.small,
-                                    color = MaterialTheme.colorScheme.errorContainer,
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Text(
-                                        text = "Some files are unavailable or unreadable. Please remove them before proceeding.",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onErrorContainer,
-                                        modifier = Modifier.padding(8.dp)
-                                    )
-                                }
-                            }
-
-                            if (state.isLimitExceeded) {
-                                Surface(
-                                    shape = MaterialTheme.shapes.small,
-                                    color = MaterialTheme.colorScheme.errorContainer,
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Text(
-                                        text = "Batch limit of ${ProtocolLimits.MAX_ITEMS_PER_BATCH} files exceeded. Please remove files to continue.",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onErrorContainer,
-                                        modifier = Modifier.padding(8.dp)
-                                    )
-                                }
-                            }
-                            if (state.isTotalBytesExceeded) {
-                                Surface(
-                                    shape = MaterialTheme.shapes.small,
-                                    color = MaterialTheme.colorScheme.errorContainer,
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Text(
-                                        text = "This batch exceeds ${formatFileSize(ProtocolLimits.MAX_BATCH_BYTES)}. Remove files or send smaller batches.",
-                                        color = MaterialTheme.colorScheme.onErrorContainer,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        modifier = Modifier.padding(8.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Virtualized Item List directly inside the screen LazyColumn
-                items(
-                    items = state.items,
-                    key = { it.handle.value }
-                ) { item ->
-                    FileItemRow(
-                        item = item,
-                        onRemove = {
-                            viewModel.removeFile(item.id)
-                        }
-                    )
-                }
-
-                // Action Bar
-                item {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Button(
-                            onClick = {
-                                if (state.canProceed) {
-                                    val prepared = viewModel.prepareBatchForTransfer()
-                                    if (prepared != null) {
-                                        val (batch, _) = prepared
-                                        if (onProceedToSendBatch != null) {
-                                            onProceedToSendBatch(batch)
-                                        } else {
-                                            val firstHandle = state.validItems.firstOrNull()?.handle
-                                                ?: SourceHandle("glide://batch/${batch.id.value}")
-                                            onProceedToSend(firstHandle)
-                                        }
-                                    }
-                                }
-                            },
-                            enabled = state.canProceed,
-                            shape = PrimaryButtonShape,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary
-                            ),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 56.dp)
-                                .semantics {
-                                    role = Role.Button
-                                    contentDescription = "Proceed to send ${state.validItemCount} files"
-                                }
-                        ) {
-                            Text(
-                                text = if (state.canProceed) {
-                                    "Proceed to send (${state.validItemCount})"
-                                } else if (state.hasUnavailableItems) {
-                                    "Remove unavailable files to proceed"
-                                } else if (state.isLimitExceeded) {
-                                    "Batch exceeds 1,000 file limit"
-                                } else if (state.isTotalBytesExceeded) {
-                                    "Remove files to reduce batch size"
-                                } else {
-                                    "Proceed to send"
-                                },
-                                style = MaterialTheme.typography.titleMedium
-                            )
-                        }
-
-
-                        FlowRow(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            OutlinedButton(
-                                onClick = {
-                                    photoPickerLauncher.launch(
-                                        MediaPickerHelper.createVisualMediaRequest()
-                                    )
-                                },
-                                shape = PrimaryButtonShape,
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
-                                modifier = Modifier
-                                    .widthIn(min = 104.dp)
-                                    .heightIn(min = 48.dp)
-                                    .semantics {
-                                        role = Role.Button
-                                        contentDescription = "Add photos and videos to batch"
-                                    }
-                            ) {
-                                Text(
-                                    text = "Add photos",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-
-                            OutlinedButton(
-                                onClick = {
-                                    documentPickerLauncher.launch(MediaPickerHelper.getDocumentMimeTypes())
-                                },
-                                shape = PrimaryButtonShape,
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
-                                modifier = Modifier
-                                    .widthIn(min = 104.dp)
-                                    .heightIn(min = 48.dp)
-                                    .semantics {
-                                        role = Role.Button
-                                        contentDescription = "Add files and documents to batch"
-                                    }
-                            ) {
-                                Text(
-                                    text = "Add files",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-
-                            OutlinedButton(
-                                onClick = {
-                                    folderPickerLauncher.launch(null)
-                                },
-                                shape = PrimaryButtonShape,
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
-                                modifier = Modifier
-                                    .widthIn(min = 104.dp)
-                                    .heightIn(min = 48.dp)
-                                    .semantics {
-                                        role = Role.Button
-                                        contentDescription = "Add folder to batch"
-                                    }
-                            ) {
-                                Text(
-                                    text = "Add folder",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            is SelectionUiState.Ready -> {
-                // Backward-compatible single file presentation
-                item {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        Card(
-                            shape = MaterialTheme.shapes.medium,
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.primaryContainer
-                            ),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(20.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                Text(
-                                    text = state.displayName.isolateBidi(),
-                                    style = MaterialTheme.typography.titleLarge,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                                )
-                                Text(
-                                    text = "Size: ${formatFileSize(state.sizeBytes)} (${state.sizeBytes} bytes)",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                                )
-                                Text(
-                                    text = "SHA-256: ${state.digest.value}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontFamily = FontFamily.Monospace,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                                )
-                            }
-                        }
-
-                        Button(
-                            onClick = {
-                                val prepared = viewModel.prepareReadyFileForTransfer()
-                                if (prepared != null) {
-                                    val (batch, _) = prepared
-                                    if (onProceedToSendBatch != null) {
-                                        onProceedToSendBatch(batch)
-                                    } else {
-                                        onProceedToSend(state.handle)
-                                    }
-                                }
-                            },
-                            shape = PrimaryButtonShape,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 56.dp)
-                        ) {
-                            Text("Proceed to send", style = MaterialTheme.typography.titleMedium)
-                        }
-
-                    }
-                }
-            }
-
-            is SelectionUiState.Error -> {
-                item {
-                    Card(
-                        shape = MaterialTheme.shapes.medium,
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.errorContainer
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .semantics { contentDescription = "Selection error: ${state.message}" }
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(20.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Text(
-                                text = "Selection Error",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onErrorContainer
-                            )
-                            Text(
-                                text = state.message,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onErrorContainer
-                            )
-
-                            Button(
-                                onClick = { documentPickerLauncher.launch(MediaPickerHelper.getDocumentMimeTypes()) },
-                                shape = PrimaryButtonShape,
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.error,
-                                    contentColor = MaterialTheme.colorScheme.onError
-                                ),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(min = 48.dp)
-                            ) {
-                                Text(text = "Choose files again")
-                            }
-                        }
-                    }
-                }
-            }
-            is SelectionUiState.Hashing -> {
-                // Backward-compatible hashing progress presentation
-                item {
-                    Card(
-                        shape = MaterialTheme.shapes.medium,
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant
-                        ),
+                    OutlinedTextField(
+                        value = appSearch,
+                        onValueChange = { appSearch = it },
+                        label = { Text("Search apps") },
+                        singleLine = true,
                         modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(24.dp),
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(selected = !showSystemApps, onClick = { showSystemApps = false },
+                            label = { Text("User apps") })
+                        FilterChip(selected = showSystemApps, onClick = { showSystemApps = true },
+                            label = { Text("System apps") })
+                    }
+                    Text("Only app packages are shared.", style = MaterialTheme.typography.bodySmall)
+                    val selected = apps.orEmpty().filter {
+                        it.packageName in pendingApps && it.packageName !in stagedPackages
+                    }
+                    Button(
+                        enabled = selected.isNotEmpty(),
+                        onClick = {
+                            viewModel.addInstalledApps(selected, repository)
+                            pendingApps = arrayListOf()
+                        }
+                    ) { Text("Add selected apps") }
+                }
+
+                val visibleApps = apps.orEmpty().filter { app ->
+                    app.system == showSystemApps &&
+                        (app.label.contains(appSearch, ignoreCase = true) ||
+                            app.packageName.contains(appSearch, ignoreCase = true))
+                }
+                if (visibleApps.isEmpty()) {
+                    item {
+                        Text(when {
+                            catalogError -> "Couldn’t load apps. Reopen the Apps tab to retry."
+                            apps == null -> "Loading apps…"
+                            else -> "No matching apps."
+                        })
+                    }
+                }
+                items(visibleApps, key = { "app:${it.packageName}" }) { app ->
+                    val alreadyAdded = app.packageName in stagedPackages
+                    val checked = alreadyAdded || app.packageName in pendingApps
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = checked,
+                            enabled = !alreadyAdded,
+                            onCheckedChange = { selected ->
+                                pendingApps = ArrayList(pendingApps.filterNot { it == app.packageName })
+                                if (selected) pendingApps = ArrayList(pendingApps + app.packageName)
+                            },
+                            modifier = Modifier.semantics { contentDescription = app.label }
+                        )
+                        Column(Modifier.weight(1f)) {
+                            Text(app.label.isolateBidi(), maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text(
-                                text = "Checking: ${state.displayName}",
-                                style = MaterialTheme.typography.titleMedium
+                                if (alreadyAdded) "Added" else if (app.split) "${app.versionName} · Split APKs" else app.versionName,
+                                style = MaterialTheme.typography.bodySmall
                             )
                         }
                     }
+                }
+            } else if (!busy) {
+                item {
+                    OutlinedButton(
+                        onClick = {
+                            when (category) {
+                                SelectionCategory.Photos -> visualPicker.launch(
+                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                )
+                                SelectionCategory.Videos -> visualPicker.launch(
+                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
+                                )
+                                SelectionCategory.Audio -> documentPicker.launch(MediaPickerHelper.getAudioMimeTypes())
+                                SelectionCategory.Documents -> documentPicker.launch(MediaPickerHelper.getDocumentMimeTypes())
+                                SelectionCategory.Folders -> folderPicker.launch(null)
+                                SelectionCategory.Apps -> Unit
+                            }
+                        }
+                    ) { Text(if (category == SelectionCategory.Folders) "Add folder" else "Add ${category.label.lowercase()}") }
+                }
+            }
+
+            when (val progress = state) {
+                is SelectionUiState.Validating -> item {
+                    CircularProgressIndicator()
+                    Text(if (progress.totalCount > 0) "Preparing ${progress.currentCount} of ${progress.totalCount}…" else "Checking folder…")
+                    TextButton(onClick = viewModel::cancelStaging) { Text("Cancel") }
+                }
+                is SelectionUiState.StagingSource -> item {
+                    CircularProgressIndicator()
+                    Text("Preparing ${progress.displayName.isolateBidi()} · ${formatFileSize(progress.bytesStaged)}")
+                    TextButton(onClick = viewModel::cancelStaging) { Text("Cancel") }
+                }
+                is SelectionUiState.Hashing -> item { Text("Checking ${progress.displayName.isolateBidi()}…") }
+                is SelectionUiState.Error -> item { Text(progress.message, color = MaterialTheme.colorScheme.error) }
+                is SelectionUiState.Ready -> item { Text(progress.displayName.isolateBidi()) }
+                else -> Unit
+            }
+            batch?.notice?.let { notice -> item { Text(notice, color = MaterialTheme.colorScheme.error) } }
+            if (batch?.items?.isNotEmpty() == true) {
+                item { Text("Selected items", style = MaterialTheme.typography.titleMedium) }
+                items(batch.items, key = { it.id.value }) { item ->
+                    FileItemRow(item = item, onRemove = { viewModel.removeFile(item.id) })
+                }
+            }
+        }
+
+        val ready = state as? SelectionUiState.Ready
+        if (batch?.items?.isNotEmpty() == true || ready != null) {
+            Surface(tonalElevation = 3.dp) {
+                Column(
+                    Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    if (batch != null) {
+                        Text("${batch.itemCount} selected · ${formatFileSize(batch.totalBytes)}")
+                        val limitMessage = when {
+                            batch.hasUnavailableItems -> "Remove unavailable files to proceed."
+                            batch.isLimitExceeded -> "A batch can contain up to 1,000 files."
+                            batch.isTotalBytesExceeded -> "Remove files to reduce the batch size."
+                            else -> null
+                        }
+                        limitMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    }
+                    Button(
+                        enabled = ready != null || batch?.canProceed == true,
+                        onClick = {
+                            val prepared = if (ready != null) viewModel.prepareReadyFileForTransfer()
+                                else viewModel.prepareBatchForTransfer()
+                            if (prepared != null) {
+                                if (onProceedToSendBatch != null) onProceedToSendBatch(prepared.first)
+                                else prepared.second.values.firstOrNull()?.let(onProceedToSend)
+                            }
+                        },
+                        shape = PrimaryButtonShape,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                    ) { Text("Proceed to send") }
                 }
             }
         }

@@ -280,6 +280,7 @@ private fun ReceiverOfferConsentCard(
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
+                                item.appMetadata?.let { OfferedAppBadge(it) }
                             }
                         }
 

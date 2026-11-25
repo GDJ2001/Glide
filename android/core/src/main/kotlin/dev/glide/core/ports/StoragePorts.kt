@@ -57,6 +57,7 @@ interface ReceiveStore {
     ): StagingHandle
     suspend fun openStagingOutput(handle: StagingHandle): OutputStream
     suspend fun commitVerified(handle: StagingHandle, digest: Sha256Digest): CommittedFileHandle
+    suspend fun findVerifiedCommit(itemId: ItemId, sizeBytes: Long, digest: Sha256Digest): CommittedFileHandle? = null
     suspend fun discardStaging(handle: StagingHandle)
 }
 

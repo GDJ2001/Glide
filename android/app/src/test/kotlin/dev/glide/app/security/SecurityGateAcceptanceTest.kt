@@ -381,7 +381,12 @@ class SecurityGateAcceptanceTest {
 
         for (i in 0 until services.length) {
             val service = services.item(i) as Element
-            assertEquals("All services must be non-exported", "false", service.getAttribute("android:exported"))
+            if (service.getAttribute("android:name") == ".tile.GlideQuickSettingsTileService") {
+                assertEquals("true", service.getAttribute("android:exported"))
+                assertEquals("android.permission.BIND_QUICK_SETTINGS_TILE", service.getAttribute("android:permission"))
+            } else {
+                assertEquals("Other services must be non-exported", "false", service.getAttribute("android:exported"))
+            }
         }
 
         val providers = doc.getElementsByTagName("provider")

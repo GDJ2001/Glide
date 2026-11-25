@@ -15,6 +15,7 @@ import dev.glide.core.ports.SourceAccessException
 import dev.glide.data.source.AndroidContentResolverWrapper
 import dev.glide.data.source.AndroidSourceAccess
 import dev.glide.data.source.BoundedSourceStager
+import dev.glide.data.source.InstalledAppsRepository
 import dev.glide.data.source.SafTreeCrawler
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -38,7 +39,45 @@ class SelectionViewModel(
     val uiState: StateFlow<SelectionUiState> = _uiState.asStateFlow()
 
     private var activeJob: Job? = null
+    private var priorBatch: SelectionUiState.BatchReady? = null
     private var cachedSourceAccess: SourceAccess? = customSourceAccess
+
+    fun addInstalledApps(apps: List<InstalledAppsRepository.App>, repository: InstalledAppsRepository) {
+        if (activeJob?.isActive == true) return
+        priorBatch = _uiState.value as? SelectionUiState.BatchReady
+        val selected = priorBatch?.items.orEmpty()
+        val packages = selected.mapNotNull { it.installedPackageName }.toSet()
+        val requested = apps.distinctBy { it.packageName }.filterNot { it.packageName in packages }
+        if (requested.isEmpty()) return
+        if (requested.size + selected.size > ProtocolLimits.MAX_ITEMS_PER_BATCH) {
+            _uiState.value = SelectionUiState.BatchReady(selected, "A batch can contain up to 1,000 files.")
+            return
+        }
+        activeJob = viewModelScope.launch {
+            val added = mutableListOf<SelectedFileItem>()
+            var unavailable = 0
+            requested.forEachIndexed { index, app ->
+                _uiState.value = SelectionUiState.Validating(index + 1, requested.size)
+                try {
+                    val exported = repository.export(app)
+                    added += SelectedFileItem(
+                        id = ItemId(UUID.randomUUID().toString()),
+                        handle = SourceHandle(Uri.fromFile(exported.file).toString()),
+                        displayName = exported.name,
+                        sizeBytes = exported.sizeBytes,
+                        mimeType = exported.mimeType,
+                        installedPackageName = app.packageName,
+                        appMetadata = exported.metadata
+                    )
+                } catch (failure: Exception) {
+                    if (failure is CancellationException) throw failure
+                    unavailable++
+                }
+            }
+            val notice = if (unavailable > 0) "Couldn’t add $unavailable app(s). Select them again to retry." else null
+            _uiState.value = SelectionUiState.BatchReady(selected + added, notice)
+        }
+    }
 
     /**
      * Obtains or creates the [SourceAccess] instance using the application context.
@@ -96,9 +135,10 @@ class SelectionViewModel(
      * Ingests a folder tree using the provided [SafTreeCrawler].
      */
     fun onTreeUriStringSelected(treeUriString: String, crawler: SafTreeCrawler) {
-        activeJob?.cancel()
+        if (activeJob?.isActive == true) return
+        priorBatch = _uiState.value as? SelectionUiState.BatchReady
         activeJob = viewModelScope.launch {
-            val currentItems = (_uiState.value as? SelectionUiState.BatchReady)?.items ?: emptyList()
+            val currentItems = priorBatch?.items.orEmpty()
             val existingHandles = currentItems.map { it.handle.value }.toSet()
 
             _uiState.value = SelectionUiState.Validating(
@@ -141,20 +181,14 @@ class SelectionViewModel(
 
                 val totalPlanned = currentItems.size + crawledFiles.size
                 if (totalPlanned > ProtocolLimits.MAX_ITEMS_PER_BATCH) {
-                    _uiState.value = SelectionUiState.Error(
-                        message = "Batch limit exceeded: Maximum ${ProtocolLimits.MAX_ITEMS_PER_BATCH} files allowed (folder contained ${crawledFiles.size} files)",
-                        isRecoverable = true
-                    )
+                    showSelectionError("A batch can contain up to ${ProtocolLimits.MAX_ITEMS_PER_BATCH} files.")
                     return@launch
                 }
 
                 _uiState.value = SelectionUiState.BatchReady(items = currentItems + crawledFiles)
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
-                _uiState.value = SelectionUiState.Error(
-                    message = e.message ?: "Failed to traverse selected folder",
-                    isRecoverable = true
-                )
+                showSelectionError(e.message ?: "Failed to traverse selected folder")
             }
         }
     }
@@ -165,9 +199,10 @@ class SelectionViewModel(
     fun onUriStringsSelected(uriStrings: List<String>, sourceAccess: SourceAccess) {
         if (uriStrings.isEmpty()) return
 
-        activeJob?.cancel()
+        if (activeJob?.isActive == true) return
+        priorBatch = _uiState.value as? SelectionUiState.BatchReady
         activeJob = viewModelScope.launch {
-            val currentItems = (_uiState.value as? SelectionUiState.BatchReady)?.items ?: emptyList()
+            val currentItems = priorBatch?.items.orEmpty()
             val existingUris = currentItems.map { it.handle.value }.toSet()
 
             // Deduplicate incoming URIs against already selected files
@@ -182,10 +217,7 @@ class SelectionViewModel(
 
             val totalPlannedCount = currentItems.size + distinctNewUris.size
             if (totalPlannedCount > ProtocolLimits.MAX_ITEMS_PER_BATCH) {
-                _uiState.value = SelectionUiState.Error(
-                    message = "Batch limit exceeded: Maximum ${ProtocolLimits.MAX_ITEMS_PER_BATCH} files allowed (selected: $totalPlannedCount)",
-                    isRecoverable = true
-                )
+                showSelectionError("A batch can contain up to ${ProtocolLimits.MAX_ITEMS_PER_BATCH} files (selected: $totalPlannedCount).")
                 return@launch
             }
 
@@ -334,6 +366,7 @@ class SelectionViewModel(
      */
     fun clear() {
         activeJob?.cancel()
+        priorBatch = null
         (cachedSourceAccess as? AndroidSourceAccess)?.cleanupAllStaged()
         _uiState.value = SelectionUiState.Idle
     }
@@ -343,8 +376,11 @@ class SelectionViewModel(
      */
     fun cancelStaging() {
         activeJob?.cancel()
-        (cachedSourceAccess as? AndroidSourceAccess)?.cleanupAllStaged()
-        _uiState.value = SelectionUiState.Cancelled
+        _uiState.value = priorBatch ?: SelectionUiState.Cancelled
+    }
+
+    private fun showSelectionError(message: String) {
+        _uiState.value = priorBatch?.copy(notice = message) ?: SelectionUiState.Error(message)
     }
 
     /**

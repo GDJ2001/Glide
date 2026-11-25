@@ -127,10 +127,17 @@ open class LanNetworkScope(
         }
 
         try {
-            cm.activeNetwork?.let { active ->
-                evaluateNetwork(active)
+            (AndroidHotspotConnections.preferredNetwork ?: cm.activeNetwork)?.let { active ->
+                val capabilities = cm.getNetworkCapabilities(active)
+                if (capabilities != null &&
+                    (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) ||
+                        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN) ||
+                        !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN))) {
+                    evaluateNetwork(active, capabilities)
+                }
             }
-            if (_networkState.value !is LanNetworkState.Available) {
+            if (_networkState.value is LanNetworkState.NoNetwork) {
                 evaluateLocalInterfacesFallback()
             }
             cm.registerNetworkCallback(request, callback)
@@ -158,9 +165,9 @@ open class LanNetworkScope(
                     name.startsWith("ap") ||
                     name.startsWith("swlan") ||
                     name.startsWith("p2p")
-                if (!isEligibleLocalLink) continue
                 for (ia in ni.interfaceAddresses) {
                     val addr = ia.address ?: continue
+                    if (!isEligibleLocalLink && addr.hostAddress !in AndroidHotspotConnections.host?.addresses.orEmpty()) continue
                     if (addr.isLoopbackAddress || addr.isLinkLocalAddress) continue
                     val prefixLen = ia.networkPrefixLength.toInt().let {
                         if (it > 0) it else if (addr is java.net.Inet4Address) 24 else 64
@@ -196,8 +203,17 @@ open class LanNetworkScope(
     ) {
         if (_networkState.value is LanNetworkState.Closed) return
 
+        val defaultNetwork = connectivityManager?.activeNetwork
+        val defaultCapabilities = defaultNetwork?.let { connectivityManager.getNetworkCapabilities(it) }
+        if (defaultCapabilities != null &&
+            defaultCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) {
+            invalidateAndCloseSockets("Active VPN detected on default network")
+            _networkState.value = LanNetworkState.VpnActive("Active VPN detected; LAN sharing fails closed per security policy")
+            return
+        }
+
         if (capabilities == null || linkProperties == null) {
-            evaluateLocalInterfacesFallback()
+            if (AndroidHotspotConnections.preferredNetwork == null) evaluateLocalInterfacesFallback()
             return
         }
 
@@ -210,6 +226,9 @@ open class LanNetworkScope(
             _networkState.value = LanNetworkState.VpnActive("Active VPN detected; LAN sharing fails closed per security policy")
             return
         }
+
+        val preferred = AndroidHotspotConnections.preferredNetwork
+        if (preferred != null && preferred != network) return
 
         val (extraAddrs, extraSubnets) = collectLocalInterfaceSubnets()
 
@@ -264,11 +283,21 @@ open class LanNetworkScope(
 
         val socket = Socket()
         try {
-            state.network?.bindSocket(socket)
+            val inetAddress = InetAddress.getByName(targetAddress)
+            val selectedNetwork = state.network
+            val activeLink = selectedNetwork?.let { connectivityManager?.getLinkProperties(it) }
+            if (selectedNetwork != null && (activeLink == null || activeLink.linkAddresses.any {
+                    SubnetPrefix(it.address, it.prefixLength).matches(inetAddress)
+                })) {
+                selectedNetwork.bindSocket(socket)
+            } else {
+                val localInterface = state.subnets.firstOrNull { it.matches(inetAddress) }
+                    ?: throw IllegalStateException("No local route to the selected peer")
+                socket.bind(InetSocketAddress(localInterface.address, 0))
+            }
             socket.tcpNoDelay = true
             socket.soTimeout = 30_000
 
-            val inetAddress = InetAddress.getByName(targetAddress)
             socket.connect(InetSocketAddress(inetAddress, targetPort), timeoutMs)
 
             activeSockets.add(socket)
@@ -320,7 +349,6 @@ open class LanNetworkScope(
             throw IllegalStateException("Network not available while accepting client socket")
         }
         try {
-            state.network?.bindSocket(clientSocket)
             clientSocket.tcpNoDelay = true
             clientSocket.soTimeout = 30_000
             activeSockets.add(clientSocket)
@@ -342,6 +370,15 @@ open class LanNetworkScope(
             } catch (_: Exception) {}
         }
         activeSockets.add(socket)
+    }
+
+    fun registerAcceptedSocket(socket: Socket) {
+        // The listener already accepted on the correct local interface. A connected socket
+        // cannot be rebound to a ConnectivityManager network.
+        synchronized(activeSockets) {
+            activeSockets.removeAll { it.isClosed }
+            activeSockets.add(socket)
+        }
     }
 
     /**

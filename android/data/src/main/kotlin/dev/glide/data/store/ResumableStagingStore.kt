@@ -507,7 +507,8 @@ class ResumableStagingStore(
         authenticatedPeerFingerprintHex: String,
         peerStillTrusted: Boolean,
         nowMs: Long =
-            System.currentTimeMillis()
+            System.currentTimeMillis(),
+        requirePositiveRemainder: Boolean = false
     ): ResumeReceiverRevalidationResult =
         withContext(ioDispatcher) {
             val journal =
@@ -618,6 +619,11 @@ class ResumableStagingStore(
                     expectedLength
                         .toLong()
                 validChunks++
+            }
+
+            if (requirePositiveRemainder && validChunks > 0 && validOffset == journal.totalBytes) {
+                validChunks--
+                validOffset = validChunks * journal.chunkSize
             }
 
             if (validChunks <

@@ -130,6 +130,23 @@ data class SessionVerification(
 }
 
 @Serializable
+data class AppTransferMetadata(
+    val packageName: String,
+    val versionCode: Long,
+    val versionName: String,
+    val isSplitBundle: Boolean,
+    val signingCertSha256Hex: String,
+    val nativeAbis: List<String> = emptyList()
+) {
+    init {
+        require(packageName.length in 1..255 && packageName.matches(Regex("[a-zA-Z0-9_]+(?:\\.[a-zA-Z0-9_]+)+")))
+        require(versionCode >= 0 && versionName.length in 1..128)
+        require(signingCertSha256Hex.matches(Regex("[0-9a-f]{64}")))
+        require(nativeAbis.size <= 8 && nativeAbis.all { it.matches(Regex("[a-zA-Z0-9_-]{1,32}")) })
+    }
+}
+
+@Serializable
 data class TransferItem(
     val id: ItemId,
     val name: String,
@@ -138,7 +155,8 @@ data class TransferItem(
     val digest: Sha256Digest? = null,
     val relativePath: String? = null,
     val resumeChunkSize: Int? = null,
-    val resumeChunkRootHashHex: String? = null
+    val resumeChunkRootHashHex: String? = null,
+    val appMetadata: AppTransferMetadata? = null
 ) {
     init {
         require(name.isNotBlank() && name.codePointCount(0, name.length) <= ProtocolLimits.MAX_FILENAME_CODE_POINTS) {

@@ -229,6 +229,20 @@ class AndroidReceiveStore(
         CommittedFileHandle(entry.finalKey)
     }
 
+    override suspend fun findVerifiedCommit(
+        itemId: ItemId,
+        sizeBytes: Long,
+        digest: Sha256Digest
+    ): CommittedFileHandle? = withContext(ioDispatcher) {
+        val record = fileCatalogDao.getByOriginatingItemId(itemId.value) ?: return@withContext null
+        if (record.length != sizeBytes || record.digest != digest.value) return@withContext null
+        val file = File(receivedDir, record.fileKey)
+        if (file.canonicalFile.parentFile != receivedDir.canonicalFile || !file.isFile ||
+            file.length() != sizeBytes) return@withContext null
+        val verified = FileInputStream(file).use { StreamHasher.hashStream(it, sizeBytes) }
+        if (verified.digest == digest) CommittedFileHandle(record.fileKey) else null
+    }
+
     override suspend fun discardStaging(handle: StagingHandle) = withContext(ioDispatcher) {
         val itemId = extractItemId(handle)
         val entry = journalDao.getByItemId(itemId)

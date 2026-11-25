@@ -44,7 +44,8 @@ data class HistoryItemDetail(
     val failureCode: String? = null,
     val receivedFileKey: String? = null,
     val isFileAvailable: Boolean = false,
-    val relativePath: String? = null
+    val relativePath: String? = null,
+    val digestHex: String? = null
 ) {
     val statusDisplay: String get() = formatHistoryOutcomeLabel(outcome, failureCode)
 }

@@ -153,6 +153,8 @@ fun SettingsScreen(
         ) {
             val haptics = dev.glide.designsystem.GlideTheme.haptics
 
+            dev.glide.app.ui.GlideBluetoothShare()
+
             // 1. Device Section
             DeviceNameSection(
                 deviceName = uiState.settings.deviceName,

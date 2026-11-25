@@ -80,7 +80,12 @@ class AndroidSecurityHardeningTest {
             val service = services.item(i) as Element
             val name = service.getAttribute("android:name")
             val exported = service.getAttribute("android:exported")
-            assertEquals("Service  must be strictly non-exported", "false", exported)
+            if (name == ".tile.GlideQuickSettingsTileService") {
+                assertEquals("true", exported)
+                assertEquals("android.permission.BIND_QUICK_SETTINGS_TILE", service.getAttribute("android:permission"))
+            } else {
+                assertEquals("Service $name must be strictly non-exported", "false", exported)
+            }
         }
 
         val receivers = root.getElementsByTagName("receiver")

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut android:shortcutId="glide_send" android:enabled="true"
+        android:shortcutShortLabel="@string/shortcut_send">
+        <intent android:action="dev.glide.app.shortcut.SEND"
+            android:targetPackage="@string/shortcut_target_package"
+            android:targetClass="dev.glide.app.MainActivity" />
+    </shortcut>
+    <shortcut android:shortcutId="glide_receive" android:enabled="true"
+        android:shortcutShortLabel="@string/shortcut_receive">
+        <intent android:action="dev.glide.app.shortcut.RECEIVE"
+            android:targetPackage="@string/shortcut_target_package"
+            android:targetClass="dev.glide.app.MainActivity" />
+    </shortcut>
+    <shortcut android:shortcutId="glide_scan" android:enabled="true"
+        android:shortcutShortLabel="@string/shortcut_scan">
+        <intent android:action="dev.glide.app.shortcut.SCAN"
+            android:targetPackage="@string/shortcut_target_package"
+            android:targetClass="dev.glide.app.MainActivity" />
+    </shortcut>
+</shortcuts>

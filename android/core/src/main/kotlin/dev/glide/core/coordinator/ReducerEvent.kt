@@ -78,7 +78,8 @@ sealed class ReducerEvent {
         val page: OfferPageBody,
         val messageId: MessageId,
         val seq: Long,
-        override val timestampMs: Long
+        override val timestampMs: Long,
+        val appMetadata: Map<dev.glide.core.domain.ItemId, dev.glide.core.domain.AppTransferMetadata> = emptyMap()
     ) : ReducerEvent()
 
     data class OfferEndReceived(

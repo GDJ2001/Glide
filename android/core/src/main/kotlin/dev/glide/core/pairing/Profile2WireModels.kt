@@ -24,6 +24,7 @@ object Profile2Constants {
     const val WIRE_VERSION = 1
     const val PURPOSE_PAIR_ONLY = "PAIR_ONLY"
     const val PURPOSE_TRUSTED_SEND = "TRUSTED_SEND"
+    const val PURPOSE_TRUSTED_RESUME = "TRUSTED_RESUME"
 
     const val AUTH_METHOD_SPAKE2_PIN_V1 = "spake2-pin-v1"
     const val AUTH_METHOD_QR_TOKEN_V2 = "qr-token-v2"
@@ -64,8 +65,26 @@ sealed interface Profile2Message {
         val initiatorIdentityPublicKey: String,
         val expectedPresenceId: String? = null,
         val expectedPeerIdentityFingerprint: String? = null,
-        val invitationId: String? = null
-    ) : Profile2Message
+        val invitationId: String? = null,
+        val originalSessionId: String? = null,
+        val itemId: String? = null,
+        val initiatorRole: String? = null,
+        val resumeManifestDigest: String? = null
+    ) : Profile2Message {
+        internal fun validateResume() {
+            if (purpose == Profile2Constants.PURPOSE_TRUSTED_RESUME) {
+                require(authMethod == Profile2Constants.AUTH_METHOD_IDENTITY_V1 && invitationId == null)
+                dev.glide.core.domain.SessionId(requireNotNull(originalSessionId))
+                itemId?.let { dev.glide.core.domain.ItemId(it) }
+                require(initiatorRole == "sender" || initiatorRole == "receiver")
+                if (resumeManifestDigest != null) dev.glide.core.domain.Sha256Digest(resumeManifestDigest)
+                require(itemId != null || resumeManifestDigest != null)
+            } else {
+                require(originalSessionId == null && itemId == null &&
+                    initiatorRole == null && resumeManifestDigest == null)
+            }
+        }
+    }
 
     data class SessionOpenAck(
         val sessionId: String,
@@ -120,6 +139,7 @@ object Profile2WireCodec {
             put("v", Profile2Constants.WIRE_VERSION)
             when (message) {
                 is Profile2Message.SessionOpen -> {
+                    message.validateResume()
                     put("type", Profile2Constants.TYPE_SESSION_OPEN)
                     put("sessionId", message.sessionId)
                     put("purpose", message.purpose)
@@ -137,6 +157,10 @@ object Profile2WireCodec {
                     if (!message.invitationId.isNullOrEmpty()) {
                         put("invitationId", message.invitationId)
                     }
+                    message.originalSessionId?.let { put("originalSessionId", it) }
+                    message.itemId?.let { put("itemId", it) }
+                    message.initiatorRole?.let { put("initiatorRole", it) }
+                    message.resumeManifestDigest?.let { put("resumeManifestDigest", it) }
                 }
                 is Profile2Message.SessionOpenAck -> {
                     put("type", Profile2Constants.TYPE_SESSION_OPEN_ACK)
@@ -211,7 +235,7 @@ object Profile2WireCodec {
         val type = obj.reqString("type")
         val sessionId = obj.reqString("sessionId")
         val allowedFields = when (type) {
-            Profile2Constants.TYPE_SESSION_OPEN -> setOf("v", "type", "sessionId", "purpose", "authMethod", "initiatorNonce", "initiatorDeviceName", "initiatorPlatform", "initiatorIdentityPublicKey", "expectedPresenceId", "expectedPeerIdentityFingerprint", "invitationId")
+            Profile2Constants.TYPE_SESSION_OPEN -> setOf("v", "type", "sessionId", "purpose", "authMethod", "initiatorNonce", "initiatorDeviceName", "initiatorPlatform", "initiatorIdentityPublicKey", "expectedPresenceId", "expectedPeerIdentityFingerprint", "invitationId", "originalSessionId", "itemId", "initiatorRole", "resumeManifestDigest")
             Profile2Constants.TYPE_SESSION_OPEN_ACK -> setOf("v", "type", "sessionId", "accepted", "errorCode", "message", "responderNonce", "responderDeviceName", "responderPlatform", "responderIdentityPublicKey", "advertisedPresenceId")
             Profile2Constants.TYPE_PAIR_MSG -> setOf("v", "type", "sessionId", "role", "spakePublicValue", "invitationHash")
             Profile2Constants.TYPE_PAIR_CONFIRM -> setOf("v", "type", "sessionId", "role", "keyConfirmationMac", "identitySignature")
@@ -234,8 +258,12 @@ object Profile2WireCodec {
                 initiatorIdentityPublicKey = obj.reqString("initiatorIdentityPublicKey"),
                 expectedPresenceId = obj.optString("expectedPresenceId"),
                 expectedPeerIdentityFingerprint = obj.optString("expectedPeerIdentityFingerprint"),
-                invitationId = obj.optString("invitationId")
-            )
+                invitationId = obj.optString("invitationId"),
+                originalSessionId = obj.optString("originalSessionId"),
+                itemId = obj.optString("itemId"),
+                initiatorRole = obj.optString("initiatorRole"),
+                resumeManifestDigest = obj.optString("resumeManifestDigest")
+            ).also { it.validateResume() }
             Profile2Constants.TYPE_SESSION_OPEN_ACK -> Profile2Message.SessionOpenAck(
                 sessionId = sessionId,
                 accepted = obj.reqBool("accepted"),

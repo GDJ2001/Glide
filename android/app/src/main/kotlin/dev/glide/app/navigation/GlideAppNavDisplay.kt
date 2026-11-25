@@ -358,7 +358,6 @@ fun GlideAppNavDisplay(
                 val receiveSettings by (customSettingsStore?.settingsFlow
                     ?: kotlinx.coroutines.flow.flowOf(dev.glide.core.ports.GlideSettings()))
                     .collectAsStateWithLifecycle(initialValue = dev.glide.core.ports.GlideSettings())
-                val receiveScope = androidx.compose.runtime.rememberCoroutineScope()
                 val viewModel = if (transferRuntime != null) {
                     val runtimeFactory = androidx.compose.runtime.remember(transferRuntime) {
                         object : androidx.lifecycle.ViewModelProvider.Factory {
@@ -463,6 +462,43 @@ fun GlideAppNavDisplay(
                     }
                 }
 
+                val hotspotScope = androidx.compose.runtime.rememberCoroutineScope()
+                var hotspotStatus by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
+                var startingHotspot by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+                val hotspotPermissions = androidx.compose.runtime.remember {
+                    listOf(if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                        android.Manifest.permission.NEARBY_WIFI_DEVICES
+                    } else android.Manifest.permission.ACCESS_FINE_LOCATION)
+                }
+                val startHotspot: () -> Unit = {
+                    if (!startingHotspot && transferRuntime != null) {
+                        startingHotspot = true
+                        hotspotStatus = "Starting hotspot…"
+                        hotspotScope.launch {
+                            try {
+                                val host = dev.glide.transport.lan.network.AndroidHotspotConnections.createHost(context)
+                                if (host == null) {
+                                    hotspotStatus = "Glide couldn’t start a hotspot. Use Android hotspot settings."
+                                } else {
+                                    hotspotStatus = null
+                                    transferRuntime.dispatch(dev.glide.app.service.TransferRuntimeCommand.StopLanReceiver)
+                                    startLanReceiverAtPointOfUse()
+                                }
+                            } catch (error: Exception) {
+                                if (error is kotlinx.coroutines.CancellationException) throw error
+                                hotspotStatus = "Glide couldn’t start a hotspot. Use Android hotspot settings."
+                            } finally {
+                                startingHotspot = false
+                            }
+                        }
+                    }
+                }
+                val hotspotPermissionLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.RequestMultiplePermissions()
+                ) { result ->
+                    if (hotspotPermissions.all { result[it] == true }) startHotspot()
+                    else hotspotStatus = "Wi‑Fi permission is needed to start a hotspot in Glide."
+                }
                 val uiState by viewModel.uiState.collectAsStateWithLifecycle()
                 val qrState by qrViewModel.receiverState.collectAsStateWithLifecycle()
                 val lanReceiverState = if (transferRuntime != null) {
@@ -511,7 +547,17 @@ fun GlideAppNavDisplay(
                             if (showQrSheet) {
                                 qrViewModel.showLiveReceiverInvitation(
                                     invitation = state.invitation,
+                                    hotspotQr = dev.glide.transport.lan.network.AndroidHotspotConnections.host?.let { host ->
+                                        runCatching {
+                                            dev.glide.core.pairing.HotspotInvitationCodec.encode(
+                                                dev.glide.core.pairing.HotspotInvitation(host.ssid, host.passphrase, state.invitation)
+                                            )
+                                        }.getOrNull()
+                                    },
                                     onRevoke = {
+                                        if (transferRuntime?.isSessionActive?.value != true) {
+                                            dev.glide.transport.lan.network.AndroidHotspotConnections.close()
+                                        }
                                         transferRuntime?.dispatch(
                                             dev.glide.app.service.TransferRuntimeCommand.RevokeLanReceiverInvitation
                                         )
@@ -550,12 +596,14 @@ fun GlideAppNavDisplay(
                     },
                     onRestartReceiving = startAdvertisingAtPointOfUse,
                     onShowQrCode = startLanReceiverAtPointOfUse,
-                    keepReceivingInBackground = receiveSettings.keepReceivingInBackground,
-                    onKeepReceivingInBackgroundChanged = if (customSettingsStore == null) null else { enabled ->
-                        receiveScope.launch {
-                            customSettingsStore.updateKeepReceivingInBackground(enabled)
+                    onStartHotspot = if (transferRuntime == null) null else {
+                        {
+                            if (hotspotPermissions.all {
+                                ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+                            }) startHotspot() else hotspotPermissionLauncher.launch(hotspotPermissions.toTypedArray())
                         }
                     },
+                    hotspotStatus = hotspotStatus,
                     onScanPcQr = {
                         viewModel.stopAdvertising()
                         backStack.add(
@@ -573,6 +621,7 @@ fun GlideAppNavDisplay(
                         onDismiss = {
                             qrViewModel.stopReceiving()
                             showQrSheet = false
+                            dev.glide.transport.lan.network.AndroidHotspotConnections.close()
                             startAdvertisingAtPointOfUse()
                         }
                     )
@@ -911,25 +960,60 @@ fun GlideAppNavDisplay(
                     }
                 }
 
+                var hotspotInvitation by androidx.compose.runtime.remember {
+                    androidx.compose.runtime.mutableStateOf<dev.glide.core.pairing.HotspotInvitation?>(null)
+                }
+                val handleInvitationText: (String) -> Unit = { rawText ->
+                    val value = rawText.trim()
+                    if (route.purpose != QrScanPurpose.PAIR_ONLY &&
+                        value.startsWith(dev.glide.core.pairing.HotspotInvitationCodec.PREFIX)) {
+                        if (hotspotInvitation == null) {
+                            hotspotInvitation = runCatching {
+                                dev.glide.core.pairing.HotspotInvitationCodec.decode(value)
+                            }.getOrNull()
+                            if (hotspotInvitation == null) {
+                                viewModel.onConnectionBlocked("This hotspot code is invalid or has expired.")
+                            }
+                        }
+                    } else viewModel.onQrCodeScanned(rawText)
+                }
+                hotspotInvitation?.let { hotspot ->
+                    dev.glide.app.ui.pairing.HotspotJoinDialog(
+                        invitation = hotspot,
+                        onReady = {
+                            hotspotInvitation = null
+                            viewModel.onQrCodeScanned(dev.glide.core.pairing.InvitationCodec.encode(hotspot.pairing))
+                        },
+                        onDismiss = {
+                            hotspotInvitation = null
+                            dev.glide.transport.lan.network.AndroidHotspotConnections.close()
+                            viewModel.retryScan()
+                        }
+                    )
+                }
+
                 dev.glide.app.ui.pairing.QrScannerScreen(
                     uiState = scannerState,
                     onCameraUnavailable = viewModel::onCameraUnavailable,
-                    onQrScanned = { rawText ->
-                        viewModel.onQrCodeScanned(rawText)
-                    },
+                    onQrScanned = handleInvitationText,
                     onInvitationPasted = { rawText ->
-                        viewModel.onInvitationPasted(rawText)
+                        if (rawText.trim().startsWith(dev.glide.core.pairing.HotspotInvitationCodec.PREFIX)) {
+                            handleInvitationText(rawText)
+                        } else viewModel.onInvitationPasted(rawText)
                     },
                     onConfirmConnection = {
                         viewModel.confirmConnection()
                     },
                     onCancelConfirmation = {
+                        dev.glide.transport.lan.network.AndroidHotspotConnections.close()
                         viewModel.cancelConfirmation()
                     },
                     onRetryScan = {
+                        dev.glide.transport.lan.network.AndroidHotspotConnections.close()
                         viewModel.retryScan()
                     },
                     onClose = {
+                        dev.glide.transport.lan.network.AndroidHotspotConnections.close()
                         viewModel.stopScanning()
                         if (backStack.size > 1) {
                             backStack.removeAt(backStack.lastIndex)

@@ -17,9 +17,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         SessionEntity::class,
         ItemEntity::class,
         TrustedPeerEntity::class,
-        ResumableSessionEntity::class
+        ResumableSessionEntity::class,
+        ResumableBatchEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = true
 )
 abstract class GlideDatabase : RoomDatabase() {
@@ -29,8 +30,30 @@ abstract class GlideDatabase : RoomDatabase() {
     abstract fun itemDao(): ItemDao
     abstract fun trustedPeerDao(): TrustedPeerDao
     abstract fun resumableSessionDao(): ResumableSessionDao
+    abstract fun resumableBatchDao(): ResumableBatchDao
 
     companion object {
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `resumable_batches` (
+                        `original_session_id` TEXT NOT NULL PRIMARY KEY,
+                        `journal_role` TEXT NOT NULL,
+                        `peer_fingerprint` TEXT NOT NULL,
+                        `manifest_sha256` TEXT NOT NULL,
+                        `manifest_json` TEXT NOT NULL,
+                        `progress_json` TEXT NOT NULL,
+                        `revision` INTEGER NOT NULL,
+                        `expires_at_ms` INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_resumable_batches_peer_fingerprint` ON `resumable_batches` (`peer_fingerprint`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_resumable_batches_expires_at_ms` ON `resumable_batches` (`expires_at_ms`)")
+            }
+        }
+
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(

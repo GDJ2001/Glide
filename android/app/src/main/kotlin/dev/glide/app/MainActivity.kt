@@ -70,19 +70,12 @@ class MainActivity : ComponentActivity() {
     lateinit var persistentTrustManager: dev.glide.core.identity.PersistentTrustManager
 
     private var lastHandledFingerprint: String? = null
-    @Volatile private var keepReceivingInBackground = false
     private val incomingOutcomeFlow = MutableStateFlow<IngressOutcome?>(null)
     private val incomingRouteNonceFlow = MutableStateFlow(0L)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-
-        lifecycleScope.launch {
-            settingsStore.settingsFlow.collect { settings ->
-                keepReceivingInBackground = settings.keepReceivingInBackground
-            }
-        }
 
         // Foreground availability follows the Activity, not the Receive or QR screen.
         // The service owns the socket so an incoming authenticated offer can be handled
@@ -261,7 +254,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
-        if (!keepReceivingInBackground) TransferService.stopIdleLanReceiver(this)
+        TransferService.stopIdleLanReceiver(this)
     }
 
     override fun onNewIntent(intent: Intent) {

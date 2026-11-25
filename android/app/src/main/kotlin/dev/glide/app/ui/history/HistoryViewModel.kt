@@ -126,7 +126,8 @@ class HistoryViewModel(
                     failureCode = item.failureCode,
                     receivedFileKey = receivedFileKey,
                     isFileAvailable = isFileAvailable,
-                    relativePath = item.relativePath
+                    relativePath = item.relativePath,
+                    digestHex = item.digest?.value
                 )
             }
 

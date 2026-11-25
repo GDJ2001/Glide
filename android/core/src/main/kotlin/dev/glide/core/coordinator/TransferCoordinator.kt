@@ -2592,7 +2592,8 @@ class TransferCoordinator(
                                 page,
                                 envelope.messageId,
                                 envelope.seq,
-                                now
+                                now,
+                                dev.glide.core.protocol.AppOfferMetadata.decode(envelope.extensions, page)
                             )
                     )
                 }

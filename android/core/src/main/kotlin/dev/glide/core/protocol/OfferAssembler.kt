@@ -25,7 +25,10 @@ class OfferAssembler(
     val currentTotalBytes: Long get() = accumulatedTotalBytes
     val currentPageCount: Int get() = expectedPageIndex
 
-    fun addPage(page: OfferPageBody) {
+    fun addPage(
+        page: OfferPageBody,
+        appMetadata: Map<dev.glide.core.domain.ItemId, dev.glide.core.domain.AppTransferMetadata> = emptyMap()
+    ) {
         check(!isFinished) { "Cannot add page: offer assembly has already been completed" }
 
         if (page.batchId != begin.batchId) {
@@ -147,7 +150,8 @@ class OfferAssembler(
                 resumeChunkSize =
                     itemDto.chunkSize,
                 resumeChunkRootHashHex =
-                    itemDto.rootHash
+                    itemDto.rootHash,
+                appMetadata = appMetadata[itemDto.itemId]
             )
             items.add(domainItem)
         }
