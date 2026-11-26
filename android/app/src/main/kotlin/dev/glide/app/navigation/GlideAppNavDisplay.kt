@@ -1,15 +1,12 @@
 package dev.glide.app.navigation
 
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.ui.Modifier
-import androidx.core.content.ContextCompat
-import android.content.pm.PackageManager
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LifecycleStartEffect
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import androidx.navigation3.runtime.entryProvider
@@ -20,7 +17,9 @@ import dev.glide.app.ui.TransferScreen
 import dev.glide.app.ui.selection.SelectionScreen
 import dev.glide.app.ui.transfer.VerifiedItemUiState
 import dev.glide.app.service.TransferRuntime
-import dev.glide.app.permission.PermissionPolicy
+import dev.glide.app.connectivity.ConnectionKind
+import dev.glide.app.ui.discovery.ConnectionSetupRecovery
+import dev.glide.app.ui.discovery.rememberConnectionSetup
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.tween
@@ -273,7 +272,8 @@ fun GlideAppNavDisplay(
             }
             entry<GlideRoute.Selection> { route ->
                 val context = androidx.compose.ui.platform.LocalContext.current
-                val proceedWithBatch: (dev.glide.core.domain.BatchId) -> Unit = { batchId ->
+                val setup = rememberConnectionSetup()
+                val sendBatch: (dev.glide.core.domain.BatchId) -> Unit = { batchId ->
                     val pendingInvite = route.pendingLanInvitation?.let { encoded ->
                         runCatching { dev.glide.core.pairing.InvitationCodec.decode(encoded) }.getOrNull()
                     }
@@ -306,6 +306,14 @@ fun GlideAppNavDisplay(
                         ))
                     }
                 }
+                val proceedWithBatch: (dev.glide.core.domain.BatchId) -> Unit = { batchId ->
+                    if (route.pendingLanInvitation != null || route.pairedPeerFingerprintHex != null) {
+                        setup.start(ConnectionKind.Lan) { sendBatch(batchId) }
+                    } else {
+                        sendBatch(batchId)
+                    }
+                }
+                ConnectionSetupRecovery(setup)
                 SelectionScreen(
                     initialUris = route.initialUris.map { android.net.Uri.parse(it) },
                     onBack = {
@@ -344,36 +352,32 @@ fun GlideAppNavDisplay(
                 }
 
                 val context = androidx.compose.ui.platform.LocalContext.current
-                val nearbyPermissions = androidx.compose.runtime.remember {
-                    PermissionPolicy.nearbyTransferPermissions()
-                }
-                val hasNearbyPermissions: () -> Boolean = {
-                    nearbyPermissions.all { permission ->
-                        ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
-                    }
-                }
-                val permissionLauncher = rememberLauncherForActivityResult(
-                    contract = ActivityResultContracts.RequestMultiplePermissions()
-                ) {
-                    if (hasNearbyPermissions()) {
+                val setup = rememberConnectionSetup()
+                val discoveryIsVisible = currentRoute == route
+                LifecycleStartEffect(viewModel, discoveryIsVisible) {
+                    if (discoveryIsVisible && initialDiscoveryState == null &&
+                        transferRuntime?.discoveryState?.value is dev.glide.app.ui.discovery.DiscoveryUiState.Searching
+                    ) {
                         viewModel.startDiscovery()
-                    } else {
-                        viewModel.onPermissionDenied()
+                    }
+                    onStopOrDispose {
+                        if (discoveryIsVisible) viewModel.stopDiscovery()
                     }
                 }
                 val startDiscoveryAtPointOfUse: () -> Unit = {
-                    if (nearbyPermissions.isEmpty() || hasNearbyPermissions()) {
-                        viewModel.startDiscovery()
-                    } else {
-                        permissionLauncher.launch(nearbyPermissions.toTypedArray())
-                    }
+                    setup.start(ConnectionKind.Nearby, viewModel::setBlocked) { viewModel.startDiscovery() }
                 }
-
-                androidx.compose.runtime.LaunchedEffect(initialDiscoveryState, transferRuntime) {
+                var hasStartedSetup by androidx.compose.runtime.saveable.rememberSaveable {
+                    androidx.compose.runtime.mutableStateOf(false)
+                }
+                androidx.compose.runtime.LaunchedEffect(initialDiscoveryState, transferRuntime, currentRoute == route) {
                     if (initialDiscoveryState != null) {
                         viewModel.setUiStateForTesting(initialDiscoveryState)
-                    } else if (transferRuntime != null) {
-                        startDiscoveryAtPointOfUse()
+                    } else if (transferRuntime != null && currentRoute == route) {
+                        if (!hasStartedSetup) {
+                            hasStartedSetup = true
+                            startDiscoveryAtPointOfUse()
+                        }
                     }
                 }
 
@@ -409,6 +413,9 @@ fun GlideAppNavDisplay(
                         }
                     },
                     onRetry = startDiscoveryAtPointOfUse,
+                    onResolveBlocker = { reason ->
+                        setup.openSettings(ConnectionKind.Nearby, reason, viewModel::setBlocked) { viewModel.startDiscovery() }
+                    },
                     onScanQrClicked = {
                         viewModel.stopDiscovery()
                         backStack.add(GlideRoute.QrScanner(batchId = route.batchId))
@@ -438,71 +445,19 @@ fun GlideAppNavDisplay(
                 var showQrSheet by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
 
                 val context = androidx.compose.ui.platform.LocalContext.current
-                val nearbyPermissions = androidx.compose.runtime.remember {
-                    PermissionPolicy.nearbyTransferPermissions()
-                }
-                val hasNearbyPermissions: () -> Boolean = {
-                    nearbyPermissions.all { permission ->
-                        ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
-                    }
-                }
-                val permissionLauncher = rememberLauncherForActivityResult(
-                    contract = ActivityResultContracts.RequestMultiplePermissions()
-                ) {
-                    if (hasNearbyPermissions()) {
-                        if (transferRuntime != null) {
-                            dev.glide.app.service.TransferService.startNearbyReceiver(
-                                context = context,
-                                localDeviceName = receiveSettings.deviceName
-                            )
-                        } else {
-                            viewModel.startAdvertising("Glide Device")
-                        }
+                val setup = rememberConnectionSetup()
+                val startAdvertising: () -> Unit = {
+                    if (transferRuntime != null) {
+                        dev.glide.app.service.TransferService.startNearbyReceiver(context, receiveSettings.deviceName)
                     } else {
-                        viewModel.onPermissionDenied()
+                        viewModel.startAdvertising(receiveSettings.deviceName)
                     }
                 }
                 val startAdvertisingAtPointOfUse: () -> Unit = {
-                    if (nearbyPermissions.isEmpty() || hasNearbyPermissions()) {
-                        if (transferRuntime != null) {
-                            dev.glide.app.service.TransferService.startNearbyReceiver(
-                                context = context,
-                                localDeviceName = "Glide Device"
-                            )
-                        } else {
-                            viewModel.startAdvertising("Glide Device")
-                        }
-                    } else {
-                        permissionLauncher.launch(nearbyPermissions.toTypedArray())
-                    }
+                    setup.start(ConnectionKind.Nearby, viewModel::setBlocked, startAdvertising)
                 }
-
-                val lanPermissions = androidx.compose.runtime.remember {
-                    PermissionPolicy.lanTransferPermissions()
-                }
-                val hasLanPermissions: () -> Boolean = {
-                    lanPermissions.all { permission ->
-                        ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
-                    }
-                }
-                val lanPermissionLauncher = rememberLauncherForActivityResult(
-                    contract = ActivityResultContracts.RequestMultiplePermissions()
-                ) {
-                    if (hasLanPermissions() && transferRuntime != null) {
-                        qrViewModel.showLiveReceiverStarting()
-                        showQrSheet = true
-                        dev.glide.app.service.TransferService.startLanReceiver(
-                            context = context,
-                            localDeviceName = receiveSettings.deviceName
-                        )
-                    } else {
-                        qrViewModel.showLiveReceiverError(
-                            "Local network permission is required to create a LAN pairing code."
-                        )
-                        showQrSheet = true
-                    }
-                }
-                val startLanReceiverAtPointOfUse: () -> Unit = {
+                val startLanReceiverAtPointOfUse: () -> Unit = startLanReceiver@ {
+                    if (setup.pending != null) return@startLanReceiver
                     viewModel.stopAdvertising()
                     if (transferRuntime == null || initialReceiveState != null) {
                         qrViewModel.startReceiving(
@@ -511,16 +466,18 @@ fun GlideAppNavDisplay(
                             spkiSha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
                         )
                         showQrSheet = true
-                    } else if (lanPermissions.isEmpty() || hasLanPermissions()) {
-                        qrViewModel.showLiveReceiverStarting()
-                        showQrSheet = true
-                        dev.glide.app.service.TransferService.startLanReceiver(
-                            context = context,
-                            localDeviceName = receiveSettings.deviceName
-                        )
                     } else {
-                        lanPermissionLauncher.launch(lanPermissions.toTypedArray())
+                        if (dev.glide.transport.lan.network.AndroidHotspotConnections.host != null) showQrSheet = true
+                        setup.start(ConnectionKind.Lan) {
+                            qrViewModel.showLiveReceiverStarting()
+                            showQrSheet = true
+                            dev.glide.app.service.TransferService.startLanReceiver(context, receiveSettings.deviceName)
+                        }
                     }
+                }
+                ConnectionSetupRecovery(setup, kind = ConnectionKind.Lan) {
+                    dev.glide.transport.lan.network.AndroidHotspotConnections.closeUnclaimed()
+                    showQrSheet = false
                 }
 
                 val hotspotScope = androidx.compose.runtime.rememberCoroutineScope()
@@ -528,11 +485,6 @@ fun GlideAppNavDisplay(
                 var startingHotspot by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
                 var showManualHotspotFallback by androidx.compose.runtime.saveable.rememberSaveable {
                     androidx.compose.runtime.mutableStateOf(false)
-                }
-                val hotspotPermissions = androidx.compose.runtime.remember {
-                    listOf(if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                        android.Manifest.permission.NEARBY_WIFI_DEVICES
-                    } else android.Manifest.permission.ACCESS_FINE_LOCATION)
                 }
                 val startHotspot: () -> Unit = {
                     if (!startingHotspot && transferRuntime != null) {
@@ -560,12 +512,6 @@ fun GlideAppNavDisplay(
                         }
                     }
                 }
-                val hotspotPermissionLauncher = rememberLauncherForActivityResult(
-                    ActivityResultContracts.RequestMultiplePermissions()
-                ) { result ->
-                    if (hotspotPermissions.all { result[it] == true }) startHotspot()
-                    else hotspotStatus = "Wi‑Fi permission is needed to start a hotspot in Glide."
-                }
                 val uiState by viewModel.uiState.collectAsStateWithLifecycle()
                 val qrState by qrViewModel.receiverState.collectAsStateWithLifecycle()
                 val lanReceiverState = if (transferRuntime != null) {
@@ -575,13 +521,14 @@ fun GlideAppNavDisplay(
                     dev.glide.app.lan.LanReceiverRuntimeState.Idle
                 }
 
+                var hasStartedReceiveSetup by androidx.compose.runtime.saveable.rememberSaveable {
+                    androidx.compose.runtime.mutableStateOf(false)
+                }
                 androidx.compose.runtime.LaunchedEffect(initialReceiveState, transferRuntime) {
                     if (initialReceiveState != null) {
                         viewModel.setUiStateForTesting(initialReceiveState)
-                    } else if (transferRuntime != null &&
-                        lanReceiverState is dev.glide.app.lan.LanReceiverRuntimeState.Idle &&
-                        !showQrSheet
-                    ) {
+                    } else if (transferRuntime != null && !showQrSheet && !hasStartedReceiveSetup) {
+                        hasStartedReceiveSetup = true
                         startAdvertisingAtPointOfUse()
                     }
                 }
@@ -622,12 +569,13 @@ fun GlideAppNavDisplay(
                                         }.getOrNull()
                                     },
                                     onRevoke = {
-                                        if (transferRuntime?.isSessionActive?.value != true) {
-                                            dev.glide.transport.lan.network.AndroidHotspotConnections.close()
+                                        if (dev.glide.transport.lan.network.AndroidHotspotConnections.host != null) {
+                                            dev.glide.app.service.TransferService.stopLanReceiver(context)
+                                        } else {
+                                            transferRuntime?.dispatch(
+                                                dev.glide.app.service.TransferRuntimeCommand.RevokeLanReceiverInvitation
+                                            )
                                         }
-                                        transferRuntime?.dispatch(
-                                            dev.glide.app.service.TransferRuntimeCommand.RevokeLanReceiverInvitation
-                                        )
                                     }
                                 )
                             }
@@ -662,12 +610,17 @@ fun GlideAppNavDisplay(
                         }
                     },
                     onRestartReceiving = startAdvertisingAtPointOfUse,
+                    onResolveBlocker = { reason ->
+                        setup.openSettings(ConnectionKind.Nearby, reason, viewModel::setBlocked, startAdvertising)
+                    },
                     onShowQrCode = startLanReceiverAtPointOfUse,
                     onStartHotspot = if (transferRuntime == null) null else {
                         {
-                            if (hotspotPermissions.all {
-                                ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
-                            }) startHotspot() else hotspotPermissionLauncher.launch(hotspotPermissions.toTypedArray())
+                            if (!startingHotspot) {
+                                setup.start(ConnectionKind.Hotspot, onBlocked = {
+                                    showManualHotspotFallback = true
+                                }, onReady = startHotspot)
+                            }
                         }
                     },
                     hotspotStatus = hotspotStatus,
@@ -690,8 +643,8 @@ fun GlideAppNavDisplay(
                         onDismiss = {
                             qrViewModel.stopReceiving()
                             showQrSheet = false
-                            dev.glide.transport.lan.network.AndroidHotspotConnections.close()
-                            startAdvertisingAtPointOfUse()
+                            dev.glide.transport.lan.network.AndroidHotspotConnections.closeUnclaimed()
+                            startAdvertising()
                         }
                     )
                 }
@@ -962,19 +915,10 @@ fun GlideAppNavDisplay(
                 } else null
                 val pairOnlyState = pairOnlyViewModel?.state?.collectAsStateWithLifecycle()?.value
                     ?: dev.glide.app.ui.pairing.PairOnlyUiState.Idle
-                val lanPermissions = androidx.compose.runtime.remember {
-                    PermissionPolicy.lanTransferPermissions()
-                }
-                var pendingInvitation by androidx.compose.runtime.remember {
-                    androidx.compose.runtime.mutableStateOf<dev.glide.core.pairing.LanInvitation?>(null)
-                }
-                var pendingPairOnly by androidx.compose.runtime.remember {
-                    androidx.compose.runtime.mutableStateOf<dev.glide.core.pairing.LanPairV2Invitation?>(null)
-                }
-                val hasLanPermissions: () -> Boolean = {
-                    lanPermissions.all { permission ->
-                        ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
-                    }
+                val setup = rememberConnectionSetup()
+                ConnectionSetupRecovery(setup) {
+                    dev.glide.transport.lan.network.AndroidHotspotConnections.closeUnclaimed()
+                    viewModel.retryScan()
                 }
                 val startLanSender: (dev.glide.core.pairing.LanInvitation) -> Unit = { invitation ->
                     if (transferRuntime != null) {
@@ -1008,28 +952,6 @@ fun GlideAppNavDisplay(
                         viewModel.onConnectionBlocked("Glide could not start receiving. Return home and try again.")
                     }
                 }
-                val lanPermissionLauncher = rememberLauncherForActivityResult(
-                    contract = ActivityResultContracts.RequestMultiplePermissions()
-                ) {
-                    val invitation = pendingInvitation
-                    val pairInvitation = pendingPairOnly
-                    pendingInvitation = null
-                    pendingPairOnly = null
-                    if (hasLanPermissions() && invitation != null) {
-                        if (route.purpose == QrScanPurpose.RECEIVE_FROM_SENDER) {
-                            startLanReceiver(invitation)
-                        } else {
-                            startLanSender(invitation)
-                        }
-                    } else if (hasLanPermissions() && pairInvitation != null) {
-                        pairOnlyViewModel?.start(pairInvitation)
-                    } else if (invitation != null) {
-                        viewModel.onConnectionBlocked("Local network permission is needed to connect. Allow it in Settings, then try again.")
-                    } else if (pairInvitation != null) {
-                        viewModel.onConnectionBlocked("Local network permission is needed to pair. Allow it in Settings, then try again.")
-                    }
-                }
-
                 androidx.compose.runtime.LaunchedEffect(viewModel, route.scanAttemptId, route.purpose) {
                     viewModel.startScanning(pairOnly = route.purpose == QrScanPurpose.PAIR_ONLY)
                 }
@@ -1040,11 +962,8 @@ fun GlideAppNavDisplay(
                             is dev.glide.app.ui.pairing.QrPairingEvent.PairOnlyConfirmed -> {
                                 if (pairOnlyViewModel == null) {
                                     viewModel.onConnectionBlocked("Pairing is unavailable. Restart Glide and try again.")
-                                } else if (lanPermissions.isEmpty() || hasLanPermissions()) {
-                                    pairOnlyViewModel.start(event.invitation)
                                 } else {
-                                    pendingPairOnly = event.invitation
-                                    lanPermissionLauncher.launch(lanPermissions.toTypedArray())
+                                    setup.start(ConnectionKind.Lan) { pairOnlyViewModel.start(event.invitation) }
                                 }
                             }
                             is dev.glide.app.ui.pairing.QrPairingEvent.ConnectConfirmed -> {
@@ -1056,15 +975,14 @@ fun GlideAppNavDisplay(
                                             pendingLanInvitation = dev.glide.core.pairing.InvitationCodec.encode(event.invitation)
                                         )
                                     )
-                                } else if (lanPermissions.isEmpty() || hasLanPermissions()) {
-                                    if (route.purpose == QrScanPurpose.RECEIVE_FROM_SENDER) {
-                                        startLanReceiver(event.invitation)
-                                    } else {
-                                        startLanSender(event.invitation)
-                                    }
                                 } else {
-                                    pendingInvitation = event.invitation
-                                    lanPermissionLauncher.launch(lanPermissions.toTypedArray())
+                                    setup.start(ConnectionKind.Lan) {
+                                        if (route.purpose == QrScanPurpose.RECEIVE_FROM_SENDER) {
+                                            startLanReceiver(event.invitation)
+                                        } else {
+                                            startLanSender(event.invitation)
+                                        }
+                                    }
                                 }
                             }
                             else -> {}
@@ -1105,7 +1023,7 @@ fun GlideAppNavDisplay(
                         },
                         onDismiss = {
                             hotspotInvitationUri = null
-                            dev.glide.transport.lan.network.AndroidHotspotConnections.close()
+                            dev.glide.transport.lan.network.AndroidHotspotConnections.closeUnclaimed()
                             viewModel.retryScan()
                         }
                     )
@@ -1124,15 +1042,15 @@ fun GlideAppNavDisplay(
                         viewModel.confirmConnection()
                     },
                     onCancelConfirmation = {
-                        dev.glide.transport.lan.network.AndroidHotspotConnections.close()
+                        dev.glide.transport.lan.network.AndroidHotspotConnections.closeUnclaimed()
                         viewModel.cancelConfirmation()
                     },
                     onRetryScan = {
-                        dev.glide.transport.lan.network.AndroidHotspotConnections.close()
+                        dev.glide.transport.lan.network.AndroidHotspotConnections.closeUnclaimed()
                         viewModel.retryScan()
                     },
                     onClose = {
-                        dev.glide.transport.lan.network.AndroidHotspotConnections.close()
+                        dev.glide.transport.lan.network.AndroidHotspotConnections.closeUnclaimed()
                         viewModel.stopScanning()
                         if (backStack.size > 1) {
                             backStack.removeAt(backStack.lastIndex)

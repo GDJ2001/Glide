@@ -257,6 +257,14 @@ class MainActivity : ComponentActivity() {
         TransferService.stopIdleLanReceiver(this)
     }
 
+    override fun onDestroy() {
+        if (isFinishing) {
+            transferRuntime.dispatch(dev.glide.app.service.TransferRuntimeCommand.StopDiscovery)
+            dev.glide.transport.lan.network.AndroidHotspotConnections.closeUnclaimed()
+        }
+        super.onDestroy()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)

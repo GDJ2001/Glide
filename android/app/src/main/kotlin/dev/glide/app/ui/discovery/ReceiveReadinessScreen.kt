@@ -61,7 +61,8 @@ fun ReceiveReadinessScreen(
     onStartHotspot: (() -> Unit)? = null,
     hotspotStatus: String? = null,
     showManualHotspotFallback: Boolean = false,
-    onDismissManualHotspotFallback: () -> Unit = {}
+    onDismissManualHotspotFallback: () -> Unit = {},
+    onResolveBlocker: ((BlockedReason) -> Unit)? = null
 ) {
     val scrollState = rememberScrollState()
     val context = LocalContext.current
@@ -174,7 +175,9 @@ fun ReceiveReadinessScreen(
                 DiscoveryBlockedCard(
                     reason = uiState.reason,
                     onRetry = onRestartReceiving,
-                    onOpenSettings = { openConnectivitySettings(context, uiState.reason) }
+                    onOpenSettings = {
+                            onResolveBlocker?.invoke(uiState.reason) ?: openConnectivitySettings(context, uiState.reason)
+                        }
                 )
             }
 

@@ -8,7 +8,6 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -29,11 +28,22 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
 import dev.glide.app.ui.components.GlideIconAction
+import dev.glide.app.connectivity.ConnectionKind
+import dev.glide.app.ui.discovery.rememberConnectionSetup
 import dev.glide.core.pairing.HotspotInvitation
 import dev.glide.transport.lan.network.AndroidHotspotConnections
+import dev.glide.transport.lan.network.LanAddressValidationResult
+import dev.glide.transport.lan.network.LanAddressValidator
+import dev.glide.transport.lan.network.LanNetworkScope
+import dev.glide.transport.lan.network.LanNetworkState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.filterIsInstance
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import java.time.Instant
 
 @Composable
 internal fun HotspotJoinDialog(
@@ -45,16 +55,26 @@ internal fun HotspotJoinDialog(
     val scope = rememberCoroutineScope()
     var copyNotice by remember(invitation) { mutableStateOf<String?>(null) }
     var joining by remember(invitation) { mutableStateOf(false) }
-    var manual by remember(invitation) { mutableStateOf(false) }
-    val wifiPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        android.Manifest.permission.NEARBY_WIFI_DEVICES
-    } else android.Manifest.permission.ACCESS_FINE_LOCATION
+    var manual by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    var attempted by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    var notice by remember(invitation) { mutableStateOf<String?>(null) }
+    val setup = rememberConnectionSetup()
+    val completeJoin: () -> Unit = {
+        if (invitation.pairing.expiresAt.toLong() > Instant.now().epochSecond) {
+            onReady()
+        } else {
+            AndroidHotspotConnections.closeUnclaimed()
+            notice = "This hotspot code has expired. Scan a new code."
+        }
+    }
     val tryJoin: () -> Unit = {
         joining = true
         scope.launch {
             try {
-                if (AndroidHotspotConnections.join(context, invitation.ssid, invitation.passphrase)) {
-                    onReady()
+                if (AndroidHotspotConnections.join(
+                        context, invitation.ssid, invitation.passphrase, invitation.pairing.expiresAt.toLong()
+                    )) {
+                    completeJoin()
                 } else {
                     manual = true
                 }
@@ -63,8 +83,46 @@ internal fun HotspotJoinDialog(
             }
         }
     }
-    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) tryJoin() else manual = true
+    val checkManualConnection: () -> Unit = {
+        if (!joining) {
+            joining = true
+            scope.launch {
+                try {
+                    val ready = withContext(Dispatchers.IO) {
+                        LanNetworkScope(context.applicationContext).use { network ->
+                            withTimeoutOrNull(2_500) {
+                                network.networkState.filterIsInstance<LanNetworkState.Available>().first { state ->
+                                    invitation.pairing.endpoints.any { endpoint ->
+                                        LanAddressValidator.validateAddress(endpoint.address, state.subnets) ==
+                                            LanAddressValidationResult.Valid
+                                    }
+                                }
+                            } != null
+                        }
+                    }
+                    if (ready) completeJoin()
+                    else notice = "Connect to the hotspot in Wi-Fi settings."
+                } finally {
+                    joining = false
+                }
+            }
+        }
+    }
+    val wifiSettings = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        checkManualConnection()
+    }
+    androidx.compose.runtime.LaunchedEffect(invitation) {
+        if (!attempted) {
+            attempted = true
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                setup.start(ConnectionKind.Hotspot, onBlocked = { manual = true }, onReady = tryJoin)
+            } else {
+                manual = true
+            }
+        } else if (setup.pending == null && !joining) {
+            // An Activity recreation can interrupt the OS network chooser.
+            manual = true
+        }
     }
     AlertDialog(
         onDismissRequest = { if (!joining) onDismiss() },
@@ -78,25 +136,21 @@ internal fun HotspotJoinDialog(
                 copyNotice?.let { message ->
                     Text(message, Modifier.semantics { liveRegion = LiveRegionMode.Polite })
                 }
+                notice?.let { Text(it, Modifier.semantics { liveRegion = LiveRegionMode.Polite }) }
                 if (manual) {
                     Text("Join this network in Wi-Fi settings, then return to Glide.")
                     GlideIconAction(Icons.Default.Settings, "Open Wi-Fi settings", {
-                        runCatching { context.startActivity(Intent(Settings.ACTION_WIFI_SETTINGS)) }
+                        runCatching { wifiSettings.launch(Intent(Settings.ACTION_WIFI_SETTINGS)) }
                     })
-                } else if (!joining) {
-                    TextButton(onClick = { manual = true }) { Text("Connect manually") }
                 }
             }
         },
         confirmButton = {
-            Button(enabled = !joining, onClick = {
-                when {
-                    manual -> onReady()
-                    Build.VERSION.SDK_INT < Build.VERSION_CODES.Q -> manual = true
-                    ContextCompat.checkSelfPermission(context, wifiPermission) == PackageManager.PERMISSION_GRANTED -> tryJoin()
-                    else -> permission.launch(wifiPermission)
-                }
-            }) { Text(if (joining) "Connecting…" else if (manual) "Continue" else "Join") }
+            if (manual) {
+                Button(enabled = !joining, onClick = checkManualConnection) { Text("Continue") }
+            } else {
+                Text(if (joining) "Connecting…" else "Preparing connection…")
+            }
         },
         dismissButton = {
             TextButton(enabled = !joining, onClick = onDismiss) { Text("Cancel") }

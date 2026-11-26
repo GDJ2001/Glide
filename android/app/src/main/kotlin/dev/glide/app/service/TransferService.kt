@@ -215,15 +215,15 @@ class TransferService : Service() {
             }
 
             ACTION_STOP_LAN_RECEIVER -> {
-                runtime().dispatch(TransferRuntimeCommand.StopLanReceiver)
+                if (!foreground && !runtime().isSessionActive.value) {
+                    releaseHotspotLease?.invoke()
+                    releaseHotspotLease = null
+                    runtime().dispatch(TransferRuntimeCommand.StopLanReceiver)
+                }
             }
 
             ACTION_STOP_IDLE_LAN_RECEIVER -> {
-                if (idleReceiver && !foreground && !runtime().isSessionActive.value) {
-                    runtime().dispatch(TransferRuntimeCommand.StopLanReceiver)
-                    runtime().dispatch(TransferRuntimeCommand.StopReceiveAvailability)
-                    handleTerminalTeardown()
-                }
+                stopIdleSharing()
             }
 
             ACTION_CANCEL -> {
@@ -250,6 +250,22 @@ class TransferService : Service() {
         }
 
         return START_NOT_STICKY
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        runtime().dispatch(TransferRuntimeCommand.StopDiscovery)
+        if (!foreground && !runtime().isSessionActive.value) {
+            dev.glide.transport.lan.network.AndroidHotspotConnections.closeUnclaimed()
+            stopIdleSharing()
+        }
+    }
+
+    private fun stopIdleSharing() {
+        if (!idleReceiver || foreground || runtime().isSessionActive.value) return
+        runtime().dispatch(TransferRuntimeCommand.StopLanReceiver)
+        runtime().dispatch(TransferRuntimeCommand.StopReceiveAvailability)
+        handleTerminalTeardown()
     }
 
     /**

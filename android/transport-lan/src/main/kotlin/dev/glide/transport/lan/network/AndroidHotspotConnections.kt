@@ -42,46 +42,77 @@ object AndroidHotspotConnections {
         private set
     @Volatile private var client: Client? = null
     val preferredNetwork: Network? get() = client?.network
+    private var claimedHost: Host? = null
+    private var claimedClient: Client? = null
+    private var generation = 0L
 
     @Synchronized
     fun claimCurrentLease(): () -> Unit {
-        val claimedHost = host
-        val claimedClient = client
+        val ownedHost = host
+        val ownedClient = client
+        claimedHost = ownedHost
+        claimedClient = ownedClient
         return {
             synchronized(this) {
-                if (claimedHost != null && host === claimedHost) {
-                    claimedHost.close()
+                if (ownedHost != null && host === ownedHost) {
+                    ownedHost.close()
                     host = null
+                    claimedHost = null
                 }
-                if (claimedClient != null && client === claimedClient) {
-                    claimedClient.release()
+                if (ownedClient != null && client === ownedClient) {
+                    ownedClient.release()
                     client = null
+                    claimedClient = null
                 }
             }
         }
     }
 
     @Synchronized
-    fun close() {
-        host?.close()
-        host = null
-        client?.release?.invoke()
-        client = null
+    fun closeUnclaimed() {
+        generation++
+        if (host !== claimedHost) {
+            host?.close()
+            host = null
+        }
+        if (client !== claimedClient) {
+            client?.release?.invoke()
+            client = null
+        }
+    }
+
+    @Synchronized
+    private fun beginSetup(): Long? {
+        if (claimedHost != null || claimedClient != null) return null
+        closeUnclaimed()
+        return generation
     }
 
     @SuppressLint("MissingPermission")
     suspend fun createHost(context: Context): Host? {
-        close()
+        val attempt = beginSetup() ?: return null
         val appContext = context.applicationContext
-        val result = withContext(Dispatchers.IO) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                createP2pHost(appContext, prefer5Ghz = true)
-                    ?: createP2pHost(appContext, prefer5Ghz = false)
-                    ?: createLocalOnlyHost(appContext)
-            } else createLocalOnlyHost(appContext)
+        var reservation: Host? = null
+        var published = false
+        try {
+            withContext(Dispatchers.IO) {
+                reservation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    createP2pHost(appContext, prefer5Ghz = true)
+                        ?: createP2pHost(appContext, prefer5Ghz = false)
+                        ?: createLocalOnlyHost(appContext)
+                } else {
+                    createLocalOnlyHost(appContext)
+                }
+            }
+            return synchronized(this) {
+                if (generation != attempt) return@synchronized null
+                host = reservation
+                published = true
+                reservation
+            }
+        } finally {
+            if (!published) reservation?.close()
         }
-        host = result
-        return result
     }
 
     @SuppressLint("MissingPermission")
@@ -215,7 +246,7 @@ object AndroidHotspotConnections {
     }
 
     @SuppressLint("MissingPermission")
-    suspend fun join(context: Context, ssid: String, password: String): Boolean {
+    suspend fun join(context: Context, ssid: String, password: String, expiresAtSeconds: Long): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false
         val cm = context.getSystemService(ConnectivityManager::class.java) ?: return false
         val request = try {
@@ -226,8 +257,7 @@ object AndroidHotspotConnections {
         } catch (_: IllegalArgumentException) {
             return false
         }
-        client?.release?.invoke()
-        client = null
+        val attempt = beginSetup() ?: return false
         val joined = withTimeoutOrNull(16_000) {
             suspendCancellableCoroutine<Client?> { continuation ->
                 lateinit var callback: ConnectivityManager.NetworkCallback
@@ -247,6 +277,7 @@ object AndroidHotspotConnections {
                             if (client?.network == network) {
                                 release()
                                 client = null
+                                claimedClient = null
                             }
                         }
                     }
@@ -260,8 +291,26 @@ object AndroidHotspotConnections {
                 }
             }
         }
-        client = joined
-        return joined != null
+        val remainingMs = (expiresAtSeconds - java.time.Instant.now().epochSecond)
+            .coerceIn(0L, 300L) * 1_000L
+        return synchronized(this) {
+            if (generation == attempt && joined != null && remainingMs > 0 &&
+                runCatching { cm.getNetworkCapabilities(joined.network) }.getOrNull() != null) {
+                client = joined
+                Handler(Looper.getMainLooper()).postDelayed({
+                    synchronized(this) {
+                        if (client === joined && claimedClient !== joined) {
+                            joined.release()
+                            client = null
+                        }
+                    }
+                }, remainingMs)
+                true
+            } else {
+                joined?.release?.invoke()
+                false
+            }
+        }
     }
 
     private fun localAddresses(interfaceName: String? = null): Set<String> = runCatching {

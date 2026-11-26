@@ -73,7 +73,8 @@ fun DiscoveryScreen(
     onSelectPeer: (PeerId) -> Unit,
     onRetry: () -> Unit,
     onScanQrClicked: () -> Unit = {},
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onResolveBlocker: ((BlockedReason) -> Unit)? = null
 ) {
     val haptics = dev.glide.designsystem.GlideTheme.haptics
     val context = LocalContext.current
@@ -234,7 +235,9 @@ fun DiscoveryScreen(
                     DiscoveryBlockedCard(
                         reason = uiState.reason,
                         onRetry = onRetry,
-                        onOpenSettings = { openConnectivitySettings(context, uiState.reason) }
+                        onOpenSettings = {
+                            onResolveBlocker?.invoke(uiState.reason) ?: openConnectivitySettings(context, uiState.reason)
+                        }
                     )
                 }
                 item {

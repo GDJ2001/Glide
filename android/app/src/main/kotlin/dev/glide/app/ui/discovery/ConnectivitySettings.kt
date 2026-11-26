@@ -8,14 +8,7 @@ import android.provider.Settings
 
 /** Both discovery and receive recovery open the settings relevant to the blocker. */
 internal fun openConnectivitySettings(context: Context, reason: BlockedReason) {
-    val intent = when (reason) {
-        is BlockedReason.BluetoothDisabled -> Intent(Settings.ACTION_BLUETOOTH_SETTINGS)
-        is BlockedReason.WifiDisabled, is BlockedReason.NoLocalNetwork -> Intent(Settings.ACTION_WIFI_SETTINGS)
-        is BlockedReason.VpnActive -> Intent(Settings.ACTION_VPN_SETTINGS)
-        else -> Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-            data = Uri.fromParts("package", context.packageName, null)
-        }
-    }
+    val intent = connectivitySettingsIntent(context, reason)
     try {
         context.startActivity(intent)
     } catch (_: ActivityNotFoundException) {
@@ -26,3 +19,13 @@ internal fun openConnectivitySettings(context: Context, reason: BlockedReason) {
         }
     }
 }
+
+internal fun connectivitySettingsIntent(context: Context, reason: BlockedReason): Intent =
+    when (reason) {
+        is BlockedReason.BluetoothDisabled -> Intent(Settings.ACTION_BLUETOOTH_SETTINGS)
+        is BlockedReason.WifiDisabled, is BlockedReason.NoLocalNetwork -> Intent(Settings.ACTION_WIFI_SETTINGS)
+        is BlockedReason.VpnActive -> Intent(Settings.ACTION_VPN_SETTINGS)
+        else -> Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = Uri.fromParts("package", context.packageName, null)
+        }
+    }
