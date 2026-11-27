@@ -66,7 +66,8 @@ object QrEncoder {
     }
 
     /**
-     * Encodes [content] into an Android [Bitmap] suitable for UI display.
+     * Encodes [content] into an Android [Bitmap] with exact integer pixel-per-module scaling
+     * and zero uneven border padding so small-screen and dense QRs never suffer nearest-neighbor aliasing.
      */
     fun encodeToBitmap(
         content: String,
@@ -78,15 +79,25 @@ object QrEncoder {
     ): Bitmap {
         val safeForeground = if ((foregroundColor ushr 24) == 0) Color.BLACK else foregroundColor
         val safeBackground = if ((backgroundColor ushr 24) == 0) Color.WHITE else backgroundColor
-        val bitMatrix = encodeToBitMatrix(content, size, size, margin, errorCorrectionLevel)
-        val width = bitMatrix.width
-        val height = bitMatrix.height
+        val bitMatrix = encodeToBitMatrix(content, 1, 1, margin, errorCorrectionLevel)
+        val matrixWidth = bitMatrix.width
+        val matrixHeight = bitMatrix.height
+        val scale = (size / maxOf(matrixWidth, matrixHeight)).coerceAtLeast(4)
+        val width = matrixWidth * scale
+        val height = matrixHeight * scale
         val pixels = IntArray(width * height)
 
-        for (y in 0 until height) {
-            val offset = y * width
-            for (x in 0 until width) {
-                pixels[offset + x] = if (bitMatrix.get(x, y)) safeForeground else safeBackground
+        for (y in 0 until matrixHeight) {
+            val rowPixelStart = (y * scale) * width
+            for (x in 0 until matrixWidth) {
+                val color = if (bitMatrix.get(x, y)) safeForeground else safeBackground
+                val colStart = rowPixelStart + x * scale
+                for (dy in 0 until scale) {
+                    val destStart = colStart + dy * width
+                    for (dx in 0 until scale) {
+                        pixels[destStart + dx] = color
+                    }
+                }
             }
         }
 

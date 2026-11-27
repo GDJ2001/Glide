@@ -21,6 +21,14 @@ class ShortFileTypeFormatterTest {
     }
 
     @Test
+    fun subtitleTextMarkdownAndVideoExtensionsAreRecognized() {
+        assertEquals("SRT", ShortFileTypeFormatter.format("movie.srt", "application/octet-stream"))
+        assertEquals("VTT", ShortFileTypeFormatter.format("captions.vtt", null))
+        assertEquals("MD", ShortFileTypeFormatter.format("README.md", null))
+        assertEquals("MKV", ShortFileTypeFormatter.format("trailer.mkv", "application/octet-stream"))
+    }
+
+    @Test
     fun neverShowsUnknownMimeStringsOrSuffixes() {
         assertEquals("FILE", ShortFileTypeFormatter.format("app.unknown", "application/octet-stream"))
         assertEquals("FILE", ShortFileTypeFormatter.format("download", null))

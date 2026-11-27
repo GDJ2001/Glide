@@ -37,6 +37,10 @@ class FakeTestReceivedFileDao : ReceivedFileDao {
     override suspend fun getActiveFiles(): List<ReceivedFileEntity> =
         files.values.filter { it.deletedAtMs == null }
 
+    override fun observeActiveFiles(): Flow<List<ReceivedFileEntity>> = flow {
+        emit(getActiveFiles())
+    }
+
     override suspend fun getActiveFileCount(): Int =
         files.values.count { it.deletedAtMs == null }
 

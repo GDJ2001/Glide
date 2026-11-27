@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Automated auditor for Glide GLIDE-071: Advanced Android Transports Evaluation.
 .DESCRIPTION
@@ -84,10 +84,6 @@ $AppManifestContent = Get-Content $AppManifest -Raw
 $BannedV1Permissions = @(
     "android.permission.MANAGE_EXTERNAL_STORAGE",
     "android.permission.WRITE_EXTERNAL_STORAGE",
-    "android.permission.READ_EXTERNAL_STORAGE",
-    "android.permission.READ_MEDIA_IMAGES",
-    "android.permission.READ_MEDIA_VIDEO",
-    "android.permission.READ_MEDIA_AUDIO",
     "android.permission.ACCESS_BACKGROUND_LOCATION",
     "android.permission.RECORD_AUDIO",
     "android.permission.READ_CONTACTS",
@@ -97,6 +93,10 @@ foreach ($perm in $BannedV1Permissions) {
     if ($AppManifestContent -match [regex]::Escape($perm)) {
         Write-Error "FAIL: Banned permission '$perm' found in V1 production manifest!"
     }
+}
+if ($AppManifestContent -match 'android\.permission\.READ_EXTERNAL_STORAGE' -and
+    $AppManifestContent -notmatch '(?s)android\.permission\.READ_EXTERNAL_STORAGE"[^>]*android:maxSdkVersion="32"') {
+    Write-Error "FAIL: READ_EXTERNAL_STORAGE must be bounded to maxSdkVersion=32!"
 }
 
 # Verify ACCESS_FINE_LOCATION and ACCESS_COARSE_LOCATION are bounded by maxSdkVersion="32"

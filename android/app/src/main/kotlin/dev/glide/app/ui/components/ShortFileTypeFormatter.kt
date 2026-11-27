@@ -4,10 +4,13 @@ import java.util.Locale
 
 internal object ShortFileTypeFormatter {
     private val extensions = setOf(
-        "APK", "APKS", "PDF", "JPG", "PNG", "GIF", "WEBP", "HEIC", "SVG",
-        "MP4", "MOV", "MKV", "WEBM", "MP3", "WAV", "FLAC", "M4A", "OGG",
-        "ZIP", "7Z", "RAR", "TAR", "GZ", "DOC", "DOCX", "XLS", "XLSX",
-        "PPT", "PPTX", "TXT", "CSV", "JSON", "HTML", "EPUB"
+        "APK", "APKS", "XAPK", "PDF", "JPG", "PNG", "GIF", "WEBP", "HEIC", "SVG",
+        "MP4", "MOV", "MKV", "WEBM", "AVI", "M4V", "3GP",
+        "MP3", "WAV", "FLAC", "M4A", "OGG", "AAC", "OPUS",
+        "ZIP", "7Z", "RAR", "TAR", "GZ", "ISO", "IMG",
+        "DOC", "DOCX", "XLS", "XLSX", "PPT", "PPTX", "ODT", "ODS", "ODP", "RTF",
+        "TXT", "SRT", "ASS", "VTT", "MD", "LOG", "CSV", "JSON", "XML", "YAML", "YML",
+        "HTML", "HTM", "EPUB", "ICS", "VCF", "KT", "JAVA", "PY", "JS", "TS"
     )
 
     fun format(fileName: String, mimeType: String?): String {

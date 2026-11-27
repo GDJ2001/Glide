@@ -74,4 +74,26 @@ class FileOpenerTest {
         assertNotNull(resolved)
         assertEquals(externalFile.absolutePath, resolved?.absolutePath)
     }
+
+    @Test
+    fun resolveMimeType_fallsBackToExtensionWhenGenericOrNull() {
+        assertEquals("text/plain", FileOpener.resolveMimeType("subtitles.srt", "application/octet-stream"))
+        assertEquals("image/jpeg", FileOpener.resolveMimeType("photo.jpg", "*/*"))
+        assertEquals("application/pdf", FileOpener.resolveMimeType("document.pdf", null))
+        assertEquals("video/mp4", FileOpener.resolveMimeType("clip.bin", "video/mp4"))
+    }
+
+    @Test
+    fun resolvePublicFolderDocumentId_targetsGlideRootAndSubfolders() {
+        assertEquals("primary:Download/Glide", FileOpener.resolvePublicFolderDocumentId(null, null))
+        assertEquals(
+            "primary:Download/Glide/Movies",
+            FileOpener.resolvePublicFolderDocumentId("Movies/clip.mkv", null)
+        )
+    }
+
+    @Test
+    fun openInFileManager_nullContext_returnsError() {
+        assertEquals(FileOpenResult.Error("Context unavailable"), FileOpener.openInFileManager(null))
+    }
 }

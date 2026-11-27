@@ -2,7 +2,6 @@ package dev.glide.transport.lan.tls
 
 import android.os.Build
 import androidx.annotation.RequiresApi
-import androidx.annotation.ChecksSdkIntAtLeast
 import dev.glide.transport.lan.LanConnectionException
 import dev.glide.transport.lan.LanConnectionFailure
 import dev.glide.transport.lan.network.LanAddressRejectionCode
@@ -16,7 +15,6 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.security.SecureRandom
-import javax.net.ssl.SSLContext
 import javax.net.ssl.SSLSocket
 import javax.net.ssl.TrustManager
 
@@ -26,7 +24,7 @@ import javax.net.ssl.TrustManager
  * Enforces:
  * - Address validation on-link (rejects loopback in production, multicast, off-link).
  * - 5-second TCP connect timeout.
- * - Sockets bound to active network via [LanNetworkScope.bindSocket].
+ * - Sockets bound to active network via [LanNetworkScope.bindSocket] or local hotspot interface.
  * - Strict SPKI SHA-256 certificate pin before any application data is sent.
  * - Negotiation of TLS 1.3 and ALPN "glide-lan/1".
  * - Fail-closed cleanup on any handshake error.
@@ -83,24 +81,42 @@ class PinnedTlsConnector(
         var sslSocket: SSLSocket? = null
 
         try {
-            // 2. Bind raw socket to active network if target address belongs to that network's link
+            // 2. Bind raw socket to active network (or matching on-link local interface for SoftAP/Hotspot)
             val state = networkScope?.networkState?.value
-            if (state is LanNetworkState.Available && state.network != null) {
-                val netLinkSubnets = networkScope.context
-                    ?.getSystemService(android.content.Context.CONNECTIVITY_SERVICE)
-                    ?.let { it as? android.net.ConnectivityManager }
-                    ?.getLinkProperties(state.network)
-                    ?.linkAddresses
-                    ?.map { SubnetPrefix(it.address, it.prefixLength) }
-                    ?: emptyList()
-                val isOnManagedNetwork = netLinkSubnets.isEmpty() ||
-                    LanAddressValidator.validateAddress(
-                        address = address,
-                        activeSubnets = netLinkSubnets,
-                        allowLoopbackForTesting = allowLoopbackForTesting
-                    ) is LanAddressValidationResult.Valid
-                if (isOnManagedNetwork) {
-                    networkScope.bindSocket(rawSocket)
+            val isLoopbackTarget = allowLoopbackForTesting && address.isLoopbackAddress
+            if (state is LanNetworkState.Available && !isLoopbackTarget) {
+                var boundToManagedNetwork = false
+                if (state.network != null) {
+                    val netLinkSubnets = networkScope.context
+                        ?.getSystemService(android.content.Context.CONNECTIVITY_SERVICE)
+                        ?.let { it as? android.net.ConnectivityManager }
+                        ?.getLinkProperties(state.network)
+                        ?.linkAddresses
+                        ?.map { SubnetPrefix(it.address, it.prefixLength) }
+                        ?: emptyList()
+                    val isOnManagedNetwork = netLinkSubnets.isEmpty() ||
+                        LanAddressValidator.validateAddress(
+                            address = address,
+                            activeSubnets = netLinkSubnets,
+                            allowLoopbackForTesting = allowLoopbackForTesting
+                        ) is LanAddressValidationResult.Valid
+                    if (isOnManagedNetwork) {
+                        networkScope.bindSocket(rawSocket)
+                        boundToManagedNetwork = true
+                    }
+                }
+                if (!boundToManagedNetwork) {
+                    val localSubnet = state.subnets.firstOrNull {
+                        !it.address.isLoopbackAddress && it.matches(address)
+                    } ?: activeSubnets.firstOrNull { !it.address.isLoopbackAddress && it.matches(address) }
+                    if (localSubnet != null) {
+                        rawSocket.bind(InetSocketAddress(localSubnet.address, 0))
+                    }
+                }
+            } else if (!isLoopbackTarget) {
+                val localSubnet = activeSubnets.firstOrNull { !it.address.isLoopbackAddress && it.matches(address) }
+                if (localSubnet != null) {
+                    rawSocket.bind(InetSocketAddress(localSubnet.address, 0))
                 }
             }
 
@@ -109,11 +125,7 @@ class PinnedTlsConnector(
 
             // 4. Wrap with TLS 1.3 and PinnedTrustManager
             val trustManager = PinnedTrustManager(expectedSpkiSha256Hex)
-            val sslContext = try {
-                SSLContext.getInstance(PROTOCOL_TLS_V1_3)
-            } catch (_: Exception) {
-                SSLContext.getInstance("TLS")
-            }
+            val sslContext = LanTlsProvider.createTls13Context()
             sslContext.init(null, arrayOf<TrustManager>(trustManager), SecureRandom())
 
             sslSocket = sslContext.socketFactory.createSocket(
@@ -126,11 +138,7 @@ class PinnedTlsConnector(
             sslSocket.useClientMode = true
             sslSocket.enabledProtocols = arrayOf(PROTOCOL_TLS_V1_3)
 
-            if (hasPlatformAlpn()) {
-                val params = sslSocket.sslParameters
-                params.applicationProtocols = arrayOf(ALPN_GLIDE_LAN_V1)
-                sslSocket.sslParameters = params
-            }
+            LanTlsProvider.configureAlpn(sslSocket, arrayOf(ALPN_GLIDE_LAN_V1))
             sslSocket.soTimeout = handshakeTimeoutMs
 
             // 5. Perform TLS handshake
@@ -142,8 +150,8 @@ class PinnedTlsConnector(
                 throw IOException("Incompatible TLS version: expected $PROTOCOL_TLS_V1_3, got $negotiatedProtocol")
             }
 
-            if (hasPlatformAlpn()) {
-                val negotiatedAlpn = sslSocket.applicationProtocol
+            if (LanTlsProvider.supportsAlpn(sslSocket)) {
+                val negotiatedAlpn = LanTlsProvider.negotiatedAlpn(sslSocket)
                 if (negotiatedAlpn != ALPN_GLIDE_LAN_V1) {
                     throw IOException("Incompatible ALPN: expected '$ALPN_GLIDE_LAN_V1', got '$negotiatedAlpn'")
                 }
@@ -169,8 +177,3 @@ class PinnedTlsConnector(
         }
     }
 }
-
-/** Android unit tests run on the JVM, whose TLS provider exposes ALPN when SDK_INT is stubbed to 0. */
-@ChecksSdkIntAtLeast(api = Build.VERSION_CODES.Q)
-internal fun hasPlatformAlpn(): Boolean =
-    Build.VERSION.SDK_INT == 0 || Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q

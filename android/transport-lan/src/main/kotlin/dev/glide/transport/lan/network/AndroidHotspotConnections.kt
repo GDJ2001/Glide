@@ -48,60 +48,137 @@ object AndroidHotspotConnections {
 
     @Synchronized
     fun claimCurrentLease(): () -> Unit {
+        pruneStaleHostIfDown()
         val ownedHost = host
         val ownedClient = client
-        claimedHost = ownedHost
-        claimedClient = ownedClient
+        if (ownedHost != null) claimedHost = ownedHost
+        if (ownedClient != null) claimedClient = ownedClient
         return {
             synchronized(this) {
-                if (ownedHost != null && host === ownedHost) {
-                    ownedHost.close()
-                    host = null
-                    claimedHost = null
+                if (ownedHost != null && (host === ownedHost || claimedHost === ownedHost)) {
+                    runCatching { ownedHost.close() }
+                    if (host === ownedHost) host = null
+                    if (claimedHost === ownedHost) claimedHost = null
                 }
-                if (ownedClient != null && client === ownedClient) {
-                    ownedClient.release()
-                    client = null
-                    claimedClient = null
+                if (ownedClient != null && (client === ownedClient || claimedClient === ownedClient)) {
+                    runCatching { ownedClient.release() }
+                    if (client === ownedClient) client = null
+                    if (claimedClient === ownedClient) claimedClient = null
                 }
             }
         }
     }
 
     @Synchronized
+    fun claimHostLease(): () -> Unit {
+        pruneStaleHostIfDown()
+        val ownedHost = host ?: return {}
+        claimedHost = ownedHost
+        return {
+            synchronized(this) {
+                if (host === ownedHost || claimedHost === ownedHost) {
+                    runCatching { ownedHost.close() }
+                    if (host === ownedHost) host = null
+                    if (claimedHost === ownedHost) claimedHost = null
+                }
+            }
+        }
+    }
+
+    @Synchronized
+    fun claimClientLease(): () -> Unit {
+        val ownedClient = client ?: return {}
+        claimedClient = ownedClient
+        return {
+            synchronized(this) {
+                if (client === ownedClient || claimedClient === ownedClient) {
+                    runCatching { ownedClient.release() }
+                    if (client === ownedClient) client = null
+                    if (claimedClient === ownedClient) claimedClient = null
+                }
+            }
+        }
+    }
+
+    @Synchronized
+    fun isHostClaimed(targetHost: Host?): Boolean = targetHost != null && claimedHost === targetHost
+
+    @Synchronized
+    fun releaseClaimedClient() {
+        val ownedClient = client ?: claimedClient
+        if (ownedClient != null) {
+            runCatching { ownedClient.release() }
+        }
+        client = null
+        claimedClient = null
+    }
+
+    @Synchronized
+    fun cancelJoin() {
+        generation++
+        val ownedClient = client ?: claimedClient
+        if (ownedClient != null) {
+            runCatching { ownedClient.release() }
+        }
+        client = null
+        claimedClient = null
+    }
+
+    @Synchronized
     fun closeUnclaimed() {
         generation++
         if (host !== claimedHost) {
-            host?.close()
+            runCatching { host?.close() }
             host = null
         }
         if (client !== claimedClient) {
-            client?.release?.invoke()
+            runCatching { client?.release?.invoke() }
             client = null
         }
     }
 
     @Synchronized
-    private fun beginSetup(): Long? {
-        if (claimedHost != null || claimedClient != null) return null
+    private fun pruneStaleHostIfDown() {
+        val activeHost = host ?: claimedHost ?: return
+        val activeAddrs = localAddresses()
+        if (activeAddrs.none { it in activeHost.addresses }) {
+            runCatching { activeHost.close() }
+            if (host === activeHost) host = null
+            if (claimedHost === activeHost) claimedHost = null
+        }
+    }
+
+    @Synchronized
+    private fun beginSetup(forHost: Boolean): Long? {
+        pruneStaleHostIfDown()
+        // Starting a new client join or hotspot host supersedes any prior client lease.
+        releaseClaimedClient()
+        if (forHost && claimedHost != null) {
+            // Explicit host request while a previous host was claimed closes the old host first.
+            runCatching { claimedHost?.close() }
+            if (host === claimedHost) host = null
+            claimedHost = null
+        }
         closeUnclaimed()
         return generation
     }
 
     @SuppressLint("MissingPermission")
     suspend fun createHost(context: Context): Host? {
-        val attempt = beginSetup() ?: return null
+        val attempt = beginSetup(forHost = true) ?: return null
         val appContext = context.applicationContext
         var reservation: Host? = null
         var published = false
         try {
             withContext(Dispatchers.IO) {
                 reservation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    createP2pHost(appContext, prefer5Ghz = true)
-                        ?: createP2pHost(appContext, prefer5Ghz = false)
-                        ?: createLocalOnlyHost(appContext)
+                    val order = p2pBandOrder()
+                    createLocalOnlyHost(appContext)
+                        ?: createP2pHost(appContext, order[0])
+                        ?: createP2pHost(appContext, order[1])
                 } else {
                     createLocalOnlyHost(appContext)
+                        ?: createLegacyP2pHost(appContext)
                 }
             }
             return synchronized(this) {
@@ -115,9 +192,13 @@ object AndroidHotspotConnections {
         }
     }
 
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.Q)
+    internal fun p2pBandOrder(): List<Int> =
+        listOf(WifiP2pConfig.GROUP_OWNER_BAND_2GHZ, WifiP2pConfig.GROUP_OWNER_BAND_AUTO)
+
     @SuppressLint("MissingPermission")
     @androidx.annotation.RequiresApi(Build.VERSION_CODES.Q)
-    private suspend fun createP2pHost(context: Context, prefer5Ghz: Boolean): Host? {
+    private suspend fun createP2pHost(context: Context, operatingBand: Int): Host? {
         val manager = context.getSystemService(WifiP2pManager::class.java) ?: return null
         val channel = runCatching { manager.initialize(context, Looper.getMainLooper(), null) }.getOrNull()
             ?: return null
@@ -131,8 +212,7 @@ object AndroidHotspotConnections {
                 .setNetworkName("DIRECT-GL-${random.take(6)}")
                 .setPassphrase(random.take(20))
                 .enablePersistentMode(false)
-                .setGroupOperatingBand(if (prefer5Ghz) WifiP2pConfig.GROUP_OWNER_BAND_5GHZ
-                    else WifiP2pConfig.GROUP_OWNER_BAND_AUTO)
+                .setGroupOperatingBand(operatingBand)
                 .build()
             created = withTimeoutOrNull(5000) {
                 suspendCancellableCoroutine { continuation ->
@@ -181,6 +261,64 @@ object AndroidHotspotConnections {
         }
     }
 
+    @Suppress("DEPRECATION")
+    @SuppressLint("MissingPermission")
+    private suspend fun createLegacyP2pHost(context: Context): Host? {
+        val manager = context.getSystemService(WifiP2pManager::class.java) ?: return null
+        val channel = runCatching { manager.initialize(context, Looper.getMainLooper(), null) }.getOrNull()
+            ?: return null
+        var created = false
+        var retained = false
+        try {
+            val existing = withTimeoutOrNull(1500) { GroupReply(requestGroup(manager, channel)) } ?: return null
+            if (existing.group != null) return null
+            created = withTimeoutOrNull(5000) {
+                suspendCancellableCoroutine { continuation ->
+                    try {
+                        manager.createGroup(channel, object : WifiP2pManager.ActionListener {
+                            override fun onSuccess() {
+                                continuation.resume(true) { _, _, _ ->
+                                    runCatching { manager.removeGroup(channel, null) }
+                                }
+                            }
+                            override fun onFailure(reason: Int) {
+                                if (continuation.isActive) continuation.resume(false)
+                            }
+                        })
+                    } catch (_: Exception) {
+                        if (continuation.isActive) continuation.resume(false)
+                    }
+                }
+            } == true
+            if (!created) return null
+            return withTimeoutOrNull(4500) {
+                while (true) {
+                    val group = requestGroup(manager, channel)
+                    if (group?.isGroupOwner == true) {
+                        val addresses = localAddresses(group.`interface`)
+                        val name = group.networkName
+                        val password = group.passphrase
+                        if (addresses.isNotEmpty() && validCredentials(name, password)) {
+                            retained = true
+                            return@withTimeoutOrNull Host(name, password, addresses) {
+                                runCatching { manager.removeGroup(channel, null) }
+                                runCatching { channel.close() }
+                            }
+                        }
+                    }
+                    delay(250)
+                }
+                @Suppress("UNREACHABLE_CODE")
+                null
+            }
+        } finally {
+            if (!retained) {
+                if (created) runCatching { manager.removeGroup(channel, null) }
+                runCatching { channel.close() }
+            }
+        }
+    }
+
     private data class GroupReply(val group: WifiP2pGroup?)
 
     @SuppressLint("MissingPermission")
@@ -198,12 +336,22 @@ object AndroidHotspotConnections {
     private suspend fun createLocalOnlyHost(context: Context): Host? {
         val wifi = context.getSystemService(WifiManager::class.java) ?: return null
         val before = localAddresses()
+        var createdHost: Host? = null
         val reservation = withTimeoutOrNull(5000) {
             suspendCancellableCoroutine<WifiManager.LocalOnlyHotspotReservation?> { continuation ->
                 try {
                     wifi.startLocalOnlyHotspot(object : WifiManager.LocalOnlyHotspotCallback() {
                         override fun onStarted(value: WifiManager.LocalOnlyHotspotReservation) {
                             continuation.resume(value) { _, lease, _ -> lease.close() }
+                        }
+                        override fun onStopped() {
+                            synchronized(this@AndroidHotspotConnections) {
+                                val target = createdHost
+                                if (target != null) {
+                                    if (host === target) host = null
+                                    if (claimedHost === target) claimedHost = null
+                                }
+                            }
                         }
                         override fun onFailed(reason: Int) {
                             if (continuation.isActive) continuation.resume(null)
@@ -219,8 +367,9 @@ object AndroidHotspotConnections {
             val name: String?
             val password: String?
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                name = reservation.softApConfiguration?.ssid
-                password = reservation.softApConfiguration?.passphrase
+                val config = reservation.softApConfiguration
+                name = config.ssid?.removeSurrounding("\"")
+                password = config.passphrase
             } else {
                 name = reservation.wifiConfiguration?.SSID?.removeSurrounding("\"")
                 password = reservation.wifiConfiguration?.preSharedKey?.removeSurrounding("\"")
@@ -228,12 +377,14 @@ object AndroidHotspotConnections {
             val ssid = name ?: return null
             val passphrase = password ?: return null
             if (!validCredentials(ssid, passphrase)) return null
-            return withTimeoutOrNull(3500) {
+            return withTimeoutOrNull(7000) {
                 while (true) {
-                    val addresses = localAddresses() - before
+                    val addresses = (localAddresses() - before).ifEmpty { localSoftApAddresses(wifi) }
                     if (addresses.isNotEmpty()) {
                         retained = true
-                        return@withTimeoutOrNull Host(ssid, passphrase, addresses, reservation::close)
+                        return@withTimeoutOrNull Host(ssid, passphrase, addresses, reservation::close).also {
+                            createdHost = it
+                        }
                     }
                     delay(250)
                 }
@@ -244,6 +395,9 @@ object AndroidHotspotConnections {
             if (!retained) reservation.close()
         }
     }
+
+    internal fun computeJoinTimeoutMs(nowEpochSeconds: Long, expiresAtSeconds: Long): Long =
+        ((expiresAtSeconds - nowEpochSeconds) * 1_000L).coerceIn(15_000L, 60_000L)
 
     @SuppressLint("MissingPermission")
     suspend fun join(context: Context, ssid: String, password: String, expiresAtSeconds: Long): Boolean {
@@ -257,8 +411,9 @@ object AndroidHotspotConnections {
         } catch (_: IllegalArgumentException) {
             return false
         }
-        val attempt = beginSetup() ?: return false
-        val joined = withTimeoutOrNull(16_000) {
+        val attempt = beginSetup(forHost = false) ?: return false
+        val joinTimeoutMs = computeJoinTimeoutMs(java.time.Instant.now().epochSecond, expiresAtSeconds)
+        val joined = withTimeoutOrNull(joinTimeoutMs + 2_000L) {
             suspendCancellableCoroutine<Client?> { continuation ->
                 lateinit var callback: ConnectivityManager.NetworkCallback
                 val release = { runCatching { cm.unregisterNetworkCallback(callback) }; Unit }
@@ -284,7 +439,7 @@ object AndroidHotspotConnections {
                 }
                 continuation.invokeOnCancellation { release() }
                 try {
-                    cm.requestNetwork(request, callback, 15_000)
+                    cm.requestNetwork(request, callback, joinTimeoutMs.toInt())
                 } catch (_: Exception) {
                     release()
                     if (continuation.isActive) continuation.resume(null)
@@ -316,6 +471,16 @@ object AndroidHotspotConnections {
     private fun localAddresses(interfaceName: String? = null): Set<String> = runCatching {
         NetworkInterface.getNetworkInterfaces()?.asSequence().orEmpty()
             .filter { it.isUp && !it.isLoopback && (interfaceName == null || it.name == interfaceName) }
+            .flatMap { it.inetAddresses.asSequence() }
+            .filterIsInstance<Inet4Address>().filter { it.isSiteLocalAddress }
+            .mapNotNull { it.hostAddress }.toSet()
+    }.getOrDefault(emptySet())
+
+    @Suppress("DEPRECATION")
+    private fun localSoftApAddresses(wifiManager: WifiManager?): Set<String> = runCatching {
+        val wifiStaEnabled = runCatching { wifiManager?.isWifiEnabled }.getOrNull() ?: false
+        NetworkInterface.getNetworkInterfaces()?.asSequence().orEmpty()
+            .filter { it.isUp && !it.isLoopback && isSoftApInterfaceCandidate(it.name.orEmpty(), wifiStaEnabled) }
             .flatMap { it.inetAddresses.asSequence() }
             .filterIsInstance<Inet4Address>().filter { it.isSiteLocalAddress }
             .mapNotNull { it.hostAddress }.toSet()

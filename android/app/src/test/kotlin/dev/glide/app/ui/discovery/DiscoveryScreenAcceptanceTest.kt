@@ -253,4 +253,23 @@ class DiscoveryScreenAcceptanceTest {
         viewModel.selectPeer(PeerId("another-peer")) { initiateCount++ }
         assertEquals(1, initiateCount)
     }
+
+    @Test
+    fun stopDiscoveryAndStartDiscovery_clearSelectedPeerForRetry() = runTest(testDispatcher) {
+        val viewModel = DiscoveryViewModel.forTesting()
+        viewModel.onPeerDiscovered(DiscoveredPeer(PeerId("peer-1"), "Phone A"))
+        viewModel.onPeerDiscovered(DiscoveredPeer(PeerId("peer-2"), "Phone B"))
+
+        var calls = 0
+        viewModel.selectPeer(PeerId("peer-1")) { calls++ }
+        assertEquals(1, calls)
+
+        viewModel.stopDiscovery()
+        val afterStop = viewModel.uiState.value as DiscoveryUiState.Searching
+        assertEquals(null, afterStop.selectedPeerId)
+        assertFalse(afterStop.peers[0].isConnecting)
+
+        viewModel.selectPeer(PeerId("peer-2")) { calls++ }
+        assertEquals(2, calls)
+    }
 }

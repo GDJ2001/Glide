@@ -77,6 +77,13 @@ class LanTransferTransport(
             )
         }
 
+    val subnetPresenceBeacon: dev.glide.transport.lan.discovery.LanSubnetPresenceBeacon =
+        dev.glide.transport.lan.discovery.LanSubnetPresenceBeacon(
+            networkScope = networkScope,
+            allowLoopbackForTesting = allowLoopbackForTesting,
+            coroutineScope = coroutineScope
+        )
+
     private val _connectionEvents = MutableSharedFlow<ConnectionEvent>(replay = 1, extraBufferCapacity = 64)
     private val _controlMessages = MutableSharedFlow<ControlMessage>(replay = 16, extraBufferCapacity = 64)
     private val _incomingStreams = MutableSharedFlow<IncomingStream>(replay = 16, extraBufferCapacity = 16)
@@ -431,32 +438,50 @@ class LanTransferTransport(
         ) ?: emptyFlow()
     }
 
-    fun advertiseTrustedListener(deviceName: String, presenceId: String) {
+    fun advertiseTrustedListener(
+        deviceName: String,
+        presenceId: String,
+        enableNsd: Boolean = true
+    ) {
         val port = listener?.localPort ?: error("LAN listener is not bound")
         check(port in 1..65535)
         check(trustedIdentity != null) { "Trusted receive handler is unavailable" }
-        val adapter = nsdDiscoveryAdapter ?: error("LAN discovery is unavailable")
         advertisedPresenceId = presenceId
-        try {
-            adapter.startAdvertising(
+        runCatching {
+            subnetPresenceBeacon.startAdvertising(
                 deviceName = deviceName,
                 localPort = port,
                 presenceId = presenceId,
                 supportsTrustedReconnect = true
             )
-        } catch (error: Throwable) {
-            advertisedPresenceId = null
-            throw error
+        }
+        val adapter = nsdDiscoveryAdapter
+        if (enableNsd && adapter != null) {
+            try {
+                adapter.startAdvertising(
+                    deviceName = deviceName,
+                    localPort = port,
+                    presenceId = presenceId,
+                    supportsTrustedReconnect = true
+                )
+            } catch (error: Throwable) {
+                if (subnetPresenceBeacon.activeResponderPort <= 0) {
+                    advertisedPresenceId = null
+                    throw error
+                }
+            }
         }
     }
 
     override suspend fun stopAdvertising() {
         nsdDiscoveryAdapter?.stopAdvertising()
+        subnetPresenceBeacon.stopAdvertising()
         advertisedPresenceId = null
     }
 
     fun stopTrustedAdvertising() {
         nsdDiscoveryAdapter?.stopAdvertising()
+        subnetPresenceBeacon.stopAdvertising()
         advertisedPresenceId = null
     }
 
@@ -846,6 +871,7 @@ class LanTransferTransport(
         inboundAcceptedSocket = null
         inboundSessionReserved.set(false)
         pendingInvitations.clear()
+        subnetPresenceBeacon.close()
         nsdDiscoveryAdapter?.close()
         streamBridge.close()
         networkScope.close()

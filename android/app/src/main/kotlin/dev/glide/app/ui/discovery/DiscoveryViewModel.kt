@@ -69,8 +69,10 @@ class DiscoveryViewModel private constructor(
     /**
      * Starts the real runtime discovery operation. No ViewModel-owned radio/timer job exists.
      */
-    fun startDiscovery(): Boolean =
-        runtime?.dispatch(TransferRuntimeCommand.StartDiscovery) ?: false
+    fun startDiscovery(): Boolean {
+        clearPeerSelection()
+        return runtime?.dispatch(TransferRuntimeCommand.StartDiscovery) ?: false
+    }
 
     /**
      * Historical API retained for callers/tests; now delegates to runtime-owned discovery.
@@ -78,7 +80,20 @@ class DiscoveryViewModel private constructor(
     fun startDiscoveryTimer(): Boolean = startDiscovery()
 
     fun stopDiscovery() {
+        clearPeerSelection()
         runtime?.dispatch(TransferRuntimeCommand.StopDiscovery)
+    }
+
+    private fun clearPeerSelection() {
+        val current = _uiState.value
+        if (current is DiscoveryUiState.Searching &&
+            (current.selectedPeerId != null || current.peers.any { it.isConnecting || it.isSelected })
+        ) {
+            _uiState.value = current.copy(
+                peers = current.peers.map { it.copy(isConnecting = false, isSelected = false) },
+                selectedPeerId = null
+            )
+        }
     }
 
     fun onPermissionDenied() {

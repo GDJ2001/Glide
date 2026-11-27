@@ -21,6 +21,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -28,6 +29,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import dev.glide.app.ui.components.GlideIconAction
 import dev.glide.app.connectivity.ConnectionKind
 import dev.glide.app.ui.discovery.rememberConnectionSetup
@@ -38,6 +40,7 @@ import dev.glide.transport.lan.network.LanAddressValidator
 import dev.glide.transport.lan.network.LanNetworkScope
 import dev.glide.transport.lan.network.LanNetworkState
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -54,22 +57,40 @@ internal fun HotspotJoinDialog(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var copyNotice by remember(invitation) { mutableStateOf<String?>(null) }
+    LaunchedEffect(copyNotice) {
+        if (copyNotice != null) {
+            delay(2_500L)
+            copyNotice = null
+        }
+    }
     var joining by remember(invitation) { mutableStateOf(false) }
-    var manual by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
-    var attempted by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    var joinJob by remember(invitation) { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    var manual by androidx.compose.runtime.saveable.rememberSaveable(invitation.pairing.invitationId) {
+        mutableStateOf(false)
+    }
+    var attempted by androidx.compose.runtime.saveable.rememberSaveable(invitation.pairing.invitationId) {
+        mutableStateOf(false)
+    }
     var notice by remember(invitation) { mutableStateOf<String?>(null) }
     val setup = rememberConnectionSetup()
     val completeJoin: () -> Unit = {
-        if (invitation.pairing.expiresAt.toLong() > Instant.now().epochSecond) {
+        val expiresAt = invitation.pairing.expiresAt.toLongOrNull() ?: 0L
+        if (expiresAt + 300L > Instant.now().epochSecond) {
             onReady()
         } else {
-            AndroidHotspotConnections.closeUnclaimed()
+            AndroidHotspotConnections.cancelJoin()
             notice = "This hotspot code has expired. Scan a new code."
         }
     }
+    val cancelInFlightAutoJoin: () -> Unit = {
+        joinJob?.cancel()
+        joinJob = null
+        AndroidHotspotConnections.cancelJoin()
+        joining = false
+    }
     val tryJoin: () -> Unit = {
         joining = true
-        scope.launch {
+        joinJob = scope.launch {
             try {
                 if (AndroidHotspotConnections.join(
                         context, invitation.ssid, invitation.passphrase, invitation.pairing.expiresAt.toLong()
@@ -80,7 +101,23 @@ internal fun HotspotJoinDialog(
                 }
             } finally {
                 joining = false
+                joinJob = null
             }
+        }
+    }
+    suspend fun isOnHotspotSubnet(timeoutMs: Long): Boolean = withContext(Dispatchers.IO) {
+        LanNetworkScope(context.applicationContext).use { network ->
+            if (network.networkState.value !is LanNetworkState.Available) {
+                network.evaluateLocalInterfacesFallback()
+            }
+            withTimeoutOrNull(timeoutMs) {
+                network.networkState.filterIsInstance<LanNetworkState.Available>().first { state ->
+                    invitation.pairing.endpoints.any { endpoint ->
+                        LanAddressValidator.validateAddress(endpoint.address, state.subnets) ==
+                            LanAddressValidationResult.Valid
+                    }
+                }
+            } != null
         }
     }
     val checkManualConnection: () -> Unit = {
@@ -88,19 +125,7 @@ internal fun HotspotJoinDialog(
             joining = true
             scope.launch {
                 try {
-                    val ready = withContext(Dispatchers.IO) {
-                        LanNetworkScope(context.applicationContext).use { network ->
-                            withTimeoutOrNull(2_500) {
-                                network.networkState.filterIsInstance<LanNetworkState.Available>().first { state ->
-                                    invitation.pairing.endpoints.any { endpoint ->
-                                        LanAddressValidator.validateAddress(endpoint.address, state.subnets) ==
-                                            LanAddressValidationResult.Valid
-                                    }
-                                }
-                            } != null
-                        }
-                    }
-                    if (ready) completeJoin()
+                    if (isOnHotspotSubnet(2_500L)) completeJoin()
                     else notice = "Connect to the hotspot in Wi-Fi settings."
                 } finally {
                     joining = false
@@ -111,10 +136,29 @@ internal fun HotspotJoinDialog(
     val wifiSettings = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         checkManualConnection()
     }
+    val openManualWifiSettings: () -> Unit = {
+        cancelInFlightAutoJoin()
+        manual = true
+        runCatching { wifiSettings.launch(Intent(Settings.ACTION_WIFI_SETTINGS)) }
+    }
+    LifecycleResumeEffect(manual) {
+        if (manual && !joining) {
+            checkManualConnection()
+        }
+        onPauseOrDispose {}
+    }
     androidx.compose.runtime.LaunchedEffect(invitation) {
         if (!attempted) {
             attempted = true
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            joining = true
+            val alreadyConnected = try {
+                isOnHotspotSubnet(400L)
+            } finally {
+                joining = false
+            }
+            if (alreadyConnected) {
+                completeJoin()
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 setup.start(ConnectionKind.Hotspot, onBlocked = { manual = true }, onReady = tryJoin)
             } else {
                 manual = true
@@ -125,7 +169,10 @@ internal fun HotspotJoinDialog(
         }
     }
     AlertDialog(
-        onDismissRequest = { if (!joining) onDismiss() },
+        onDismissRequest = {
+            cancelInFlightAutoJoin()
+            onDismiss()
+        },
         title = { Text("Join hotspot") },
         text = {
             Column(
@@ -138,10 +185,12 @@ internal fun HotspotJoinDialog(
                 }
                 notice?.let { Text(it, Modifier.semantics { liveRegion = LiveRegionMode.Polite }) }
                 if (manual) {
-                    Text("Join this network in Wi-Fi settings, then return to Glide.")
-                    GlideIconAction(Icons.Default.Settings, "Open Wi-Fi settings", {
-                        runCatching { wifiSettings.launch(Intent(Settings.ACTION_WIFI_SETTINGS)) }
-                    })
+                    Text("1. Copy the password above.\n2. Join \"${invitation.ssid}\" in Wi-Fi settings.\n3. Return to Glide to connect.")
+                    GlideIconAction(Icons.Default.Settings, "Open Wi-Fi settings", openManualWifiSettings)
+                } else {
+                    TextButton(onClick = openManualWifiSettings) {
+                        Text("Join manually in Wi-Fi settings")
+                    }
                 }
             }
         },
@@ -153,7 +202,10 @@ internal fun HotspotJoinDialog(
             }
         },
         dismissButton = {
-            TextButton(enabled = !joining, onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = {
+                cancelInFlightAutoJoin()
+                onDismiss()
+            }) { Text("Cancel") }
         }
     )
 }

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.InstallMobile
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SystemUpdateAlt
@@ -58,6 +59,7 @@ internal fun ReceivedFileActions(
     onOpen: () -> Unit,
     onShare: () -> Unit,
     onSave: (() -> Unit)?,
+    onOpenFolder: (() -> Unit)? = null,
     saving: Boolean = false
 ) {
     val filename = name.isolateBidi()
@@ -65,6 +67,9 @@ internal fun ReceivedFileActions(
         FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             if (!AppPackageInstaller.isSplitBundle(mime, name)) {
                 GlideIconAction(Icons.AutoMirrored.Filled.OpenInNew, "Open $filename", onOpen, tooltip = "Open file")
+            }
+            onOpenFolder?.let {
+                GlideIconAction(Icons.Default.FolderOpen, "Open $filename in file manager", it, tooltip = "Open in file manager")
             }
             GlideIconAction(Icons.Default.Share, "Share $filename", onShare, tooltip = "Share file")
             onSave?.let {

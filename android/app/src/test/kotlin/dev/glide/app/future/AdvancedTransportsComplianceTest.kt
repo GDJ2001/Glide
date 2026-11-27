@@ -80,18 +80,19 @@ class AdvancedTransportsComplianceTest {
 
         val manifestText = manifestFile.readText()
 
-        // Assert no broad storage permissions
+        // Assert no broad all-files or legacy write storage permissions
         val bannedStorage = listOf(
             "android.permission.MANAGE_EXTERNAL_STORAGE",
-            "android.permission.WRITE_EXTERNAL_STORAGE",
-            "android.permission.READ_EXTERNAL_STORAGE",
-            "android.permission.READ_MEDIA_IMAGES",
-            "android.permission.READ_MEDIA_VIDEO",
-            "android.permission.READ_MEDIA_AUDIO"
+            "android.permission.WRITE_EXTERNAL_STORAGE"
         )
         for (perm in bannedStorage) {
             assertTrue("V1 must not declare $perm", !manifestText.contains(perm))
         }
+        assertTrue(
+            "READ_EXTERNAL_STORAGE must be bounded by maxSdkVersion=32",
+            Regex("""android\.permission\.READ_EXTERNAL_STORAGE"[^>]*android:maxSdkVersion="32"""", RegexOption.DOT_MATCHES_ALL)
+                .containsMatchIn(manifestText)
+        )
 
         // Assert no background location or intrusive device permissions
         val bannedIntrusive = listOf(

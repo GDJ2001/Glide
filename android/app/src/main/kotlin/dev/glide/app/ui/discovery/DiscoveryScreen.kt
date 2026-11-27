@@ -74,6 +74,9 @@ fun DiscoveryScreen(
     onRetry: () -> Unit,
     onScanQrClicked: () -> Unit = {},
     modifier: Modifier = Modifier,
+    lanPeers: List<DiscoveredPeer> = emptyList(),
+    isHotspotActive: Boolean = false,
+    onUseHotspot: (() -> Unit)? = null,
     onResolveBlocker: ((BlockedReason) -> Unit)? = null
 ) {
     val haptics = dev.glide.designsystem.GlideTheme.haptics
@@ -113,24 +116,84 @@ fun DiscoveryScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = when (uiState) {
-                            is DiscoveryUiState.Searching -> "Searching for nearby devices..."
-                            is DiscoveryUiState.TimedOut -> "Search finished"
-                            is DiscoveryUiState.Blocked -> "Discovery paused"
+                        text = when {
+                            lanPeers.isNotEmpty() && isHotspotActive -> "Ready on hotspot & local network"
+                            uiState is DiscoveryUiState.Searching -> "Searching for nearby devices..."
+                            uiState is DiscoveryUiState.TimedOut -> "Search finished"
+                            isHotspotActive -> "Hotspot sharing ready"
+                            else -> "Discovery paused"
                         },
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.weight(1f)
                     )
 
-                    if (uiState is DiscoveryUiState.Searching) {
+                    if (uiState is DiscoveryUiState.Searching || isHotspotActive) {
                         DiscoveryBreathingIndicator()
                     }
                 }
             }
         }
 
+        if (lanPeers.isNotEmpty()) {
+            item {
+                Text(
+                    text = "Paired devices nearby",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            items(
+                items = lanPeers,
+                key = { it.uiKey }
+            ) { peer ->
+                DiscoveredPeerCard(
+                    peer = peer,
+                    hasActiveSelection = false,
+                    onClick = {
+                        if (!peer.isConnecting && peer.isAvailable && !peer.isBusy) {
+                            haptics.performSelection()
+                            onSelectPeer(peer.id)
+                        }
+                    }
+                )
+            }
+        }
+
         // Main Discovery Content State Presentation
+        if (isHotspotActive && uiState !is DiscoveryUiState.Searching) {
+            item {
+                Card(
+                    shape = MaterialTheme.shapes.medium,
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text("Hotspot active", style = MaterialTheme.typography.titleLarge)
+                        Text(
+                            "Connect the receiving phone to this hotspot, open Receive → Show QR on it, then scan its QR code.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                        Button(
+                            onClick = onScanQrClicked,
+                            shape = PrimaryButtonShape,
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                        ) {
+                            Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Scan receiver QR")
+                        }
+                    }
+                }
+            }
+        }
         when (uiState) {
             is DiscoveryUiState.Searching -> {
                 if (uiState.peers.isNotEmpty()) {
@@ -231,16 +294,27 @@ fun DiscoveryScreen(
             }
 
             is DiscoveryUiState.Blocked -> {
-                item {
-                    DiscoveryBlockedCard(
-                        reason = uiState.reason,
-                        onRetry = onRetry,
-                        onOpenSettings = {
-                            onResolveBlocker?.invoke(uiState.reason) ?: openConnectivitySettings(context, uiState.reason)
+                if (!isHotspotActive) {
+                    item {
+                        DiscoveryBlockedCard(
+                            reason = uiState.reason,
+                            onRetry = onRetry,
+                            onOpenSettings = {
+                                onResolveBlocker?.invoke(uiState.reason) ?: openConnectivitySettings(context, uiState.reason)
+                            }
+                        )
+                    }
+                    if (uiState.reason is BlockedReason.WifiDisabled) {
+                        item {
+                            OutlinedButton(
+                                onClick = { (onUseHotspot ?: onScanQrClicked).invoke() },
+                                shape = PrimaryButtonShape,
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                            ) {
+                                Text("Use Hotspot / Scan QR instead")
+                            }
                         }
-                    )
-                }
-                item {
+                    }
                 }
             }
         }

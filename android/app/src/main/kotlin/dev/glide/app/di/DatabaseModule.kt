@@ -27,22 +27,32 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 object DatabaseModule {
 
+    @Volatile
+    private var cachedDatabase: GlideDatabase? = null
+
+    @Volatile
+    private var cachedSettingsStore: dev.glide.core.ports.SettingsStore? = null
+
     @Provides
     @Singleton
     fun provideGlideDatabase(@ApplicationContext context: Context): GlideDatabase {
-        return Room.databaseBuilder(
-            context,
-            GlideDatabase::class.java,
-            "glide.db"
-        )
-            .addMigrations(
-                GlideDatabase.MIGRATION_1_2,
-                GlideDatabase.MIGRATION_2_3,
-                GlideDatabase.MIGRATION_3_4,
-                GlideDatabase.MIGRATION_4_5,
-                GlideDatabase.MIGRATION_5_6
+        cachedDatabase?.let { return it }
+        return synchronized(this) {
+            cachedDatabase ?: Room.databaseBuilder(
+                context.applicationContext,
+                GlideDatabase::class.java,
+                "glide.db"
             )
-            .build()
+                .addMigrations(
+                    GlideDatabase.MIGRATION_1_2,
+                    GlideDatabase.MIGRATION_2_3,
+                    GlideDatabase.MIGRATION_3_4,
+                    GlideDatabase.MIGRATION_4_5,
+                    GlideDatabase.MIGRATION_5_6
+                )
+                .build()
+                .also { cachedDatabase = it }
+        }
     }
 
     @Provides
@@ -150,7 +160,12 @@ object DatabaseModule {
     @Provides
     @Singleton
     fun provideSettingsStore(@ApplicationContext context: Context): dev.glide.core.ports.SettingsStore {
-        return dev.glide.data.settings.DataStoreSettingsStore(context.dataStore)
+        cachedSettingsStore?.let { return it }
+        return synchronized(this) {
+            cachedSettingsStore ?: dev.glide.data.settings.DataStoreSettingsStore(
+                context.applicationContext.dataStore
+            ).also { cachedSettingsStore = it }
+        }
     }
 
     @Provides

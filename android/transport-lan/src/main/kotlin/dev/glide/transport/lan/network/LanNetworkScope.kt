@@ -6,6 +6,7 @@ import android.net.LinkProperties
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
+import android.net.wifi.WifiManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -100,6 +101,8 @@ open class LanNetworkScope(
         val request = NetworkRequest.Builder()
             .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
             .addTransportType(NetworkCapabilities.TRANSPORT_ETHERNET)
+            .removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .removeCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
             .build()
 
         val callback = object : ConnectivityManager.NetworkCallback() {
@@ -121,19 +124,16 @@ open class LanNetworkScope(
                     if (current is LanNetworkState.Available && current.network == network) {
                         invalidateAndCloseSockets("Network lost")
                         _networkState.value = LanNetworkState.NoNetwork
+                        evaluateLocalInterfacesFallback()
                     }
                 }
             }
         }
 
         try {
-            (AndroidHotspotConnections.preferredNetwork ?: cm.activeNetwork)?.let { active ->
+            findExistingManagedLocalNetwork(cm)?.let { active ->
                 val capabilities = cm.getNetworkCapabilities(active)
-                if (capabilities != null &&
-                    (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
-                        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) ||
-                        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN) ||
-                        !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN))) {
+                if (capabilities != null) {
                     evaluateNetwork(active, capabilities)
                 }
             }
@@ -147,6 +147,35 @@ open class LanNetworkScope(
             evaluateLocalInterfacesFallback()
         }
     }
+
+    @Suppress("DEPRECATION")
+    private fun findExistingManagedLocalNetwork(cm: ConnectivityManager): Network? {
+        AndroidHotspotConnections.preferredNetwork?.let { return it }
+        cm.activeNetwork?.let { active ->
+            val caps = cm.getNetworkCapabilities(active)
+            if (caps != null &&
+                (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                    caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) ||
+                    caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN) ||
+                    !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN))
+            ) {
+                return active
+            }
+        }
+        return runCatching {
+            cm.allNetworks.firstOrNull { net ->
+                val caps = cm.getNetworkCapabilities(net) ?: return@firstOrNull false
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                    caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
+            }
+        }.getOrNull()
+    }
+
+    @Suppress("DEPRECATION")
+    private fun isWifiStaEnabled(): Boolean = runCatching {
+        val wifi = context?.applicationContext?.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+        wifi?.isWifiEnabled
+    }.getOrNull() ?: true
 
     private fun collectLocalInterfaceSubnets(): Pair<List<InetAddress>, List<SubnetPrefix>> {
         val addrs = mutableListOf<InetAddress>()
@@ -173,17 +202,13 @@ open class LanNetworkScope(
 
     private fun hasActiveSoftApOrP2pIpv4(): Boolean = try {
         val hostAddrs = AndroidHotspotConnections.host?.addresses.orEmpty()
+        val wifiStaEnabled = isWifiStaEnabled()
         val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
         var found = false
         if (interfaces != null) {
             for (ni in interfaces) {
                 if (!ni.isUp || ni.isLoopback) continue
-                val lower = ni.name.orEmpty().lowercase()
-                val isSoftApOrP2p = lower.startsWith("ap") ||
-                    lower.startsWith("softap") ||
-                    lower.startsWith("sap") ||
-                    lower.startsWith("swlan") ||
-                    lower.startsWith("p2p")
+                val isSoftApOrP2p = isSoftApInterfaceCandidate(ni.name.orEmpty(), wifiStaEnabled)
                 for (ia in ni.interfaceAddresses) {
                     val addr = ia.address ?: continue
                     if (addr.isLoopbackAddress) continue
@@ -267,7 +292,11 @@ open class LanNetworkScope(
         }
 
         val previous = _networkState.value
-        val isSameNetwork = previous is LanNetworkState.Available && previous.network == network
+        val upgradedFromUnmanaged = previous is LanNetworkState.Available &&
+            previous.network == null &&
+            subnets.any { s -> previous.subnets.any { prev -> prev == s } }
+        val isSameNetwork = (previous is LanNetworkState.Available && previous.network == network) ||
+            upgradedFromUnmanaged
         if (!isSameNetwork) {
             invalidateAndCloseSockets("Active network changed")
             currentGeneration++
@@ -466,6 +495,18 @@ private val EXCLUDED_INTERFACE_PREFIXES = listOf(
 private val LOCAL_HOTSPOT_INTERFACE_PREFIXES = listOf(
     "ap", "softap", "sap", "swlan", "wlan", "p2p", "wifi", "eth", "rndis", "usb", "ncm"
 )
+
+private val SOFT_AP_EXPLICIT_PREFIXES = listOf(
+    "ap", "softap", "sap", "swlan", "p2p"
+)
+
+fun isSoftApInterfaceCandidate(rawName: String, isWifiStaEnabled: Boolean): Boolean {
+    val name = rawName.trim().lowercase()
+    if (name.isEmpty()) return false
+    if (EXCLUDED_INTERFACE_PREFIXES.any { name.startsWith(it) }) return false
+    if (SOFT_AP_EXPLICIT_PREFIXES.any { name.startsWith(it) }) return true
+    return !isWifiStaEnabled && (name.startsWith("wlan") || name.startsWith("wifi"))
+}
 
 fun isLocalHotspotInterfaceName(rawName: String): Boolean {
     val name = rawName.trim().lowercase()

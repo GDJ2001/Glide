@@ -80,22 +80,31 @@ class FakeTestPrivateFileManager(
     initialFiles: List<ReceivedFileInfo> = emptyList()
 ) : PrivateFileManager {
     private val files = initialFiles.toMutableList()
+    private val summaryFlow = MutableStateFlow(
+        StorageSummary(
+            totalFiles = initialFiles.size,
+            totalBytes = initialFiles.sumOf { it.sizeBytes },
+            activeFiles = initialFiles.count { it.isActive }
+        )
+    )
+
+    private fun refreshFlow() {
+        summaryFlow.value = StorageSummary(
+            totalFiles = files.size,
+            totalBytes = files.sumOf { it.sizeBytes },
+            activeFiles = files.count { it.isActive }
+        )
+    }
+
+    override fun observeStorageSummary(): Flow<StorageSummary> = summaryFlow
 
     fun setFiles(newFiles: List<ReceivedFileInfo>) {
         files.clear()
         files.addAll(newFiles)
+        refreshFlow()
     }
 
-    override suspend fun getStorageSummary(): StorageSummary {
-        val totalFiles = files.size
-        val totalBytes = files.sumOf { it.sizeBytes }
-        val activeFiles = files.count { it.isActive }
-        return StorageSummary(
-            totalFiles = totalFiles,
-            totalBytes = totalBytes,
-            activeFiles = activeFiles
-        )
-    }
+    override suspend fun getStorageSummary(): StorageSummary = summaryFlow.value
 
     override suspend fun getReceivedFiles(): List<ReceivedFileInfo> {
         return files.toList()
@@ -108,6 +117,7 @@ class FakeTestPrivateFileManager(
             return Result.failure(IllegalStateException("Cannot delete active file: ${file.displayName}"))
         }
         files.remove(file)
+        refreshFlow()
         return Result.success(Unit)
     }
 
@@ -115,6 +125,7 @@ class FakeTestPrivateFileManager(
         val inactive = files.filter { !it.isActive }
         val count = inactive.size
         files.removeAll(inactive)
+        refreshFlow()
         return Result.success(count)
     }
 }
@@ -396,6 +407,55 @@ class SettingsViewModelTest {
                 vm.uiState.value.feedbackMessage
             )
         }
+
+    @Test
+    fun `observeStorageSummary updates storage card count automatically without manual reload`() = runTest(testDispatcher) {
+        val settingsStore = FakeTestSettingsStore()
+        val fileManager = FakeTestPrivateFileManager()
+        val vm = SettingsViewModel(settingsStore, fileManager)
+        advanceUntilIdle()
+        assertEquals(0, vm.uiState.value.storageSummary.totalFiles)
+
+        fileManager.setFiles(
+            listOf(
+                ReceivedFileInfo("k1", "photo.jpg", 2048L, 1_000L, false),
+                ReceivedFileInfo("k2", "report.pdf", 2048L, 2_000L, false)
+            )
+        )
+        advanceUntilIdle()
+
+        assertEquals(2, vm.uiState.value.storageSummary.totalFiles)
+        assertEquals(4096L, vm.uiState.value.storageSummary.totalBytes)
+        assertEquals(0, vm.uiState.value.storageSummary.activeFiles)
+    }
+
+    @Test
+    fun `diagnosticsProvider populates and refreshes nearbyDiagnostics state`() = runTest(testDispatcher) {
+        var bluetoothOn = false
+        val settingsStore = FakeTestSettingsStore()
+        val fileManager = FakeTestPrivateFileManager()
+        val vm = SettingsViewModel(
+            settingsStore = settingsStore,
+            fileManager = fileManager,
+            diagnosticsProvider = {
+                NearbyDiagnosticsState(
+                    bluetoothEnabled = bluetoothOn,
+                    wifiEnabled = true,
+                    permissionsGranted = false,
+                    radioBand = "2.4 GHz / 5 GHz Dual Band",
+                    gmsVersion = "Nearby Connections v1.0 (P2P Direct)"
+                )
+            }
+        )
+        advanceUntilIdle()
+        assertFalse(vm.uiState.value.nearbyDiagnostics.bluetoothEnabled)
+        assertFalse(vm.uiState.value.nearbyDiagnostics.permissionsGranted)
+
+        bluetoothOn = true
+        vm.showNearbyDiagnostics()
+        assertTrue(vm.uiState.value.nearbyDiagnostics.bluetoothEnabled)
+        assertTrue(vm.uiState.value.isNearbyDiagnosticsOpen)
+    }
 }
 
 class FakeTestTrustedPeerDao(

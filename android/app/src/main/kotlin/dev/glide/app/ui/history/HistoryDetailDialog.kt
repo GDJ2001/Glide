@@ -72,6 +72,7 @@ fun HistoryDetailDialog(
     onOpenFile: (HistoryItemDetail) -> Unit,
     onExportFile: (HistoryItemDetail) -> Unit,
     onShareFile: (HistoryItemDetail) -> Unit = {},
+    onOpenFolder: (HistoryItemDetail) -> Unit = {},
     onDeleteSession: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -98,6 +99,7 @@ fun HistoryDetailDialog(
                 onOpenFile = onOpenFile,
                 onExportFile = onExportFile,
                 onShareFile = onShareFile,
+                onOpenFolder = onOpenFolder,
                 onDeleteSession = onDeleteSession,
             )
         }
@@ -113,6 +115,7 @@ fun HistoryDetailContent(
     onOpenFile: (HistoryItemDetail) -> Unit,
     onExportFile: (HistoryItemDetail) -> Unit,
     onShareFile: (HistoryItemDetail) -> Unit = {},
+    onOpenFolder: (HistoryItemDetail) -> Unit = {},
     onDeleteSession: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -131,7 +134,7 @@ fun HistoryDetailContent(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = detail.session.peerLabel.isolateBidi(),
+                    text = formatHistoryPeerDisplayLabel(detail.session.peerLabel).isolateBidi(),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.titleLarge,
@@ -205,7 +208,8 @@ fun HistoryDetailContent(
                         isReceiver = detail.session.role == DeviceRole.Receiver,
                         onOpenFile = { onOpenFile(item) },
                         onExportFile = { onExportFile(item) },
-                        onShareFile = { onShareFile(item) }
+                        onShareFile = { onShareFile(item) },
+                        onOpenFolder = { onOpenFolder(item) }
                     )
                 }
             }
@@ -356,6 +360,7 @@ fun HistoryItemCard(
     onOpenFile: () -> Unit,
     onExportFile: () -> Unit,
     onShareFile: () -> Unit = {},
+    onOpenFolder: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -388,14 +393,19 @@ fun HistoryItemCard(
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            if (item.relativePath != null) {
+            val folderLabel = item.relativePath
+                ?.substringBeforeLast('/', "")
+                ?.takeIf { it.isNotBlank() }
+            if (folderLabel != null) {
                 Surface(
                     shape = RoundedCornerShape(4.dp),
                     color = MaterialTheme.colorScheme.tertiaryContainer,
                     modifier = Modifier.padding(bottom = 4.dp)
                 ) {
                     Text(
-                        text = item.relativePath.isolateBidi(),
+                        text = folderLabel.isolateBidi(),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onTertiaryContainer,
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
@@ -409,13 +419,16 @@ fun HistoryItemCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
-            // For verified received files, offer Open / Share / Export or show Missing indicator
+            // For verified received files, offer Open / Open folder / Share / Export or show Missing indicator
             if (isReceiver && item.outcome == "Verified") {
                 Spacer(modifier = Modifier.height(10.dp))
                 if (item.isFileAvailable) {
                     ReceivedFileActions(
                         item.receivedFileKey, item.digestHex, item.displayName, item.mimeType,
-                        onOpen = onOpenFile, onShare = onShareFile, onSave = onExportFile
+                        onOpen = onOpenFile,
+                        onOpenFolder = onOpenFolder,
+                        onShare = onShareFile,
+                        onSave = onExportFile
                     )
                 } else {
                     Row(

@@ -62,6 +62,8 @@ fun ReceiveReadinessScreen(
     hotspotStatus: String? = null,
     showManualHotspotFallback: Boolean = false,
     onDismissManualHotspotFallback: () -> Unit = {},
+    isHotspotActive: Boolean = false,
+    onUseHotspotInstead: (() -> Unit)? = null,
     onResolveBlocker: ((BlockedReason) -> Unit)? = null
 ) {
     val scrollState = rememberScrollState()
@@ -172,13 +174,54 @@ fun ReceiveReadinessScreen(
             }
 
             is ReceiveReadinessUiState.Blocked -> {
-                DiscoveryBlockedCard(
-                    reason = uiState.reason,
-                    onRetry = onRestartReceiving,
-                    onOpenSettings = {
+                if (isHotspotActive && uiState.reason is BlockedReason.WifiDisabled) {
+                    Card(
+                        shape = MaterialTheme.shapes.medium,
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(20.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text("Hotspot active · Ready to receive", style = MaterialTheme.typography.titleLarge)
+                            Text(
+                                "Have the sender join this hotspot and scan your QR code.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                            Button(
+                                onClick = { (onShowQrCode ?: onUseHotspotInstead)?.invoke() },
+                                shape = PrimaryButtonShape,
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                            ) {
+                                Icon(Icons.Default.QrCode2, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Show receive QR")
+                            }
+                        }
+                    }
+                } else {
+                    DiscoveryBlockedCard(
+                        reason = uiState.reason,
+                        onRetry = onRestartReceiving,
+                        onOpenSettings = {
                             onResolveBlocker?.invoke(uiState.reason) ?: openConnectivitySettings(context, uiState.reason)
                         }
-                )
+                    )
+                    if (uiState.reason is BlockedReason.WifiDisabled && onUseHotspotInstead != null) {
+                        OutlinedButton(
+                            onClick = onUseHotspotInstead,
+                            shape = PrimaryButtonShape,
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                        ) {
+                            Text("Use Hotspot / Show QR instead")
+                        }
+                    }
+                }
             }
 
             is ReceiveReadinessUiState.IncomingConnection -> {

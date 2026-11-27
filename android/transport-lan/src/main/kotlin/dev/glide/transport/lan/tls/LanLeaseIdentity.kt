@@ -58,11 +58,7 @@ class LanLeaseIdentity(
             privateKey = keyPair.private,
             certificateChain = arrayOf(certificate)
         )
-        val sslContext = try {
-            SSLContext.getInstance("TLSv1.3")
-        } catch (_: Exception) {
-            SSLContext.getInstance("TLS")
-        }
+        val sslContext = LanTlsProvider.createTls13Context()
         sslContext.init(arrayOf<KeyManager>(keyManager), null, SecureRandom())
         return sslContext
     }
@@ -90,7 +86,7 @@ class LanLeaseIdentity(
             ttlMillis: Long = 120_000L,
             preferAndroidKeyStore: Boolean = true
         ): LanLeaseIdentity {
-            if (preferAndroidKeyStore) {
+            if (preferAndroidKeyStore && !LanTlsProvider.usesBundledConscrypt()) {
                 try {
                     val ks = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
                     val kpg = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, ANDROID_KEYSTORE)

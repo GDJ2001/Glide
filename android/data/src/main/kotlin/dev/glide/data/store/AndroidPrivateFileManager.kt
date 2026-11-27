@@ -5,9 +5,13 @@ import dev.glide.core.ports.ReceivedFileInfo
 import dev.glide.core.ports.StorageSummary
 import dev.glide.data.db.ReceiveJournalDao
 import dev.glide.data.db.ReceivedFileDao
+import dev.glide.data.db.ReceivedFileEntity
 import dev.glide.data.db.SessionDao
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileNotFoundException
@@ -36,7 +40,21 @@ class AndroidPrivateFileManager(
     override suspend fun getStorageSummary(): StorageSummary = withContext(ioDispatcher) {
         val files = fileCatalogDao.getActiveFiles()
         val activeKeys = resolveActiveFileKeys()
+        buildStorageSummary(files, activeKeys)
+    }
 
+    override fun observeStorageSummary(): Flow<StorageSummary> =
+        fileCatalogDao.observeActiveFiles()
+            .map { files ->
+                val activeKeys = resolveActiveFileKeys()
+                buildStorageSummary(files, activeKeys)
+            }
+            .flowOn(ioDispatcher)
+
+    private fun buildStorageSummary(
+        files: List<ReceivedFileEntity>,
+        activeKeys: Set<String>
+    ): StorageSummary {
         var totalBytes = 0L
         var activeCount = 0
 
@@ -50,7 +68,7 @@ class AndroidPrivateFileManager(
             }
         }
 
-        StorageSummary(
+        return StorageSummary(
             totalFiles = files.size,
             totalBytes = totalBytes,
             activeFiles = activeCount

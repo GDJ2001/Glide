@@ -99,6 +99,8 @@
 # Local Area Network (LAN) Transport & TLS Adapter (LAN-009..012)
 # --------------------------------------------------------------------------------------------------
 -keep class dev.glide.transport.lan.** { *; }
+-keep class org.conscrypt.** { *; }
+-dontwarn org.conscrypt.**
 
 # --------------------------------------------------------------------------------------------------
 # Optimization: Remove verbose and debug logging in release builds

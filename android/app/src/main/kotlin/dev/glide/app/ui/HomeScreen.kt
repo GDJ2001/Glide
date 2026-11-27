@@ -48,6 +48,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.glide.app.R
 import dev.glide.app.ui.components.GlideIconAction
+import dev.glide.app.ui.history.formatHistoryPeerDisplayLabel
 import dev.glide.core.domain.DeviceRole
 import dev.glide.core.domain.TrustedPeerRecord
 import dev.glide.designsystem.avoidHinge
@@ -363,6 +364,7 @@ private fun RecentActivityCard(
         DateUtils.FORMAT_ABBREV_RELATIVE
     ).toString()
 
+    val displayPeer = formatHistoryPeerDisplayLabel(activity.peerLabel)
     Card(
         onClick = onClick,
         shape = MaterialTheme.shapes.medium,
@@ -371,7 +373,7 @@ private fun RecentActivityCard(
             .fillMaxWidth()
             .semantics {
                 role = Role.Button
-                contentDescription = "$statusLabel ${if (isSent) "sent to" else "received from"} ${activity.peerLabel}. Open transfer details."
+                contentDescription = "$statusLabel ${if (isSent) "sent to" else "received from"} $displayPeer. Open transfer details."
             }
     ) {
         Row(
@@ -387,7 +389,7 @@ private fun RecentActivityCard(
             )
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    text = if (isSent) "Sent to ${activity.peerLabel}" else "Received from ${activity.peerLabel}",
+                    text = if (isSent) "Sent to $displayPeer" else "Received from $displayPeer",
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,

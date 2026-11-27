@@ -16,7 +16,9 @@ Permissions are requested only after Send/Receive intent and a short contextual 
 | 28+ | FOREGROUND_SERVICE normal | User-started ongoing peer session | Handle start failure; remain foreground or fail safely |
 | 34+ | FOREGROUND_SERVICE_CONNECTED_DEVICE normal; service type connectedDevice | Live external peer communication; granted Bluetooth prerequisite | Never start before prerequisite/visible user action |
 | 26+ | INTERNET / ACCESS_NETWORK_STATE normal as required by SDK/availability | Local sockets/runtime network capability, not cloud account | Inspect transitive manifest; no own external endpoint |
-| All supported | SAF/Photo Picker URI grants; no broad storage runtime grant | Explicit user selection/export | Cancel picker returns unchanged selection; revoked URI → reselect |
+| All supported | SAF/Photo Picker URI grants; never request `MANAGE_EXTERNAL_STORAGE` or `WRITE_EXTERNAL_STORAGE` | Explicit user selection/export | Cancel picker returns unchanged selection; revoked URI → reselect |
+| 33+ | `READ_MEDIA_IMAGES`, `READ_MEDIA_VIDEO`, `READ_MEDIA_AUDIO` (+ `READ_MEDIA_VISUAL_USER_SELECTED` on 34+), optional point-of-use | Inline thumbnail/recent previews inside the Send picker after tapping **Allow access** | Never requested at launch; system Photo Picker, SAF (`OpenMultipleDocuments`), and pinned SAF folders remain full fallbacks |
+| 26–32 | `READ_EXTERNAL_STORAGE` runtime, `maxSdkVersion="32"`, optional point-of-use | Inline recent media previews on Android 8–12L after tapping **Allow access** | Never requested at launch; SAF document/media pickers continue to work without grant |
 | All supported | No background location, contacts, phone, microphone or boot receiver | Not needed | Do not request |
 | All supported | CAMERA (runtime, requested only when opening QR Scanner; camera hardware optional) | QR pairing invitation scanning (ADR-0018 / LAN-017) | Denial offers Paste invitation fallback |
 | All supported | WAKE_LOCK only if measured active-transfer need justifies it | Optional bounded non-reference-counted lock owned by service | Avoid by default; release in every terminal path and timeout |

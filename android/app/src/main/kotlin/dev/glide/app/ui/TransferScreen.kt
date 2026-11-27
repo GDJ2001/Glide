@@ -75,6 +75,7 @@ fun TransferScreen(
     onExportItem: (VerifiedItemUiState) -> Unit = { onExportFile() },
     onExportAll: () -> Unit = { onExportFile() },
     onShareAll: () -> Unit = { onShareFile() },
+    onOpenFolder: ((String?) -> Unit)? = null,
     trustState: TrustRuntimeState = TrustRuntimeState(),
     onApproveTrust: () -> Unit = {},
     onRejectTrust: () -> Unit = {}
@@ -244,7 +245,8 @@ fun TransferScreen(
                     onShareItem = onShareItem,
                     onExportItem = onExportItem,
                     onExportAll = onExportAll,
-                    onShareAll = onShareAll
+                    onShareAll = onShareAll,
+                    onOpenFolder = onOpenFolder
                 )
             }
         }

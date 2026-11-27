@@ -166,7 +166,8 @@ class TransferCoordinator(
     private val recordResumeBatchCommit: (suspend (SessionId, ItemId, Long, dev.glide.core.domain.Sha256Digest) -> Unit)? = null,
     private val resumeBatch: ResumeBatchReconnect? = null,
     private val purgeAcceptedResumeBatch: (suspend (SessionId) -> Unit)? = null,
-    private val recoverResumeCommitReceipts: (suspend (ResumeBatchManifest, Int) -> Int)? = null
+    private val recoverResumeCommitReceipts: (suspend (ResumeBatchManifest, Int) -> Int)? = null,
+    val peerDisplayName: String? = null
 ) {
     private var resumeReconnectPlan = resumeReconnectPlan
     private var resumeBatchStarted = false
@@ -300,6 +301,21 @@ class TransferCoordinator(
 
     private var sessionHistoryRecorded = false
 
+    private fun resolvedPeerLabel(): String {
+        val negotiated = remoteDisplayName.trim()
+        if (negotiated.isNotEmpty() && !negotiated.equals("Glide Device", ignoreCase = true)) {
+            return negotiated
+        }
+        val explicit = peerDisplayName?.trim()
+        if (!explicit.isNullOrEmpty() && !explicit.equals("Glide Device", ignoreCase = true)) {
+            return explicit
+        }
+        if (negotiated.isNotEmpty() && peerId.value.startsWith("lan-")) {
+            return negotiated
+        }
+        return peerId.value
+    }
+
     private suspend fun recordInitialHistory(batch: TransferBatch) {
         val shouldRecord = mutex.withLock {
             if (sessionHistoryRecorded) {
@@ -316,7 +332,7 @@ class TransferCoordinator(
                 sessionId = sessionId,
                 batchId = batch.id,
                 role = role,
-                peerLabel = peerId.value,
+                peerLabel = resolvedPeerLabel(),
                 startedAtMs = clock()
             )
         )
@@ -353,7 +369,7 @@ class TransferCoordinator(
                 sessionId = sessionId,
                 batchId = batchId,
                 role = role,
-                peerLabel = peerId.value,
+                peerLabel = resolvedPeerLabel(),
                 startedAtMs = clock(),
                 endedAtMs = clock(),
                 outcome = outcome,

@@ -64,6 +64,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.glide.app.ui.components.ActionTone
 import dev.glide.app.ui.components.GlideCompactTopBar
@@ -103,6 +104,12 @@ fun SettingsScreen(
                 viewModel.showSaveLocationError("Glide needs folder access to save there. Choose another folder.")
             }
         }
+    }
+
+    LifecycleResumeEffect(Unit) {
+        viewModel.refreshStorageSummary()
+        viewModel.refreshDiagnostics()
+        onPauseOrDispose {}
     }
 
     LaunchedEffect(uiState.feedbackMessage) {
@@ -709,6 +716,11 @@ private fun PrivateStorageSection(
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Private app cache · saved files in Download/Glide stay safe",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     if (activeFiles > 0) {
                         Text(

@@ -105,6 +105,9 @@ data class StorageSummary(
 
 interface PrivateFileManager {
     suspend fun getStorageSummary(): StorageSummary
+    fun observeStorageSummary(): Flow<StorageSummary> = kotlinx.coroutines.flow.flow {
+        emit(getStorageSummary())
+    }
     suspend fun getReceivedFiles(): List<ReceivedFileInfo>
     suspend fun deleteReceivedFile(fileKey: String): Result<Unit>
     suspend fun deleteAllReceivedFiles(): Result<Int>

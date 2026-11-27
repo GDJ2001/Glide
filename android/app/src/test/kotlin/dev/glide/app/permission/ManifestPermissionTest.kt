@@ -58,13 +58,20 @@ class ManifestPermissionTest {
     fun manifest_strictly_forbids_broad_storage_and_sensitive_permissions() {
         val manifestContent = findManifest().readText()
 
-        // Storage permissions forbidden per ADR-0007 / PERMISSION_MATRIX.md
-        assertFalse(manifestContent.contains("READ_EXTERNAL_STORAGE"))
+        // Broad all-files & legacy write storage permissions remain forbidden per ADR-0007 / PERMISSION_MATRIX.md
         assertFalse(manifestContent.contains("WRITE_EXTERNAL_STORAGE"))
         assertFalse(manifestContent.contains("MANAGE_EXTERNAL_STORAGE"))
-        assertFalse(manifestContent.contains("READ_MEDIA_IMAGES"))
-        assertFalse(manifestContent.contains("READ_MEDIA_VIDEO"))
-        assertFalse(manifestContent.contains("READ_MEDIA_AUDIO"))
+
+        // Option A point-of-use preview permissions: READ_EXTERNAL_STORAGE must be bounded to SDK <= 32,
+        // and granular media permissions are declared for point-of-use inline previews.
+        assertTrue(manifestContent.contains("READ_MEDIA_IMAGES"))
+        assertTrue(manifestContent.contains("READ_MEDIA_VIDEO"))
+        assertTrue(manifestContent.contains("READ_MEDIA_AUDIO"))
+        assertTrue(manifestContent.contains("READ_MEDIA_VISUAL_USER_SELECTED"))
+        assertTrue(
+            Regex("""android\.permission\.READ_EXTERNAL_STORAGE"[^>]*android:maxSdkVersion="32"""", RegexOption.DOT_MATCHES_ALL)
+                .containsMatchIn(manifestContent)
+        )
 
         // Sensitive / unused permissions forbidden
         assertFalse(manifestContent.contains("ACCESS_BACKGROUND_LOCATION"))

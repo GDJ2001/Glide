@@ -60,12 +60,15 @@ object QrDecoder {
         tryDecode(source)?.let { return it }
 
         if (source.isCropSupported && source.width >= 160 && source.height >= 160) {
-            val cropSize = (minOf(source.width, source.height) * 0.68f).toInt()
-            val left = (source.width - cropSize) / 2
-            val top = (source.height - cropSize) / 2
-            val cropped = runCatching { source.crop(left, top, cropSize, cropSize) }.getOrNull()
-            if (cropped != null) {
-                tryDecode(cropped)?.let { return it }
+            for (fraction in floatArrayOf(0.72f, 0.48f)) {
+                val cropSize = (minOf(source.width, source.height) * fraction).toInt()
+                if (cropSize < 140) continue
+                val left = (source.width - cropSize) / 2
+                val top = (source.height - cropSize) / 2
+                val cropped = runCatching { source.crop(left, top, cropSize, cropSize) }.getOrNull()
+                if (cropped != null) {
+                    tryDecode(cropped)?.let { return it }
+                }
             }
         }
 

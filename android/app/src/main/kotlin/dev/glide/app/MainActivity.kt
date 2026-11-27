@@ -69,6 +69,12 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var persistentTrustManager: dev.glide.core.identity.PersistentTrustManager
 
+    @Inject
+    lateinit var historyStore: dev.glide.core.ports.HistoryStore
+
+    @Inject
+    lateinit var privateFileManager: dev.glide.core.ports.PrivateFileManager
+
     private var lastHandledFingerprint: String? = null
     private val incomingOutcomeFlow = MutableStateFlow<IngressOutcome?>(null)
     private val incomingRouteNonceFlow = MutableStateFlow(0L)
@@ -84,21 +90,37 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             transferRuntime.refreshPersistentTrustState()
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                combine(persistentTrustManager.trustedPeers, transferRuntime.lanReceiverState) {
-                    peers, receiver -> peers.isNotEmpty() && receiver is LanReceiverRuntimeState.Idle
+                combine(
+                    persistentTrustManager.trustedPeers,
+                    transferRuntime.lanReceiverState,
+                    transferRuntime.isSessionActive,
+                    transferRuntime.pairingState
+                ) { peers, receiver, sessionActive, pairing ->
+                    shouldAutoStartTrustedLanReceiver(
+                        hasTrustedPeers = peers.isNotEmpty(),
+                        lanReceiverState = receiver,
+                        isSessionActive = sessionActive,
+                        pairingState = pairing
+                    )
                 }.collect { shouldStart ->
-                    if (shouldStart && !transferRuntime.isSessionActive.value) {
+                    if (shouldStart) {
                         delay(250)
                         val permitted = PermissionPolicy.lanTransferPermissions().all {
                             ContextCompat.checkSelfPermission(this@MainActivity, it) ==
                                 PackageManager.PERMISSION_GRANTED
                         }
                         if (permitted &&
-                            transferRuntime.lanReceiverState.value is LanReceiverRuntimeState.Idle &&
-                            !transferRuntime.isSessionActive.value) {
+                            shouldAutoStartTrustedLanReceiver(
+                                hasTrustedPeers = persistentTrustManager.trustedPeers.first().isNotEmpty(),
+                                lanReceiverState = transferRuntime.lanReceiverState.value,
+                                isSessionActive = transferRuntime.isSessionActive.value,
+                                pairingState = transferRuntime.pairingState.value
+                            )
+                        ) {
                             TransferService.startLanReceiver(
                                 this@MainActivity,
-                                settingsStore.settingsFlow.first().deviceName
+                                settingsStore.settingsFlow.first().deviceName,
+                                idleAutoStart = true
                             )
                         }
                     }
@@ -221,7 +243,9 @@ class MainActivity : ComponentActivity() {
                         GlideAppNavDisplay(
                             transferRuntime = transferRuntime,
                             persistentTrustManager = persistentTrustManager,
+                            customHistoryStore = if (::historyStore.isInitialized) historyStore else null,
                             customSettingsStore = settingsStore,
+                            customFileManager = if (::privateFileManager.isInitialized) privateFileManager else null,
                             initialRoute = initialRoute,
                             incomingRoute = incomingRoute,
                             incomingRouteNonce = latestOutcomeNonce,
@@ -250,6 +274,15 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onStart() {
+        if (transferRuntime.lanReceiverState.value is LanReceiverRuntimeState.Error &&
+            !transferRuntime.isSessionActive.value
+        ) {
+            transferRuntime.dispatch(dev.glide.app.service.TransferRuntimeCommand.StopLanReceiver)
+        }
+        super.onStart()
     }
 
     override fun onStop() {
@@ -289,4 +322,18 @@ class MainActivity : ComponentActivity() {
             incomingRouteNonceFlow.value = incomingRouteNonceFlow.value + 1L
         }
     }
+}
+
+internal fun shouldAutoStartTrustedLanReceiver(
+    hasTrustedPeers: Boolean,
+    lanReceiverState: LanReceiverRuntimeState,
+    isSessionActive: Boolean,
+    pairingState: dev.glide.app.ui.pairing.PairingUiState
+): Boolean {
+    if (!hasTrustedPeers || lanReceiverState !is LanReceiverRuntimeState.Idle || isSessionActive) {
+        return false
+    }
+    return pairingState !is dev.glide.app.ui.pairing.PairingUiState.Connecting &&
+        pairingState !is dev.glide.app.ui.pairing.PairingUiState.Verifying &&
+        pairingState !is dev.glide.app.ui.pairing.PairingUiState.Connected
 }

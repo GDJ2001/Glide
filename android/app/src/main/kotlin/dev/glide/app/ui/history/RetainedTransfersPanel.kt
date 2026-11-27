@@ -44,8 +44,9 @@ internal fun RetainedTransfersPanel(runtime: TransferRuntime, onResume: (String)
     var entries by remember { mutableStateOf(emptyList<TransferRuntime.RetainedTransfer>()) }
     val active by runtime.isSessionActive.collectAsStateWithLifecycle()
     val trust by runtime.trustState.collectAsStateWithLifecycle()
+    val retainedVersion by runtime.retainedTransfersVersion.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
-    LaunchedEffect(active, trust.trustedPeers) {
+    LaunchedEffect(active, trust.trustedPeers, retainedVersion) {
         if (!active) entries = runtime.listRetainedTransfers()
     }
     if (entries.isEmpty()) return

@@ -19,6 +19,8 @@ import dev.glide.data.store.RoomHistoryStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -44,48 +46,58 @@ class HistoryViewModel(
 
     private val _uiState = MutableStateFlow(HistoryUiState())
     val uiState: StateFlow<HistoryUiState> = _uiState.asStateFlow()
+    private val filterFlow = MutableStateFlow(HistoryFilter.ALL)
+    private val refreshTrigger = MutableStateFlow(0L)
     private var isTestingOverride = false
 
     init {
-        loadHistory()
+        viewModelScope.launch {
+            @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+            combine(filterFlow, refreshTrigger) { filter, _ -> filter }
+                .flatMapLatest { filter ->
+                    val roleFilter = when (filter) {
+                        HistoryFilter.ALL -> null
+                        HistoryFilter.SENT -> DeviceRole.Sender
+                        HistoryFilter.RECEIVED -> DeviceRole.Receiver
+                    }
+                    historyStore.observeSessions(role = roleFilter, limit = 100)
+                }
+                .collect { summaries ->
+                    if (isTestingOverride) return@collect
+                    val sessionItems = summaries.map { summary ->
+                        HistorySessionItem(
+                            sessionId = summary.sessionId.value,
+                            role = summary.role,
+                            peerLabel = formatHistoryPeerDisplayLabel(summary.peerLabel),
+                            startedAtMs = summary.startedAtMs,
+                            endedAtMs = summary.endedAtMs,
+                            outcome = summary.outcome,
+                            failureCode = summary.failureCode,
+                            itemCount = summary.itemCount,
+                            totalBytes = summary.totalBytes
+                        )
+                    }
+                    _uiState.value = _uiState.value.copy(
+                        sessions = sessionItems,
+                        isLoading = false
+                    )
+                }
+        }
     }
 
     fun setFilter(filter: HistoryFilter) {
         if (_uiState.value.filter == filter) return
-        _uiState.value = _uiState.value.copy(filter = filter)
-        loadHistory()
+        _uiState.value = _uiState.value.copy(
+            filter = filter,
+            isLoading = !isTestingOverride
+        )
+        filterFlow.value = filter
     }
 
     fun loadHistory() {
         if (isTestingOverride) return
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true)
-            val roleFilter = when (_uiState.value.filter) {
-                HistoryFilter.ALL -> null
-                HistoryFilter.SENT -> DeviceRole.Sender
-                HistoryFilter.RECEIVED -> DeviceRole.Receiver
-            }
-            val summaries = historyStore.getSessionsPaged(role = roleFilter, limit = 100, offset = 0)
-            val sessionItems = summaries.map { summary ->
-                HistorySessionItem(
-                    sessionId = summary.sessionId.value,
-                    role = summary.role,
-                    peerLabel = summary.peerLabel,
-                    startedAtMs = summary.startedAtMs,
-                    endedAtMs = summary.endedAtMs,
-                    outcome = summary.outcome,
-                    failureCode = summary.failureCode,
-                    itemCount = summary.itemCount,
-                    totalBytes = summary.totalBytes
-                )
-            }
-            if (!isTestingOverride) {
-                _uiState.value = _uiState.value.copy(
-                    sessions = sessionItems,
-                    isLoading = false
-                )
-            }
-        }
+        _uiState.value = _uiState.value.copy(isLoading = true)
+        refreshTrigger.value += 1L
     }
 
     fun selectSession(sessionId: String, context: Context? = null) {
@@ -96,7 +108,7 @@ class HistoryViewModel(
             val sessionItem = HistorySessionItem(
                 sessionId = session.sessionId.value,
                 role = session.role,
-                peerLabel = session.peerLabel,
+                peerLabel = formatHistoryPeerDisplayLabel(session.peerLabel),
                 startedAtMs = session.startedAtMs,
                 endedAtMs = session.endedAtMs,
                 outcome = session.outcome,
@@ -236,6 +248,44 @@ class HistoryViewModel(
             is FileOpenResult.Error -> {
                 _uiState.value = _uiState.value.copy(openFileFeedback = result.message)
             }
+        }
+    }
+
+    fun openItemInFileManager(context: Context?, item: HistoryItemDetail) {
+        if (context == null) {
+            _uiState.value = _uiState.value.copy(openFileFeedback = "Context unavailable")
+            return
+        }
+        viewModelScope.launch {
+            val savedTreeUri = runCatching {
+                dev.glide.app.di.DatabaseModule.provideSettingsStore(context).getSettings().receivedFilesTreeUri
+            }.getOrNull()
+            val result = FileOpener.openInFileManager(
+                context = context,
+                relativePath = item.relativePath,
+                savedTreeUri = savedTreeUri
+            )
+            when (result) {
+                is FileOpenResult.Success -> _uiState.value = _uiState.value.copy(openFileFeedback = null)
+                is FileOpenResult.NoViewerApp -> _uiState.value = _uiState.value.copy(openFileFeedback = "No file manager app available")
+                is FileOpenResult.FileNotFound -> _uiState.value = _uiState.value.copy(openFileFeedback = "Folder not found")
+                is FileOpenResult.Error -> _uiState.value = _uiState.value.copy(openFileFeedback = result.message)
+            }
+        }
+    }
+
+    fun refreshSelectedSessionAvailability(context: Context?) {
+        val detail = _uiState.value.selectedSessionDetail ?: return
+        if (context == null || isTestingOverride) return
+        val updatedItems = detail.items.map { item ->
+            val key = item.receivedFileKey ?: return@map item
+            val available = fileResolver(context, key)?.exists() == true
+            if (available == item.isFileAvailable) item else item.copy(isFileAvailable = available)
+        }
+        if (updatedItems != detail.items) {
+            _uiState.value = _uiState.value.copy(
+                selectedSessionDetail = detail.copy(items = updatedItems)
+            )
         }
     }
 

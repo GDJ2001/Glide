@@ -41,8 +41,10 @@ Glide requests only the minimum permissions necessary to establish local peer-to
 | **FOREGROUND_SERVICE (connectedDevice)** | All Supported | Keeps active peer-to-peer Wi-Fi Direct transfer sockets alive when you switch apps or lock the screen. Terminates immediately once transfers finish or are cancelled. |
 | **CAMERA** | Android 8.0+ (API 26+) | Strictly optional runtime permission used exclusively to scan invitation QR codes for local peer pairing. Video frames are analyzed in-memory and are never recorded, saved, or transmitted off-device. Manual numeric invitation entry is always available without camera access. |
 | **ACCESS_LOCAL_NETWORK** | Android 17+ (API 37+) | Enables local area network (LAN) mDNS discovery and TLS 1.3 encrypted peer transfers over private local Wi-Fi networks. |
+| **READ_MEDIA_IMAGES, READ_MEDIA_VIDEO, READ_MEDIA_AUDIO, READ_MEDIA_VISUAL_USER_SELECTED** | Android 13+ (API 33+/34+) | Strictly optional, point-of-use permissions requested only when you tap **Allow access** inside the Send file picker to show inline thumbnails and recent previews. Never requested at app launch; the system picker and SAF folder browser work without them. |
+| **READ_EXTERNAL_STORAGE (`maxSdkVersion="32"`)** | Android 8.0–12L (API 26–32) | Strictly optional, point-of-use preview access inside the Send picker on legacy Android releases where granular media permissions do not exist. |
 
-Glide **does not** request `MANAGE_EXTERNAL_STORAGE`, `READ_MEDIA_IMAGES`, `READ_CONTACTS`, or `RECEIVE_BOOT_COMPLETED`.
+Glide **does not** request `MANAGE_EXTERNAL_STORAGE`, `WRITE_EXTERNAL_STORAGE`, `READ_CONTACTS`, or `RECEIVE_BOOT_COMPLETED`.
 
 ---
 

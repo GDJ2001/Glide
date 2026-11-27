@@ -256,4 +256,73 @@ class TransferSessionFactoryTest {
             receiver.stop()
         }
     }
+
+    @Test
+    fun createSenderAndReceiverSession_separateLocalAndPeerDisplayNamesInHistory() = runBlocking {
+        withTimeout(10000) {
+            val sourceAccess = TestSourceAccess()
+            val receiveStore = TestReceiveStore()
+            val senderHistoryStore = TestHistoryStore()
+            val receiverHistoryStore = TestHistoryStore()
+            val senderFactory = TransferSessionFactory(sourceAccess, receiveStore, senderHistoryStore)
+            val receiverFactory = TransferSessionFactory(sourceAccess, receiveStore, receiverHistoryStore)
+
+            val senderPeer = PeerId("lan-11112222-3333-4444-5555-666677778888")
+            val receiverPeer = PeerId("lan-b6eba56e-3c03-4123-89ab-cdef01234567")
+            val sTransport = LoopbackPairTransport(senderPeer, receiverPeer)
+            val rTransport = LoopbackPairTransport(receiverPeer, senderPeer)
+            sTransport.remoteTransport = rTransport
+            rTransport.remoteTransport = sTransport
+            val content = "Separate display names".toByteArray(Charsets.UTF_8)
+            val handle = SourceHandle("content://media/name_check.txt")
+            val itemId = ItemId(UUID.randomUUID().toString())
+            val batch = TransferBatch(
+                id = BatchId(UUID.randomUUID().toString()),
+                items = listOf(TransferItem(itemId, "name_check.txt", "text/plain", content.size.toLong()))
+            )
+            sourceAccess.sources[handle] = content
+
+            val sender = senderFactory.createSenderSession(
+                sessionId = SessionId(UUID.randomUUID().toString()),
+                peerId = rTransport.localPeerId,
+                peerDisplayName = "GDJ-PC",
+                senderBatch = batch,
+                sourceMap = mapOf(itemId to handle),
+                transport = sTransport,
+                scope = this,
+                localDisplayName = "Pixel 10"
+            )
+            assertEquals("Pixel 10", sender.localDisplayName)
+            assertEquals("GDJ-PC", sender.peerDisplayName)
+
+            val receiver = receiverFactory.createReceiverSession(
+                peerId = sTransport.localPeerId,
+                peerDisplayName = "Pixel 10",
+                sessionId = null,
+                transport = rTransport,
+                scope = this,
+                localDisplayName = "GDJ-PC"
+            )
+            assertEquals("GDJ-PC", receiver.localDisplayName)
+            assertEquals("Pixel 10", receiver.peerDisplayName)
+
+            receiver.start()
+            sender.start()
+            while (receiver.state.value.phase != SessionPhase.AwaitingConsent) {
+                kotlinx.coroutines.delay(10)
+            }
+            receiver.acceptOffer()
+            while (sender.state.value.phase != SessionPhase.Completed ||
+                receiver.state.value.phase != SessionPhase.Completed
+            ) {
+                kotlinx.coroutines.delay(20)
+            }
+
+            assertEquals("GDJ-PC", senderHistoryStore.recordedSessions.single().peerLabel)
+            assertEquals("Pixel 10", receiverHistoryStore.recordedSessions.single().peerLabel)
+
+            sender.stop()
+            receiver.stop()
+        }
+    }
 }

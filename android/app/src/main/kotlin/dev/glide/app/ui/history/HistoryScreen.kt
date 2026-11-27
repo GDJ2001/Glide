@@ -52,6 +52,7 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.glide.app.ui.components.ActionTone
 import dev.glide.app.ui.components.GlideCompactTopBar
@@ -86,6 +87,12 @@ fun HistoryScreen(
         if (initialSessionId != null) {
             viewModel.selectSession(initialSessionId, context)
         }
+    }
+
+    LifecycleResumeEffect(Unit) {
+        viewModel.loadHistory()
+        viewModel.refreshSelectedSessionAvailability(context)
+        onPauseOrDispose {}
     }
 
     Scaffold(
@@ -234,6 +241,7 @@ fun HistoryScreen(
                                 onOpenFile = { item -> viewModel.openItemFile(context, item) },
                                 onExportFile = { item -> viewModel.exportItemFile(context, item) },
                                 onShareFile = { item -> viewModel.shareItemFile(context, item) },
+                                onOpenFolder = { item -> viewModel.openItemInFileManager(context, item) },
                                 onDeleteSession = { viewModel.deleteSession(selectedDetail.session.sessionId) },
                                 modifier = Modifier.fillMaxSize()
                             )
@@ -329,6 +337,7 @@ fun HistoryScreen(
                 onOpenFile = { item -> viewModel.openItemFile(context, item) },
                 onExportFile = { item -> viewModel.exportItemFile(context, item) },
                 onShareFile = { item -> viewModel.shareItemFile(context, item) },
+                onOpenFolder = { item -> viewModel.openItemInFileManager(context, item) },
                 onDeleteSession = { viewModel.deleteSession(selectedDetail.session.sessionId) }
             )
         }
@@ -342,7 +351,8 @@ fun HistorySessionCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Card(
+            val displayPeer = formatHistoryPeerDisplayLabel(session.peerLabel).isolateBidi()
+            Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (isSelected) {
@@ -357,12 +367,12 @@ fun HistorySessionCard(
             .glideHoverHand()
             .clickable(
                 onClick = onClick,
-                onClickLabel = "View transfer details with ${session.peerLabel.isolateBidi()}"
+                onClickLabel = "View transfer details with $displayPeer"
             )
             .semantics {
                 role = Role.Button
                 selected = isSelected
-                contentDescription = "Transfer with ${session.peerLabel.isolateBidi()}, ${if (session.role == DeviceRole.Receiver) "received" else "sent"}, ${session.outcome ?: "in progress"}${if (isSelected) ", selected" else ""}"
+                contentDescription = "Transfer with $displayPeer, ${if (session.role == DeviceRole.Receiver) "received" else "sent"}, ${session.outcome ?: "in progress"}${if (isSelected) ", selected" else ""}"
             }
     ) {
         Row(
@@ -394,7 +404,7 @@ fun HistorySessionCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = session.peerLabel.isolateBidi(),
+                        text = formatHistoryPeerDisplayLabel(session.peerLabel).isolateBidi(),
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.weight(1f, fill = false),

@@ -94,7 +94,7 @@ class QrPairingViewModel(
 
         val uriString = InvitationCodec.encode(invitation)
         val bitmap = try {
-            qrBitmapGenerator?.invoke(uriString) ?: QrEncoder.encodeToBitmap(uriString, 512)
+            qrBitmapGenerator?.invoke(uriString) ?: QrEncoder.encodeToBitmap(uriString, 768)
         } catch (_: Exception) {
             null
         }
@@ -129,7 +129,7 @@ class QrPairingViewModel(
         }
         val uriString = hotspotQr ?: InvitationCodec.encode(invitation)
         val bitmap = try {
-            qrBitmapGenerator?.invoke(uriString) ?: QrEncoder.encodeToBitmap(uriString, 512)
+            qrBitmapGenerator?.invoke(uriString) ?: QrEncoder.encodeToBitmap(uriString, 768)
         } catch (_: Exception) {
             null
         }

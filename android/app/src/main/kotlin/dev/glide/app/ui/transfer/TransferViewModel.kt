@@ -54,6 +54,18 @@ class TransferViewModel(
         viewModelScope.launch {
             runtime.autoSaveStatus.collect { _exportStatus.value = it }
         }
+        viewModelScope.launch {
+            var lastSessionId = runtime.transferState.value.sessionId
+            runtime.transferState.collect { next ->
+                if (next.sessionId.isNotEmpty() && next.sessionId != lastSessionId) {
+                    lastSessionId = next.sessionId
+                    _openFileFeedback.value = null
+                } else if (next is TransferUiState.Idle) {
+                    lastSessionId = ""
+                    _openFileFeedback.value = null
+                }
+            }
+        }
     }
 
     fun clearOpenFileFeedback() {
@@ -139,7 +151,8 @@ class TransferViewModel(
             return
         }
 
-        val result = fileOpener(file, state.itemName, "*/*")
+        val resolvedMime = state.verifiedItems.singleOrNull()?.mimeType ?: "*/*"
+        val result = fileOpener(file, state.itemName, resolvedMime)
         when (result) {
             is FileOpenResult.Success -> {
                 _openFileFeedback.value = null
@@ -152,6 +165,27 @@ class TransferViewModel(
             }
             is FileOpenResult.Error -> {
                 _openFileFeedback.value = result.message
+            }
+        }
+    }
+
+    fun openInFileManager(
+        context: Context?,
+        relativePath: String? = null
+    ) {
+        if (context == null) {
+            _openFileFeedback.value = "File manager unavailable"
+            return
+        }
+        viewModelScope.launch {
+            val savedTreeUri = runCatching {
+                dev.glide.app.di.DatabaseModule.provideSettingsStore(context).getSettings().receivedFilesTreeUri
+            }.getOrNull()
+            when (val result = FileOpener.openInFileManager(context, relativePath, savedTreeUri)) {
+                is FileOpenResult.Success -> _openFileFeedback.value = null
+                is FileOpenResult.NoViewerApp -> _openFileFeedback.value = "No file manager app available"
+                is FileOpenResult.FileNotFound -> _openFileFeedback.value = "Saved folder not found"
+                is FileOpenResult.Error -> _openFileFeedback.value = result.message
             }
         }
     }

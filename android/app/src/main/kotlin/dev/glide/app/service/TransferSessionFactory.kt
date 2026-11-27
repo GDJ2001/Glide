@@ -60,13 +60,15 @@ class TransferSessionFactory(
         scope: CoroutineScope,
         persistentTrustManager: PersistentTrustManager? = null,
         expectedPeerFingerprintHex: String? = null,
-        onVerifiedPeerIdentity: ((VerifiedPeerIdentity) -> Unit)? = null
+        onVerifiedPeerIdentity: ((VerifiedPeerIdentity) -> Unit)? = null,
+        localDisplayName: String = peerDisplayName
     ): TransferCoordinator {
         return TransferCoordinator(
             sessionId = sessionId,
             role = DeviceRole.Sender,
             peerId = peerId,
-            localDisplayName = peerDisplayName,
+            localDisplayName = localDisplayName,
+            peerDisplayName = peerDisplayName,
             transport = transport,
             sourceAccess = sourceAccess,
             receiveStore = receiveStore,
@@ -177,13 +179,15 @@ class TransferSessionFactory(
         scope: CoroutineScope,
         persistentTrustManager: PersistentTrustManager? = null,
         expectedPeerFingerprintHex: String? = null,
-        onVerifiedPeerIdentity: ((VerifiedPeerIdentity) -> Unit)? = null
+        onVerifiedPeerIdentity: ((VerifiedPeerIdentity) -> Unit)? = null,
+        localDisplayName: String = peerDisplayName
     ): TransferCoordinator {
         return TransferCoordinator(
             sessionId = sessionId,
             role = DeviceRole.Receiver,
             peerId = peerId,
-            localDisplayName = peerDisplayName,
+            localDisplayName = localDisplayName,
+            peerDisplayName = peerDisplayName,
             transport = transport,
             sourceAccess = sourceAccess,
             receiveStore = receiveStore,
@@ -297,7 +301,8 @@ class TransferSessionFactory(
         scope: CoroutineScope,
         persistentTrustManager:
             PersistentTrustManager,
-        batchResume: ResumeBatchReconnect? = null
+        batchResume: ResumeBatchReconnect? = null,
+        localDisplayName: String = peerDisplayName
     ): TransferCoordinator {
         val verifier =
             resumeSourceVerifier
@@ -316,6 +321,8 @@ class TransferSessionFactory(
             role = DeviceRole.Sender,
             peerId = peerId,
             localDisplayName =
+                localDisplayName,
+            peerDisplayName =
                 peerDisplayName,
             transport = transport,
             sourceAccess = sourceAccess,
@@ -369,7 +376,8 @@ class TransferSessionFactory(
         scope: CoroutineScope,
         persistentTrustManager:
             PersistentTrustManager,
-        batchResume: ResumeBatchReconnect? = null
+        batchResume: ResumeBatchReconnect? = null,
+        localDisplayName: String = peerDisplayName
     ): TransferCoordinator {
         val store =
             resumableStagingStore
@@ -383,6 +391,8 @@ class TransferSessionFactory(
             role = DeviceRole.Receiver,
             peerId = peerId,
             localDisplayName =
+                localDisplayName,
+            peerDisplayName =
                 peerDisplayName,
             transport = transport,
             sourceAccess = sourceAccess,

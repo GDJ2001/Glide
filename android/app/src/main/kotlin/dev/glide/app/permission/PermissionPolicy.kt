@@ -67,6 +67,59 @@ object PermissionPolicy {
     const val PERMISSION_ACCESS_LOCAL_NETWORK = "android.permission.ACCESS_LOCAL_NETWORK"
     const val PERMISSION_POST_NOTIFICATIONS = "android.permission.POST_NOTIFICATIONS"
     const val PERMISSION_CAMERA = "android.permission.CAMERA"
+    const val PERMISSION_READ_MEDIA_IMAGES = "android.permission.READ_MEDIA_IMAGES"
+    const val PERMISSION_READ_MEDIA_VIDEO = "android.permission.READ_MEDIA_VIDEO"
+    const val PERMISSION_READ_MEDIA_AUDIO = "android.permission.READ_MEDIA_AUDIO"
+    const val PERMISSION_READ_MEDIA_VISUAL_USER_SELECTED = "android.permission.READ_MEDIA_VISUAL_USER_SELECTED"
+    const val PERMISSION_READ_EXTERNAL_STORAGE = "android.permission.READ_EXTERNAL_STORAGE"
+
+    /**
+     * Optional point-of-use permissions for showing inline recent photo/video/audio previews
+     * inside the Send picker without forcing broad all-files access.
+     */
+    fun mediaPreviewPermissions(
+        includeVisual: Boolean = true,
+        includeAudio: Boolean = false,
+        sdkInt: Int = Build.VERSION.SDK_INT
+    ): List<String> {
+        return when {
+            sdkInt >= 33 -> buildList {
+                if (includeVisual) {
+                    add(PERMISSION_READ_MEDIA_IMAGES)
+                    add(PERMISSION_READ_MEDIA_VIDEO)
+                    if (sdkInt >= 34) {
+                        add(PERMISSION_READ_MEDIA_VISUAL_USER_SELECTED)
+                    }
+                }
+                if (includeAudio) {
+                    add(PERMISSION_READ_MEDIA_AUDIO)
+                }
+            }
+            else -> listOf(PERMISSION_READ_EXTERNAL_STORAGE)
+        }
+    }
+
+    /**
+     * Returns true when inline Send picker previews can read user-selected or full local media.
+     */
+    fun hasMediaPreviewAccess(
+        includeAudio: Boolean = false,
+        sdkInt: Int = Build.VERSION.SDK_INT,
+        isGranted: (String) -> Boolean
+    ): Boolean {
+        return when {
+            sdkInt >= 33 -> {
+                if (includeAudio) {
+                    isGranted(PERMISSION_READ_MEDIA_AUDIO)
+                } else {
+                    isGranted(PERMISSION_READ_MEDIA_IMAGES) ||
+                        isGranted(PERMISSION_READ_MEDIA_VIDEO) ||
+                        (sdkInt >= 34 && isGranted(PERMISSION_READ_MEDIA_VISUAL_USER_SELECTED))
+                }
+            }
+            else -> isGranted(PERMISSION_READ_EXTERNAL_STORAGE)
+        }
+    }
 
     /**
      * Returns the exact set of runtime permissions required for nearby device discovery

@@ -426,6 +426,8 @@ class ReleaseCandidateQualityGateTest {
         override suspend fun getByOriginatingItemId(itemId: String): ReceivedFileEntity? =
             files.values.firstOrNull { it.originatingItemId == itemId }
         override suspend fun getActiveFiles(): List<ReceivedFileEntity> = files.values.filter { it.deletedAtMs == null }
+        override fun observeActiveFiles(): kotlinx.coroutines.flow.Flow<List<ReceivedFileEntity>> =
+            kotlinx.coroutines.flow.flow { emit(getActiveFiles()) }
         override suspend fun getActiveFileCount(): Int = files.values.count { it.deletedAtMs == null }
         override suspend fun getActiveFileTotalBytes(): Long = files.values.filter { it.deletedAtMs == null }.sumOf { it.length }
         override suspend fun markDeleted(fileKey: String, deletedAtMs: Long) {

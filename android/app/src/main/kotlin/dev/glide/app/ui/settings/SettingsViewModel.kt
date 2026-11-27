@@ -23,7 +23,8 @@ class SettingsViewModel(
     private val trustedPeerDao: TrustedPeerDao? = null,
     private val transferRuntime: TransferRuntime? = null,
     private val appVersionName: String = "1.0.0",
-    private val appBuildNumber: String = "1"
+    private val appBuildNumber: String = "1",
+    private val diagnosticsProvider: (() -> NearbyDiagnosticsState)? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
@@ -80,7 +81,22 @@ class SettingsViewModel(
                 }
             }
         }
+        viewModelScope.launch {
+            fileManager.observeStorageSummary().collect { summary ->
+                if (!isTestingOverride) {
+                    _uiState.update { it.copy(storageSummary = summary) }
+                }
+            }
+        }
         refreshStorageSummary()
+        refreshDiagnostics()
+    }
+
+    fun refreshDiagnostics() {
+        val provider = diagnosticsProvider ?: return
+        if (isTestingOverride) return
+        val diagnostics = runCatching { provider() }.getOrNull() ?: return
+        _uiState.update { it.copy(nearbyDiagnostics = diagnostics) }
     }
 
     fun refreshStorageSummary() {
@@ -265,6 +281,7 @@ class SettingsViewModel(
     }
 
     fun showNearbyDiagnostics() {
+        refreshDiagnostics()
         _uiState.update { it.copy(isNearbyDiagnosticsOpen = true) }
     }
 
@@ -341,7 +358,8 @@ class SettingsViewModel(
             trustedPeerDao: TrustedPeerDao? = null,
             transferRuntime: TransferRuntime? = null,
             appVersionName: String = "1.0.0",
-            appBuildNumber: String = "1"
+            appBuildNumber: String = "1",
+            diagnosticsProvider: (() -> NearbyDiagnosticsState)? = null
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -351,7 +369,8 @@ class SettingsViewModel(
                     trustedPeerDao,
                     transferRuntime,
                     appVersionName,
-                    appBuildNumber
+                    appBuildNumber,
+                    diagnosticsProvider
                 ) as T
             }
         }

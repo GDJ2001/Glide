@@ -96,7 +96,7 @@ class ProductionLanController private constructor(
         @ApplicationContext context: Context
     ) : this(
         networkScopeFactory = { LanNetworkScope(context.applicationContext) },
-        identityFactory = { LanLeaseIdentity.create(preferAndroidKeyStore = true) },
+        identityFactory = { LanLeaseIdentity.create(ttlMillis = RECEIVER_LEASE_TTL_MS, preferAndroidKeyStore = true) },
         permissionChecker = { permission ->
             ContextCompat.checkSelfPermission(
                 context.applicationContext,
@@ -163,20 +163,20 @@ class ProductionLanController private constructor(
         }
 
         val existing = synchronized(lock) { receiverResources }
-        if (existing != null && !existing.identity.isExpiringSoon()) {
+        if (existing != null && !existing.identity.isExpiringSoon(marginMs = REUSE_LEASE_MARGIN_MS)) {
             existing.transport.configureTrustedReceive(trustedReceiveManager, deviceName)
+            val available = existing.networkScope.networkState.value as? LanNetworkState.Available
+            val isHotspotOnly = dev.glide.transport.lan.network.AndroidHotspotConnections.host != null ||
+                available?.network == null
             if (trustedReceiveManager != null) {
                 runCatching {
                     existing.transport.advertiseTrustedListener(
                         deviceName.trim().ifEmpty { "Glide Device" },
-                        java.util.UUID.randomUUID().toString().replace("-", "")
+                        java.util.UUID.randomUUID().toString().replace("-", ""),
+                        enableNsd = !isHotspotOnly
                     )
-                }.onFailure {
-                    _receiverState.value = LanReceiverRuntimeState.Error("Local discovery is unavailable.")
-                    return false
                 }
             }
-            val available = existing.networkScope.networkState.value as? LanNetworkState.Available
             val port = runCatching { existing.listener.localPort }.getOrDefault(-1)
             if (available != null && port > 0) {
                 val endpoints = endpointsFor(addresses = available.localAddresses, port = port)
@@ -257,21 +257,27 @@ class ProductionLanController private constructor(
                     networkGeneration = available.generation
                 )
 
+                val isHotspotOnly = dev.glide.transport.lan.network.AndroidHotspotConnections.host != null ||
+                    available.network == null
                 if (trustedReceiveManager != null) {
-                    activeTransport.advertiseTrustedListener(
-                        deviceName.trim().ifEmpty { "Glide Device" },
-                        java.util.UUID.randomUUID().toString().replace("-", "")
-                    )
-                    val registered = withTimeoutOrNull(NETWORK_READY_TIMEOUT_MS) {
-                        activeTransport.trustedAdvertisingStatus
-                            ?.filter { status ->
-                                status == dev.glide.transport.lan.discovery.NsdDiscoveryAdapter.RegistrationStatus.Ready ||
-                                    status == dev.glide.transport.lan.discovery.NsdDiscoveryAdapter.RegistrationStatus.Failed
+                    // Always advertise on-link via subnet UDP presence beacon for Hotspot & Wi-Fi,
+                    // plus best-effort NSD registration when a managed network is active.
+                    runCatching {
+                        activeTransport.advertiseTrustedListener(
+                            deviceName = deviceName.trim().ifEmpty { "Glide Device" },
+                            presenceId = java.util.UUID.randomUUID().toString().replace("-", ""),
+                            enableNsd = !isHotspotOnly
+                        )
+                        if (!isHotspotOnly) {
+                            withTimeoutOrNull(TRUSTED_ADVERTISE_WAIT_MS) {
+                                activeTransport.trustedAdvertisingStatus
+                                    ?.filter { status ->
+                                        status == dev.glide.transport.lan.discovery.NsdDiscoveryAdapter.RegistrationStatus.Ready ||
+                                            status == dev.glide.transport.lan.discovery.NsdDiscoveryAdapter.RegistrationStatus.Failed
+                                    }
+                                    ?.first()
                             }
-                            ?.first()
-                    }
-                    check(registered == dev.glide.transport.lan.discovery.NsdDiscoveryAdapter.RegistrationStatus.Ready) {
-                        "Local discovery could not advertise the bound receiver."
+                        }
                     }
                 }
 
@@ -321,10 +327,28 @@ class ProductionLanController private constructor(
                                 }
                             }
                             else -> {
-                                activeTransport.stopTrustedAdvertising()
-                                _receiverState.value = LanReceiverRuntimeState.Error(
-                                    "Local network unavailable. Reconnect Wi-Fi and reopen Glide."
-                                )
+                                // Switching between Wi-Fi STA and Phone Hotspot causes a ~1.2s interface
+                                // handoff window; poll local interfaces briefly before declaring failure.
+                                var recovered = false
+                                repeat(7) {
+                                    delay(300L)
+                                    if (!isCurrentGeneration(generation)) return@collect
+                                    if (networkScope.networkState.value is LanNetworkState.Available) {
+                                        recovered = true
+                                        return@repeat
+                                    }
+                                    networkScope.evaluateLocalInterfacesFallback()
+                                    if (networkScope.networkState.value is LanNetworkState.Available) {
+                                        recovered = true
+                                        return@repeat
+                                    }
+                                }
+                                if (!recovered && isCurrentGeneration(generation)) {
+                                    activeTransport.stopTrustedAdvertising()
+                                    _receiverState.value = LanReceiverRuntimeState.Error(
+                                        "Local network unavailable. Reconnect Wi-Fi or turn on Hotspot and try again."
+                                    )
+                                }
                             }
                         }
                     }
@@ -334,9 +358,7 @@ class ProductionLanController private constructor(
                     activeTransport.trustedAdvertisingStatus?.collect { status ->
                         if (status == dev.glide.transport.lan.discovery.NsdDiscoveryAdapter.RegistrationStatus.Failed &&
                             isCurrentGeneration(generation)) {
-                            _receiverState.value = LanReceiverRuntimeState.Error(
-                                "Local discovery failed. Check Wi-Fi and try again."
-                            )
+                            activeTransport.stopTrustedAdvertising()
                         }
                     }
                 }
@@ -347,7 +369,7 @@ class ProductionLanController private constructor(
                 activeListenerScope.launch {
                     delay(rotationDelayMs)
                     while (isCurrentGeneration(generation) &&
-                        _receiverState.value is LanReceiverRuntimeState.Connected
+                        shouldDeferLeaseRotation(_receiverState.value, activeIdentity)
                     ) {
                         delay(2_000L)
                     }
@@ -551,27 +573,42 @@ class ProductionLanController private constructor(
                 val activeTransport = transportFactory(networkScope, activeScope)
                 transport = activeTransport
                 val discovery = activeTransport.nsdDiscoveryAdapter
-                    ?: throw IllegalStateException("Local device discovery is unavailable.")
-                discovery.clearObservations()
-                discovery.startDiscovery()
+                val availableState = networkScope.networkState.value as? LanNetworkState.Available
+                discovery?.clearObservations()
+                if (discovery != null && availableState?.network != null) {
+                    discovery.startDiscovery()
+                }
+                activeTransport.subnetPresenceBeacon.clearObservations()
+                val probeJob = activeScope.launch {
+                    while (true) {
+                        val gen = (networkScope.networkState.value as? LanNetworkState.Available)?.generation
+                        if (gen != null) {
+                            activeTransport.subnetPresenceBeacon.probeOnce(timeoutMs = 900L)
+                        }
+                        delay(300L)
+                    }
+                }
                 val deadlineNs = System.nanoTime() + TRUSTED_DISCOVERY_TIMEOUT_MS * 1_000_000
                 fun currentCandidates(): List<dev.glide.transport.lan.discovery.NsdDiscoveryAdapter.TrustedReconnectCandidate> {
                     val currentGeneration =
                         (networkScope.networkState.value as? LanNetworkState.Available)?.generation
                             ?: return emptyList()
                     val nowMs = System.currentTimeMillis()
-                    return discovery.getTrustedReconnectCandidates().filter {
+                    val combined = (discovery?.getTrustedReconnectCandidates().orEmpty() +
+                        activeTransport.subnetPresenceBeacon.getCandidatesSnapshot(currentGeneration))
+                    return combined.filter {
                         it.networkGeneration == currentGeneration &&
                             nowMs - it.observedAtMs in 0..TRUSTED_CANDIDATE_MAX_AGE_MS
-                    }
+                    }.distinctBy { "${it.address}:${it.port}:${it.presenceId}" }
                 }
                 var found = currentCandidates()
                 while (found.none { it.displayName.equals(trustedPeer.displayName, ignoreCase = true) } &&
                     System.nanoTime() < deadlineNs) {
-                    delay(150)
+                    delay(120)
                     found = currentCandidates()
                 }
-                discovery.stopDiscovery()
+                probeJob.cancel()
+                discovery?.stopDiscovery()
 
                 // Names order candidates; the selected saved identity is verified before any offer.
                 val candidates = found
@@ -741,12 +778,53 @@ class ProductionLanController private constructor(
         networkScope: LanNetworkScope
     ): LanNetworkState.Available? {
         val current = networkScope.networkState.value
-        if (current is LanNetworkState.Available) return current
+        if (current is LanNetworkState.Available) {
+            if (current.network == null && networkScope.context != null) {
+                val upgraded = withTimeoutOrNull(MANAGED_NETWORK_GRACE_MS) {
+                    networkScope.networkState
+                        .filterIsInstance<LanNetworkState.Available>()
+                        .first { it.network != null }
+                }
+                if (upgraded != null) return upgraded
+            }
+            return networkScope.networkState.value as? LanNetworkState.Available ?: current
+        }
 
-        return withTimeoutOrNull(NETWORK_READY_TIMEOUT_MS) {
+        val awaited = withTimeoutOrNull(NETWORK_READY_TIMEOUT_MS) {
             networkScope.networkState
                 .filterIsInstance<LanNetworkState.Available>()
                 .first()
+        }
+        if (awaited != null) return awaited
+        networkScope.evaluateLocalInterfacesFallback()
+        return networkScope.networkState.value as? LanNetworkState.Available
+    }
+
+    /**
+     * Probes active on-link interfaces (Hotspot SoftAP, Wi-Fi STA, or USB/LAN) for paired Glide
+     * listeners without starting a transfer session. Used by the recipient picker UI.
+     */
+    @SuppressLint("NewApi")
+    suspend fun probeTrustedReconnectCandidates(
+        timeoutMs: Long = 1_100L
+    ): List<dev.glide.transport.lan.discovery.NsdDiscoveryAdapter.TrustedReconnectCandidate> {
+        if (readinessError() != null) return emptyList()
+        val existing = synchronized(lock) { receiverResources }
+        if (existing != null && existing.networkScope.networkState.value is LanNetworkState.Available) {
+            return existing.transport.subnetPresenceBeacon.probeOnce(timeoutMs = timeoutMs)
+        }
+        val scope = networkScopeFactory()
+        return try {
+            val available = awaitAvailableNetwork(scope) ?: return emptyList()
+            val beacon = dev.glide.transport.lan.discovery.LanSubnetPresenceBeacon(
+                networkScope = scope,
+                allowLoopbackForTesting = allowLoopbackEndpointsForTesting
+            )
+            beacon.use { it.probeOnce(timeoutMs = timeoutMs) }
+        } catch (_: Exception) {
+            emptyList()
+        } finally {
+            runCatching { scope.close() }
         }
     }
 
@@ -766,7 +844,10 @@ class ProductionLanController private constructor(
                     it.isLinkLocalAddress ||
                     (!allowLoopbackEndpointsForTesting && it.isLoopbackAddress)
             }
-            .sortedByDescending { it is java.net.Inet4Address }
+            .sortedWith(
+                compareByDescending<InetAddress> { it is java.net.Inet4Address }
+                    .thenBy { endpointInterfacePriority(it) }
+            )
             .mapNotNull { address ->
                 val numeric = address.hostAddress
                     ?.substringBefore('%')
@@ -776,6 +857,18 @@ class ProductionLanController private constructor(
             .distinct()
             .take(LanInvitation.MAX_ENDPOINTS)
             .toList()
+    }
+
+    private fun endpointInterfacePriority(address: InetAddress): Int {
+        val iface = runCatching {
+            java.net.NetworkInterface.getByInetAddress(address)?.name?.lowercase().orEmpty()
+        }.getOrDefault("")
+        return when {
+            iface.startsWith("swlan") || iface.startsWith("ap") || iface.startsWith("softap") || iface.startsWith("sap") -> 0
+            iface.startsWith("wlan") || iface.startsWith("wifi") || iface.startsWith("p2p") -> 1
+            iface.startsWith("eth") -> 2
+            else -> 3
+        }
     }
 
     private fun readinessError(): String? {
@@ -802,10 +895,26 @@ class ProductionLanController private constructor(
 
     companion object {
         private const val NETWORK_READY_TIMEOUT_MS = 5_000L
+        private const val MANAGED_NETWORK_GRACE_MS = 250L
+        private const val TRUSTED_ADVERTISE_WAIT_MS = 1_500L
         private const val TRUSTED_DISCOVERY_TIMEOUT_MS = 6_000L
         private const val TRUSTED_CANDIDATE_MAX_AGE_MS = 10_000L
         private const val MAX_TRUSTED_CANDIDATES = 8
         private const val LEASE_RENEWAL_MARGIN_MS = 30_000L
+        internal const val RECEIVER_LEASE_TTL_MS = 10 * 60_000L
+        internal const val REUSE_LEASE_MARGIN_MS = 150_000L
+
+        internal fun shouldDeferLeaseRotation(
+            state: LanReceiverRuntimeState,
+            identity: LanLeaseIdentity,
+            nowEpochMs: Long = System.currentTimeMillis()
+        ): Boolean {
+            if (state is LanReceiverRuntimeState.Connected) return true
+            if (state !is LanReceiverRuntimeState.Ready) return false
+            val invExpiresMs = state.invitation.expiresAt.toLongOrNull()?.times(1_000L) ?: 0L
+            val certHardStopMs = identity.createdAtEpochMs + identity.ttlMillis - 5_000L
+            return nowEpochMs < invExpiresMs && nowEpochMs < certHardStopMs
+        }
 
         @SuppressLint("NewApi")
         internal fun forTesting(

@@ -40,6 +40,7 @@ import androidx.compose.material3.SheetState
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -62,6 +63,7 @@ import dev.glide.app.ui.components.GlideIconAction
 import dev.glide.core.pairing.InvitationCodec
 import dev.glide.designsystem.PrimaryButtonShape
 import dev.glide.designsystem.isolateBidi
+import kotlinx.coroutines.delay
 
 /**
  * Material 3 Bottom Sheet displaying the offline Receive QR code, 120-second countdown,
@@ -79,6 +81,12 @@ fun QrInvitationSheet(
     val context = LocalContext.current
     val scrollState = rememberScrollState()
     var copyNotice by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(copyNotice) {
+        if (copyNotice != null) {
+            delay(2_500L)
+            copyNotice = null
+        }
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -92,10 +100,10 @@ fun QrInvitationSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 24.dp)
-                .padding(bottom = 32.dp)
+                .padding(bottom = 24.dp)
                 .verticalScroll(scrollState),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             // Header Row: Title and Close button
             Row(
@@ -139,9 +147,24 @@ fun QrInvitationSheet(
 
                 is QrReceiverUiState.Ready -> {
                     val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+                    val hasHotspot = !uiState.hotspotSsid.isNullOrBlank()
                     val isCompactHeight = configuration.screenHeightDp < 480
-                    val qrCardSize = if (isCompactHeight) 180.dp else 264.dp
-                    val qrImageSize = if (isCompactHeight) 156.dp else 236.dp
+                    val isTightHotspot = hasHotspot && configuration.screenHeightDp < 760
+                    val qrCardSize = when {
+                        isCompactHeight -> 184.dp
+                        isTightHotspot -> 228.dp
+                        else -> 264.dp
+                    }
+                    val qrImageSize = when {
+                        isCompactHeight -> 168.dp
+                        isTightHotspot -> 212.dp
+                        else -> 244.dp
+                    }
+                    val cardInnerPadding = when {
+                        isCompactHeight -> 8.dp
+                        isTightHotspot -> 8.dp
+                        else -> 10.dp
+                    }
 
                     // High-contrast quiet zone container (always white background for optimal optical scan)
                     Card(
@@ -155,7 +178,7 @@ fun QrInvitationSheet(
                         Box(
                             modifier = Modifier
                                 .size(qrCardSize)
-                                .padding(if (isCompactHeight) 12.dp else 16.dp),
+                                .padding(cardInnerPadding),
                             contentAlignment = Alignment.Center
                         ) {
                             if (uiState.qrBitmap != null) {
@@ -230,23 +253,6 @@ fun QrInvitationSheet(
                         }
                     }
 
-                    // Copy Notice / Security Feedback
-                    if (copyNotice != null) {
-                        Card(
-                            shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                text = copyNotice ?: "",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                modifier = Modifier.padding(12.dp),
-                                textAlign = TextAlign.Center
-                            )
-                        }
-                    }
-
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
@@ -259,6 +265,15 @@ fun QrInvitationSheet(
                             )
                             copyNotice = "Invitation copied"
                         }, tone = ActionTone.Primary)
+                    }
+
+                    if (copyNotice != null) {
+                        Text(
+                            text = copyNotice ?: "",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            textAlign = TextAlign.Center
+                        )
                     }
                 }
 

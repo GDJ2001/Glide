@@ -589,4 +589,50 @@ class HistoryViewModelTest {
         vm.shareItemFile(context = null, item = item)
         assertEquals("No app available to share this file", vm.uiState.value.openFileFeedback)
     }
+
+    @Test
+    fun `observeSessions pushes newly completed transfer immediately without manual refresh`() = runTest {
+        val sessionsFlow = kotlinx.coroutines.flow.MutableStateFlow<List<SessionSummary>>(emptyList())
+        val reactiveStore = object : HistoryStore {
+            override suspend fun recordSession(record: SessionRecord) {}
+            override suspend fun recordItem(record: ItemRecord) {}
+            override suspend fun updateSessionOutcome(sessionId: SessionId, outcome: String, endedAtMs: Long) {}
+            override suspend fun getSession(sessionId: SessionId): SessionRecord? = null
+            override fun observeSessions(
+                role: DeviceRole?,
+                limit: Int
+            ): kotlinx.coroutines.flow.Flow<List<SessionSummary>> = sessionsFlow
+        }
+
+        val vm = HistoryViewModel(historyStore = reactiveStore)
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.sessions.isEmpty())
+
+        sessionsFlow.value = listOf(
+            SessionSummary(
+                sessionId = SessionId(UUID.randomUUID().toString()),
+                batchId = BatchId(UUID.randomUUID().toString()),
+                role = DeviceRole.Receiver,
+                peerLabel = "GDJ-PC",
+                startedAtMs = 1_000L,
+                endedAtMs = 2_000L,
+                outcome = "Completed",
+                itemCount = 2,
+                totalBytes = 2048L
+            )
+        )
+        advanceUntilIdle()
+
+        assertEquals(1, vm.uiState.value.sessions.size)
+        assertEquals("GDJ-PC", vm.uiState.value.sessions.single().peerLabel)
+    }
+
+    @Test
+    fun `formatHistoryPeerDisplayLabel maps raw lan-uuid to friendly device label`() {
+        assertEquals(
+            "Local network device",
+            formatHistoryPeerDisplayLabel("lan-b6eba56e-3c03-4123-89ab-cdef01234567")
+        )
+        assertEquals("GDJ-PC", formatHistoryPeerDisplayLabel("GDJ-PC"))
+    }
 }

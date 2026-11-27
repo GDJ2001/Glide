@@ -200,6 +200,8 @@ class CrossOemAcceptanceAndSoakTest {
             files.values.filter { it.deletedAtMs == null }
 
         override suspend fun getActiveFileCount(): Int = files.values.count { it.deletedAtMs == null }
+        override fun observeActiveFiles(): kotlinx.coroutines.flow.Flow<List<ReceivedFileEntity>> =
+            kotlinx.coroutines.flow.flow { emit(getActiveFiles()) }
 
         override suspend fun getActiveFileTotalBytes(): Long =
             files.values.filter { it.deletedAtMs == null }.sumOf { it.length }

@@ -125,6 +125,59 @@ class QrEncoderDecoderTest {
     }
 
     @Test
+    fun testHotspotInvitation_multiscaleCenterCropDecodeAndClockSkewGrace() {
+        val now = java.time.Instant.ofEpochSecond(1_800_000_000L)
+        val pairing = LanInvitation(
+            v = 1,
+            transport = "lan-tls",
+            profile = 1,
+            protocol = 1,
+            invitationId = "00000000-0000-4000-8000-000000000009",
+            presence = "00112233445566778899aabbccddeeff",
+            name = "Galaxy J7",
+            platform = "android",
+            endpoints = listOf(LanEndpoint("192.168.43.1", 49152)),
+            spkiSha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            token = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLM_012",
+            expiresAt = "1800000120",
+            ttlSeconds = 120
+        )
+        val hotspot = dev.glide.core.pairing.HotspotInvitation("AndroidShare_3239", "1234567890abcd", pairing)
+        val uri = dev.glide.core.pairing.HotspotInvitationCodec.encode(hotspot)
+        assertEquals(
+            "AndroidShare_3239",
+            dev.glide.core.pairing.HotspotInvitationCodec.decode(
+                uri,
+                now = now.plusSeconds(150),
+                clockSkewGraceSeconds = 300L
+            ).ssid
+        )
+
+        // Render dense Hotspot QR cleanly at exact 1:1 module grid, then embed inside 48% of a 1280x720 luminance frame.
+        val raw = QrEncoder.encodeToBitMatrix(uri, 1, 1, margin = 2, errorCorrectionLevel = com.google.zxing.qrcode.decoder.ErrorCorrectionLevel.L)
+        val frameW = 1280
+        val frameH = 720
+        val scale = (frameH * 0.45f / raw.width).toInt().coerceAtLeast(3)
+        val qrSize = raw.width * scale
+        val offsetX = (frameW - qrSize) / 2
+        val offsetY = (frameH - qrSize) / 2
+        val yPlane = ByteArray(frameW * frameH) { 0x60.toByte() }
+        for (my in 0 until raw.height) {
+            for (mx in 0 until raw.width) {
+                val lum = if (raw.get(mx, my)) 0x10.toByte() else 0xF5.toByte()
+                for (dy in 0 until scale) {
+                    val row = (offsetY + my * scale + dy) * frameW
+                    for (dx in 0 until scale) {
+                        yPlane[row + offsetX + mx * scale + dx] = lum
+                    }
+                }
+            }
+        }
+        val source = com.google.zxing.PlanarYUVLuminanceSource(yPlane, frameW, frameH, 0, 0, frameW, frameH, false)
+        assertEquals(uri, QrDecoder.decodeLuminance(source))
+    }
+
+    @Test
     fun testQrFrameAnalyzer_rateLimiting_and_singleDecodeLatch() {
         var currentTime = 1000L
         val decodedResults = mutableListOf<String>()

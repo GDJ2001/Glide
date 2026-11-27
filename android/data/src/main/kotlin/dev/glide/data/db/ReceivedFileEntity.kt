@@ -8,6 +8,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
 import androidx.room.Query
+import kotlinx.coroutines.flow.Flow
 
 /**
  * Persistence entity for verified received files catalog in Room database.
@@ -63,6 +64,9 @@ interface ReceivedFileDao {
 
     @Query("SELECT * FROM received_files WHERE deleted_at_ms IS NULL ORDER BY received_at_ms DESC")
     suspend fun getActiveFiles(): List<ReceivedFileEntity>
+
+    @Query("SELECT * FROM received_files WHERE deleted_at_ms IS NULL ORDER BY received_at_ms DESC")
+    fun observeActiveFiles(): Flow<List<ReceivedFileEntity>>
 
     @Query("SELECT COUNT(*) FROM received_files WHERE deleted_at_ms IS NULL")
     suspend fun getActiveFileCount(): Int

@@ -85,6 +85,9 @@ class FakeReceivedFileDao : ReceivedFileDao {
         return files.values.filter { it.deletedAtMs == null }
     }
 
+    override fun observeActiveFiles(): kotlinx.coroutines.flow.Flow<List<ReceivedFileEntity>> =
+        kotlinx.coroutines.flow.flow { emit(getActiveFiles()) }
+
     override suspend fun getActiveFileCount(): Int {
         return files.values.count { it.deletedAtMs == null }
     }

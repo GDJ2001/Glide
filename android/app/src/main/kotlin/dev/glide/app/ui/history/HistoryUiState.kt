@@ -19,6 +19,17 @@ fun formatHistoryOutcomeLabel(outcome: String?, failureCode: String? = null): St
     }
 }
 
+fun formatHistoryPeerDisplayLabel(raw: String): String {
+    val trimmed = raw.trim()
+    return if (trimmed.startsWith("lan-") && trimmed.length >= 20) {
+        "Local network device"
+    } else if (trimmed.isEmpty()) {
+        "Glide Device"
+    } else {
+        trimmed
+    }
+}
+
 data class HistorySessionItem(
     val sessionId: String,
     val role: DeviceRole,

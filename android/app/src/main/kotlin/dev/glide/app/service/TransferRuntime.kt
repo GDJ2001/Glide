@@ -7,6 +7,7 @@ import dev.glide.app.lan.LanReceiverRuntimeState
 import dev.glide.app.lan.ProductionLanController
 import dev.glide.app.ui.discovery.BlockedReason
 import dev.glide.app.ui.discovery.DeviceType
+import dev.glide.app.ui.discovery.DiscoveredPeer
 import dev.glide.app.ui.discovery.DiscoveryUiState
 import dev.glide.app.ui.discovery.ReceiveReadinessUiState
 import dev.glide.app.ui.pairing.PairingUiState
@@ -42,7 +43,10 @@ import dev.glide.data.store.ResumableStagingStore
 import dev.glide.transport.lan.LanTransferTransport
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -144,11 +148,23 @@ class TransferRuntime private constructor(
     val lanReceiverState: StateFlow<LanReceiverRuntimeState> =
         lanController?.receiverState ?: _fallbackLanReceiverState.asStateFlow()
 
+    private val _onlineLanPeers = MutableStateFlow<List<DiscoveredPeer>>(emptyList())
+    val onlineLanPeers: StateFlow<List<DiscoveredPeer>> = _onlineLanPeers.asStateFlow()
+    private val lanPeerDiscoveryScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var lanPeerDiscoveryJob: Job? = null
+
     private val _isSessionActive = MutableStateFlow(false)
     val isSessionActive: StateFlow<Boolean> = _isSessionActive.asStateFlow()
 
     private val _activeSessionId = MutableStateFlow<String?>(null)
     val activeSessionId: StateFlow<String?> = _activeSessionId.asStateFlow()
+
+    private val _retainedTransfersVersion = MutableStateFlow(0L)
+    val retainedTransfersVersion: StateFlow<Long> = _retainedTransfersVersion.asStateFlow()
+
+    private fun bumpRetainedTransfersVersion() {
+        _retainedTransfersVersion.value = _retainedTransfersVersion.value + 1L
+    }
 
     internal var timeProvider: () -> Long = { System.currentTimeMillis() }
     private val statePresenter = TransferStatePresenter(timeProvider = { timeProvider() })
@@ -247,6 +263,12 @@ class TransferRuntime private constructor(
             activeCoordinator = null
             _isSessionActive.value = false
             _activeSessionId.value = null
+            if (_pairingState.value is PairingUiState.Connected ||
+                _pairingState.value is PairingUiState.Connecting ||
+                _pairingState.value is PairingUiState.Verifying
+            ) {
+                _pairingState.value = PairingUiState.Idle
+            }
             serviceScope = null
             onTransferStarting = null
             onVerifiedCompletion = null
@@ -327,6 +349,7 @@ class TransferRuntime private constructor(
         if (_isSessionActive.value) return
         val original = runCatching { SessionId(sessionId) }.getOrNull() ?: return
         resumableStagingStore?.purgeOriginalSession(original.value)
+        bumpRetainedTransfersVersion()
     }
 
     suspend fun startRetainedResume(sessionId: String, localDeviceName: String): Boolean {
@@ -350,7 +373,7 @@ class TransferRuntime private constructor(
             ownerScope = scope, trustedPeer = peer, trustManager = manager, localDeviceName = localDeviceName,
             onConnected = { transport, remote ->
                 scope.launch {
-                    if (!openResumeCoordinator(transport, remote.id, remote.displayName, localInitiated = true)) {
+                    if (!openResumeCoordinator(transport, remote.id, remote.displayName, localInitiated = true, localDisplayName = localDeviceName)) {
                         transport.disconnect(remote.id)
                         failPairing("Resume failed", "The approved transfer could not be reopened.")
                         terminalCallback?.invoke()
@@ -372,9 +395,13 @@ class TransferRuntime private constructor(
     }
 
     private suspend fun openResumeCoordinator(
-        transport: LanTransferTransport, peerId: PeerId, peerName: String, localInitiated: Boolean
+        transport: LanTransferTransport,
+        peerId: PeerId,
+        peerName: String,
+        localInitiated: Boolean,
+        localDisplayName: String = "Glide Device"
     ): Boolean = try {
-        startResumeCoordinator(transport, peerId, peerName, localInitiated)
+        startResumeCoordinator(transport, peerId, peerName, localInitiated, localDisplayName)
     } catch (error: CancellationException) {
         throw error
     } catch (_: Exception) {
@@ -382,7 +409,11 @@ class TransferRuntime private constructor(
     }
 
     private suspend fun startResumeCoordinator(
-        transport: LanTransferTransport, peerId: PeerId, peerName: String, localInitiated: Boolean
+        transport: LanTransferTransport,
+        peerId: PeerId,
+        peerName: String,
+        localInitiated: Boolean,
+        localDisplayName: String = "Glide Device"
     ): Boolean {
         val factory = sessionFactory ?: return false
         val manager = persistentTrustManager ?: return false
@@ -397,9 +428,9 @@ class TransferRuntime private constructor(
         val context = ResumeBatchReconnect(batch.manifest, batch.verifiedCount, localInitiated)
         val first = batch.manifest.items.first().id
         val coordinator = if (sender) factory.createResumeSenderSession(
-            actualSession, original, first, peerId, peerName, fingerprint.value, transport, scope, manager, context
+            actualSession, original, first, peerId, peerName, fingerprint.value, transport, scope, manager, context, localDisplayName = localDisplayName
         ) else factory.createResumeReceiverSession(
-            actualSession, original, first, peerId, peerName, fingerprint.value, transport, scope, manager, context
+            actualSession, original, first, peerId, peerName, fingerprint.value, transport, scope, manager, context, localDisplayName = localDisplayName
         )
         return startCoordinator(coordinator, peerName)
     }
@@ -448,6 +479,8 @@ class TransferRuntime private constructor(
                 rotateLocalIdentity()
             TransferRuntimeCommand.StartDiscovery -> startDiscovery()
             TransferRuntimeCommand.StopDiscovery -> stopDiscovery()
+            TransferRuntimeCommand.StartLanPeerDiscovery -> startLanPeerDiscovery()
+            TransferRuntimeCommand.StopLanPeerDiscovery -> stopLanPeerDiscovery()
             is TransferRuntimeCommand.NearbyPermissionDenied ->
                 nearbyPermissionDenied(command.receiveMode)
             is TransferRuntimeCommand.StartReceiveAvailability ->
@@ -500,7 +533,8 @@ class TransferRuntime private constructor(
                         selectionId = command.selectionId,
                         transport = transport,
                         peerId = peer.id,
-                        peerDisplayName = peer.displayName
+                        peerDisplayName = peer.displayName,
+                        localDisplayName = command.localDeviceName
                     )
                 )
                 if (!started) {
@@ -569,7 +603,8 @@ class TransferRuntime private constructor(
                             transport = transport,
                             peerId = peer.id,
                             peerDisplayName = trustedPeer.displayName,
-                            expectedPeerFingerprintHex = trustedPeer.peerFingerprintHex
+                            expectedPeerFingerprintHex = trustedPeer.peerFingerprintHex,
+                            localDisplayName = command.localDeviceName
                         )
                     )) {
                     failPairing("Transfer could not start", "Choose the files again and retry.")
@@ -608,7 +643,7 @@ class TransferRuntime private constructor(
             _pairingState.value = PairingUiState.Connected(peer)
             if (transport.trustedResumeOpening(peer.id) != null) {
                 scope.launch {
-                    if (!openResumeCoordinator(transport, peer.id, peer.displayName, localInitiated = false)) {
+                    if (!openResumeCoordinator(transport, peer.id, peer.displayName, localInitiated = false, localDisplayName = command.localDeviceName)) {
                         transport.disconnect(peer.id)
                         failPairing("Resume failed", "The approved transfer is unavailable.")
                     }
@@ -620,7 +655,8 @@ class TransferRuntime private constructor(
                     transport = transport,
                     peerId = peer.id,
                     peerDisplayName = peer.displayName,
-                    expectedPeerFingerprintHex = transport.trustedInboundPeerFingerprint(peer.id)
+                    expectedPeerFingerprintHex = transport.trustedInboundPeerFingerprint(peer.id),
+                    localDisplayName = command.localDeviceName
                 )
             )
             if (!started) {
@@ -666,7 +702,8 @@ class TransferRuntime private constructor(
                     TransferRuntimeCommand.StartReceiver(
                         transport = transport,
                         peerId = peer.id,
-                        peerDisplayName = peer.displayName
+                        peerDisplayName = peer.displayName,
+                        localDisplayName = command.localDeviceName
                     )
                 )
                 if (!started) {
@@ -740,7 +777,8 @@ class TransferRuntime private constructor(
                     selectionId = command.selectionId,
                     transport = transport,
                     peerId = connectedPeerId,
-                    peerDisplayName = connectedPeer?.displayName ?: command.peerDisplayName
+                    peerDisplayName = connectedPeer?.displayName ?: command.peerDisplayName,
+                    localDisplayName = command.localDeviceName
                 )
             )
             if (!started) {
@@ -831,6 +869,7 @@ class TransferRuntime private constructor(
                     ?: SessionId(UUID.randomUUID().toString()),
             peerId = command.peerId,
             peerDisplayName = command.peerDisplayName,
+            localDisplayName = command.localDisplayName,
             senderBatch = prepared.batch,
             sourceMap = prepared.sourceMap,
             transport = command.transport,
@@ -870,6 +909,7 @@ class TransferRuntime private constructor(
         val coordinator = factory.createReceiverSession(
             peerId = command.peerId,
             peerDisplayName = command.peerDisplayName,
+            localDisplayName = command.localDisplayName,
             sessionId =
                 command.sessionId
                     ?: authenticatedSessionId,
@@ -1290,6 +1330,7 @@ class TransferRuntime private constructor(
                 val purgeScope = ownerScope ?: kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO)
                 purgeScope.launch {
                     store.purgeOriginalSession(paused.resumableSessionId)
+                    bumpRetainedTransfersVersion()
                 }
             }
             return true
@@ -1309,6 +1350,7 @@ class TransferRuntime private constructor(
                 if (originalResumableId != null && originalResumableId != sessionId) {
                     resumableStagingStore.purgeOriginalSession(originalResumableId)
                 }
+                bumpRetainedTransfersVersion()
             }
         }
 
@@ -1582,6 +1624,61 @@ class TransferRuntime private constructor(
         return true
     }
 
+    private fun startLanPeerDiscovery(): Boolean {
+        val controller = lanController ?: return false
+        synchronized(lock) {
+            if (lanPeerDiscoveryJob?.isActive == true) return true
+            lanPeerDiscoveryJob = lanPeerDiscoveryScope.launch {
+                if (!_trustState.value.isInitialized) {
+                    refreshPersistentTrustState()
+                }
+                while (true) {
+                    val trusted = _trustState.value.trustedPeers
+                    if (trusted.isNotEmpty()) {
+                        val candidates = runCatching {
+                            controller.probeTrustedReconnectCandidates(timeoutMs = 1_100L)
+                        }.getOrDefault(emptyList())
+                        val matched = trusted.filter { peer ->
+                            candidates.any { it.displayName.equals(peer.displayName, ignoreCase = true) } ||
+                                (candidates.size == 1 && trusted.size == 1)
+                        }.map { peer ->
+                            DiscoveredPeer(
+                                id = lanTrustedPeerId(peer.peerFingerprintHex),
+                                displayName = peer.displayName,
+                                deviceType = DeviceType.fromDeviceName(peer.displayName),
+                                routeSubtitle = "Hotspot / Local Wi-Fi"
+                            )
+                        }
+                        _onlineLanPeers.value = matched
+                    } else {
+                        _onlineLanPeers.value = emptyList()
+                    }
+                    delay(1_800L)
+                }
+            }
+        }
+        return true
+    }
+
+    private fun stopLanPeerDiscovery(): Boolean {
+        synchronized(lock) {
+            lanPeerDiscoveryJob?.cancel()
+            lanPeerDiscoveryJob = null
+        }
+        _onlineLanPeers.value = emptyList()
+        return true
+    }
+
+    fun resolveTrustedLanPeerFingerprint(peerId: PeerId): String? {
+        val raw = peerId.value
+        if (!raw.startsWith(LAN_TRUSTED_PEER_ID_PREFIX)) return null
+        val prefix = raw.removePrefix(LAN_TRUSTED_PEER_ID_PREFIX)
+        if (prefix.isEmpty()) return null
+        return _trustState.value.trustedPeers
+            .firstOrNull { it.peerFingerprintHex.startsWith(prefix, ignoreCase = true) }
+            ?.peerFingerprintHex
+    }
+
     private fun nearbyPermissionDenied(receiveMode: Boolean): Boolean {
         val controller = discoveryController ?: run {
             if (receiveMode) {
@@ -1626,7 +1723,8 @@ class TransferRuntime private constructor(
                 TransferRuntimeCommand.StartReceiver(
                     transport = transport,
                     peerId = connectedPeerId,
-                    peerDisplayName = connectedPeer?.displayName ?: "Nearby device"
+                    peerDisplayName = connectedPeer?.displayName ?: "Nearby device",
+                    localDisplayName = localDeviceName
                 )
             )
             if (!started) {
@@ -1757,6 +1855,7 @@ class TransferRuntime private constructor(
         _autoSavedItemIds.value = emptySet()
         _pairingState.value = PairingUiState.Idle
         discoveryController?.resetForTesting()
+        stopLanPeerDiscovery()
         lanController?.stopAll()
         _fallbackLanReceiverState.value = LanReceiverRuntimeState.Idle
         _fallbackDiscoveryState.value = DiscoveryUiState.Blocked(
@@ -1817,6 +1916,12 @@ class TransferRuntime private constructor(
             exportStatusSnapshot = _autoSaveStatus.value
             _isSessionActive.value = false
             _activeSessionId.value = null
+            if (_pairingState.value is PairingUiState.Connected ||
+                _pairingState.value is PairingUiState.Connecting ||
+                _pairingState.value is PairingUiState.Verifying
+            ) {
+                _pairingState.value = PairingUiState.Idle
+            }
             statePresenter.reset()
             captureTerminalSnapshot(coordinator)
 
@@ -1835,6 +1940,7 @@ class TransferRuntime private constructor(
         }
 
         coordinator.stop()
+        bumpRetainedTransfersVersion()
         diagnosticsObserver?.onTerminalState(
             scope = terminalScope ?: coordinator.scope,
             sessionState = terminalSessionState,
@@ -1845,6 +1951,11 @@ class TransferRuntime private constructor(
     }
 
     companion object {
+        internal const val LAN_TRUSTED_PEER_ID_PREFIX = "lan-t-"
+
+        internal fun lanTrustedPeerId(fingerprintHex: String): PeerId =
+            PeerId("$LAN_TRUSTED_PEER_ID_PREFIX${fingerprintHex.take(58)}")
+
         internal fun forTesting(
             sessionFactory: TransferSessionFactory? = null,
             discoveryController: ProductionDiscoveryController? = null,
@@ -1874,7 +1985,8 @@ sealed interface TransferRuntimeCommand {
         val transport: TransferTransport,
         val peerId: PeerId,
         val peerDisplayName: String,
-        val expectedPeerFingerprintHex: String? = null
+        val expectedPeerFingerprintHex: String? = null,
+        val localDisplayName: String = "Glide Device"
     ) : TransferRuntimeCommand
 
     data class StartReceiver(
@@ -1882,7 +1994,8 @@ sealed interface TransferRuntimeCommand {
         val peerId: PeerId,
         val peerDisplayName: String,
         val sessionId: SessionId? = null,
-        val expectedPeerFingerprintHex: String? = null
+        val expectedPeerFingerprintHex: String? = null,
+        val localDisplayName: String = "Glide Device"
     ) : TransferRuntimeCommand
 
     data class StartNearbySenderPairing(
@@ -1954,6 +2067,8 @@ sealed interface TransferRuntimeCommand {
 
     data object StartDiscovery : TransferRuntimeCommand
     data object StopDiscovery : TransferRuntimeCommand
+    data object StartLanPeerDiscovery : TransferRuntimeCommand
+    data object StopLanPeerDiscovery : TransferRuntimeCommand
     data class NearbyPermissionDenied(val receiveMode: Boolean) : TransferRuntimeCommand
     data class StartReceiveAvailability(val localDeviceName: String) : TransferRuntimeCommand
     data object StopReceiveAvailability : TransferRuntimeCommand

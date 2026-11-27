@@ -59,7 +59,8 @@ class TransferService : Service() {
     @Volatile private var foreground = false
     @Volatile private var idleReceiver = false
     @Volatile private var notificationSettings = dev.glide.core.ports.GlideSettings()
-    private var releaseHotspotLease: (() -> Unit)? = null
+    private var releaseHotspotHostLease: (() -> Unit)? = null
+    private var releaseHotspotClientLease: (() -> Unit)? = null
 
     private val startRequestLock = Any()
     private var lastStartRequestKey: String? = null
@@ -73,6 +74,24 @@ class TransferService : Service() {
                 if (started) startNotificationUpdates()
             }
         }, onVerifiedCompletion = ::postCompletion, onTerminal = ::handleTerminalTeardown)
+    }
+
+    private fun resolveDeviceNameAsync(raw: String?, block: suspend (String) -> Unit) {
+        val trimmed = raw?.trim().orEmpty()
+        serviceScope.launch {
+            val resolved = if (
+                trimmed.isEmpty() ||
+                trimmed.equals("Glide Device", ignoreCase = true) ||
+                trimmed == dev.glide.core.ports.GlideSettings.DEFAULT_DEVICE_NAME
+            ) {
+                runCatching {
+                    dev.glide.app.di.DatabaseModule.provideSettingsStore(applicationContext).getSettings().deviceName
+                }.getOrDefault(trimmed.ifEmpty { dev.glide.core.ports.GlideSettings.DEFAULT_DEVICE_NAME })
+            } else {
+                trimmed
+            }
+            block(resolved)
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -94,54 +113,62 @@ class TransferService : Service() {
                 startNotificationUpdates()
                 val peerId = intent?.getStringExtra(EXTRA_PEER_ID)
                 val peerName = intent?.getStringExtra(EXTRA_PEER_NAME) ?: "Nearby device"
-                val localDeviceName =
-                    intent?.getStringExtra(EXTRA_LOCAL_DEVICE_NAME) ?: "Glide Device"
+                val rawLocalName = intent?.getStringExtra(EXTRA_LOCAL_DEVICE_NAME)
                 val selectionId = intent?.getStringExtra(EXTRA_SELECTION_ID)?.let(::BatchId)
-                val started = peerId != null && runtime().dispatch(
-                    TransferRuntimeCommand.StartNearbySenderPairing(
-                        selectionId = selectionId,
-                        peerId = PeerId(peerId),
-                        peerDisplayName = peerName,
-                        localDeviceName = localDeviceName
-                    )
-                )
-                if (!started) {
+                if (peerId == null) {
                     handleTerminalTeardown()
+                } else {
+                    resolveDeviceNameAsync(rawLocalName) { localDeviceName ->
+                        val started = runtime().dispatch(
+                            TransferRuntimeCommand.StartNearbySenderPairing(
+                                selectionId = selectionId,
+                                peerId = PeerId(peerId),
+                                peerDisplayName = peerName,
+                                localDeviceName = localDeviceName
+                            )
+                        )
+                        if (!started) handleTerminalTeardown()
+                    }
                 }
             }
 
             ACTION_START_NEARBY_RECEIVER -> {
                 idleReceiver = true
-                val localDeviceName =
-                    intent?.getStringExtra(EXTRA_LOCAL_DEVICE_NAME) ?: "Glide Device"
-                if (!runtime().dispatch(
-                        TransferRuntimeCommand.StartReceiveAvailability(localDeviceName)
-                    )
-                ) {
-                    handleTerminalTeardown()
+                val rawLocalName = intent?.getStringExtra(EXTRA_LOCAL_DEVICE_NAME)
+                resolveDeviceNameAsync(rawLocalName) { localDeviceName ->
+                    if (!runtime().dispatch(
+                            TransferRuntimeCommand.StartReceiveAvailability(localDeviceName)
+                        )
+                    ) {
+                        handleTerminalTeardown()
+                    }
                 }
             }
 
             ACTION_START_LAN_SENDER -> {
-                releaseHotspotLease = dev.glide.transport.lan.network.AndroidHotspotConnections.claimCurrentLease()
+                releaseHotspotClientLease?.invoke()
+                releaseHotspotClientLease = dev.glide.transport.lan.network.AndroidHotspotConnections.claimClientLease()
                 startForegroundWithNotification()
                 startNotificationUpdates()
                 val encodedInvitation = intent?.getStringExtra(EXTRA_LAN_INVITATION)
                 val selectionId = intent?.getStringExtra(EXTRA_SELECTION_ID)?.let(::BatchId)
-                val localDeviceName =
-                    intent?.getStringExtra(EXTRA_LOCAL_DEVICE_NAME) ?: "Glide Device"
+                val rawLocalName = intent?.getStringExtra(EXTRA_LOCAL_DEVICE_NAME)
                 val invitation = encodedInvitation?.let {
                     runCatching { InvitationCodec.decode(it) }.getOrNull()
                 }
-                val started = invitation != null && runtime().dispatch(
-                    TransferRuntimeCommand.StartLanSenderPairing(
-                        selectionId = selectionId,
-                        invitation = invitation,
-                        localDeviceName = localDeviceName
-                    )
-                )
-                if (!started) {
+                if (invitation == null) {
                     handleTerminalTeardown()
+                } else {
+                    resolveDeviceNameAsync(rawLocalName) { localDeviceName ->
+                        val started = runtime().dispatch(
+                            TransferRuntimeCommand.StartLanSenderPairing(
+                                selectionId = selectionId,
+                                invitation = invitation,
+                                localDeviceName = localDeviceName
+                            )
+                        )
+                        if (!started) handleTerminalTeardown()
+                    }
                 }
             }
 
@@ -150,9 +177,8 @@ class TransferService : Service() {
                 startNotificationUpdates()
                 val selectionId = intent?.getStringExtra(EXTRA_SELECTION_ID)?.let(::BatchId)
                 val fingerprint = intent?.getStringExtra(EXTRA_PEER_FINGERPRINT)
-                val localDeviceName =
-                    intent?.getStringExtra(EXTRA_LOCAL_DEVICE_NAME) ?: "Glide Device"
-                serviceScope.launch {
+                val rawLocalName = intent?.getStringExtra(EXTRA_LOCAL_DEVICE_NAME)
+                resolveDeviceNameAsync(rawLocalName) { localDeviceName ->
                     val started = selectionId != null && fingerprint != null &&
                         runtime().refreshPersistentTrustState() &&
                         runtime().dispatch(
@@ -170,8 +196,8 @@ class TransferService : Service() {
                 startForegroundWithNotification()
                 startNotificationUpdates()
                 val original = intent?.getStringExtra(EXTRA_SESSION_ID)
-                val deviceName = intent?.getStringExtra(EXTRA_LOCAL_DEVICE_NAME) ?: "Glide Device"
-                serviceScope.launch {
+                val rawLocalName = intent?.getStringExtra(EXTRA_LOCAL_DEVICE_NAME)
+                resolveDeviceNameAsync(rawLocalName) { deviceName ->
                     val started = original != null && runtime().refreshPersistentTrustState() &&
                         runtime().startRetainedResume(original, deviceName)
                     if (!started) handleTerminalTeardown()
@@ -179,32 +205,53 @@ class TransferService : Service() {
             }
 
             ACTION_START_LAN_RECEIVER_PAIRING -> {
-                releaseHotspotLease = dev.glide.transport.lan.network.AndroidHotspotConnections.claimCurrentLease()
+                releaseHotspotClientLease?.invoke()
+                releaseHotspotClientLease = dev.glide.transport.lan.network.AndroidHotspotConnections.claimClientLease()
                 startForegroundWithNotification()
                 startNotificationUpdates()
                 val encodedInvitation = intent?.getStringExtra(EXTRA_LAN_INVITATION)
-                val localDeviceName =
-                    intent?.getStringExtra(EXTRA_LOCAL_DEVICE_NAME) ?: "Glide Device"
+                val rawLocalName = intent?.getStringExtra(EXTRA_LOCAL_DEVICE_NAME)
                 val invitation = encodedInvitation?.let {
                     runCatching { InvitationCodec.decode(it) }.getOrNull()
                 }
-                val started = invitation != null && runtime().dispatch(
-                    TransferRuntimeCommand.StartLanReceiverPairing(
-                        invitation = invitation,
-                        localDeviceName = localDeviceName
-                    )
-                )
-                if (!started) {
+                if (invitation == null) {
                     handleTerminalTeardown()
+                } else {
+                    resolveDeviceNameAsync(rawLocalName) { localDeviceName ->
+                        val started = runtime().dispatch(
+                            TransferRuntimeCommand.StartLanReceiverPairing(
+                                invitation = invitation,
+                                localDeviceName = localDeviceName
+                            )
+                        )
+                        if (!started) handleTerminalTeardown()
+                    }
                 }
             }
 
             ACTION_START_LAN_RECEIVER -> {
+                val idleAutoStart = intent?.getBooleanExtra(EXTRA_IDLE_AUTO_START, false) == true
+                fun isBusyForIdleAutoStart(): Boolean {
+                    val pairing = runtime().pairingState.value
+                    return foreground || runtime().isSessionActive.value ||
+                        pairing is dev.glide.app.ui.pairing.PairingUiState.Connecting ||
+                        pairing is dev.glide.app.ui.pairing.PairingUiState.Verifying ||
+                        pairing is dev.glide.app.ui.pairing.PairingUiState.Connected
+                }
+                if (idleAutoStart && isBusyForIdleAutoStart()) {
+                    return START_NOT_STICKY
+                }
                 idleReceiver = true
-                releaseHotspotLease = dev.glide.transport.lan.network.AndroidHotspotConnections.claimCurrentLease()
-                val localDeviceName =
-                    intent?.getStringExtra(EXTRA_LOCAL_DEVICE_NAME) ?: "Glide Device"
-                serviceScope.launch {
+                val activeHost = dev.glide.transport.lan.network.AndroidHotspotConnections.host
+                if (!dev.glide.transport.lan.network.AndroidHotspotConnections.isHostClaimed(activeHost)) {
+                    releaseHotspotHostLease?.invoke()
+                    releaseHotspotHostLease = dev.glide.transport.lan.network.AndroidHotspotConnections.claimHostLease()
+                }
+                val rawLocalName = intent?.getStringExtra(EXTRA_LOCAL_DEVICE_NAME)
+                resolveDeviceNameAsync(rawLocalName) { localDeviceName ->
+                    if (idleAutoStart && isBusyForIdleAutoStart()) {
+                        return@resolveDeviceNameAsync
+                    }
                     if (!runtime().refreshPersistentTrustState() ||
                         !runtime().dispatch(
                             TransferRuntimeCommand.StartLanReceiver(localDeviceName)
@@ -216,8 +263,10 @@ class TransferService : Service() {
 
             ACTION_STOP_LAN_RECEIVER -> {
                 if (!foreground && !runtime().isSessionActive.value) {
-                    releaseHotspotLease?.invoke()
-                    releaseHotspotLease = null
+                    releaseHotspotHostLease?.invoke()
+                    releaseHotspotHostLease = null
+                    releaseHotspotClientLease?.invoke()
+                    releaseHotspotClientLease = null
                     runtime().dispatch(TransferRuntimeCommand.StopLanReceiver)
                 }
             }
@@ -452,6 +501,9 @@ class TransferService : Service() {
     }
 
     private fun handleTerminalTeardown() {
+        releaseHotspotClientLease?.invoke()
+        releaseHotspotClientLease = null
+        dev.glide.transport.lan.network.AndroidHotspotConnections.releaseClaimedClient()
         notificationObserverJob?.cancel()
         notificationObserverJob = null
         try {
@@ -470,8 +522,10 @@ class TransferService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        releaseHotspotLease?.invoke()
-        releaseHotspotLease = null
+        releaseHotspotHostLease?.invoke()
+        releaseHotspotHostLease = null
+        releaseHotspotClientLease?.invoke()
+        releaseHotspotClientLease = null
         isRunning = false
         notificationObserverJob?.cancel()
         notificationObserverJob = null
@@ -585,6 +639,7 @@ class TransferService : Service() {
         const val EXTRA_PEER_FINGERPRINT = "dev.glide.app.extra.PEER_FINGERPRINT"
         const val EXTRA_ATTEMPT_ID = "dev.glide.app.extra.ATTEMPT_ID"
         const val EXTRA_IS_LAN = "dev.glide.app.extra.IS_LAN"
+        private const val EXTRA_IDLE_AUTO_START = "dev.glide.app.extra.IDLE_AUTO_START"
 
         const val NOTIFICATION_CHANNEL_ID = "glide_transfer_channel"
         const val COMPLETION_NOTIFICATION_CHANNEL_ID = "glide_transfer_complete"
@@ -683,11 +738,13 @@ class TransferService : Service() {
 
         fun startLanReceiver(
             context: Context,
-            localDeviceName: String = "Glide Device"
+            localDeviceName: String = "Glide Device",
+            idleAutoStart: Boolean = false
         ) {
             val intent = Intent(context, TransferService::class.java).apply {
                 action = ACTION_START_LAN_RECEIVER
                 putExtra(EXTRA_LOCAL_DEVICE_NAME, localDeviceName)
+                if (idleAutoStart) putExtra(EXTRA_IDLE_AUTO_START, true)
             }
             context.startService(intent)
         }

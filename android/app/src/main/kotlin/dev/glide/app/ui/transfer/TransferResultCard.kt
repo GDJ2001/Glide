@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
@@ -85,6 +86,7 @@ fun TransferResultCard(
     onExportItem: (VerifiedItemUiState) -> Unit = { onExportFile() },
     onExportAll: () -> Unit = { onExportFile() },
     onShareAll: () -> Unit = { onShareFile() },
+    onOpenFolder: ((String?) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val haptics = dev.glide.designsystem.GlideTheme.haptics
@@ -112,6 +114,7 @@ fun TransferResultCard(
                 onExportItem = onExportItem,
                 onExportAll = onExportAll,
                 onShareAll = onShareAll,
+                onOpenFolder = onOpenFolder,
                 modifier = modifier
             )
         }
@@ -148,6 +151,7 @@ private fun CompletedResultCard(
     onExportItem: (VerifiedItemUiState) -> Unit = { onExportFile() },
     onExportAll: () -> Unit = { onExportFile() },
     onShareAll: () -> Unit = { onShareFile() },
+    onOpenFolder: ((String?) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val isReceiver = state.role == DeviceRole.Receiver
@@ -318,6 +322,7 @@ private fun CompletedResultCard(
                                         onOpen = { onOpenItem(item) },
                                         onShare = { onShareItem(item) },
                                         onSave = if (exportStatus is ExportUiStatus.Success) null else ({ onExportItem(item) }),
+                                        onOpenFolder = onOpenFolder?.let { open -> { open(item.relativePath) } },
                                         saving = exportStatus is ExportUiStatus.Exporting
                                     )
                                 }
@@ -390,6 +395,10 @@ private fun CompletedResultCard(
             if (isReceiver && (state.committedFileKey != null || state.verifiedItems.any { it.committedFileKey != null })) {
                 if (state.verifiedItems.size > 1) {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        onOpenFolder?.let { open ->
+                            GlideIconAction(Icons.Default.FolderOpen, "Open saved folder in file manager", { open(null) },
+                                tooltip = "Open in file manager")
+                        }
                         if (exportStatus !is ExportUiStatus.Success) {
                             GlideIconAction(Icons.Default.Download, "Save all files", onExportAll,
                                 enabled = exportStatus !is ExportUiStatus.Exporting)
@@ -404,6 +413,7 @@ private fun CompletedResultCard(
                         onOpen = onOpenFile,
                         onShare = onShareFile,
                         onSave = if (exportStatus is ExportUiStatus.Success) null else onExportFile,
+                        onOpenFolder = onOpenFolder?.let { open -> { open(item?.relativePath) } },
                         saving = exportStatus is ExportUiStatus.Exporting
                     )
                 }

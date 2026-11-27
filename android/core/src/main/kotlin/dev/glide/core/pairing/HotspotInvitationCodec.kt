@@ -36,7 +36,7 @@ object HotspotInvitationCodec {
         return PREFIX + encoding.encodeToString(json)
     }
 
-    fun decode(value: String, now: Instant = Instant.now()): HotspotInvitation {
+    fun decode(value: String, now: Instant = Instant.now(), clockSkewGraceSeconds: Long = 0L): HotspotInvitation {
         require(value.startsWith(PREFIX) && value.length <= PREFIX.length + (MAX_BYTES * 4 + 2) / 3)
         val token = value.removePrefix(PREFIX)
         require(tokenPattern.matches(token))
@@ -52,7 +52,7 @@ object HotspotInvitationCodec {
             return primitive.content
         }
         val pairing = InvitationCodec.decode(field("pair"))
-        require(pairing.expiresAt.toLongOrNull()?.let { it > now.epochSecond } == true)
+        require(pairing.expiresAt.toLongOrNull()?.let { it + clockSkewGraceSeconds > now.epochSecond } == true)
         return HotspotInvitation(field("ssid"), field("psk"), pairing)
     }
 }

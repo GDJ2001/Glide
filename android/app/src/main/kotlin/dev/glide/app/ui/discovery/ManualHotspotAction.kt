@@ -27,14 +27,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import dev.glide.app.lan.HotspotInterfaceWatcher
+import dev.glide.app.connectivity.isPhoneHotspotActive
 import dev.glide.app.ui.components.GlideIconAction
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 internal fun ManualHotspotAction(
@@ -47,6 +49,7 @@ internal fun ManualHotspotAction(
     onExternalDismiss: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var internalOpen by rememberSaveable { mutableStateOf(false) }
     val open = internalOpen || externalOpen
     var settingsUnavailable by rememberSaveable { mutableStateOf(false) }
@@ -65,7 +68,7 @@ internal fun ManualHotspotAction(
             return@LaunchedEffect
         }
         while (true) {
-            val active = HotspotInterfaceWatcher.hasActiveHotspotIpv4()
+            val active = isPhoneHotspotActive(context)
             hotspotDetected = active
             if (active && !autoTriggered) {
                 autoTriggered = true
@@ -77,9 +80,24 @@ internal fun ManualHotspotAction(
         }
     }
 
+    val openHostHotspotOrDialog: () -> Unit = {
+        if (host) {
+            scope.launch {
+                if (isPhoneHotspotActive(context)) {
+                    closeDialog()
+                    onReady()
+                } else {
+                    internalOpen = true
+                }
+            }
+        } else {
+            internalOpen = true
+        }
+    }
+
     if (showCaption) {
         OutlinedButton(
-            onClick = { internalOpen = true },
+            onClick = openHostHotspotOrDialog,
             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
             modifier = Modifier.heightIn(min = 48.dp)
         ) {
@@ -88,7 +106,7 @@ internal fun ManualHotspotAction(
             Text("Hotspot")
         }
     } else {
-        GlideIconAction(Icons.Default.WifiTethering, "Use a phone hotspot", { internalOpen = true })
+        GlideIconAction(Icons.Default.WifiTethering, "Use a phone hotspot", openHostHotspotOrDialog)
     }
     if (!open) return
 
@@ -120,8 +138,9 @@ internal fun ManualHotspotAction(
                     Text("Waiting for hotspot…", style = MaterialTheme.typography.labelMedium)
                 }
                 if (host) {
+                    TextButton(onClick = { closeDialog(); onReady() }) { Text("Show QR now") }
                     onStartHost?.let { start ->
-                        TextButton(onClick = { closeDialog(); start() }) { Text("Retry Glide hotspot") }
+                        TextButton(onClick = { closeDialog(); start() }) { Text("Start Glide hotspot") }
                     }
                 } else {
                     TextButton(onClick = { closeDialog(); onReady() }) { Text("Scan receiver QR") }
@@ -134,6 +153,13 @@ internal fun ManualHotspotAction(
                     onClick = {
                         val opened = runCatching {
                             context.startActivity(Intent("android.settings.TETHER_SETTINGS"))
+                        }.recoverCatching {
+                            context.startActivity(
+                                Intent().setClassName(
+                                    "com.android.settings",
+                                    "com.android.settings.Settings\$WifiApSettingsActivity"
+                                )
+                            )
                         }.recoverCatching {
                             context.startActivity(Intent(Settings.ACTION_WIRELESS_SETTINGS))
                         }

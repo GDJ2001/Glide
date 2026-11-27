@@ -16,6 +16,8 @@ import dev.glide.data.source.AndroidContentResolverWrapper
 import dev.glide.data.source.AndroidSourceAccess
 import dev.glide.data.source.BoundedSourceStager
 import dev.glide.data.source.InstalledAppsRepository
+import dev.glide.data.source.LocalMediaEntry
+import dev.glide.data.source.QuickSelectionPrefsStore
 import dev.glide.data.source.SafTreeCrawler
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -143,7 +145,7 @@ class SelectionViewModel(
     fun onUrisSelected(uris: List<Uri>, context: Context) {
         if (uris.isEmpty()) return
         val sourceAccess = getOrCreateSourceAccess(context)
-        onUriStringsSelected(uris.map { it.toString() }, sourceAccess)
+        onUriStringsSelected(uris.map { it.toString() }, sourceAccess, context.applicationContext)
     }
 
     /**
@@ -229,7 +231,11 @@ class SelectionViewModel(
     /**
      * Pure URI string batch validation using the supplied [SourceAccess] port.
      */
-    fun onUriStringsSelected(uriStrings: List<String>, sourceAccess: SourceAccess) {
+    fun onUriStringsSelected(
+        uriStrings: List<String>,
+        sourceAccess: SourceAccess,
+        recentsAppContext: Context? = null
+    ) {
         if (uriStrings.isEmpty()) return
 
         if (activeJob?.isActive == true) return
@@ -340,6 +346,24 @@ class SelectionViewModel(
 
             val combinedList = currentItems + validatedNewItems
             _uiState.value = SelectionUiState.BatchReady(items = combinedList)
+
+            val availableNew = validatedNewItems.filter { it.isAvailable }
+            if (recentsAppContext != null && availableNew.isNotEmpty()) {
+                val nowSec = System.currentTimeMillis() / 1000L
+                val entries = availableNew.map { item ->
+                    LocalMediaEntry(
+                        uri = Uri.parse(item.handle.value),
+                        displayName = item.displayName,
+                        sizeBytes = item.sizeBytes,
+                        mimeType = item.mimeType,
+                        dateModifiedSec = nowSec,
+                        sourceLabel = "Selected recently"
+                    )
+                }
+                runCatching {
+                    QuickSelectionPrefsStore(recentsAppContext).recordSelected(entries)
+                }
+            }
         }
     }
 

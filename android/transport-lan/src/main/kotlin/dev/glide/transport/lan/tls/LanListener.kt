@@ -98,16 +98,25 @@ class LanListener(
             return
         }
 
-        // 2. On-link validation check
-        val activeSubnets = when (val state = networkScope?.networkState?.value) {
+        // 2. On-link validation check (refresh unmanaged SoftAP interfaces once if needed)
+        var activeSubnets = when (val state = networkScope?.networkState?.value) {
             is LanNetworkState.Available -> state.subnets
             else -> emptyList<SubnetPrefix>()
         }
-        val validation = LanAddressValidator.validateAddress(
+        var validation = LanAddressValidator.validateAddress(
             address = remoteAddress,
             activeSubnets = activeSubnets,
             allowLoopbackForTesting = allowLoopbackForTesting
         )
+        if (validation !is LanAddressValidationResult.Valid && networkScope != null) {
+            networkScope.evaluateLocalInterfacesFallback()
+            activeSubnets = (networkScope.networkState.value as? LanNetworkState.Available)?.subnets ?: emptyList()
+            validation = LanAddressValidator.validateAddress(
+                address = remoteAddress,
+                activeSubnets = activeSubnets,
+                allowLoopbackForTesting = allowLoopbackForTesting
+            )
+        }
         if (validation !is LanAddressValidationResult.Valid) {
             try { rawSocket.close() } catch (_: Exception) {}
             return
@@ -137,19 +146,15 @@ class LanListener(
                 sslSocket.useClientMode = false
                 sslSocket.enabledProtocols = arrayOf(PinnedTlsConnector.PROTOCOL_TLS_V1_3)
 
-                if (hasPlatformAlpn()) {
-                    val params = sslSocket.sslParameters
-                    params.applicationProtocols = arrayOf(PinnedTlsConnector.ALPN_GLIDE_LAN_V1)
-                    sslSocket.sslParameters = params
-                }
+                LanTlsProvider.configureAlpn(sslSocket, arrayOf(PinnedTlsConnector.ALPN_GLIDE_LAN_V1))
                 sslSocket.soTimeout = HANDSHAKE_TIMEOUT_MS
 
                 sslSocket.startHandshake()
 
                 // Verify ALPN & protocol
                 val negotiatedProtocol = sslSocket.session.protocol
-                val negotiatedAlpn = if (hasPlatformAlpn()) {
-                    sslSocket.applicationProtocol
+                val negotiatedAlpn = if (LanTlsProvider.supportsAlpn(sslSocket)) {
+                    LanTlsProvider.negotiatedAlpn(sslSocket)
                 } else {
                     PinnedTlsConnector.ALPN_GLIDE_LAN_V1
                 }
